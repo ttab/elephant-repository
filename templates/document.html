@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="https://unpkg.com/nes.css@2.3.0/css/nes.min.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css?family=Press+Start+2P" rel="stylesheet">
+    <style>
+      html, body, pre, code, kbd, samp {
+          font-family: "Press Start 2P";
+      }
+
+      body {
+          padding: 1rem;
+      }
+
+      section.nes-container {
+          margin-bottom: 2.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1><a href="/">Documents</a></h1>
+    {{range $name, $list := .Meta.Statuses}}
+    <section class="nes-container with-title">
+      <h3 class="title">Status {{$name}}</h3>
+      <div class="nes-table-responsive">
+        <table class="nes-table is-bordered is-centered">
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Created</th>
+              <th>Updater</th>
+              <th>Meta</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range $list}}
+            <tr>
+              <td><a href="{{.Version}}">{{.Version}}</a></td>
+              <td>{{.Created}}</td>
+              <td>{{.Updater.Name}}</td>
+              <td>
+                {{range .Meta}}
+                <b>{{.Key}}</b>: {{.Value}}<br/>
+                {{end}}
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {{end}}
+    <section class="nes-container with-title">
+      <h3 class="title">Versions</h3>
+      <div class="nes-table-responsive">
+        <table class="nes-table is-bordered is-centered">
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Created</th>
+              <th>Updater</th>
+              <th>Meta</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Meta.Updates}}
+            <tr>
+              <td><a href="{{.Version}}">{{.Version}}</a></td>
+              <td>{{.Created}}</td>
+              <td>{{.Updater.Name}}</td>
+              <td>
+                {{range .Meta}}
+                <b>{{.Key}}</b>: {{.Value}}<br/>
+                {{end}}
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="nes-container with-title">
+      <h3 class="title">Index fields</h3>
+      <div class="nes-table-responsive">
+        <table class="nes-table is-bordered is-centered">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range $key, $values := .Fields}}
+            <tr>
+              <td>{{$key}}</td>
+              <td>
+                {{range $values}}
+                <a href="/?q={{$key}}:%22{{.}}%22">{{.}}</a><br/>
+                {{end}}
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </body>
+</html>

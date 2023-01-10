@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet"> 
+    <link href="https://unpkg.com/nes.css@2.3.0/css/nes.min.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css?family=Press+Start+2P" rel="stylesheet">
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Roboto&display=swap');
+      
+      html, body, pre, code, kbd, samp {
+          font-family: "Press Start 2P";
+      }
+
+      body {
+          padding: 1rem;
+      }
+
+      section.nes-container, section.topic {
+          margin-bottom: 2.5rem;
+      }
+
+      #content-section.hide-data .data {
+          display: none;
+      }
+
+      .content-tuple {
+          display: flex;
+          flex-wrap: nowrap;
+      }
+
+      .content-tuple.has-rendered pre.data {
+          color: #666;
+      }
+
+      .content-tuple .rendered {
+          flex-basis: 30rem;
+          flex-grow: 0;
+          flex-shrink: 0;
+          font-family: 'Roboto', sans-serif;
+      }
+
+      .content-tuple pre.data {
+          font-size: 0.8rem;
+      }
+
+      .rendered h1 {
+          font-size: 2rem;
+          font-weight: bold;
+      }
+
+      .rendered span.dateline {
+          background-color: #411cb5;
+          color: #fff;
+          padding: 0.5rem;
+          diplay: inline-block;
+          margin-bottom: 1rem; 
+      }
+
+      .rendered blockquote {
+          padding: 1rem;
+          border-left: 2px solid #666;
+      }
+
+      .rendered p.ingress {
+          font-size: 1.2rem;
+          font-weight: bold;
+      }
+
+      .rendered figure img {
+          width: 100%;
+      }
+
+      .rendered figure figcaption {
+          font-style: italic;
+      }
+
+      .rendered figure {
+          margin-bottom: 2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1><a href="/">Documents</a></h1>
+    <section class="nes-container with-title">
+      <h3 class="title">Parts</h3>
+      <div class="item">
+        <div class="lists">
+          <ul class="nes-list is-disc">
+            <li><a href="#content">Content</a></li>
+            <li><a href="#links">Links</a></li>
+            <li><a href="#meta">Meta</a></li>
+            <li><a href="./newsml">View NewsML</a></li>            
+            <li><a href="./document">View Document</a></li>            
+          </ul>
+        </div>
+      </div>
+    </section>
+    <section id="content-section" class="topic">
+      <h2 id="content"><a href="#content">#</a> Content</h2>
+      {{range .RenderedContent}}
+      <div class="content-tuple {{if .Rendered}}has-rendered{{end}}">
+        {{if .Rendered}}
+        <div class="rendered">{{.Rendered}}</div>
+        {{end}}
+        <pre class="data">{{json .Block}}</pre>
+      </div>
+      {{end}}
+      <script>
+        (function() {
+          const headline = document.getElementById("content")
+          const section = document.getElementById("content-section")
+          if (!section || !headline) {
+            return
+          }
+
+          const docToggle = document.createElement("button")
+
+          docToggle.type = "button"
+          docToggle.classList.add(...["nes-btn", "is-success"])
+          docToggle.innerText = "Show data"
+
+          docToggle.addEventListener("click", function() {
+            section.classList.toggle("hide-data")
+            
+            if (section.classList.contains("hide-data")) {
+              docToggle.innerText = "Show data"
+            } else {
+              docToggle.innerText = "Hide data"
+            }
+          })
+
+          section.insertBefore(docToggle, headline.nextSibling)
+          
+          section.classList.add("hide-data")
+        })()
+      </script>
+    </section>
+    <section class="topic">
+      <h2 id="links"><a href="#links">#</a> Links</h2>
+      <div class="nes-table-responsive">
+        <table class="nes-table is-bordered is-centered">
+          <thead>
+            <tr>
+              <th>Rel</th>
+              <th>Type</th>
+              <th>Role</th>
+              <th>Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Document.Links}}
+            <tr>
+              <td>{{.Rel}}</td>
+              <td>{{.Type}}</td>
+              <td>{{.Role}}</td>
+              <td>
+                <pre>{{json .}}</pre>
+                <ul>
+                  {{range linked .}}
+                  <a href="/document/{{.UUID}}">{{.Title}} {{.UUID}}</a>
+                  {{end}}
+                </ul>
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="topic">
+      <h2 id="meta"><a href="#meta">#</a> Meta</h2>
+      <div class="nes-table-responsive">
+        <table class="nes-table is-bordered is-centered">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Document.Meta}}
+            <tr>
+              <td>{{.Type}}</td>
+              <td>
+                <pre>{{json .}}</pre>
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </body>
+</html>

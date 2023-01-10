@@ -1,0 +1,883 @@
+{
+  "version": 1,
+  "name": "Core",
+  "meta": [
+    {
+      "declares": {"type":"core/note"},
+      "attributes": {
+        "role": {"enum": ["public", "internal"]}
+      },
+      "data": {
+        "text": {"allowEmpty":true}
+      }
+    },
+    {
+      "name": "Description",
+      "description": "A public or internal description of the entity",
+      "declares": {"type":"core/description"},
+      "attributes": {
+        "role": {"enum":["public", "internal"]}
+      },
+      "data": {
+        "text": {"allowEmpty":true}
+      }
+    },
+    {
+      "declares": {"type":"core/definition"},
+      "attributes": {
+        "role": {"enum": ["short", "long"]}
+      },
+      "data": {
+        "text": {"allowEmpty":true}
+      }
+    }
+  ],
+  "documents": [
+    {
+      "name": "Place",
+      "description": "A geographical location",
+      "declares": "core/place",
+      "meta": [
+        {
+          "declares": {"type":"core/position"},
+          "data": {
+            "geometry": {
+              "description": "TODO: add a WKT format?"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Section",
+      "description": "An section for content",
+      "declares": "core/section"
+    },
+    {
+      "name": "Topic",
+      "description": "An topic for content",
+      "declares": "core/topic"
+    },
+    {
+      "name": "Story",
+      "description": "An ongoing story that gets reported on",
+      "declares": "core/story"
+    },
+    {
+      "name": "Person",
+      "description": "Used to describe people",
+      "declares": "core/person",
+      "meta": [
+        {
+          "declares": {"type":"core/contact-info"},
+          "data": {
+          }
+        }
+      ]
+    },
+    {
+      "name": "Author",
+      "description": "An author document used for f.ex. bylines",
+      "declares": "core/author",
+      "meta": [
+        {
+          "declares": {"type":"core/contact-info"},
+          "data": {
+            "email": {"optional":true},
+            "name": {"optional":true},
+            "firstName": {"optional":true},
+            "lastName": {"optional":true},
+            "mobile": {"optional":true},
+            "phone": {"optional":true},
+            "postalCode": {
+              "description": "TODO: only in 83d072c8-fb07-47e2-9c5b-85f4453835f6?",
+              "optional": true
+            },
+            "streetAddress": {
+              "description": "TODO: only in 83d072c8-fb07-47e2-9c5b-85f4453835f6?",
+              "optional": true
+            },
+            "city": {
+              "description": "TODO: only in 83d072c8-fb07-47e2-9c5b-85f4453835f6?",
+              "optional": true
+            },
+            "country": {
+              "description": "TODO: only in 83d072c8-fb07-47e2-9c5b-85f4453835f6?",
+              "optional": true
+            }
+          }
+        }
+      ],
+      "links": [
+        {
+          "name": "Association with NavigaID user account",
+          "declares": {"type":"x-imid/user", "rel":"same-as"},
+          "attributes": {
+            "uri": {"glob":["imid://user/sub/*"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Category",
+      "description": "A category for content",
+      "declares": "core/category",
+      "links": [
+        {
+          "declares": {"rel":"broader"},
+          "attributes": {
+            "type": {},
+            "uuid": {"optional":true},
+            "uri": {"optional":true}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Channel",
+      "description": "A publication channel",
+      "declares": "core/channel"
+    },
+    {
+      "name": "Article",
+      "description": "An editorial article",
+      "declares": "core/article",
+      "content": [
+        {
+          "declares": {"type":"core/heading-1"},
+          "data": {
+            "text":{
+              "allowEmpty":true,
+              "format": "html"
+            }
+          }
+        },
+        {
+          "declares": {"type":"core/heading-2"},
+          "data": {
+            "text":{
+              "allowEmpty":true,
+              "format": "html"
+            }
+          }
+        },
+        {
+          "declares": {"type":"core/heading-3"},
+          "data": {
+            "text":{
+              "allowEmpty":true,
+              "format": "html"
+            }
+          }
+        },
+        {
+          "declares": {"type":"core/heading-4"},
+          "data": {
+            "text":{
+              "allowEmpty":true,
+              "format": "html"
+            }
+          }
+        },
+        {
+          "declares": {"type":"core/paragraph"},
+          "data": {
+            "text":{
+              "allowEmpty":true,
+              "format": "html"
+            }
+          }
+        },
+        {
+          "declares": {"type":"core/preamble"},
+          "data": {
+            "text":{
+              "allowEmpty":true,
+              "format": "html"
+            }
+          }
+        },
+        {
+          "name": "Core image block",
+          "declares": {"type":"core/image"},
+          "attributes": {
+            "uuid":{}
+          },
+          "links": [
+            {
+              "declares": {"rel":"self", "type":"core/image"},
+              "attributes": {
+                "uuid": {},
+                "uri": {"glob":["core://image/*"]}
+              },
+              "data": {
+                "height": {"format":"int"},
+                "width": {"format":"int"},
+                "alttext": {
+                  "optional": true,
+                  "allowEmpty": true
+                },
+                "text": {
+                  "optional": true,
+                  "allowEmpty": true
+                }
+              },
+              "links": [
+                {
+                  "declares": {"rel":"author", "type":"core/author"},
+                  "attributes": {
+                    "title": {},
+                    "uuid": {}
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "declares": {"type":"core/blockquote"},
+          "data": {
+            "text":{
+              "allowEmpty":true,
+              "format": "html"
+            }
+          }
+        },
+        {
+          "declares": {"type":"core/htmlembed"},
+          "data": {
+            "text":{
+              "description": "TODO: add 'anything goes' policy to revisor to be able to use the html format validation for free-form html",
+              "allowEmpty":true
+            }
+          }
+        },
+        {
+          "declares": {"type":"core/unordered-list"},
+          "content": [
+            {
+              "declares": {"type":"core/paragraph"},
+              "data": {
+                "text":{
+                  "allowEmpty":true,
+                  "format": "html"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "declares": {"type":"core/ordered-list"},
+          "content": [
+            {
+              "declares": {"type":"core/paragraph"},
+              "data": {
+                "text":{
+                  "allowEmpty":true,
+                  "format": "html"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "declares": {"type":"core/factbox"},
+          "attributes": {
+            "title": {}
+          },
+          "data": {
+            "byline": {}
+          },
+          "blocksFrom":[
+            {"docType":"core/article", "kind": "content", "global":true}
+          ]
+        },
+        {
+          "name": "Table",
+          "declares": {"type":"core/table"},
+          "data": {
+            "caption": {"allowEmpty":true, "optional":true},
+            "meta": {"allowEmpty":true},
+            "thead": {
+              "format": "html",
+              "htmlPolicy": "table",
+              "optional": true
+            },
+            "tbody": {
+              "format": "html",
+              "htmlPolicy": "table"
+            },
+            "tfoot": {
+              "format": "html",
+              "htmlPolicy": "table",
+              "optional": true
+            }
+          }
+        },
+        {
+          "name": "Social embed",
+          "declares": {"type":"core/socialembed"},
+          "links": [
+            {
+              "name": "Twitter embed link",
+              "declares": {"type":"core/tweet", "rel":"self"},
+              "attributes": {
+                "uri": {"glob":["core://tweet/*"]},
+                "url": {"glob":["https://twitter.com/**"]}
+              }
+            },
+            {
+              "name": "Instagram embed link",
+              "declares": {"type":"core/instagram", "rel":"self"},
+              "attributes": {
+                "uri": {"glob":["core://instagram/*"]},
+                "url": {"glob":["https://www.instagram.com/**"]}
+              }
+            },
+            {
+              "name": "Embed location link",
+              "declares": {"type":"text/html", "rel":"alternate"},
+              "attributes": {
+                "title": {},
+                "url": {}
+              },
+              "data": {
+                "context": {},
+                "provider": {}
+              }
+            },
+            {
+              "name": "Embed image",
+              "declares": {"type":"image/jpg", "rel":"alternate"},
+              "attributes": {
+                "url": {}
+              },
+              "data": {
+                "width": {"format":"int"},
+                "height": {"format":"int"}
+              }
+            }
+          ]
+        }
+      ],
+      "meta": [
+        {
+          "declares": {"type":"core/newsvalue"},
+          "data": {
+            "duration": {"format":"int", "optional": true},
+            "score": {"format":"int"},
+            "end": {"format":"RFC3339", "optional":true}
+          }
+        }
+      ],
+      "links": [
+        {
+          "name": "Author byline",
+          "declares": {"type": "core/author", "rel":"author"},
+          "attributes": {
+            "uuid": {"optional":true},
+            "title": {}
+          },
+          "data": {
+            "email": {"optional":true},
+            "firstName": {"optional":true},
+            "lastName": {"optional":true},
+            "longDescription": {"optional":true},
+            "shortDescription": {"optional":true},
+            "phone": {"optional":true}
+          }
+        },
+        {
+          "name": "Section",
+          "declares": {"type": "core/section", "rel":"subject"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "name": "Story",
+          "declares": {"type": "core/story", "rel":"subject"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "declares": {"rel":"channel", "type": "core/channel"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "name": "Premium",
+          "declares": {"type": "core/premium", "rel":"premium"},
+          "attributes": {
+            "uri": {"glob":["core://premium/*"]},
+            "title": {}
+          }
+        },
+        {
+          "name": "Person",
+          "description": "A person that is a subject of the article",
+          "declares": {"type": "core/person", "rel":"subject"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          },
+          "data": {
+            "email": {"optional":true},
+            "firstName": {"optional":true},
+            "lastName": {"optional":true},
+            "phone": {"optional":true}
+          }
+        },
+        {
+          "name": "Category",
+          "declares": {"type": "core/category", "rel":"subject"},
+          "attributes": {
+            "uuid": {},
+            "uri": {"optional":true},
+            "title": {}
+          }
+        },
+        {
+          "name": "Content size",
+          "description": "Content size classification, described by URI",
+          "declares": {"type": "core/content-size", "rel":"content-size"},
+          "attributes": {
+            "uri": {},
+            "title": {}
+          }
+        },
+        {
+          "name": "Content source",
+          "description": "The organisation that is the source of the content",
+          "declares": {"type": "core/content-source", "rel":"source"},
+          "attributes": {
+            "uri": {}
+          }
+        },
+        {
+          "name": "Article source",
+          "description": "Points to the original article if this one is a copy",
+          "declares": {"type": "core/article", "rel":"source"},
+          "attributes": {
+            "uuid": {}
+          }
+        },
+        {
+          "name": "Assignment",
+          "description": "A link to the assignment that the article was produced for",
+          "declares": {"type": "core/assignment", "rel":"assignment"},
+          "attributes": {
+            "uuid": {}
+          }
+        }        
+      ]
+    },
+    {
+      "name": "Contacts group",
+      "description": "A group used to categorise contacts",
+      "declares": "core/group",
+      "meta": [
+        {
+          "name": "Main metadata block",
+          "declares": {"type":"core/group"},
+          "count": 1,
+          "data": {
+            "kontid": {
+              "description": "TODO: this might be a reference to an ID in a old system, in that case, move to link."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contact information",
+      "description": "A useful contact",
+      "declares": "core/contact",
+      "meta": [
+        {
+          "name": "Main metadata block",
+          "declares": {"type":"core/contact"},
+          "count": 1,
+          "data": {
+            "firstName": {"optional":true},
+            "lastName": {"optional":true},
+            "employer": {"optional":true},
+            "title": {"optional":true},
+            "kontid": {
+              "optional": true,
+              "description": "TODO: this might be a reference to an ID in a old system, in that case, move to link."
+            }
+          }
+        },
+        {
+          "declares": {"type":"core/contact-info"},
+          "attributes": {
+            "role": {"enum":["home", "office"]}
+          },
+          "data": {
+            "email": {"optional":true},
+            "name": {"optional":true},
+            "address": {"optional":true},
+            "locality": {"optional":true},
+            "country": {"optional":true},
+            "phone": {"optional":true},
+            "mobile": {"optional":true}
+          },
+          "links": [
+            {
+              "name": "Webpage",
+              "declares": {"type":"text/html", "rel":"see-also"},
+              "attributes": {
+                "url": {"glob": ["http://**", "https://**"]}
+              }
+            }
+          ]
+        }
+      ],
+      "links": [
+        {
+          "name": "Groups",
+          "description": "The groups that the contact is assigned to",
+          "declares": {"rel":"group", "type": "core/group"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Assignment",
+      "description": "A work assignment",
+      "declares": "core/assignment",
+      "meta": [
+        {
+          "name": "Main metadata block",
+          "declares": {"type":"core/assignment"},
+          "count": 1,
+          "data": {
+            "dateGranularity": {"enum":["date", "datetime"]},
+            "start": {"format":"RFC3339"},
+            "startDate": {"time":"2006-01-02"},
+            "end": {"format":"RFC3339"},
+            "endDate": {"time":"2006-01-02"}
+          }
+        },
+        {
+          "name": "Assignment type",
+          "declares": {"type":"core/assignment-type"},
+          "minCount": 1,
+          "attributes": {
+            "value": {
+              "enum":[
+                "text", "picture", "video", "graphic"
+              ]
+            }
+          }
+        }
+      ],
+      "links": [
+        {
+          "name": "Assigned person",
+          "declares": {"rel":"assigned-to", "type": "core/author"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          },
+          "data": {
+            "email": {"optional":true},
+            "shortDescription": {"optional":true}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Calendar event",
+      "description": "A calendar event",
+      "declares": "core/event",
+      "meta": [
+        {
+          "name": "Main metadata block",
+          "declares": {"type":"core/event"},
+          "count": 1,
+          "data": {
+            "dateGranularity": {"enum":["date", "datetime"]},
+            "registration": {"allowEmpty":true},
+            "start": {"format":"RFC3339"},
+            "end": {"format":"RFC3339"},
+            "priority": {"format":"int"}
+          }
+        }
+      ],
+      "links": [
+        {
+          "name": "Section",
+          "declares": {"type": "core/section", "rel":"section"},
+          "attributes": {
+            "uri": {},
+            "value": {},
+            "title": {}
+          }
+        },
+        {
+          "name": "Organiser",
+          "declares": {"rel":"organiser", "type":"core/organisation"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "name": "Participant",
+          "declares": {"rel":"participant", "type": "core/author"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "name": "Place",
+          "declares": {"type": "core/place", "rel":"place"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "name": "Story",
+          "declares": {"type": "core/story", "rel":"story"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "name": "Category",
+          "declares": {"type": "core/category", "rel":"category"},
+          "attributes": {
+            "uuid": {},
+            "uri": {"optional":true},
+            "title": {}
+          }
+        },
+        {
+          "name": "Topic",
+          "declares": {"type": "core/topic", "rel":"subject"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "name": "Geo position",
+          "declares": {"type":"core/geo-point", "rel": "location"},
+          "attributes": {
+            "uri": {"glob":["geo://point/*"]},
+            "title": {}
+          },
+          "data": {
+            "country": {},
+            "extraInfo": {"allowEmpty": true},
+            "geometry": {},
+            "locality": {},
+            "name": {}
+          }
+        },
+        {
+          "name": "Copyright holder",
+          "description": "TODO: do we really need this?",
+          "declares": {"rel":"copyrightholder"},
+          "attributes": {
+            "title": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Organisation",
+      "description": "A document describing an organisation",
+      "declares": "core/organisation",
+      "meta": [
+        {
+          "name": "Organisation contact information",
+          "declares": {"type":"core/contact-info"},
+          "count": 1,
+          "data": {
+            "city": {"optional":true},
+            "country": {"optional":true},
+            "email": {"optional":true},
+            "phone": {"optional":true},
+            "streetAddress": {"optional":true}
+          }
+        }
+      ],
+      "links": [
+        {
+          "name": "Browseable link for the organisation",
+          "description": "Usually the homepage or other resources that describe the organisation",
+          "declares": {"rel":"see-also", "type": "text/html"},
+          "attributes": {
+            "url": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Planning item",
+      "description": "Planned news coverage",
+      "declares": "core/newscoverage",
+      "meta": [
+        {
+          "name": "Main metadata block",
+          "declares": {"type":"core/newscoverage"},
+          "count": 1,
+          "data": {
+            "dateGranularity": {"enum":["date", "datetime"]},
+            "description": {"allowEmpty":true},
+            "start": {"format":"RFC3339"},
+            "startDate": {"time":"2006-01-02"},
+            "end": {"format":"RFC3339"},
+            "endDate": {"time":"2006-01-02"},
+            "priority": {"format":"int"},
+            "publicDescription":{"allowEmpty":true},
+            "slug": {"allowEmpty":true}
+          }
+        }
+      ],
+      "links": [
+        {
+          "declares": {"rel":"section", "type": "core/section"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "declares": {"rel":"event", "type": "core/event"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "declares": {"rel":"category", "type": "core/category"},
+          "attributes": {
+            "uuid": {},
+            "uri": {"optional":true},
+            "title": {}
+          }
+        },
+        {
+          "declares": {"rel":"story", "type": "core/story"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "declares": {"rel":"channel", "type": "core/channel"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "declares": {"rel":"place", "type": "core/place"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "declares": {"rel":"content-profile", "type": "core/content-profile"},
+          "attributes": {
+            "uuid": {},
+            "title": {}
+          }
+        },
+        {
+          "name": "Assignments",
+          "description": "The assignments that are part of covering this story",
+          "declares": {
+            "rel": "assignment",
+            "type": "core/assignment"
+          },
+          "attributes": {
+            "uuid": {}
+          }
+        },
+        {
+          "description": "TODO: Is this really necessary for a planning item?",
+          "declares": {"rel":"copyrightholder"},
+          "attributes": {
+            "title": {}
+          }
+        },
+        {
+          "declares": {"rel":"sector"},
+          "attributes": {
+            "title": {},
+            "value": {}
+          }
+        }
+      ]
+    }
+  ],
+  "htmlPolicies": [
+    {
+      "name": "default",
+      "elements": {
+        "strong": {
+          "attributes": {
+            "id": {"optional":true}
+          }
+        },
+        "em": {
+          "attributes": {
+            "id": {"optional":true}
+          }
+        },
+        "a": {
+          "attributes": {
+            "id": {"optional":true},
+            "href": {"optional":true}
+          }
+        }
+      }
+    },
+    {
+      "name": "table",
+      "uses": "default",
+      "elements": {
+        "tr": {
+          "attributes": {
+            "id": {"optional":true}
+          }
+        },
+        "td": {
+          "attributes": {
+            "id": {"optional":true},
+            "colspan": {
+              "format": "int",
+              "optional":true
+            }
+          }
+        },
+        "th": {
+          "attributes": {
+            "id": {"optional":true},
+            "colspan": {
+              "format": "int",
+              "optional":true
+            }
+          }
+        }
+      }
+    }
+  ]
+}
