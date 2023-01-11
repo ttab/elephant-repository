@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -19,6 +20,9 @@ import (
 
 //go:embed templates/*.html
 var templateFS embed.FS
+
+//go:embed assets/*
+var assetFS embed.FS
 
 func LinkedDocs(b Block) []Block {
 	return linkedDocs(b, nil)
@@ -72,6 +76,13 @@ func ServeWebUI(
 		Handler: router,
 	}
 
+	assetDir, err := fs.Sub(assetFS, "assets")
+	if err != nil {
+		return fmt.Errorf("failed to prepare asset filesystem: %w", err)
+	}
+
+	router.ServeFiles("/assets/*filepath", http.FS(assetDir))
+
 	router.GET("/", func(
 		w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 	) {
@@ -102,8 +113,11 @@ func ServeWebUI(
 	router.GET("/document/:uuid/", func(
 		w http.ResponseWriter, r *http.Request, ps httprouter.Params,
 	) {
+		uuid := ps.ByName("uuid")
+
 		data := DocumentPageData{
-			UUID: ps.ByName("uuid"),
+			Title: fmt.Sprintf("Document %s", uuid),
+			UUID:  uuid,
 		}
 
 		fields, err := index.Fields(data.UUID)
@@ -435,6 +449,7 @@ type IndexPageData struct {
 }
 
 type DocumentPageData struct {
+	Title  string
 	UUID   string
 	Meta   DocumentMeta
 	Fields map[string][]string

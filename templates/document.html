@@ -4,23 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link href="https://unpkg.com/nes.css@2.3.0/css/nes.min.css" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css?family=Press+Start+2P" rel="stylesheet">
-    <style>
-      html, body, pre, code, kbd, samp {
-          font-family: "Press Start 2P";
-      }
-
-      body {
-          padding: 1rem;
-      }
-
-      section.nes-container {
-          margin-bottom: 2.5rem;
-      }
-    </style>
+    <link href="/assets/style.css" rel="stylesheet" />
+    <title>{{.Title}}</title>
   </head>
   <body>
-    <h1><a href="/">Documents</a></h1>
+    <h1><a href="/">Documents</a> - {{.UUID}}</h1>
     {{range $name, $list := .Meta.Statuses}}
     <section class="nes-container with-title">
       <h3 class="title">Status {{$name}}</h3>
