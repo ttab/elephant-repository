@@ -42,10 +42,7 @@ func (bs *BadgerStore) GetCurrentVersion(
 	var r DocumentVersionInformation
 
 	err := bs.db.View(func(txn *badger.Txn) error {
-		var (
-			docRefKey = fmt.Sprintf("/document/ref/%s", documentUUID)
-			r         DocumentVersionInformation
-		)
+		var docRefKey = fmt.Sprintf("/document/ref/%s", documentUUID)
 
 		err := getAndDecodeIfFound(txn, []byte(docRefKey), &r)
 		if err != nil {
