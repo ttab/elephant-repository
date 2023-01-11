@@ -6,7 +6,7 @@ Executable entrypoint in cmd/docformat.
 
 ## Running
 
-Set `NAVIGA_BEARER_TOKEN` to the value of the "dev-imidToken" cookie and start ingest using:
+Set `NAVIGA_BEARER_TOKEN` to the value of the "dev-imidToken" (your session cookie when logged in to [Dashboard](https://tt.stage.dashboard.infomaker.io/)) cookie and start ingest using:
 
 ``` shell
 go run ./cmd/docformat ingest --state-dir ../docformat.data
@@ -136,3 +136,14 @@ Cached OC property lookups organised by:
 
 There is an actual TT author concept, though its metadata is a bit borked: 0463ee71-572f-5185-bedc-62306d7c7ca8
 
+There's data in the NewML document that doesn't make it into NavigaDoc:
+
+``` xml
+<!-- From article -->
+<link rel="texttype" title="Till red" type="x-tt/texttype" uri="tt://texttype/message"/>
+<!-- ... -->
+<itemMetaExtProperty literal="Artikel" type="ttext:typ"/>
+<itemMetaExtProperty literal="INFO" type="profil"/>
+```
+
+...might have to fall back to full NewsML parsing in the end, but CCA was a convenient shortcut.
