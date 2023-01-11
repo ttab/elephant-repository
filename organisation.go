@@ -7,7 +7,7 @@ import (
 
 func sideloadOrganisationInformation(
 	ctx context.Context, oc ObjectGetter,
-	evt ContentLogEvent, doc *Document,
+	evt OCLogEvent, doc *Document,
 ) error {
 	var con NMLConcept
 

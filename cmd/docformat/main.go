@@ -295,7 +295,7 @@ func ingestCommand(c *cli.Context) error {
 		return err
 	}
 
-	lastEvent, err := oc.GetContentLog(context.Background(), -1)
+	lastEvent, err := oc.GetEventLog(context.Background(), -1)
 	if err != nil {
 		return fmt.Errorf("failed to get last contentlog event: %w", err)
 	}
@@ -307,7 +307,7 @@ func ingestCommand(c *cli.Context) error {
 	maxPos := lastEvent.Events[0].ID
 	bar := progressbar.NewOptions(maxPos-startPos,
 		progressbar.OptionSetWriter(os.Stderr))
-	doneChan := make(chan docformat.ContentLogEvent)
+	doneChan := make(chan docformat.OCLogEvent)
 
 	go func() {
 		for e := range doneChan {
@@ -359,7 +359,7 @@ func ingestCommand(c *cli.Context) error {
 		DefaultLanguage: lang,
 		Identity:        db,
 		LogPos:          db,
-		ContentLog:      oc,
+		OCLog:           oc,
 		GetDocument:     cachedGet,
 		Objects:         oc,
 		OCProps:         cachedProps,

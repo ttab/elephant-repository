@@ -22,8 +22,9 @@ import (
 //go:embed constraints/*.json
 var BuiltInConstraints embed.FS
 
-type ContentLogGetter interface {
-	GetContentLog(ctx context.Context, lastEvent int) (*ContentLogResponse, error)
+type OCLogGetter interface {
+	GetContentLog(ctx context.Context, lastEvent int) (*OCLogResponse, error)
+	GetEventLog(ctx context.Context, lastEvent int) (*OCLogResponse, error)
 }
 
 type PropertyGetter interface {
@@ -42,14 +43,14 @@ type IngestOptions struct {
 	DefaultLanguage string
 	Identity        IdentityStore
 	LogPos          LogPosStore
-	ContentLog      ContentLogGetter
+	OCLog           OCLogGetter
 	GetDocument     GetDocumentFunc
 	Objects         ObjectGetter
 	OCProps         PropertyGetter
 	DocStore        DocStore
 	Blocklist       *Blocklist
 	Validator       *revisor.Validator
-	Done            chan ContentLogEvent
+	Done            chan OCLogEvent
 }
 
 type ValidationError struct {
@@ -116,7 +117,7 @@ func NewIngester(opt IngestOptions) *Ingester {
 	}
 }
 
-type includeCheckerFunc func(ctx context.Context, evt ContentLogEvent) (bool, string, error)
+type includeCheckerFunc func(ctx context.Context, evt OCLogEvent) (bool, string, error)
 
 func (in *Ingester) Start(ctx context.Context, tail bool) error {
 	pos, err := in.opt.LogPos.GetLogPosition()
@@ -157,7 +158,7 @@ func (in *Ingester) Start(ctx context.Context, tail bool) error {
 }
 
 func (in *Ingester) iteration(ctx context.Context, pos int) (int, error) {
-	log, err := in.opt.ContentLog.GetContentLog(ctx, pos)
+	log, err := in.opt.OCLog.GetEventLog(ctx, pos)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read content log: %w", err)
 	}
@@ -189,7 +190,7 @@ func (in *Ingester) iteration(ctx context.Context, pos int) (int, error) {
 }
 
 func (in *Ingester) shouldArticleBeImported(
-	ctx context.Context, evt ContentLogEvent,
+	ctx context.Context, evt OCLogEvent,
 ) (bool, string, error) {
 	if evt.EventType == "DELETE" {
 		return true, evt.EventType, nil
@@ -225,7 +226,7 @@ var blockMatch = []string{
 	`unknown block type "TT/http://tt.se/spec/person/1.0/,rel=same-as,role="`,
 }
 
-func (in *Ingester) handleEvent(ctx context.Context, evt ContentLogEvent) error {
+func (in *Ingester) handleEvent(ctx context.Context, evt OCLogEvent) error {
 	if in.opt.Blocklist.Blocked(evt.UUID) {
 		return nil
 	}
@@ -290,7 +291,7 @@ func (in *Ingester) handleEvent(ctx context.Context, evt ContentLogEvent) error 
 	return nil
 }
 
-func (in *Ingester) delete(ctx context.Context, evt ContentLogEvent) error {
+func (in *Ingester) delete(ctx context.Context, evt OCLogEvent) error {
 	info, err := in.opt.Identity.GetCurrentVersion(evt.UUID)
 	if err != nil {
 		return fmt.Errorf("failed to get current version info: %w", err)
@@ -310,7 +311,7 @@ type ConvertedDoc struct {
 	Status       string
 }
 
-type converterFunc func(ctx context.Context, evt ContentLogEvent) (*ConvertedDoc, error)
+type converterFunc func(ctx context.Context, evt OCLogEvent) (*ConvertedDoc, error)
 
 var (
 	errDeletedInSource = errors.New("deleted in source system")
@@ -318,7 +319,7 @@ var (
 )
 
 func (in *Ingester) backfillIngest(
-	ctx context.Context, evt ContentLogEvent,
+	ctx context.Context, evt OCLogEvent,
 ) error {
 	current, err := in.opt.Identity.GetCurrentVersion(evt.UUID)
 	if err != nil {
@@ -354,13 +355,13 @@ func (in *Ingester) backfillIngest(
 	return nil
 }
 
-func (in *Ingester) ingest(ctx context.Context, evt ContentLogEvent) error {
+func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 	var cFunc converterFunc
 
 	switch evt.Content.ContentType {
 	case "Assignment":
 		cFunc = func(
-			ctx context.Context, evt ContentLogEvent,
+			ctx context.Context, evt OCLogEvent,
 		) (*ConvertedDoc, error) {
 			return assignmentImport(ctx, evt, in.opt, in.ccaImport)
 		}
@@ -513,7 +514,7 @@ func (in *Ingester) validateDocument(doc Document) error {
 	return nil
 }
 
-func (in *Ingester) ccaImport(ctx context.Context, evt ContentLogEvent) (*ConvertedDoc, error) {
+func (in *Ingester) ccaImport(ctx context.Context, evt OCLogEvent) (*ConvertedDoc, error) {
 	var out ConvertedDoc
 
 	docRes, err := in.opt.GetDocument(ctx, GetDocumentRequest{

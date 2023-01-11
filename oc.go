@@ -52,19 +52,19 @@ func NewOCClient(client *http.Client, baseURL string) (*OCClient, error) {
 	}, nil
 }
 
-type ContentLogResponse struct {
-	Events []ContentLogEvent
+type OCLogResponse struct {
+	Events []OCLogEvent
 }
 
-type ContentLogEvent struct {
+type OCLogEvent struct {
 	ID        int
 	UUID      string
 	EventType string
 	Created   time.Time
-	Content   ContentLogContent
+	Content   OCLogContent
 }
 
-type ContentLogContent struct {
+type OCLogContent struct {
 	UUID        string
 	Version     int
 	Created     time.Time
@@ -236,13 +236,29 @@ func (oc *OCClient) GetProperties(
 	return results, nil
 }
 
-func (oc *OCClient) GetContentLog(ctx context.Context, lastEvent int) (*ContentLogResponse, error) {
+func (oc *OCClient) GetContentLog(ctx context.Context, lastEvent int) (*OCLogResponse, error) {
 	reqURL := oc.baseURL.ResolveReference(&url.URL{
 		Path:     "opencontent/contentlog",
 		RawQuery: fmt.Sprintf("event=%d", lastEvent),
 	})
 
-	var resp ContentLogResponse
+	var resp OCLogResponse
+
+	err := oc.getJSON(ctx, "content log", reqURL.String(), &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
+func (oc *OCClient) GetEventLog(ctx context.Context, lastEvent int) (*OCLogResponse, error) {
+	reqURL := oc.baseURL.ResolveReference(&url.URL{
+		Path:     "opencontent/eventlog",
+		RawQuery: fmt.Sprintf("event=%d", lastEvent),
+	})
+
+	var resp OCLogResponse
 
 	err := oc.getJSON(ctx, "content log", reqURL.String(), &resp)
 	if err != nil {

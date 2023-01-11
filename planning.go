@@ -59,7 +59,7 @@ type NMLDataElement struct {
 }
 
 func assignmentImport(
-	ctx context.Context, evt ContentLogEvent, opt IngestOptions,
+	ctx context.Context, evt OCLogEvent, opt IngestOptions,
 	ccaImport converterFunc,
 ) (*ConvertedDoc, error) {
 	var assignment Planning

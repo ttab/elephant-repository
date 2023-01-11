@@ -83,7 +83,7 @@ func (nci NMLContactInfo) ToBlock() Block {
 
 func sideloadContactInformation(
 	ctx context.Context, oc ObjectGetter,
-	evt ContentLogEvent, doc *Document,
+	evt OCLogEvent, doc *Document,
 ) error {
 	var con NMLConcept
 
