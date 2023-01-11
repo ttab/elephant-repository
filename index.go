@@ -87,7 +87,7 @@ type SearchHit struct {
 func (si SearchIndex) Search(q string) ([]SearchHit, error) {
 	req := bleve.SearchRequest{
 		Query:  bleve.NewQueryStringQuery(q),
-		Size:   20,
+		Size:   30,
 		Fields: []string{"title", "type", "modified"},
 	}
 
