@@ -147,3 +147,7 @@ There's data in the NewML document that doesn't make it into NavigaDoc:
 ```
 
 ...might have to fall back to full NewsML parsing in the end, but CCA was a convenient shortcut.
+
+## License
+
+Uses code and definitions from [NavigaDoc](https://github.com/navigacontentlab/navigadoc), as reflected in the LICENSE file.
