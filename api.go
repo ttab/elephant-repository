@@ -86,8 +86,51 @@ func (a *APIServer) Get(ctx context.Context, req *repository.GetDocumentRequest)
 }
 
 // GetHistory implements repository.Documents
-func (*APIServer) GetHistory(context.Context, *repository.GetHistoryRequest) (*repository.GetHistoryResponse, error) {
-	return nil, twirp.Unimplemented.Error("not implemented yet")
+func (a *APIServer) GetHistory(
+	ctx context.Context, req *repository.GetHistoryRequest,
+) (*repository.GetHistoryResponse, error) {
+	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Before != 0 && req.Before < 2 {
+		return nil, twirp.InvalidArgumentError("before",
+			"cannot be non-zero and less that 2")
+	}
+
+	meta, err := a.store.GetDocumentMeta(ctx, docUUID)
+	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+		return nil, twirp.NotFoundError("the document doesn't exist")
+	}
+
+	start := int(req.Before) - 1
+	if start == 0 {
+		start = meta.Updates[len(meta.Updates)-1].Version
+	}
+
+	var res repository.GetHistoryResponse
+
+	for i := len(meta.Updates) - 1; i >= 0; i-- {
+		if meta.Updates[i].Version > start {
+			continue
+		}
+
+		up := meta.Updates[i]
+
+		res.Versions = append(res.Versions, &repository.DocumentVersion{
+			Version: int64(up.Version),
+			Created: up.Created.Format(time.RFC3339),
+			Creator: IdentityReferenceToRPC(up.Updater),
+			Meta:    UpdateMetaToRPC(up.Meta),
+		})
+
+		if len(res.Versions) == 10 {
+			break
+		}
+	}
+
+	return &res, nil
 }
 
 // GetMeta implements repository.Documents
@@ -123,18 +166,9 @@ func (a *APIServer) GetMeta(ctx context.Context, req *repository.GetMetaRequest)
 		s := repository.Status{
 			Id:      int64(statusCount),
 			Version: int64(head.Version),
-			Creator: &repository.IdentityReference{
-				Uri:  head.Updater.URI,
-				Name: head.Updater.Name,
-			},
+			Creator: IdentityReferenceToRPC(head.Updater),
 			Created: head.Created.Format(time.RFC3339),
-		}
-
-		for _, m := range head.Meta {
-			s.Meta = append(s.Meta, &repository.MetaValue{
-				Key:   m.Key,
-				Value: m.Value,
-			})
+			Meta:    UpdateMetaToRPC(head.Meta),
 		}
 
 		resp.Heads[status] = &s
@@ -174,6 +208,46 @@ func (*APIServer) Update(context.Context, *repository.UpdateRequest) (*repositor
 // UpdatePermissions implements repository.Documents
 func (*APIServer) UpdatePermissions(context.Context, *repository.UpdatePermissionsRequest) (*repository.UpdatePermissionsResponse, error) {
 	return nil, twirp.Unimplemented.Error("not implemented yet")
+}
+
+func IdentityReferenceToRPC(ref IdentityReference) *repository.IdentityReference {
+	return &repository.IdentityReference{
+		Uri:  ref.URI,
+		Name: ref.Name,
+	}
+}
+
+func RPCToIdentityReference(ref *repository.IdentityReference) IdentityReference {
+	return IdentityReference{
+		URI:  ref.Uri,
+		Name: ref.Name,
+	}
+}
+
+func UpdateMetaToRPC(meta []UpdateMeta) []*repository.MetaValue {
+	var out []*repository.MetaValue
+
+	for i := range meta {
+		out = append(out, &repository.MetaValue{
+			Key:   meta[i].Key,
+			Value: meta[i].Value,
+		})
+	}
+
+	return out
+}
+
+func RPCToUpdateMeta(meta []*repository.MetaValue) []UpdateMeta {
+	var out []UpdateMeta
+
+	for i := range meta {
+		out = append(out, UpdateMeta{
+			Key:   meta[i].Key,
+			Value: meta[i].Value,
+		})
+	}
+
+	return out
 }
 
 func DocumentToRPC(doc *Document) *repository.Document {
