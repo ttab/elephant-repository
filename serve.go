@@ -16,7 +16,7 @@ import (
 	"strings"
 
 	"github.com/julienschmidt/httprouter"
-	"github.com/ttab/docformat/rpc/elephant"
+	"github.com/ttab/docformat/rpc/repository"
 	"github.com/twitchtv/twirp"
 )
 
@@ -78,7 +78,7 @@ func RunServer(
 		Handler: router,
 	}
 
-	api := elephant.NewDocumentsServer(
+	api := repository.NewDocumentsServer(
 		&APIServer{
 			store: store,
 		},

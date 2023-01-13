@@ -1,4 +1,4 @@
-service_name = elephant
+service_name = repository
 proto_file = rpc/$(service_name)/service.proto
 generated_files = rpc/$(service_name)/service.pb.go rpc/$(service_name)/service.twirp.go
 

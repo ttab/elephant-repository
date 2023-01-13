@@ -27,6 +27,36 @@ Use the imidToken cookie instead, and set
 
 Make sure to use a different state dir for the environment.
 
+## Calling the API
+
+The API is defined in [service.proto](rpc/repository/service.proto).
+
+Run `make proto` to re-generate code based on the protobuf declaration. This will run in a local docker image (to avoid a dep on local protoc), so it'll take some time to build the first time, but should be quick after that.
+
+### Fetching a document
+
+``` shell
+curl --request POST \
+  --url http://localhost:1080/twirp/elephant.repository.Documents/Get \
+  --header 'Content-Type: application/json' \
+  --data '{
+	"uuid": "8090ff79-030e-419b-952e-12917cfdaaac"
+}'
+```
+
+Here you can specify `version` to fetch a specific version, or `status` to fetch the version that last got f.ex. the "usable" status.
+
+### Fetching document metadata
+
+``` shell
+curl --request POST \
+  --url http://localhost:1080/twirp/elephant.repository.Documents/GetMeta \
+  --header 'Content-Type: application/json' \
+  --data '{
+	"uuid": "8090ff79-030e-419b-952e-12917cfdaaac"
+}'
+```
+
 ## Some starting points
 
 * `constraints/*.json`: format constraint specifications

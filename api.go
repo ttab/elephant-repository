@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ttab/docformat/rpc/elephant"
+	"github.com/ttab/docformat/rpc/repository"
 	"github.com/twitchtv/twirp"
 )
 
@@ -14,15 +14,15 @@ type APIServer struct {
 }
 
 // Interface guard
-var _ elephant.Documents = &APIServer{}
+var _ repository.Documents = &APIServer{}
 
-// Delete implements elephant.Documents
-func (*APIServer) Delete(context.Context, *elephant.DeleteDocumentRequest) (*elephant.DeleteDocumentResponse, error) {
+// Delete implements repository.Documents
+func (*APIServer) Delete(context.Context, *repository.DeleteDocumentRequest) (*repository.DeleteDocumentResponse, error) {
 	return nil, twirp.Unimplemented.Error("not implemented yet")
 }
 
-// Get implements elephant.Documents
-func (a *APIServer) Get(ctx context.Context, req *elephant.GetDocumentRequest) (*elephant.GetDocumentResponse, error) {
+// Get implements repository.Documents
+func (a *APIServer) Get(ctx context.Context, req *repository.GetDocumentRequest) (*repository.GetDocumentResponse, error) {
 	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
 	if err != nil {
 		return nil, err
@@ -34,7 +34,7 @@ func (a *APIServer) Get(ctx context.Context, req *elephant.GetDocumentRequest) (
 	}
 
 	if req.Lock {
-		return nil, twirp.Unimplemented.Error("not implemented yet")
+		return nil, twirp.Unimplemented.Error("locking is not implemented yet")
 	}
 
 	if req.Version > 0 && req.Status != "" {
@@ -79,19 +79,19 @@ func (a *APIServer) Get(ctx context.Context, req *elephant.GetDocumentRequest) (
 			"failed to load document version: %w", err)
 	}
 
-	return &elephant.GetDocumentResponse{
+	return &repository.GetDocumentResponse{
 		Document: DocumentToRPC(doc),
 		Version:  int64(version),
 	}, nil
 }
 
-// GetHistory implements elephant.Documents
-func (*APIServer) GetHistory(context.Context, *elephant.GetHistoryRequest) (*elephant.GetHistoryResponse, error) {
+// GetHistory implements repository.Documents
+func (*APIServer) GetHistory(context.Context, *repository.GetHistoryRequest) (*repository.GetHistoryResponse, error) {
 	return nil, twirp.Unimplemented.Error("not implemented yet")
 }
 
-// GetMeta implements elephant.Documents
-func (a *APIServer) GetMeta(ctx context.Context, req *elephant.GetMetaRequest) (*elephant.GetMetaResponse, error) {
+// GetMeta implements repository.Documents
+func (a *APIServer) GetMeta(ctx context.Context, req *repository.GetMetaRequest) (*repository.GetMetaResponse, error) {
 	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
 	if err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func (a *APIServer) GetMeta(ctx context.Context, req *elephant.GetMetaRequest) (
 		return nil, twirp.NotFoundError("the document doesn't exist")
 	}
 
-	resp := elephant.DocumentMeta{
+	resp := repository.DocumentMeta{
 		Created:        meta.Created.Format(time.RFC3339),
 		Modified:       meta.Modified.Format(time.RFC3339),
 		CurrentVersion: int64(meta.CurrentVersion),
@@ -114,16 +114,16 @@ func (a *APIServer) GetMeta(ctx context.Context, req *elephant.GetMetaRequest) (
 		}
 
 		if resp.Heads == nil {
-			resp.Heads = make(map[string]*elephant.Status)
+			resp.Heads = make(map[string]*repository.Status)
 		}
 
 		statusCount := len(meta.Statuses[status])
 		head := meta.Statuses[status][statusCount-1]
 
-		s := elephant.Status{
+		s := repository.Status{
 			Id:      int64(statusCount),
 			Version: int64(head.Version),
-			Creator: &elephant.IdentityReference{
+			Creator: &repository.IdentityReference{
 				Uri:  head.Updater.URI,
 				Name: head.Updater.Name,
 			},
@@ -131,7 +131,7 @@ func (a *APIServer) GetMeta(ctx context.Context, req *elephant.GetMetaRequest) (
 		}
 
 		for _, m := range head.Meta {
-			s.Meta = append(s.Meta, &elephant.MetaValue{
+			s.Meta = append(s.Meta, &repository.MetaValue{
 				Key:   m.Key,
 				Value: m.Value,
 			})
@@ -141,14 +141,14 @@ func (a *APIServer) GetMeta(ctx context.Context, req *elephant.GetMetaRequest) (
 	}
 
 	for _, acl := range meta.ACL {
-		resp.ALC = append(resp.ALC, &elephant.ACLEntry{
+		resp.ALC = append(resp.ALC, &repository.ACLEntry{
 			Uri:         acl.URI,
 			Name:        acl.Name,
 			Permissions: acl.Permissions,
 		})
 	}
 
-	return &elephant.GetMetaResponse{
+	return &repository.GetMetaResponse{
 		Meta: &resp,
 	}, nil
 }
@@ -166,22 +166,22 @@ func validateRequiredUUIDParam(v string, name string) (string, error) {
 	return u.String(), nil
 }
 
-// Update implements elephant.Documents
-func (*APIServer) Update(context.Context, *elephant.UpdateRequest) (*elephant.UpdateResponse, error) {
+// Update implements repository.Documents
+func (*APIServer) Update(context.Context, *repository.UpdateRequest) (*repository.UpdateResponse, error) {
 	return nil, twirp.Unimplemented.Error("not implemented yet")
 }
 
-// UpdatePermissions implements elephant.Documents
-func (*APIServer) UpdatePermissions(context.Context, *elephant.UpdatePermissionsRequest) (*elephant.UpdatePermissionsResponse, error) {
+// UpdatePermissions implements repository.Documents
+func (*APIServer) UpdatePermissions(context.Context, *repository.UpdatePermissionsRequest) (*repository.UpdatePermissionsResponse, error) {
 	return nil, twirp.Unimplemented.Error("not implemented yet")
 }
 
-func DocumentToRPC(doc *Document) *elephant.Document {
+func DocumentToRPC(doc *Document) *repository.Document {
 	if doc == nil {
 		return nil
 	}
 
-	return &elephant.Document{
+	return &repository.Document{
 		Uuid:     doc.UUID,
 		Type:     doc.Type,
 		Uri:      doc.URI,
@@ -194,16 +194,16 @@ func DocumentToRPC(doc *Document) *elephant.Document {
 	}
 }
 
-func BlocksToRPC(blocks []Block) []*elephant.Block {
-	var res []*elephant.Block
+func BlocksToRPC(blocks []Block) []*repository.Block {
+	var res []*repository.Block
 
 	// Not allocating up-front to avoid turning nil into [].
 	if len(blocks) > 0 {
-		res = make([]*elephant.Block, len(blocks))
+		res = make([]*repository.Block, len(blocks))
 	}
 
 	for i, b := range blocks {
-		rb := elephant.Block{
+		rb := repository.Block{
 			Id:          b.ID,
 			Uuid:        b.UUID,
 			Uri:         b.URI,
@@ -234,7 +234,7 @@ func BlocksToRPC(blocks []Block) []*elephant.Block {
 	return res
 }
 
-func RPCToDocument(rpcDoc *elephant.Document) *Document {
+func RPCToDocument(rpcDoc *repository.Document) *Document {
 	if rpcDoc == nil {
 		return nil
 	}
@@ -252,7 +252,7 @@ func RPCToDocument(rpcDoc *elephant.Document) *Document {
 	}
 }
 
-func RPCToBlocks(blocks []*elephant.Block) []Block {
+func RPCToBlocks(blocks []*repository.Block) []Block {
 	var res []Block
 
 	// Not allocating up-front to avoid turning nil into [].

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package elephant.repository;
 
-option go_package = "./rpc/elephant";
+option go_package = "./rpc/repository";
 
 service Documents {
   rpc Get(GetDocumentRequest) returns (GetDocumentResponse);
