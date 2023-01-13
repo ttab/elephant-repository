@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/ttab/docformat/rpc/elephant"
+	"github.com/twitchtv/twirp"
 )
 
 //go:embed templates/*.html
@@ -48,7 +50,7 @@ func linkedDocs(b Block, links []Block) []Block {
 	return links
 }
 
-func ServeWebUI(
+func RunServer(
 	ctx context.Context,
 	store DocStore, index *SearchIndex, oc *OCClient, addr string,
 ) error {
@@ -75,6 +77,19 @@ func ServeWebUI(
 		Addr:    addr,
 		Handler: router,
 	}
+
+	api := elephant.NewDocumentsServer(
+		&APIServer{
+			store: store,
+		},
+		twirp.WithServerJSONSkipDefaults(true),
+	)
+
+	router.POST(api.PathPrefix()+":method", func(
+		w http.ResponseWriter, r *http.Request, _ httprouter.Params,
+	) {
+		api.ServeHTTP(w, r)
+	})
 
 	assetDir, err := fs.Sub(assetFS, "assets")
 	if err != nil {

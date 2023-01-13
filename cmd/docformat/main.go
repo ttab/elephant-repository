@@ -178,7 +178,7 @@ func webUICommand(c *cli.Context) error {
 		return fmt.Errorf("failed to create OC client: %w", err)
 	}
 
-	return docformat.ServeWebUI(c.Context, store, index, oc, addr)
+	return docformat.RunServer(c.Context, store, index, oc, addr)
 }
 
 func indexCommand(c *cli.Context) error {
@@ -386,7 +386,7 @@ func ingestCommand(c *cli.Context) error {
 
 	if ui {
 		group.Go(func() error {
-			return docformat.ServeWebUI(
+			return docformat.RunServer(
 				gCtx, opts.DocStore, index, oc, addr)
 		})
 	}
@@ -407,6 +407,10 @@ func ingestCommand(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
+
+		// Cancel ingest context when we're done, that will shut down
+		// the server as well.
+		cancel()
 
 		return nil
 	})

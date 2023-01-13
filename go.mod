@@ -10,8 +10,10 @@ require (
 	github.com/navigacontentlab/navigadoc v0.1.2
 	github.com/navigacontentlab/revisor v0.1.0
 	github.com/schollz/progressbar/v3 v3.12.2
+	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.23.7
 	golang.org/x/sync v0.1.0
+	google.golang.org/protobuf v1.28.1
 )
 
 require (
@@ -42,7 +44,7 @@ require (
 	github.com/golang/geo v0.0.0-20210211234256-740aa86cb551 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b // indirect
 	github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6 // indirect
-	github.com/golang/protobuf v1.3.2 // indirect
+	github.com/golang/protobuf v1.5.0 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
 	github.com/google/flatbuffers v1.12.1 // indirect
 	github.com/json-iterator/go v0.0.0-20171115153421-f7279a603ede // indirect
