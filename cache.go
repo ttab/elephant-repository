@@ -32,10 +32,7 @@ func WrapGetDocumentFunc(fn GetDocumentFunc, cache DocumentCache) GetDocumentFun
 	return func(
 		ctx context.Context, request GetDocumentRequest,
 	) (*DocumentRevision, error) {
-		ref := VersionReference{
-			UUID:    request.UUID,
-			Version: request.Version,
-		}
+		ref := VersionReference(request)
 
 		cached, err := cache.FetchDocument(ref, "")
 		if err == nil {

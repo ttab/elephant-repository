@@ -201,7 +201,7 @@ func indexCommand(c *cli.Context) error {
 
 	go func() {
 		for range doneChan {
-			bar.Add(1)
+			_ = bar.Add(1)
 		}
 
 		_ = bar.Finish()
@@ -324,7 +324,7 @@ func ingestCommand(c *cli.Context) error {
 				break
 			}
 
-			bar.Set(e.ID - startPos)
+			_ = bar.Set(e.ID - startPos)
 		}
 
 		_ = bar.Finish()
@@ -338,12 +338,12 @@ func ingestCommand(c *cli.Context) error {
 			for {
 				select {
 				case <-doneChan:
-					bar.Add(1)
+					_ = bar.Add(1)
 				case <-time.After(200 * time.Millisecond):
 					// Trigger spinner animation so that we
 					// know that things still are up and
 					// running.
-					bar.Add(0)
+					_ = bar.Add(0)
 				}
 			}
 		}
@@ -373,7 +373,7 @@ func ingestCommand(c *cli.Context) error {
 
 	ingestCtx, cancel := context.WithCancel(c.Context)
 
-	interrupt := make(chan os.Signal)
+	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-interrupt
@@ -458,7 +458,7 @@ func preloadReplacements(ctx context.Context,
 					oldUUID, hit.UUID, err)
 			}
 
-			bar.Add(1)
+			_ = bar.Add(1)
 		}
 
 		start += len(res.Hits)

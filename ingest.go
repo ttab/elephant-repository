@@ -297,7 +297,17 @@ func (in *Ingester) delete(ctx context.Context, evt OCLogEvent) error {
 		return fmt.Errorf("failed to get current version info: %w", err)
 	}
 
-	in.opt.DocStore.Delete(ctx, info.OriginalUUID)
+	err = in.opt.DocStore.Delete(ctx, info.OriginalUUID)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to delete document with original UUID: %w", err)
+	}
+
+	err = in.opt.DocStore.Delete(ctx, evt.UUID)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to delete document with event UUID: %w", err)
+	}
 
 	return nil
 }

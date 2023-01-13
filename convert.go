@@ -617,19 +617,6 @@ func fixTTAuthorLink(in Block) (Block, error) {
 	return out, nil
 }
 
-func popData(data BlockData, key string) string {
-	if data == nil {
-		return ""
-	}
-
-	v, ok := data[key]
-	if ok {
-		delete(data, key)
-	}
-
-	return v
-}
-
 func getData(data BlockData, key string) string {
 	if data == nil {
 		return ""
@@ -745,17 +732,6 @@ func convertTTVisual(in Block) (Block, error) {
 			"caption": in.Data["caption"],
 		},
 	}, nil
-}
-
-func requireData(data BlockData, keys ...string) error {
-	for _, k := range keys {
-		_, ok := data[k]
-		if !ok {
-			return fmt.Errorf("missing data key %q", k)
-		}
-	}
-
-	return nil
 }
 
 func dropEmptyData(m BlockData) {

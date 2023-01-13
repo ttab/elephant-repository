@@ -71,6 +71,12 @@ func RunServer(
 		return fmt.Errorf("failed to parse templates: %w", err)
 	}
 
+	renderErrorPage := func(w http.ResponseWriter, err error) {
+		_ = templates.ExecuteTemplate(w, "error.html", ErrorPageData{
+			Error: err.Error(),
+		})
+	}
+
 	router := httprouter.New()
 
 	server := http.Server{
@@ -114,15 +120,13 @@ func RunServer(
 
 		hits, err := index.Search(query)
 		if err != nil {
-			templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-				Error: err.Error(),
-			})
+			renderErrorPage(w, err)
 			return
 		}
 
 		data.Hits = hits
 
-		templates.ExecuteTemplate(w, "index.html", data)
+		_ = templates.ExecuteTemplate(w, "index.html", data)
 	})
 
 	router.GET("/document/:uuid/", func(
@@ -137,9 +141,7 @@ func RunServer(
 
 		fields, err := index.Fields(data.UUID)
 		if err != nil {
-			templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-				Error: err.Error(),
-			})
+			renderErrorPage(w, err)
 			return
 		}
 
@@ -147,15 +149,13 @@ func RunServer(
 
 		doc, err := store.GetDocumentMeta(r.Context(), data.UUID)
 		if err != nil {
-			templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-				Error: err.Error(),
-			})
+			renderErrorPage(w, err)
 			return
 		}
 
 		data.Meta = *doc
 
-		templates.ExecuteTemplate(w, "document.html", data)
+		_ = templates.ExecuteTemplate(w, "document.html", data)
 	})
 
 	router.GET("/document/:uuid/:version/", func(
@@ -167,9 +167,8 @@ func RunServer(
 
 		version, err := strconv.Atoi(ps.ByName("version"))
 		if err != nil {
-			templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-				Error: fmt.Sprintf("invalid version number: %v", err),
-			})
+			renderErrorPage(w, fmt.Errorf(
+				"invalid version number: %w", err))
 			return
 		}
 
@@ -178,9 +177,7 @@ func RunServer(
 		doc, err := store.GetDocument(r.Context(),
 			data.UUID, data.Version)
 		if err != nil {
-			templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-				Error: err.Error(),
-			})
+			renderErrorPage(w, err)
 			return
 		}
 
@@ -225,7 +222,7 @@ func RunServer(
 			data.RenderedContent = append(data.RenderedContent, c)
 		}
 
-		templates.ExecuteTemplate(w, "version.html", data)
+		_ = templates.ExecuteTemplate(w, "version.html", data)
 	})
 
 	router.GET("/document/:uuid/:version/document", func(
@@ -235,17 +232,15 @@ func RunServer(
 
 		version, err := strconv.Atoi(ps.ByName("version"))
 		if err != nil {
-			templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-				Error: fmt.Sprintf("invalid version number: %v", err),
-			})
+			renderErrorPage(w, fmt.Errorf(
+				"invalid version number: %w", err))
 			return
 		}
 
 		doc, err := store.GetDocument(r.Context(), uuid, version)
 		if err != nil {
-			templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-				Error: fmt.Sprintf("failed to get document: %v", err),
-			})
+			renderErrorPage(w, fmt.Errorf(
+				"failed to get document: %w", err))
 			return
 		}
 
@@ -264,17 +259,15 @@ func RunServer(
 
 		version, err := strconv.Atoi(ps.ByName("version"))
 		if err != nil {
-			templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-				Error: fmt.Sprintf("invalid version number: %v", err),
-			})
+			renderErrorPage(w, fmt.Errorf(
+				"invalid version number: %w", err))
 			return
 		}
 
 		meta, err := store.GetDocumentMeta(ctx, uuid)
 		if err != nil {
-			templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-				Error: fmt.Sprintf("failed to load metadata: %v", err),
-			})
+			renderErrorPage(w, fmt.Errorf(
+				"failed to load metadata: %w", err))
 			return
 		}
 
@@ -301,19 +294,16 @@ func RunServer(
 
 		resp, err := oc.GetRawObject(r.Context(), ocUUID, ocVersion)
 		if err != nil {
-			templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-				Error: fmt.Sprintf("failed to load NewsML: %v", err),
-			})
+			renderErrorPage(w, fmt.Errorf(
+				"failed to load NewsML: %w", err))
 			return
 		}
 
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-				Error: fmt.Sprintf("OC responded with: %s",
-					resp.Status),
-			})
+			renderErrorPage(w, fmt.Errorf(
+				"OC responded with: %s", resp.Status))
 			return
 		}
 

@@ -54,13 +54,7 @@ func (nci NMLContactInfo) ToBlock() Block {
 		},
 	}
 
-	email := nci.Email
-
-	if strings.HasPrefix(email, "mailto:") {
-		email = strings.TrimPrefix(email, "mailto:")
-	}
-
-	block.Data["email"] = email
+	block.Data["email"] = strings.TrimPrefix(nci.Email, "mailto:")
 
 	dropEmptyData(block.Data)
 
