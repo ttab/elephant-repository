@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/navigacontentlab/revisor"
 	"github.com/ttab/docformat/rpc/repository"
 	"github.com/twitchtv/twirp"
 )
@@ -52,7 +53,8 @@ func linkedDocs(b Block, links []Block) []Block {
 
 func RunServer(
 	ctx context.Context,
-	store DocStore, index *SearchIndex, oc *OCClient, addr string,
+	store DocStore, validator *revisor.Validator,
+	index *SearchIndex, oc *OCClient, addr string,
 ) error {
 	tFuncs := template.New("").Funcs(template.FuncMap{
 		"json": func(o any) string {
@@ -85,9 +87,7 @@ func RunServer(
 	}
 
 	api := repository.NewDocumentsServer(
-		&APIServer{
-			store: store,
-		},
+		NewAPIServer(store, validator),
 		twirp.WithServerJSONSkipDefaults(true),
 	)
 

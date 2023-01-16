@@ -55,7 +55,7 @@ message DocumentVersion {
   repeated MetaValue meta = 4;
 }
 
-// UpdateReques creates a new document version and/or sets statuses for a
+// UpdateRequest creates a new document version and/or sets statuses for a
 // document. The update is transactional will fail or succed as a whole.
 message UpdateRequest {
   // UUID of the document to update.
@@ -67,13 +67,37 @@ message UpdateRequest {
   // IfMatch is used for optimistic locks. Set to the version that you require
   // to be the current one for the update to be performed, or -1 to only perform
   // the update if the document doesn't already exist.
-  int64 ifMatch = 4;
+  int64 if_match = 4;
   // Status updates to perform.
   repeated StatusUpdate status  = 5;
+  // ACL is an ACL list controlling access to the document.
+  repeated ACLEntry acl = 6;
 }
 
+// UpdateResponse describes the result of an update request.
 message UpdateResponse {
-  // TODO
+  int64 version = 1;
+}
+
+message ValidationResult {
+  repeated EntityRef entity = 1;
+  string error = 2;
+}
+
+message EntityRef {
+  // RefType is type of entity that's referenced, one of "block", "property",
+  // "attribute", "data attribute", or "parameter."
+  string ref_type = 1;
+  // Kind is the block type, one of "link", "meta", or "content".
+  string kind = 2;
+  // Index is the position of the entity in an array, where applicable.
+  int64 index = 3;
+  // Name is the name of the entity, where applicable.
+  string name = 4;
+  // Type is the type of the entity, where applicable.
+  string type = 5;
+  // Rel is the relationship for the entity, where applicable.
+  string rel = 6;
 }
 
 message StatusUpdate {
@@ -88,7 +112,7 @@ message StatusUpdate {
   // IfMatch is used for optimistic locks. Set to the status id that you require
   // to be the current one for the status to be set, or -1 to only perform the
   // update if the status hasn't previously been set.
-  int64 ifMatch = 4;
+  int64 if_match = 4;
 }
 
 // MetaValue is a key value pair used to set metadata for document versions and
@@ -112,7 +136,7 @@ message DeleteDocumentRequest {
   string uuid = 1;
   // IfMatch is used for optimistic locks. Set to the version that you require
   // to be the current one for the delete to be performed.
-  int64 ifMatch = 2;
+  int64 if_match = 2;
 }
 
 message DeleteDocumentResponse {}
@@ -138,7 +162,7 @@ message DocumentMeta {
   // Heads are the last statuses.
   map<string, Status> heads = 4;
   // ACL is an ACL list controlling access to the document.
-  repeated ACLEntry ALC = 5;
+  repeated ACLEntry acl = 5;
 }
 
 message Status {

@@ -80,8 +80,15 @@ func (s *FSDocStore) Delete(ctx context.Context, uuid string) error {
 }
 
 func (s *FSDocStore) Update(
-	ctx context.Context, update *UpdateRequest,
+	ctx context.Context, update UpdateRequest,
 ) (*DocumentUpdate, error) {
+	for _, stat := range update.Status {
+		if stat.Version == 0 && update.Document == nil {
+			return nil, DocStoreErrorf(ErrCodeBadRequest,
+				"status version must be set when not providing a document")
+		}
+	}
+
 	up := DocumentUpdate{
 		Created:       update.Created,
 		Updater:       update.Updater,
@@ -89,7 +96,7 @@ func (s *FSDocStore) Update(
 		SchemaVersion: 1,
 	}
 
-	current, err := s.GetDocumentMeta(ctx, update.Document.UUID)
+	current, err := s.GetDocumentMeta(ctx, update.UUID)
 	if err != nil && !IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, fmt.Errorf(
 			"failed to load current metadata: %w", err)
@@ -102,6 +109,11 @@ func (s *FSDocStore) Update(
 
 	if current != nil {
 		meta = *current
+	}
+
+	if update.Document == nil && (meta.CurrentVersion == 0 || meta.Deleted) {
+		return nil, DocStoreErrorf(ErrCodeBadRequest,
+			"a document must be included for creation")
 	}
 
 	meta.Deleted = false
@@ -127,47 +139,66 @@ func (s *FSDocStore) Update(
 	}
 
 	meta.Modified = up.Created
-	meta.CurrentVersion++
 
 	for _, ua := range update.ACL {
 		meta.ACL = upsertACL(meta.ACL, ua)
 	}
 
+	if len(meta.ACL) == 0 {
+		meta.ACL = append(meta.ACL, ACLEntry{
+			URI:         up.Updater.URI,
+			Name:        up.Updater.Name,
+			Permissions: []string{"r", "w"},
+		})
+	}
+
+	if update.Document != nil {
+		meta.CurrentVersion++
+		up.Version = meta.CurrentVersion
+
+		if len(meta.Log) > 0 {
+			up.Parent = meta.Log[len(meta.Log)-1]
+		}
+
+		docDigest, err := hash(update.Document)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to compute hash for document: %w", err)
+		}
+
+		up.Hash = docDigest
+
+		digest, err := hash(up)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to compute hash for update: %w", err)
+		}
+
+		meta.Updates = append(meta.Updates, up)
+		meta.Log = append(meta.Log, digest)
+	}
+
 	up.Version = meta.CurrentVersion
-
-	if len(meta.Log) > 0 {
-		up.Parent = meta.Log[len(meta.Log)-1]
-	}
-
-	docDigest, err := hash(update.Document)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to compute hash for document: %w", err)
-	}
-
-	up.Hash = docDigest
-
-	digest, err := hash(up)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to compute hash for update: %w", err)
-	}
-
-	meta.Updates = append(meta.Updates, up)
-	meta.Log = append(meta.Log, digest)
 
 	for _, stat := range update.Status {
 		status := Status{
-			Updater:     update.Updater,
-			Version:     stat.Version,
-			VersionHash: digest,
-			Meta:        stat.Meta,
-			Created:     meta.Modified,
+			Updater: update.Updater,
+			Version: stat.Version,
+			Meta:    stat.Meta,
+			Created: meta.Modified,
 		}
 
 		if status.Version == 0 {
 			status.Version = up.Version
 		}
+
+		if status.Version > len(meta.Updates) {
+			return nil, DocStoreErrorf(ErrCodeBadRequest,
+				"status %q refers to a version %d that doesn't exist",
+				stat.Name, status.Version)
+		}
+
+		status.VersionHash = meta.Log[status.Version-1]
 
 		slice := meta.Statuses[stat.Name]
 
@@ -192,22 +223,36 @@ func (s *FSDocStore) Update(
 		meta.StatusLog[stat.Name] = log
 	}
 
-	err = s.write(filepath.Join(
-		update.Document.UUID, fmt.Sprintf(
-			"%d.json", up.Version),
-	), update.Document)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write document to disk: %w", err)
+	if update.Document != nil {
+		err = s.write(filepath.Join(
+			update.UUID, fmt.Sprintf(
+				"%d.json", up.Version),
+		), update.Document)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to write document to disk: %w", err)
+		}
 	}
 
 	err = s.write(filepath.Join(
-		update.Document.UUID, "meta.json",
+		update.UUID, "meta.json",
 	), meta)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write metadata to disk: %w", err)
 	}
 
-	err = s.index.IndexDocument(meta, update.Document)
+	docToIndex := update.Document
+	if docToIndex == nil {
+		d, err := s.GetDocument(ctx, update.UUID, meta.CurrentVersion)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to load document for indexing: %w", err)
+		}
+
+		docToIndex = d
+	}
+
+	err = s.index.IndexDocument(meta, *docToIndex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to index document: %w", err)
 	}

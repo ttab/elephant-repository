@@ -479,7 +479,7 @@ func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 		return err
 	}
 
-	_, err = in.opt.DocStore.Update(ctx, &UpdateRequest{
+	_, err = in.opt.DocStore.Update(ctx, UpdateRequest{
 		Created: evt.Created,
 		Updater: cd.Updater,
 		Meta: []UpdateMeta{
@@ -487,7 +487,7 @@ func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 			{Key: "oc-version", Value: strconv.Itoa(evt.Content.Version)},
 			{Key: "oc-event", Value: strconv.Itoa(evt.ID)},
 		},
-		Document: doc,
+		Document: &doc,
 		Status:   status,
 		ACL:      acl,
 	})

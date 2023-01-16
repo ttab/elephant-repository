@@ -1,16 +1,29 @@
 package docformat
 
 import (
-	context "context"
+	"context"
+	"encoding/json"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
+	navigadoc "github.com/navigacontentlab/navigadoc/doc"
+	"github.com/navigacontentlab/revisor"
 	"github.com/ttab/docformat/rpc/repository"
 	"github.com/twitchtv/twirp"
 )
 
 type APIServer struct {
-	store DocStore
+	store     DocStore
+	validator *revisor.Validator
+}
+
+func NewAPIServer(store DocStore, validator *revisor.Validator) *APIServer {
+	return &APIServer{
+		store:     store,
+		validator: validator,
+	}
 }
 
 // Interface guard
@@ -105,7 +118,7 @@ func (a *APIServer) GetHistory(
 	}
 
 	start := int(req.Before) - 1
-	if start == 0 {
+	if start < 0 {
 		start = meta.Updates[len(meta.Updates)-1].Version
 	}
 
@@ -175,7 +188,7 @@ func (a *APIServer) GetMeta(ctx context.Context, req *repository.GetMetaRequest)
 	}
 
 	for _, acl := range meta.ACL {
-		resp.ALC = append(resp.ALC, &repository.ACLEntry{
+		resp.Acl = append(resp.Acl, &repository.ACLEntry{
 			Uri:         acl.URI,
 			Name:        acl.Name,
 			Permissions: acl.Permissions,
@@ -201,13 +214,164 @@ func validateRequiredUUIDParam(v string, name string) (string, error) {
 }
 
 // Update implements repository.Documents
-func (*APIServer) Update(context.Context, *repository.UpdateRequest) (*repository.UpdateResponse, error) {
-	return nil, twirp.Unimplemented.Error("not implemented yet")
+func (a *APIServer) Update(
+	ctx context.Context, req *repository.UpdateRequest,
+) (*repository.UpdateResponse, error) {
+	if req.Document == nil && len(req.Status) == 0 && len(req.Acl) == 0 {
+		return nil, twirp.InvalidArgumentError(
+			"document",
+			"required when no status or ACL updates are included")
+	}
+
+	if req.IfMatch < -1 {
+		return nil, twirp.InvalidArgumentError("if_match",
+			"cannot be less than -1")
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
+	if err != nil {
+		return nil, err
+	}
+
+	for i, s := range req.Status {
+		if s == nil {
+			return nil, twirp.InvalidArgumentError(
+				fmt.Sprintf("status.%d", i),
+				"a status cannot be nil")
+		}
+
+		if s.Name == "" {
+			return nil, twirp.InvalidArgumentError(
+				fmt.Sprintf("status.%d.name", i),
+				"a status cannot have an empty name")
+		}
+
+		if s.Version < 0 {
+			return nil, twirp.InvalidArgumentError(
+				fmt.Sprintf("status.%d.version", i),
+				"cannot be negative")
+		}
+
+		if req.Document == nil && s.Version == 0 {
+			return nil, twirp.InvalidArgumentError(
+				fmt.Sprintf("status.%d.version", i),
+				"required when no document is included")
+		}
+	}
+
+	for i, e := range req.Acl {
+		if e == nil {
+			return nil, twirp.InvalidArgumentError(
+				fmt.Sprintf("acl.%d", i),
+				"an ACL entry cannot be nil")
+		}
+	}
+
+	doc := RPCToDocument(req.Document)
+
+	if doc != nil {
+		doc.UUID = docUUID
+
+		validationResult, err := a.validateDocument(*doc)
+		if err != nil {
+			return nil, twirp.InternalErrorf(
+				"failed to validate document: %w", err)
+		}
+
+		if len(validationResult) > 0 {
+			err := twirp.InvalidArgument.Errorf(
+				"the document had %d validation errors, the first one is: %v",
+				len(validationResult), validationResult[0].String())
+
+			for i := range validationResult {
+				err = err.WithMeta(strconv.Itoa(i),
+					validationResult[i].String())
+			}
+
+			return nil, err
+		}
+
+	}
+
+	up := UpdateRequest{
+		UUID:    docUUID,
+		Created: time.Now(),
+		Updater: IdentityReference{
+			URI:  "core://user/fakesson",
+			Name: "Fake McFakesson",
+		},
+		Meta:     RPCToUpdateMeta(req.Meta),
+		Status:   RPCToStatusUpdate(req.Status),
+		Document: doc,
+		IfMatch:  int(req.IfMatch),
+	}
+
+	for _, e := range req.Acl {
+		up.ACL = append(up.ACL, ACLEntry{
+			URI:         e.Uri,
+			Name:        e.Name,
+			Permissions: e.Permissions,
+		})
+	}
+
+	res, err := a.store.Update(ctx, up)
+	if IsDocStoreErrorCode(err, ErrCodeOptimisticLock) {
+		return nil, twirp.FailedPrecondition.Error(err.Error())
+	} else if IsDocStoreErrorCode(err, ErrCodeBadRequest) {
+		return nil, twirp.InvalidArgument.Error(err.Error())
+	} else if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to update document: %w", err)
+	}
+
+	return &repository.UpdateResponse{
+		Version: int64(res.Version),
+	}, nil
 }
 
 // UpdatePermissions implements repository.Documents
 func (*APIServer) UpdatePermissions(context.Context, *repository.UpdatePermissionsRequest) (*repository.UpdatePermissionsResponse, error) {
 	return nil, twirp.Unimplemented.Error("not implemented yet")
+}
+
+func (a *APIServer) validateDocument(
+	doc Document,
+) ([]revisor.ValidationResult, error) {
+	data, err := json.Marshal(&doc)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to marshal document for validation: %w", err)
+	}
+
+	var nDoc navigadoc.Document
+
+	err = json.Unmarshal(data, &nDoc)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to unmarshal document for validation: %w", err)
+	}
+
+	errors := a.validator.ValidateDocument(&nDoc)
+
+	return errors, nil
+}
+
+func RPCToStatusUpdate(update []*repository.StatusUpdate) []StatusUpdate {
+	var out []StatusUpdate
+
+	for i := range update {
+		if update[i] == nil {
+			continue
+		}
+
+		out = append(out, StatusUpdate{
+			Name:    update[i].Name,
+			Version: int(update[i].Version),
+			Meta:    RPCToUpdateMeta(update[i].Meta),
+		})
+	}
+
+	return out
 }
 
 func IdentityReferenceToRPC(ref IdentityReference) *repository.IdentityReference {

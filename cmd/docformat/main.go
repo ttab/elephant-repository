@@ -173,12 +173,17 @@ func webUICommand(c *cli.Context) error {
 		},
 	}
 
+	validator, err := defaultValidator()
+	if err != nil {
+		return err
+	}
+
 	oc, err := docformat.NewOCClient(client, ocURL)
 	if err != nil {
 		return fmt.Errorf("failed to create OC client: %w", err)
 	}
 
-	return docformat.RunServer(c.Context, store, index, oc, addr)
+	return docformat.RunServer(c.Context, store, validator, index, oc, addr)
 }
 
 func indexCommand(c *cli.Context) error {
@@ -287,10 +292,7 @@ func ingestCommand(c *cli.Context) error {
 		return fmt.Errorf("failed to load blocklist: %w", err)
 	}
 
-	validator, err := createValidator(
-		"constraints/core.json",
-		"constraints/tt.json",
-	)
+	validator, err := defaultValidator()
 	if err != nil {
 		return err
 	}
@@ -380,18 +382,18 @@ func ingestCommand(c *cli.Context) error {
 		cancel()
 	}()
 
-	var ve *docformat.ValidationError
-
 	group, gCtx := errgroup.WithContext(ingestCtx)
 
 	if ui {
 		group.Go(func() error {
 			return docformat.RunServer(
-				gCtx, opts.DocStore, index, oc, addr)
+				gCtx, opts.DocStore, opts.Validator, index, oc, addr)
 		})
 	}
 
 	group.Go(func() error {
+		var ve *docformat.ValidationError
+
 		err = ingest.Start(gCtx, tail)
 
 		if errors.As(err, &ve) {
@@ -469,6 +471,13 @@ func preloadReplacements(ctx context.Context,
 	}
 
 	return nil
+}
+
+func defaultValidator() (*revisor.Validator, error) {
+	return createValidator(
+		"constraints/core.json",
+		"constraints/tt.json",
+	)
 }
 
 func createValidator(paths ...string) (*revisor.Validator, error) {

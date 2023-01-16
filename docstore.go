@@ -14,18 +14,19 @@ type DocStore interface {
 		ctx context.Context, uuid string, version int,
 	) (*Document, error)
 	Update(
-		ctx context.Context, update *UpdateRequest,
+		ctx context.Context, update UpdateRequest,
 	) (*DocumentUpdate, error)
 	Delete(ctx context.Context, uuid string) error
 }
 
 type UpdateRequest struct {
+	UUID     string
 	Created  time.Time
 	Updater  IdentityReference
 	Meta     []UpdateMeta
 	ACL      []ACLEntry
 	Status   []StatusUpdate
-	Document Document
+	Document *Document
 	IfMatch  int
 }
 
@@ -88,6 +89,7 @@ const (
 	NoErrCode             DocStoreErrorCode = ""
 	ErrCodeNotFound       DocStoreErrorCode = "not-found"
 	ErrCodeOptimisticLock DocStoreErrorCode = "optimistic-lock"
+	ErrCodeBadRequest     DocStoreErrorCode = "bad-request"
 )
 
 type DocStoreError struct {
