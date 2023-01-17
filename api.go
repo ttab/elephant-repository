@@ -233,6 +233,13 @@ func (a *APIServer) Update(
 		return nil, err
 	}
 
+	if req.Document != nil && req.Document.Uuid == "" {
+		req.Document.Uuid = docUUID
+	} else if req.Document != nil && req.Document.Uuid != docUUID {
+		return nil, twirp.InvalidArgumentError("document.uuid",
+			"the document must have the same UUID as the request uuid")
+	}
+
 	for i, s := range req.Status {
 		if s == nil {
 			return nil, twirp.InvalidArgumentError(
@@ -283,6 +290,9 @@ func (a *APIServer) Update(
 				"the document had %d validation errors, the first one is: %v",
 				len(validationResult), validationResult[0].String())
 
+			err = err.WithMeta("err_count",
+				strconv.Itoa(len(validationResult)))
+
 			for i := range validationResult {
 				err = err.WithMeta(strconv.Itoa(i),
 					validationResult[i].String())
@@ -290,7 +300,6 @@ func (a *APIServer) Update(
 
 			return nil, err
 		}
-
 	}
 
 	up := UpdateRequest{
@@ -327,6 +336,51 @@ func (a *APIServer) Update(
 	return &repository.UpdateResponse{
 		Version: int64(res.Version),
 	}, nil
+}
+
+// Validate implements repository.Documents
+func (a *APIServer) Validate(
+	ctx context.Context, req *repository.ValidateRequest,
+) (*repository.ValidateResponse, error) {
+	if req.Document == nil {
+		return nil, twirp.RequiredArgumentError("document")
+	}
+
+	doc := RPCToDocument(req.Document)
+
+	validationResult, err := a.validateDocument(*doc)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to validate document: %w", err)
+	}
+
+	var res repository.ValidateResponse
+
+	for _, r := range validationResult {
+		res.Errors = append(res.Errors, &repository.ValidationResult{
+			Entity: EntityRefToRPC(r.Entity),
+			Error:  r.Error,
+		})
+	}
+
+	return &res, nil
+}
+
+func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {
+	var out []*repository.EntityRef
+
+	for _, r := range ref {
+		out = append(out, &repository.EntityRef{
+			RefType: string(r.RefType),
+			Kind:    string(r.BlockKind),
+			Index:   int64(r.Index),
+			Name:    r.Name,
+			Type:    r.Type,
+			Rel:     r.Rel,
+		})
+	}
+
+	return out
 }
 
 // UpdatePermissions implements repository.Documents

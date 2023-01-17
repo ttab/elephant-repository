@@ -8,6 +8,7 @@ service Documents {
   rpc Get(GetDocumentRequest) returns (GetDocumentResponse);
   rpc GetHistory(GetHistoryRequest) returns (GetHistoryResponse);
   rpc Update(UpdateRequest) returns (UpdateResponse);
+  rpc Validate(ValidateRequest) returns (ValidateResponse);
   rpc Delete(DeleteDocumentRequest) returns (DeleteDocumentResponse);
   rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
   rpc UpdatePermissions(UpdatePermissionsRequest) returns (UpdatePermissionsResponse);
@@ -57,6 +58,10 @@ message DocumentVersion {
 
 // UpdateRequest creates a new document version and/or sets statuses for a
 // document. The update is transactional will fail or succed as a whole.
+//
+// If the document fails validation an "invalid_argument" error will be returned
+// with the number of errors as meta "err_count" and the indiviual errors as
+// "0", "1", "2"... Use the Validate method to get th errors as structured data.
 message UpdateRequest {
   // UUID of the document to update.
   string uuid = 1;
@@ -77,6 +82,14 @@ message UpdateRequest {
 // UpdateResponse describes the result of an update request.
 message UpdateResponse {
   int64 version = 1;
+}
+
+message ValidateRequest {
+  Document document = 1;
+}
+
+message ValidateResponse {
+  repeated ValidationResult errors = 1;
 }
 
 message ValidationResult {
