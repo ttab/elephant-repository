@@ -82,6 +82,11 @@ func (s *FSDocStore) Delete(ctx context.Context, uuid string) error {
 func (s *FSDocStore) Update(
 	ctx context.Context, update UpdateRequest,
 ) (*DocumentUpdate, error) {
+	if update.UUID == "" {
+		return nil, DocStoreErrorf(
+			ErrCodeBadRequest, "update UUID cannot be empty")
+	}
+
 	for _, stat := range update.Status {
 		if stat.Version == 0 && update.Document == nil {
 			return nil, DocStoreErrorf(ErrCodeBadRequest,
