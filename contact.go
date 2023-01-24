@@ -46,7 +46,7 @@ func (nci NMLContactInfo) ToBlock() Block {
 	block := Block{
 		Type: "core/contact-info",
 		Role: strings.TrimPrefix(nci.Role, "ciprol:"),
-		Data: BlockData{
+		Data: DataMap{
 			"address":  nci.Address,
 			"locality": nci.Locality,
 			"country":  nci.Country,
@@ -109,7 +109,7 @@ func sideloadContactInformation(
 	doc.Meta = withBlockOfType("core/contact", doc.Meta,
 		func(block Block) Block {
 			if block.Data == nil {
-				block.Data = make(BlockData)
+				block.Data = make(DataMap)
 			}
 
 			block.Data["employer"] = con.Concept.Employer
@@ -156,7 +156,7 @@ func sideloadContactInformation(
 		doc.Meta = append(doc.Meta, Block{
 			Type: "core/note",
 			Role: "internal",
-			Data: BlockData{
+			Data: DataMap{
 				"text": con.Concept.Note,
 			},
 		})

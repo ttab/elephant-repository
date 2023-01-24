@@ -31,7 +31,7 @@ func postprocessArticle(nDoc navigadoc.Document, doc *Document) error {
 			doc.Meta = append(doc.Meta, Block{
 				Type: "core/description",
 				Role: "internal",
-				Data: BlockData{
+				Data: DataMap{
 					"text": prop.Value,
 				},
 			})

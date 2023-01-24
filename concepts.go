@@ -16,7 +16,7 @@ func postprocessContact(nDoc navigadoc.Document, doc *Document) error {
 			doc.Meta = withBlockOfType("core/contact", doc.Meta,
 				func(block Block) Block {
 					if block.Data == nil {
-						block.Data = make(BlockData)
+						block.Data = make(DataMap)
 					}
 
 					block.Data["kontid"] = prop.Value
@@ -69,7 +69,7 @@ func postprocessGroup(nDoc navigadoc.Document, doc *Document) error {
 		case "tt:kontid":
 			doc.Meta = append(doc.Meta, Block{
 				Type: "core/group",
-				Data: BlockData{
+				Data: DataMap{
 					"kontid": prop.Value,
 				},
 			})
@@ -122,7 +122,7 @@ func postprocessAuthor(nDoc navigadoc.Document, doc *Document) error {
 		meta = &doc.Meta[i]
 
 		if meta.Data == nil {
-			meta.Data = make(BlockData)
+			meta.Data = make(DataMap)
 		}
 
 		break
@@ -131,7 +131,7 @@ func postprocessAuthor(nDoc navigadoc.Document, doc *Document) error {
 	if meta == nil {
 		m := Block{
 			Type: "core/contact-info",
-			Data: make(BlockData),
+			Data: make(DataMap),
 		}
 
 		doc.Meta = append(doc.Meta, m)
@@ -213,7 +213,7 @@ func processDefinitionProp(prop navigadoc.Property, doc *Document) {
 	block := Block{
 		Type: "core/definition",
 		Role: role,
-		Data: BlockData{
+		Data: DataMap{
 			"text": prop.Value,
 		},
 	}

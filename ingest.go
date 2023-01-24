@@ -480,12 +480,13 @@ func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 	}
 
 	_, err = in.opt.DocStore.Update(ctx, UpdateRequest{
+		UUID:    doc.UUID,
 		Created: evt.Created,
 		Updater: cd.Updater,
-		Meta: []UpdateMeta{
-			{Key: "oc-source", Value: evt.UUID},
-			{Key: "oc-version", Value: strconv.Itoa(evt.Content.Version)},
-			{Key: "oc-event", Value: strconv.Itoa(evt.ID)},
+		Meta: DataMap{
+			"oc-source":  evt.UUID,
+			"oc-version": strconv.Itoa(evt.Content.Version),
+			"oc-event":   strconv.Itoa(evt.ID),
 		},
 		Document: &doc,
 		Status:   status,

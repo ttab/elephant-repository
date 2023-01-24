@@ -53,7 +53,7 @@ message DocumentVersion {
   // Creator of the version.
   IdentityReference creator = 3;
   // Meta data to for the document version.
-  repeated MetaValue meta = 4;
+  map<string, string> meta = 4;
 }
 
 // UpdateRequest creates a new document version and/or sets statuses for a
@@ -68,7 +68,7 @@ message UpdateRequest {
   // Document version to create.
   Document document = 2;
   // Meta data to associate with the document version.
-  repeated MetaValue meta = 3;
+  map<string, string> meta = 3;
   // IfMatch is used for optimistic locks. Set to the version that you require
   // to be the current one for the update to be performed, or -1 to only perform
   // the update if the document doesn't already exist.
@@ -121,18 +121,11 @@ message StatusUpdate {
   // request as it then will default to the version being written.
   int64 version = 2;
   // Meta data to include with the status update.
-  repeated MetaValue meta = 3;
+  map<string, string> meta = 3;
   // IfMatch is used for optimistic locks. Set to the status id that you require
   // to be the current one for the status to be set, or -1 to only perform the
   // update if the status hasn't previously been set.
   int64 if_match = 4;
-}
-
-// MetaValue is a key value pair used to set metadata for document versions and
-// statuses.
-message MetaValue {
-  string key = 1;
-  string value = 2;
 }
 
 message UpdatePermissionsRequest {
@@ -188,7 +181,7 @@ message Status {
   // Created timestamp is the RFC3339 timestamp for when the statue was created.
   string created = 4;
   // Meta data for the status.
-  repeated MetaValue meta = 5;
+  map<string, string> meta = 5;
 }
 
 message ACLEntry {

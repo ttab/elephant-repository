@@ -27,7 +27,7 @@ func postprocessEvent(nDoc navigadoc.Document, doc *Document) error {
 			doc.Meta = withBlockOfType("core/event", doc.Meta,
 				func(block Block) Block {
 					if block.Data == nil {
-						block.Data = make(BlockData)
+						block.Data = make(DataMap)
 
 						block.Data["headline"] = prop.Value
 					}
@@ -68,7 +68,7 @@ func postprocessEvent(nDoc navigadoc.Document, doc *Document) error {
 		doc.Meta = append(doc.Meta, Block{
 			Type: "core/description",
 			Role: "public",
-			Data: BlockData{
+			Data: DataMap{
 				"text": publicDesc,
 			},
 		})
@@ -81,7 +81,7 @@ func postprocessEvent(nDoc navigadoc.Document, doc *Document) error {
 		doc.Meta = append(doc.Meta, Block{
 			Type: "core/description",
 			Role: "internal",
-			Data: BlockData{
+			Data: DataMap{
 				"text": internalDesc,
 			},
 		})

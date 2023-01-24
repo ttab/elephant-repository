@@ -135,7 +135,7 @@ func (a *APIServer) GetHistory(
 			Version: int64(up.Version),
 			Created: up.Created.Format(time.RFC3339),
 			Creator: IdentityReferenceToRPC(up.Updater),
-			Meta:    UpdateMetaToRPC(up.Meta),
+			Meta:    up.Meta,
 		})
 
 		if len(res.Versions) == 10 {
@@ -181,7 +181,7 @@ func (a *APIServer) GetMeta(ctx context.Context, req *repository.GetMetaRequest)
 			Version: int64(head.Version),
 			Creator: IdentityReferenceToRPC(head.Updater),
 			Created: head.Created.Format(time.RFC3339),
-			Meta:    UpdateMetaToRPC(head.Meta),
+			Meta:    head.Meta,
 		}
 
 		resp.Heads[status] = &s
@@ -309,7 +309,7 @@ func (a *APIServer) Update(
 			URI:  "core://user/fakesson",
 			Name: "Fake McFakesson",
 		},
-		Meta:     RPCToUpdateMeta(req.Meta),
+		Meta:     req.Meta,
 		Status:   RPCToStatusUpdate(req.Status),
 		Document: doc,
 		IfMatch:  int(req.IfMatch),
@@ -421,7 +421,7 @@ func RPCToStatusUpdate(update []*repository.StatusUpdate) []StatusUpdate {
 		out = append(out, StatusUpdate{
 			Name:    update[i].Name,
 			Version: int(update[i].Version),
-			Meta:    RPCToUpdateMeta(update[i].Meta),
+			Meta:    update[i].Meta,
 		})
 	}
 
@@ -440,32 +440,6 @@ func RPCToIdentityReference(ref *repository.IdentityReference) IdentityReference
 		URI:  ref.Uri,
 		Name: ref.Name,
 	}
-}
-
-func UpdateMetaToRPC(meta []UpdateMeta) []*repository.MetaValue {
-	var out []*repository.MetaValue
-
-	for i := range meta {
-		out = append(out, &repository.MetaValue{
-			Key:   meta[i].Key,
-			Value: meta[i].Value,
-		})
-	}
-
-	return out
-}
-
-func RPCToUpdateMeta(meta []*repository.MetaValue) []UpdateMeta {
-	var out []UpdateMeta
-
-	for i := range meta {
-		out = append(out, UpdateMeta{
-			Key:   meta[i].Key,
-			Value: meta[i].Value,
-		})
-	}
-
-	return out
 }
 
 func DocumentToRPC(doc *Document) *repository.Document {
@@ -576,7 +550,7 @@ func RPCToBlocks(blocks []*repository.Block) []Block {
 
 		for k, v := range rb.Data {
 			if b.Data == nil {
-				b.Data = make(BlockData)
+				b.Data = make(DataMap)
 			}
 
 			b.Data[k] = v

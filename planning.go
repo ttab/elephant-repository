@@ -117,7 +117,7 @@ func assignmentImport(
 		}
 		planningMeta = Block{
 			Type: "core/assignment",
-			Data: make(BlockData),
+			Data: make(DataMap),
 		}
 	)
 
@@ -165,7 +165,7 @@ func assignmentImport(
 		doc.Meta = append(doc.Meta, Block{
 			Type: "core/note",
 			Role: "internal",
-			Data: BlockData{
+			Data: DataMap{
 				"text": assignment.Description.Text,
 			},
 		})
@@ -194,7 +194,7 @@ func assignmentImport(
 				Rel:   "assigned-to",
 				Type:  "core/author",
 				UUID:  link.UUID,
-				Data:  make(BlockData),
+				Data:  make(DataMap),
 			}
 
 			for _, kv := range link.Data.Items {

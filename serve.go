@@ -281,14 +281,10 @@ func RunServer(
 				continue
 			}
 
-			for _, m := range u.Meta {
-				switch m.Key {
-				case "oc-source":
-					ocUUID = m.Value
-				case "oc-version":
-					ocVersion, _ = strconv.Atoi(m.Value)
+			ocUUID = u.Meta["oc-source"]
 
-				}
+			if ocv, ok := u.Meta["oc-version"]; ok {
+				ocVersion, _ = strconv.Atoi(ocv)
 			}
 		}
 

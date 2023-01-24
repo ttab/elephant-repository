@@ -49,7 +49,7 @@ type Block struct {
 	// presentation of the block.
 	Title string `json:"title,omitempty"`
 	// Data contains block data
-	Data BlockData `json:"data,omitempty"`
+	Data DataMap `json:"data,omitempty"`
 	// Relationship describes the relationship to the document/parent
 	// entity
 	Rel string `json:"rel,omitempty"`
@@ -72,11 +72,11 @@ type Block struct {
 	Role string `json:"role,omitempty"`
 }
 
-type BlockData map[string]string
+type DataMap map[string]string
 
 // MarshalJSON implements a custom marshaler to make the JSON output of a
 // document deterministic. Maps are unordered.
-func (bd BlockData) MarshalJSON() ([]byte, error) {
+func (bd DataMap) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 
 	keys := make([]string, 0, len(bd))

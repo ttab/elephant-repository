@@ -23,7 +23,7 @@ type UpdateRequest struct {
 	UUID     string
 	Created  time.Time
 	Updater  IdentityReference
-	Meta     []UpdateMeta
+	Meta     DataMap
 	ACL      []ACLEntry
 	Status   []StatusUpdate
 	Document *Document
@@ -54,13 +54,8 @@ type DocumentUpdate struct {
 	Parent        string
 	Updater       IdentityReference
 	Created       time.Time
-	Meta          []UpdateMeta
+	Meta          DataMap
 	SchemaVersion int
-}
-
-type UpdateMeta struct {
-	Key   string
-	Value string
 }
 
 type IdentityReference struct {
@@ -74,13 +69,13 @@ type Status struct {
 	Parent      string
 	Updater     IdentityReference
 	Created     time.Time
-	Meta        []UpdateMeta
+	Meta        DataMap
 }
 
 type StatusUpdate struct {
 	Name    string
 	Version int
-	Meta    []UpdateMeta
+	Meta    DataMap
 }
 
 type DocStoreErrorCode string

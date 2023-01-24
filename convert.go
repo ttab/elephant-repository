@@ -324,7 +324,7 @@ func convertTextBlock(typeName string) BlockProcessorFunc {
 		return Block{
 			ID:   in.ID,
 			Type: typeName,
-			Data: BlockData{
+			Data: DataMap{
 				"text": in.Data["text"],
 			},
 		}, nil
@@ -389,7 +389,7 @@ func convertNote(in Block) (Block, error) {
 	out := Block{
 		Type: "core/note",
 		Role: "public",
-		Data: make(BlockData),
+		Data: make(DataMap),
 	}
 
 	if in.Type == "x-tt/internalnote" {
@@ -410,7 +410,7 @@ func convertNote(in Block) (Block, error) {
 func convertPosition(in Block) (Block, error) {
 	out := Block{
 		Type: "core/position",
-		Data: make(BlockData),
+		Data: make(DataMap),
 	}
 
 	transferData(out.Data, in.Data, "geometry")
@@ -421,7 +421,7 @@ func convertPosition(in Block) (Block, error) {
 func convertNewsvalue(in Block) (Block, error) {
 	out := Block{
 		Type: "core/newsvalue",
-		Data: make(BlockData),
+		Data: make(DataMap),
 	}
 
 	transferData(out.Data, in.Data,
@@ -492,8 +492,8 @@ func convertContactData(in Block) (Block, error) {
 	return out, nil
 }
 
-func contactCleanup(data BlockData) BlockData {
-	var out BlockData
+func contactCleanup(data DataMap) DataMap {
+	var out DataMap
 
 	for k, v := range data {
 		if v == "" {
@@ -510,7 +510,7 @@ func contactCleanup(data BlockData) BlockData {
 		}
 
 		if out == nil {
-			out = make(BlockData)
+			out = make(DataMap)
 		}
 
 		out[k] = v
@@ -523,7 +523,7 @@ func convertNewscoverage(in Block) (Block, error) {
 	out := in
 
 	out.Type = "core/newscoverage"
-	out.Data = make(BlockData)
+	out.Data = make(DataMap)
 
 	transferData(out.Data, in.Data,
 		"description", "priority",
@@ -605,7 +605,7 @@ func fixTTAuthorLink(in Block) (Block, error) {
 		}
 
 		if out.Data == nil {
-			out.Data = make(BlockData)
+			out.Data = make(DataMap)
 		}
 
 		out.Data[k] = v
@@ -617,7 +617,7 @@ func fixTTAuthorLink(in Block) (Block, error) {
 	return out, nil
 }
 
-func getData(data BlockData, key string) string {
+func getData(data DataMap, key string) string {
 	if data == nil {
 		return ""
 	}
@@ -648,7 +648,7 @@ func convertFactBox(in Block) (Block, error) {
 		ID:    in.ID,
 		Type:  "core/factbox",
 		Title: in.Title,
-		Data: BlockData{
+		Data: DataMap{
 			"byline": in.Data["subject"],
 		},
 	}
@@ -701,7 +701,7 @@ func convertTTVisual(in Block) (Block, error) {
 		Rel:  "self",
 		URI:  in.Data["uri"],
 		URL:  in.Data["src"],
-		Data: make(BlockData),
+		Data: make(DataMap),
 	}
 
 	var mediaType string
@@ -728,13 +728,13 @@ func convertTTVisual(in Block) (Block, error) {
 		ID:    in.ID,
 		Type:  "tt/visual",
 		Links: []Block{link},
-		Data: BlockData{
+		Data: DataMap{
 			"caption": in.Data["caption"],
 		},
 	}, nil
 }
 
-func dropEmptyData(m BlockData) {
+func dropEmptyData(m DataMap) {
 	for k := range m {
 		if m[k] == "" {
 			delete(m, k)
@@ -742,7 +742,7 @@ func dropEmptyData(m BlockData) {
 	}
 }
 
-func transferData(dst, src BlockData, keys ...string) {
+func transferData(dst, src DataMap, keys ...string) {
 	for _, k := range keys {
 		v, ok := src[k]
 		if !ok {

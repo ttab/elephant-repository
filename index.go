@@ -239,7 +239,7 @@ func addBlocks(kind string, flat BleveDoc, blocks []Block) {
 
 		data := b.Data
 		if data == nil {
-			data = make(BlockData)
+			data = make(DataMap)
 		}
 
 		flat.Add("text", data["text"])
