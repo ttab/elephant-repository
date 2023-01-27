@@ -1,0 +1,11 @@
+version: "2"
+sql:
+- schema: "postgres/schema.sql"
+  queries: "postgres/query.sql"
+  engine: "postgresql"
+  gen:
+    go: 
+      out: "postgres"
+      sql_package: "pgx/v5"
+      rename:
+        uuid: UUID
