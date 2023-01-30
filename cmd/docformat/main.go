@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/navigacontentlab/revisor"
 	"github.com/schollz/progressbar/v3"
 	"github.com/ttab/docformat"
+	"github.com/ttab/docformat/private/cmd"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
 )
@@ -173,7 +173,7 @@ func webUICommand(c *cli.Context) error {
 		},
 	}
 
-	validator, err := defaultValidator()
+	validator, err := cmd.DefaultValidator()
 	if err != nil {
 		return err
 	}
@@ -183,7 +183,10 @@ func webUICommand(c *cli.Context) error {
 		return fmt.Errorf("failed to create OC client: %w", err)
 	}
 
-	return docformat.RunServer(c.Context, store, validator, index, oc, addr)
+	return docformat.RunServer(c.Context, addr,
+		docformat.WithUIServer(store, index, oc),
+		docformat.WithAPIServer(nil, store, validator),
+	)
 }
 
 func indexCommand(c *cli.Context) error {
@@ -292,7 +295,7 @@ func ingestCommand(c *cli.Context) error {
 		return fmt.Errorf("failed to load blocklist: %w", err)
 	}
 
-	validator, err := defaultValidator()
+	validator, err := cmd.DefaultValidator()
 	if err != nil {
 		return err
 	}
@@ -386,8 +389,10 @@ func ingestCommand(c *cli.Context) error {
 
 	if ui {
 		group.Go(func() error {
-			return docformat.RunServer(
-				gCtx, opts.DocStore, opts.Validator, index, oc, addr)
+			return docformat.RunServer(c.Context, addr,
+				docformat.WithUIServer(opts.DocStore, index, oc),
+				docformat.WithAPIServer(nil, opts.DocStore, validator),
+			)
 		})
 	}
 
@@ -471,44 +476,6 @@ func preloadReplacements(ctx context.Context,
 	}
 
 	return nil
-}
-
-func defaultValidator() (*revisor.Validator, error) {
-	return createValidator(
-		"constraints/core.json",
-		"constraints/tt.json",
-	)
-}
-
-func createValidator(paths ...string) (*revisor.Validator, error) {
-	var constraints []revisor.ConstraintSet
-
-	for _, name := range paths {
-		data, err := docformat.BuiltInConstraints.ReadFile(name)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to read constraints file: %w", err)
-		}
-
-		var c revisor.ConstraintSet
-
-		err = json.Unmarshal(data, &c)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to unmarshal %q constraints: %w",
-				name, err)
-		}
-
-		constraints = append(constraints, c)
-	}
-
-	v, err := revisor.NewValidator(constraints...)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to create validator with constraints: %w", err)
-	}
-
-	return v, nil
 }
 
 func convertCCA(c *cli.Context) error {
