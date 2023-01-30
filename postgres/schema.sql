@@ -115,6 +115,19 @@ CREATE TABLE public.schema_version (
 ALTER TABLE public.schema_version OWNER TO repository;
 
 --
+-- Name: status_heads; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.status_heads (
+    uuid uuid NOT NULL,
+    name character varying(32) NOT NULL,
+    id bigint NOT NULL
+);
+
+
+ALTER TABLE public.status_heads OWNER TO repository;
+
+--
 -- Name: acl acl_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -163,6 +176,14 @@ ALTER TABLE ONLY public.document_version
 
 
 --
+-- Name: status_heads status_heads_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.status_heads
+    ADD CONSTRAINT status_heads_pkey PRIMARY KEY (uuid, name);
+
+
+--
 -- Name: document_link_rel_idx; Type: INDEX; Schema: public; Owner: repository
 --
 
@@ -207,6 +228,14 @@ ALTER TABLE ONLY public.document_status
 
 ALTER TABLE ONLY public.document_version
     ADD CONSTRAINT document_version_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: status_heads status_heads_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.status_heads
+    ADD CONSTRAINT status_heads_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
 
 
 --

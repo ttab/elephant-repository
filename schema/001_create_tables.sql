@@ -58,6 +58,15 @@ create table document_status(
                on delete cascade
 );
 
+create table status_heads(
+       uuid uuid not null,
+       name varchar(32) not null,
+       id bigint not null,
+       primary key(uuid, name),
+       foreign key(uuid) references document(uuid)
+               on delete cascade
+);
+
 create table acl(
        uuid uuid not null,
        uri text not null,
@@ -72,6 +81,7 @@ create table acl(
 drop index document_link_rel_idx;
 drop table document_link;
 drop table document_version;
+drop table status_heads;
 drop table document_status;
 drop table acl;
 drop table document;

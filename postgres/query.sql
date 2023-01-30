@@ -23,7 +23,7 @@ LIMIT $4;
 
 
 -- name: GetVersions :many
-SELECT uuid, version, hash, title, type, language, created, creator_uri, meta
+SELECT uuid, name, id, version, hash, created, creator_uri, meta
 FROM document_status
 WHERE uuid = $1 AND name = $2 AND ($3 = 0 OR id < $3)
 ORDER BY id DESC

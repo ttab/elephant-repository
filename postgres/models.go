@@ -59,3 +59,9 @@ type DocumentVersion struct {
 type SchemaVersion struct {
 	Version int32
 }
+
+type StatusHead struct {
+	Uuid pgtype.UUID
+	Name string
+	ID   int64
+}

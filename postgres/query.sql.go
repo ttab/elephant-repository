@@ -113,6 +113,55 @@ func (q *Queries) GetStatuses(ctx context.Context, arg GetStatusesParams) ([]Doc
 	return items, nil
 }
 
+const getVersions = `-- name: GetVersions :many
+SELECT uuid, name, id, version, hash, created, creator_uri, meta
+FROM document_status
+WHERE uuid = $1 AND name = $2 AND ($3 = 0 OR id < $3)
+ORDER BY id DESC
+LIMIT $4
+`
+
+type GetVersionsParams struct {
+	Uuid    pgtype.UUID
+	Name    string
+	Column3 interface{}
+	Limit   int32
+}
+
+func (q *Queries) GetVersions(ctx context.Context, arg GetVersionsParams) ([]DocumentStatus, error) {
+	rows, err := q.db.Query(ctx, getVersions,
+		arg.Uuid,
+		arg.Name,
+		arg.Column3,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DocumentStatus
+	for rows.Next() {
+		var i DocumentStatus
+		if err := rows.Scan(
+			&i.Uuid,
+			&i.Name,
+			&i.ID,
+			&i.Version,
+			&i.Hash,
+			&i.Created,
+			&i.CreatorUri,
+			&i.Meta,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertDocumentStatus = `-- name: InsertDocumentStatus :exec
 INSERT INTO document_status(uuid, name, id, hash, created, creator_uri, meta)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
