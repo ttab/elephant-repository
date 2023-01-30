@@ -3,6 +3,9 @@ package docformat
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -14,7 +17,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/julienschmidt/httprouter"
 	"github.com/navigacontentlab/revisor"
 	"github.com/ttab/docformat/rpc/repository"
@@ -79,6 +84,11 @@ func RunServer(
 		})
 	}
 
+	jwtKey, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("failed to generate key: %w", err)
+	}
+
 	router := httprouter.New()
 
 	server := http.Server{
@@ -89,18 +99,109 @@ func RunServer(
 	api := repository.NewDocumentsServer(
 		NewAPIServer(store, validator),
 		twirp.WithServerJSONSkipDefaults(true),
+		twirp.WithServerHooks(&twirp.ServerHooks{
+			RequestReceived: func(
+				ctx context.Context,
+			) (context.Context, error) {
+				// Require auth for all methods
+				_, ok := GetAuthInfo(ctx)
+				if !ok {
+					return ctx, twirp.Unauthenticated.Error(
+						"no anonymous access allowed")
+				}
+
+				return ctx, nil
+			},
+		}),
 	)
 
-	router.POST(api.PathPrefix()+":method", func(
+	router.POST(api.PathPrefix()+":method", RHandleFunc(func(
 		w http.ResponseWriter, r *http.Request, _ httprouter.Params,
-	) {
+	) error {
+		auth, err := AuthInfoFromHeader(&jwtKey.PublicKey,
+			r.Header.Get("Authorization"))
+		if err != nil {
+			return HTTPErrorf(http.StatusUnauthorized,
+				"invalid authorization method: %v", err)
+		}
+
+		if auth != nil {
+			r = r.WithContext(SetAuthInfo(ctx, auth))
+		}
+
 		api.ServeHTTP(w, r)
-	})
+
+		return nil
+	}))
 
 	assetDir, err := fs.Sub(assetFS, "assets")
 	if err != nil {
 		return fmt.Errorf("failed to prepare asset filesystem: %w", err)
 	}
+
+	router.POST("/token", RHandleFunc(func(
+		w http.ResponseWriter, r *http.Request, _ httprouter.Params,
+	) error {
+		err := r.ParseForm()
+		if err != nil {
+			return HTTPErrorf(http.StatusBadRequest,
+				"invalid form data: %v", err)
+		}
+
+		form := r.Form
+
+		if form.Get("grant_type") != "password" {
+			return HTTPErrorf(http.StatusBadRequest,
+				"we only support the \"password\" grant_type")
+		}
+
+		username := form.Get("username")
+		if username == "" {
+			return HTTPErrorf(http.StatusBadRequest,
+				"missing 'username'")
+		}
+
+		name, uriPart, ok := strings.Cut(username, " <")
+		if !ok || !strings.HasSuffix(uriPart, ">") {
+			return HTTPErrorf(http.StatusBadRequest,
+				"username must be in the format \"Name <some://sub/uri>\"")
+		}
+
+		subURI := strings.TrimSuffix(uriPart, ">")
+		expiresIn := 10 * time.Minute
+
+		claims := JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(
+					time.Now().Add(expiresIn)),
+				Issuer:  "test",
+				Subject: subURI,
+			},
+			Name: name,
+		}
+
+		token := jwt.NewWithClaims(jwt.SigningMethodES384, claims)
+
+		ss, err := token.SignedString(jwtKey)
+		if err != nil {
+			return HTTPErrorf(http.StatusInternalServerError,
+				"failed to sign JWT token")
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		err = json.NewEncoder(w).Encode(TokenResponse{
+			AccessToken: ss,
+			TokenType:   "Bearer",
+			ExpiresIn:   int(expiresIn.Seconds()),
+		})
+		if err != nil {
+			return HTTPErrorf(http.StatusInternalServerError,
+				"failed encode token response")
+		}
+
+		return nil
+	}))
 
 	router.ServeFiles("/assets/*filepath", http.FS(assetDir))
 

@@ -5,7 +5,9 @@ go 1.19
 require (
 	github.com/blevesearch/bleve/v2 v2.3.6
 	github.com/dgraph-io/badger/v3 v3.2103.5
+	github.com/golang-jwt/jwt/v4 v4.4.3
 	github.com/google/uuid v1.3.0
+	github.com/jackc/pgx/v5 v5.2.1-0.20230128153552-898891a6eea7
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/navigacontentlab/navigadoc v0.1.2
 	github.com/navigacontentlab/revisor v0.1.0
@@ -47,6 +49,9 @@ require (
 	github.com/golang/protobuf v1.5.0 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
 	github.com/google/flatbuffers v1.12.1 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
+	github.com/jackc/puddle/v2 v2.1.3-0.20230114152537-cc12efc05a26 // indirect
 	github.com/json-iterator/go v0.0.0-20171115153421-f7279a603ede // indirect
 	github.com/klauspost/compress v1.12.3 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect
@@ -58,7 +63,9 @@ require (
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	go.etcd.io/bbolt v1.3.5 // indirect
 	go.opencensus.io v0.22.5 // indirect
+	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90 // indirect
 	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4 // indirect
 	golang.org/x/sys v0.3.0 // indirect
 	golang.org/x/term v0.3.0 // indirect
+	golang.org/x/text v0.3.8 // indirect
 )

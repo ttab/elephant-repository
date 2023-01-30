@@ -15,6 +15,7 @@ if [[ $status -ne 0 ]]; then
        -e POSTGRES_PASSWORD=pass \
        -e PGDATA=/var/lib/postgresql/data/pgdata \
        -v "${pgdata}":/var/lib/postgresql/data \
+       -p 5432:5432 \
        postgres \
        -c wal_level=logical
 elif [[ $containerStatus == "exited" ]]; then

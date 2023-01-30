@@ -1,13 +1,11 @@
 package docformat
 
 import (
-	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -67,39 +65,6 @@ func (ve ValidationError) Error() string {
 
 	return fmt.Sprintf("document has %d validation errors %s",
 		len(ve.Errors), causeMsg)
-}
-
-type HTTPError struct {
-	Status     string
-	StatusCode int
-	Header     http.Header
-	Body       bytes.Buffer
-}
-
-func (e HTTPError) Error() string {
-	return e.Status
-}
-
-func IsHTTPErrorWithStatus(err error, status int) bool {
-	var httpErr HTTPError
-
-	if !errors.As(err, &httpErr) {
-		return false
-	}
-
-	return httpErr.StatusCode == status
-}
-
-func HTTPErrorFromResponse(res *http.Response) error {
-	e := HTTPError{
-		Status:     res.Status,
-		StatusCode: res.StatusCode,
-		Header:     res.Header,
-	}
-
-	_, _ = io.Copy(&e.Body, res.Body)
-
-	return e
 }
 
 type Ingester struct {
