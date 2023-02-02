@@ -3,6 +3,7 @@ proto_file = rpc/$(service_name)/service.proto
 generated_files = rpc/$(service_name)/service.pb.go rpc/$(service_name)/service.twirp.go
 
 pg_conn?=postgres://repository:pass@localhost/repository
+rollback_to?=0
 
 .PHONY: proto
 proto: $(generated_files)
@@ -22,25 +23,22 @@ bin/sqlc: go.mod
 bin/tern: go.mod
 	GOBIN=${PWD}/bin go install github.com/jackc/tern
 
-.PHONY: db-teardown
-db-teardown: bin/tern
+.PHONY: db-rollback
+db-rollback: bin/tern
 	./bin/tern migrate --migrations schema \
-		--conn-string $(pg_conn) --destination 0
-	rm postgres/schema.sql
+		--conn-string $(pg_conn) --destination $(rollback_to)
 
 .PHONY: migrate
 db-migrate: bin/tern
 	./bin/tern migrate --migrations schema \
 		--conn-string $(pg_conn)
-	rm postgres/schema.sql
+	rm -f postgres/schema.sql
 	make postgres/schema.sql
 
 .PHONY: generate-sql
-generate-sql: db-migrate postgres/query.sql.go
+generate-sql: postgres/schema.sql postgres/query.sql.go
 
-postgres/schema.sql:
-	cd schema && tern migrate \
-		--conn-string $(pg_conn)
+postgres/schema.sql postgres/schema_version.sql:
 	./dump-postgres-schema.sh
 
 postgres/query.sql.go: bin/sqlc postgres/schema.sql postgres/query.sql

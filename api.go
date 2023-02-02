@@ -63,11 +63,11 @@ func (a *APIServer) Get(ctx context.Context, req *repository.GetDocumentRequest)
 			"failed to load document metadata: %w", err)
 	}
 
-	var version int
+	var version int64
 
 	switch {
 	case req.Version > 0:
-		version = int(req.Version)
+		version = req.Version
 	case req.Status != "":
 		count := len(meta.Statuses[req.Status])
 		if count == 0 {
@@ -117,7 +117,7 @@ func (a *APIServer) GetHistory(
 		return nil, twirp.NotFoundError("the document doesn't exist")
 	}
 
-	start := int(req.Before) - 1
+	start := req.Before - 1
 	if start < 0 {
 		start = meta.Updates[len(meta.Updates)-1].Version
 	}
@@ -312,7 +312,7 @@ func (a *APIServer) Update(
 		Meta:     req.Meta,
 		Status:   RPCToStatusUpdate(req.Status),
 		Document: doc,
-		IfMatch:  int(req.IfMatch),
+		IfMatch:  req.IfMatch,
 	}
 
 	for _, e := range req.Acl {
@@ -420,7 +420,7 @@ func RPCToStatusUpdate(update []*repository.StatusUpdate) []StatusUpdate {
 
 		out = append(out, StatusUpdate{
 			Name:    update[i].Name,
-			Version: int(update[i].Version),
+			Version: update[i].Version,
 			Meta:    update[i].Meta,
 		})
 	}

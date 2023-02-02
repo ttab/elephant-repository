@@ -5,47 +5,58 @@
 package postgres
 
 import (
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Acl struct {
-	Uuid        pgtype.UUID
+	Uuid        uuid.UUID
 	Uri         string
+	Created     pgtype.Timestamptz
+	CreatorUri  string
 	Permissions pgtype.Array[string]
 }
 
+type DeleteRecord struct {
+	ID         int32
+	Uuid       uuid.UUID
+	Version    int64
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Meta       []byte
+}
+
 type Document struct {
-	Uuid           pgtype.UUID
+	Uuid           uuid.UUID
 	Uri            string
 	Created        pgtype.Timestamptz
 	CreatorUri     string
-	Modified       pgtype.Timestamptz
+	Updated        pgtype.Timestamptz
+	UpdaterUri     string
 	CurrentVersion int64
-	Deleted        bool
 }
 
 type DocumentLink struct {
-	FromDocument pgtype.UUID
+	FromDocument uuid.UUID
 	Version      int64
-	ToDocument   pgtype.UUID
+	ToDocument   uuid.UUID
 	Rel          pgtype.Text
 }
 
 type DocumentStatus struct {
-	Uuid       pgtype.UUID
+	Uuid       uuid.UUID
 	Name       string
 	ID         int64
 	Version    int64
-	Hash       []byte
 	Created    pgtype.Timestamptz
 	CreatorUri string
 	Meta       []byte
 }
 
 type DocumentVersion struct {
-	Uuid         pgtype.UUID
+	Uuid         uuid.UUID
+	Uri          string
 	Version      int64
-	Hash         []byte
 	Title        string
 	Type         string
 	Language     string
@@ -61,7 +72,9 @@ type SchemaVersion struct {
 }
 
 type StatusHead struct {
-	Uuid pgtype.UUID
-	Name string
-	ID   int64
+	Uuid       uuid.UUID
+	Name       string
+	ID         int64
+	Updated    pgtype.Timestamptz
+	UpdaterUri string
 }

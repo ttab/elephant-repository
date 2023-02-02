@@ -8,51 +8,96 @@ package postgres
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getCurrentVersion = `-- name: GetCurrentVersion :one
-SELECT
-        v.uuid, v.version, v.hash, v.title, v.type, v.language,
-        v.created, v.creator_uri, v.meta, v.document_data, v.archived
-FROM document AS d
-     INNER JOIN document_version AS v ON
-           v.uuid = d.uuid AND v.version = d.current_version
-WHERE d.uuid = $1
+const acquireTXLock = `-- name: AcquireTXLock :exec
+SELECT pg_advisory_xact_lock($1::bigint)
 `
 
-func (q *Queries) GetCurrentVersion(ctx context.Context, uuid pgtype.UUID) (DocumentVersion, error) {
-	row := q.db.QueryRow(ctx, getCurrentVersion, uuid)
-	var i DocumentVersion
-	err := row.Scan(
-		&i.Uuid,
-		&i.Version,
-		&i.Hash,
-		&i.Title,
-		&i.Type,
-		&i.Language,
-		&i.Created,
-		&i.CreatorUri,
-		&i.Meta,
-		&i.DocumentData,
-		&i.Archived,
+func (q *Queries) AcquireTXLock(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, acquireTXLock, id)
+	return err
+}
+
+const createStatus = `-- name: CreateStatus :exec
+select create_status(
+       $1::uuid, $2::varchar(32), $3::bigint, $4::bigint,
+       $5::timestamptz, $6::text, $7::jsonb
+)
+`
+
+type CreateStatusParams struct {
+	Uuid       uuid.UUID
+	Name       string
+	ID         int64
+	Version    int64
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Meta       []byte
+}
+
+func (q *Queries) CreateStatus(ctx context.Context, arg CreateStatusParams) error {
+	_, err := q.db.Exec(ctx, createStatus,
+		arg.Uuid,
+		arg.Name,
+		arg.ID,
+		arg.Version,
+		arg.Created,
+		arg.CreatorUri,
+		arg.Meta,
 	)
-	return i, err
+	return err
+}
+
+const createVersion = `-- name: CreateVersion :exec
+select create_version(
+       $1::uuid, $2::bigint, $3::timestamptz,
+       $4::text, $5::jsonb, $6::jsonb
+)
+`
+
+type CreateVersionParams struct {
+	Uuid         uuid.UUID
+	Version      int64
+	Created      pgtype.Timestamptz
+	CreatorUri   string
+	Meta         []byte
+	DocumentData []byte
+}
+
+func (q *Queries) CreateVersion(ctx context.Context, arg CreateVersionParams) error {
+	_, err := q.db.Exec(ctx, createVersion,
+		arg.Uuid,
+		arg.Version,
+		arg.Created,
+		arg.CreatorUri,
+		arg.Meta,
+		arg.DocumentData,
+	)
+	return err
 }
 
 const getDocumentACL = `-- name: GetDocumentACL :many
 SELECT uuid, uri, permissions FROM acl WHERE uuid = $1
 `
 
-func (q *Queries) GetDocumentACL(ctx context.Context, uuid pgtype.UUID) ([]Acl, error) {
+type GetDocumentACLRow struct {
+	Uuid        uuid.UUID
+	Uri         string
+	Permissions pgtype.Array[string]
+}
+
+func (q *Queries) GetDocumentACL(ctx context.Context, uuid uuid.UUID) ([]GetDocumentACLRow, error) {
 	rows, err := q.db.Query(ctx, getDocumentACL, uuid)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Acl
+	var items []GetDocumentACLRow
 	for rows.Next() {
-		var i Acl
+		var i GetDocumentACLRow
 		if err := rows.Scan(&i.Uuid, &i.Uri, &i.Permissions); err != nil {
 			return nil, err
 		}
@@ -64,8 +109,57 @@ func (q *Queries) GetDocumentACL(ctx context.Context, uuid pgtype.UUID) ([]Acl, 
 	return items, nil
 }
 
+const getDocumentForUpdate = `-- name: GetDocumentForUpdate :one
+SELECT uri, current_version FROM document
+WHERE uuid = $1
+FOR UPDATE
+`
+
+type GetDocumentForUpdateRow struct {
+	Uri            string
+	CurrentVersion int64
+}
+
+func (q *Queries) GetDocumentForUpdate(ctx context.Context, uuid uuid.UUID) (GetDocumentForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentForUpdate, uuid)
+	var i GetDocumentForUpdateRow
+	err := row.Scan(&i.Uri, &i.CurrentVersion)
+	return i, err
+}
+
+const getDocumentHeads = `-- name: GetDocumentHeads :many
+SELECT name, id
+FROM status_heads 
+WHERE uuid = $1
+`
+
+type GetDocumentHeadsRow struct {
+	Name string
+	ID   int64
+}
+
+func (q *Queries) GetDocumentHeads(ctx context.Context, uuid uuid.UUID) ([]GetDocumentHeadsRow, error) {
+	rows, err := q.db.Query(ctx, getDocumentHeads, uuid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDocumentHeadsRow
+	for rows.Next() {
+		var i GetDocumentHeadsRow
+		if err := rows.Scan(&i.Name, &i.ID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getStatuses = `-- name: GetStatuses :many
-SELECT uuid, name, id, version, hash, created, creator_uri, meta
+SELECT uuid, name, id, version, created, creator_uri, meta
 FROM document_status
 WHERE uuid = $1 AND name = $2 AND ($3 = 0 OR id < $3)
 ORDER BY id DESC
@@ -73,7 +167,7 @@ LIMIT $4
 `
 
 type GetStatusesParams struct {
-	Uuid    pgtype.UUID
+	Uuid    uuid.UUID
 	Name    string
 	Column3 interface{}
 	Limit   int32
@@ -98,7 +192,6 @@ func (q *Queries) GetStatuses(ctx context.Context, arg GetStatusesParams) ([]Doc
 			&i.Name,
 			&i.ID,
 			&i.Version,
-			&i.Hash,
 			&i.Created,
 			&i.CreatorUri,
 			&i.Meta,
@@ -114,7 +207,7 @@ func (q *Queries) GetStatuses(ctx context.Context, arg GetStatusesParams) ([]Doc
 }
 
 const getVersions = `-- name: GetVersions :many
-SELECT uuid, name, id, version, hash, created, creator_uri, meta
+SELECT uuid, name, id, version, created, creator_uri, meta
 FROM document_status
 WHERE uuid = $1 AND name = $2 AND ($3 = 0 OR id < $3)
 ORDER BY id DESC
@@ -122,7 +215,7 @@ LIMIT $4
 `
 
 type GetVersionsParams struct {
-	Uuid    pgtype.UUID
+	Uuid    uuid.UUID
 	Name    string
 	Column3 interface{}
 	Limit   int32
@@ -147,7 +240,6 @@ func (q *Queries) GetVersions(ctx context.Context, arg GetVersionsParams) ([]Doc
 			&i.Name,
 			&i.ID,
 			&i.Version,
-			&i.Hash,
 			&i.Created,
 			&i.CreatorUri,
 			&i.Meta,
@@ -162,30 +254,16 @@ func (q *Queries) GetVersions(ctx context.Context, arg GetVersionsParams) ([]Doc
 	return items, nil
 }
 
-const insertDocumentStatus = `-- name: InsertDocumentStatus :exec
-INSERT INTO document_status(uuid, name, id, hash, created, creator_uri, meta)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+const notify = `-- name: Notify :exec
+SELECT pg_notify($1::text, $2::text)
 `
 
-type InsertDocumentStatusParams struct {
-	Uuid       pgtype.UUID
-	Name       string
-	ID         int64
-	Hash       []byte
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Meta       []byte
+type NotifyParams struct {
+	Channel string
+	Message string
 }
 
-func (q *Queries) InsertDocumentStatus(ctx context.Context, arg InsertDocumentStatusParams) error {
-	_, err := q.db.Exec(ctx, insertDocumentStatus,
-		arg.Uuid,
-		arg.Name,
-		arg.ID,
-		arg.Hash,
-		arg.Created,
-		arg.CreatorUri,
-		arg.Meta,
-	)
+func (q *Queries) Notify(ctx context.Context, arg NotifyParams) error {
+	_, err := q.db.Exec(ctx, notify, arg.Channel, arg.Message)
 	return err
 }

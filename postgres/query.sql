@@ -1,30 +1,44 @@
--- name: InsertDocumentStatus :exec
-INSERT INTO document_status(uuid, name, id, hash, created, creator_uri, meta)
-VALUES ($1, $2, $3, $4, $5, $6, $7);
+-- name: GetDocumentForUpdate :one
+SELECT uri, current_version FROM document
+WHERE uuid = $1
+FOR UPDATE;
 
--- name: GetCurrentVersion :one
-SELECT
-        v.uuid, v.version, v.hash, v.title, v.type, v.language,
-        v.created, v.creator_uri, v.meta, v.document_data, v.archived
-FROM document AS d
-     INNER JOIN document_version AS v ON
-           v.uuid = d.uuid AND v.version = d.current_version
-WHERE d.uuid = $1;
+-- name: GetDocumentHeads :many
+SELECT name, id
+FROM status_heads
+WHERE uuid = $1;
 
 -- name: GetDocumentACL :many
 SELECT uuid, uri, permissions FROM acl WHERE uuid = $1;
 
 -- name: GetStatuses :many
-SELECT uuid, name, id, version, hash, created, creator_uri, meta
+SELECT uuid, name, id, version, created, creator_uri, meta
 FROM document_status
 WHERE uuid = $1 AND name = $2 AND ($3 = 0 OR id < $3)
 ORDER BY id DESC
 LIMIT $4;
-
 
 -- name: GetVersions :many
-SELECT uuid, name, id, version, hash, created, creator_uri, meta
+SELECT uuid, name, id, version, created, creator_uri, meta
 FROM document_status
 WHERE uuid = $1 AND name = $2 AND ($3 = 0 OR id < $3)
 ORDER BY id DESC
 LIMIT $4;
+
+-- name: AcquireTXLock :exec
+SELECT pg_advisory_xact_lock(@id::bigint);
+
+-- name: Notify :exec
+SELECT pg_notify(@channel::text, @message::text);
+
+-- name: CreateVersion :exec
+select create_version(
+       @uuid::uuid, @version::bigint, @created::timestamptz,
+       @creator_uri::text, @meta::jsonb, @document_data::jsonb
+);
+
+-- name: CreateStatus :exec
+select create_status(
+       @uuid::uuid, @name::varchar(32), @id::bigint, @version::bigint,
+       @created::timestamptz, @creator_uri::text, @meta::jsonb
+);

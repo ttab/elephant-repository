@@ -11,7 +11,7 @@ type DocStore interface {
 	GetDocumentMeta(
 		ctx context.Context, uuid string) (*DocumentMeta, error)
 	GetDocument(
-		ctx context.Context, uuid string, version int,
+		ctx context.Context, uuid string, version int64,
 	) (*Document, error)
 	Update(
 		ctx context.Context, update UpdateRequest,
@@ -27,19 +27,17 @@ type UpdateRequest struct {
 	ACL      []ACLEntry
 	Status   []StatusUpdate
 	Document *Document
-	IfMatch  int
+	IfMatch  int64
 }
 
 type DocumentMeta struct {
 	Created        time.Time
 	Modified       time.Time
-	CurrentVersion int
+	CurrentVersion int64
 	ACL            []ACLEntry
 	Updates        []DocumentUpdate
 	Statuses       map[string][]Status
-	StatusLog      map[string][]string
 	Deleted        bool
-	Log            []string
 }
 
 type ACLEntry struct {
@@ -49,9 +47,7 @@ type ACLEntry struct {
 }
 
 type DocumentUpdate struct {
-	Version       int
-	Hash          string
-	Parent        string
+	Version       int64
 	Updater       IdentityReference
 	Created       time.Time
 	Meta          DataMap
@@ -64,17 +60,15 @@ type IdentityReference struct {
 }
 
 type Status struct {
-	Version     int
-	VersionHash string
-	Parent      string
-	Updater     IdentityReference
-	Created     time.Time
-	Meta        DataMap
+	Version int64
+	Updater IdentityReference
+	Created time.Time
+	Meta    DataMap
 }
 
 type StatusUpdate struct {
 	Name    string
-	Version int
+	Version int64
 	Meta    DataMap
 }
 

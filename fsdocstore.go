@@ -43,7 +43,7 @@ func (s *FSDocStore) GetDocumentMeta(
 }
 
 func (s *FSDocStore) GetDocument(
-	ctx context.Context, uuid string, version int,
+	ctx context.Context, uuid string, version int64,
 ) (*Document, error) {
 	var doc Document
 
@@ -95,10 +95,9 @@ func (s *FSDocStore) Update(
 	}
 
 	up := DocumentUpdate{
-		Created:       update.Created,
-		Updater:       update.Updater,
-		Meta:          update.Meta,
-		SchemaVersion: 1,
+		Created: update.Created,
+		Updater: update.Updater,
+		Meta:    update.Meta,
 	}
 
 	current, err := s.GetDocumentMeta(ctx, update.UUID)
@@ -108,8 +107,7 @@ func (s *FSDocStore) Update(
 	}
 
 	meta := DocumentMeta{
-		Statuses:  make(map[string][]Status),
-		StatusLog: make(map[string][]string),
+		Statuses: make(map[string][]Status),
 	}
 
 	if current != nil {
@@ -161,26 +159,7 @@ func (s *FSDocStore) Update(
 		meta.CurrentVersion++
 		up.Version = meta.CurrentVersion
 
-		if len(meta.Log) > 0 {
-			up.Parent = meta.Log[len(meta.Log)-1]
-		}
-
-		docDigest, err := hash(update.Document)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to compute hash for document: %w", err)
-		}
-
-		up.Hash = docDigest
-
-		digest, err := hash(up)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to compute hash for update: %w", err)
-		}
-
 		meta.Updates = append(meta.Updates, up)
-		meta.Log = append(meta.Log, digest)
 	}
 
 	up.Version = meta.CurrentVersion
@@ -197,35 +176,15 @@ func (s *FSDocStore) Update(
 			status.Version = up.Version
 		}
 
-		if status.Version > len(meta.Updates) {
+		if status.Version > int64(len(meta.Updates)) {
 			return nil, DocStoreErrorf(ErrCodeBadRequest,
 				"status %q refers to a version %d that doesn't exist",
 				stat.Name, status.Version)
 		}
 
-		status.VersionHash = meta.Log[status.Version-1]
-
-		slice := meta.Statuses[stat.Name]
-
-		meta.Statuses[stat.Name] = slice
-
-		log := meta.StatusLog[stat.Name]
-
-		if len(log) > 0 {
-			status.Parent = log[len(log)-1]
-		}
-
-		statusDigest, err := hash(status)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to compute hash for status update: %w", err)
-		}
-
-		slice = append(slice, status)
-		meta.Statuses[stat.Name] = slice
-
-		log = append(log, statusDigest)
-		meta.StatusLog[stat.Name] = log
+		meta.Statuses[stat.Name] = append(
+			meta.Statuses[stat.Name], status,
+		)
 	}
 
 	if update.Document != nil {

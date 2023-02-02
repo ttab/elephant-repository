@@ -9,3 +9,6 @@ sql:
       sql_package: "pgx/v5"
       rename:
         uuid: UUID
+      overrides:
+        - db_type: "uuid"
+          go_type: "github.com/google/uuid.UUID"

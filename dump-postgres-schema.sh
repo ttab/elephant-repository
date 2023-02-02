@@ -6,3 +6,7 @@ url="postgres://repository:pass@${ip}/repository"
 
 docker run --rm -it postgres pg_dump ${url} --schema-only \
        > postgres/schema.sql
+
+docker run --rm -it postgres pg_dump ${url} --data-only \
+       --column-inserts --table=schema_version \
+       > postgres/schema_version.sql

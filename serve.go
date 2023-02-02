@@ -200,7 +200,7 @@ func uiServer(
 			UUID: ps.ByName("uuid"),
 		}
 
-		version, err := strconv.Atoi(ps.ByName("version"))
+		version, err := strconv.ParseInt(ps.ByName("version"), 10, 64)
 		if err != nil {
 			renderErrorPage(w, fmt.Errorf(
 				"invalid version number: %w", err))
@@ -265,7 +265,7 @@ func uiServer(
 	) {
 		uuid := ps.ByName("uuid")
 
-		version, err := strconv.Atoi(ps.ByName("version"))
+		version, err := strconv.ParseInt(ps.ByName("version"), 10, 64)
 		if err != nil {
 			renderErrorPage(w, fmt.Errorf(
 				"invalid version number: %w", err))
@@ -292,7 +292,7 @@ func uiServer(
 	) {
 		uuid := ps.ByName("uuid")
 
-		version, err := strconv.Atoi(ps.ByName("version"))
+		version, err := strconv.ParseInt(ps.ByName("version"), 10, 64)
 		if err != nil {
 			renderErrorPage(w, fmt.Errorf(
 				"invalid version number: %w", err))
@@ -599,7 +599,7 @@ type DocumentPageData struct {
 
 type VersionPageData struct {
 	UUID            string
-	Version         int
+	Version         int64
 	Document        Document
 	RenderedContent []RenderedContent
 }

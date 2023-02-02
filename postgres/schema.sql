@@ -16,6 +16,103 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+--
+-- Name: create_status(uuid, character varying, bigint, bigint, timestamp with time zone, text, jsonb); Type: FUNCTION; Schema: public; Owner: repository
+--
+
+CREATE FUNCTION public.create_status(uuid uuid, name character varying, id bigint, version bigint, created timestamp with time zone, creator_uri text, meta jsonb) RETURNS void
+    LANGUAGE sql
+    AS $$
+   insert into status_heads(
+               uuid, name, id, updated, updater_uri
+          )
+          values(
+               uuid, name, id, created, creator_uri
+          )
+          on conflict (uuid, name) do update
+             set updated = create_status.created,
+                 updater_uri = create_status.creator_uri,
+                 id = create_status.id;
+
+   insert into document_status(
+               uuid, name, id, version, created, creator_uri, meta
+          )
+          values(
+               uuid, name, id, version, created, creator_uri, meta
+          );
+$$;
+
+
+ALTER FUNCTION public.create_status(uuid uuid, name character varying, id bigint, version bigint, created timestamp with time zone, creator_uri text, meta jsonb) OWNER TO repository;
+
+--
+-- Name: create_version(uuid, bigint, timestamp with time zone, text, jsonb, jsonb); Type: FUNCTION; Schema: public; Owner: repository
+--
+
+CREATE FUNCTION public.create_version(uuid uuid, version bigint, created timestamp with time zone, creator_uri text, meta jsonb, document_data jsonb) RETURNS void
+    LANGUAGE sql
+    AS $$
+   insert into document(
+               uuid, uri, created, creator_uri,
+               updated, updater_uri, current_version
+          )
+          values(
+               uuid, document_data->>'uri', created, creator_uri,
+               created, creator_uri, version
+          )
+          on conflict (uuid) do update
+             set updated = create_version.created,
+                 updater_uri = create_version.creator_uri,
+                 current_version = version;
+
+   insert into document_version(
+               uuid, uri, version, title, type, language,
+               created, creator_uri, meta, document_data, archived
+          )
+          values(
+               uuid, document_data->>'uri', version,
+               document_data->>'title', document_data->>'type',
+               document_data->>'language', created, creator_uri,
+               meta, document_data, false
+          );
+$$;
+
+
+ALTER FUNCTION public.create_version(uuid uuid, version bigint, created timestamp with time zone, creator_uri text, meta jsonb, document_data jsonb) OWNER TO repository;
+
+--
+-- Name: create_version(uuid, text, bigint, bytea, text, text, text, timestamp with time zone, text, jsonb, jsonb); Type: FUNCTION; Schema: public; Owner: repository
+--
+
+CREATE FUNCTION public.create_version(uuid uuid, uri text, version bigint, hash bytea, title text, type text, language text, created timestamp with time zone, creator_uri text, meta jsonb, document_data jsonb) RETURNS void
+    LANGUAGE sql
+    AS $$
+   insert into document(
+               uuid, uri, created, creator_uri,
+               updated, updater_uri, current_version
+          )
+          values(
+               uuid, uri, created, creator_uri,
+               created, creator_uri, version
+          )
+          on conflict (uuid) do update
+             set updated = create_version.created,
+                 updater_uri = create_version.creator_uri,
+                 current_version = version;
+
+   insert into document_version(
+               uuid, uri, version, hash, title, type, language,
+               created, creator_uri, meta, document_data, archived
+          )
+          values(
+               uuid, uri, version, hash, document_data->>'title', type, language,
+               created, creator_uri, meta, document_data, false
+          );
+$$;
+
+
+ALTER FUNCTION public.create_version(uuid uuid, uri text, version bigint, hash bytea, title text, type text, language text, created timestamp with time zone, creator_uri text, meta jsonb, document_data jsonb) OWNER TO repository;
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -27,11 +124,43 @@ SET default_table_access_method = heap;
 CREATE TABLE public.acl (
     uuid uuid NOT NULL,
     uri text NOT NULL,
+    created timestamp with time zone NOT NULL,
+    creator_uri text NOT NULL,
     permissions character(1)[] NOT NULL
 );
 
 
 ALTER TABLE public.acl OWNER TO repository;
+
+--
+-- Name: delete_record; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.delete_record (
+    id integer NOT NULL,
+    uuid uuid NOT NULL,
+    version bigint NOT NULL,
+    created timestamp with time zone NOT NULL,
+    creator_uri text NOT NULL,
+    meta jsonb
+);
+
+
+ALTER TABLE public.delete_record OWNER TO repository;
+
+--
+-- Name: delete_record_id_seq; Type: SEQUENCE; Schema: public; Owner: repository
+--
+
+ALTER TABLE public.delete_record ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.delete_record_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
 
 --
 -- Name: document; Type: TABLE; Schema: public; Owner: repository
@@ -42,9 +171,9 @@ CREATE TABLE public.document (
     uri text NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
-    modified timestamp with time zone NOT NULL,
-    current_version bigint NOT NULL,
-    deleted boolean DEFAULT false NOT NULL
+    updated timestamp with time zone NOT NULL,
+    updater_uri text NOT NULL,
+    current_version bigint NOT NULL
 );
 
 
@@ -73,7 +202,6 @@ CREATE TABLE public.document_status (
     name character varying(32) NOT NULL,
     id bigint NOT NULL,
     version bigint NOT NULL,
-    hash bytea NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
     meta jsonb
@@ -88,8 +216,8 @@ ALTER TABLE public.document_status OWNER TO repository;
 
 CREATE TABLE public.document_version (
     uuid uuid NOT NULL,
+    uri text NOT NULL,
     version bigint NOT NULL,
-    hash bytea NOT NULL,
     title text NOT NULL,
     type text NOT NULL,
     language text NOT NULL,
@@ -121,7 +249,9 @@ ALTER TABLE public.schema_version OWNER TO repository;
 CREATE TABLE public.status_heads (
     uuid uuid NOT NULL,
     name character varying(32) NOT NULL,
-    id bigint NOT NULL
+    id bigint NOT NULL,
+    updated timestamp with time zone NOT NULL,
+    updater_uri text NOT NULL
 );
 
 
@@ -133,6 +263,14 @@ ALTER TABLE public.status_heads OWNER TO repository;
 
 ALTER TABLE ONLY public.acl
     ADD CONSTRAINT acl_pkey PRIMARY KEY (uuid, uri);
+
+
+--
+-- Name: delete_record delete_record_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.delete_record
+    ADD CONSTRAINT delete_record_pkey PRIMARY KEY (id);
 
 
 --
@@ -181,6 +319,13 @@ ALTER TABLE ONLY public.document_version
 
 ALTER TABLE ONLY public.status_heads
     ADD CONSTRAINT status_heads_pkey PRIMARY KEY (uuid, name);
+
+
+--
+-- Name: delete_record_uuid_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX delete_record_uuid_idx ON public.delete_record USING btree (uuid);
 
 
 --
@@ -236,6 +381,43 @@ ALTER TABLE ONLY public.document_version
 
 ALTER TABLE ONLY public.status_heads
     ADD CONSTRAINT status_heads_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: eventlog; Type: PUBLICATION; Schema: -; Owner: repository
+--
+
+CREATE PUBLICATION eventlog WITH (publish = 'insert, update, delete, truncate');
+
+
+ALTER PUBLICATION eventlog OWNER TO repository;
+
+--
+-- Name: eventlog acl; Type: PUBLICATION TABLE; Schema: public; Owner: repository
+--
+
+ALTER PUBLICATION eventlog ADD TABLE ONLY public.acl;
+
+
+--
+-- Name: eventlog delete_record; Type: PUBLICATION TABLE; Schema: public; Owner: repository
+--
+
+ALTER PUBLICATION eventlog ADD TABLE ONLY public.delete_record;
+
+
+--
+-- Name: eventlog document; Type: PUBLICATION TABLE; Schema: public; Owner: repository
+--
+
+ALTER PUBLICATION eventlog ADD TABLE ONLY public.document;
+
+
+--
+-- Name: eventlog status_heads; Type: PUBLICATION TABLE; Schema: public; Owner: repository
+--
+
+ALTER PUBLICATION eventlog ADD TABLE ONLY public.status_heads;
 
 
 --
