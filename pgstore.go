@@ -17,33 +17,276 @@ import (
 
 const (
 	elephantCRC            = 3997770000
-	LockArchive            = elephantCRC + 1
+	LockSigningKeys        = elephantCRC + 1
 	LockLogicalReplication = elephantCRC + 2
 )
 
 type PGDocStore struct {
-	pool *pgxpool.Pool
+	pool     *pgxpool.Pool
+	reader   *postgres.Queries
+	archived *FanOut[ArchivedEvent]
+}
+
+type ArchiveEventType int
+
+const (
+	ArchiveEventTypeStatus ArchiveEventType = iota
+	ArchiveEventTypeVersion
+)
+
+type ArchivedEvent struct {
+	Type    ArchiveEventType
+	UUID    uuid.UUID
+	Version int64
+	Name    string
 }
 
 func NewPGDocStore(pool *pgxpool.Pool) (*PGDocStore, error) {
 	return &PGDocStore{
-		pool: pool,
+		pool:     pool,
+		reader:   postgres.New(pool),
+		archived: NewFanOut[ArchivedEvent](),
 	}, nil
 }
 
 // Delete implements DocStore
-func (*PGDocStore) Delete(ctx context.Context, uuid string) error {
-	panic("unimplemented")
+func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
+	var metaJSON []byte
+
+	if len(req.Meta) > 0 {
+		mj, err := json.Marshal(req.Meta)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to marshal metadata for storage: %w", err)
+		}
+
+		metaJSON = mj
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// We defer a rollback, rollback after commit won't be treated as an
+	// error.
+	defer s.safeRollback(ctx, tx, "document delete")
+
+	q := postgres.New(tx)
+
+	info, err := s.updatePreflight(ctx, q, req.UUID, req.IfMatch)
+	if err != nil {
+		return err
+	}
+
+	if !info.Exists {
+		return nil
+	}
+
+	for {
+		remaining, err := q.GetDocumentUnarchivedCount(ctx, req.UUID)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to check archiving status: %w", err)
+		}
+
+		if remaining == 0 {
+			break
+		}
+
+		select {
+		case <-time.After(1 * time.Second):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	recordID, err := q.InsertDeleteRecord(ctx, postgres.InsertDeleteRecordParams{
+		Uuid:       req.UUID,
+		Uri:        info.Info.Uri,
+		Version:    info.Info.CurrentVersion,
+		Created:    pgTime(req.Updated),
+		CreatorUri: req.Updater,
+		Meta:       metaJSON,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create delete record: %w", err)
+	}
+
+	err = q.DeleteDocument(ctx, postgres.DeleteDocumentParams{
+		Uuid:     req.UUID,
+		Uri:      info.Info.Uri,
+		RecordID: recordID,
+	})
+	if err != nil {
+		return fmt.Errorf(
+			"failed to delete document from database: %w", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to commit delete: %w", err)
+	}
+
+	return nil
 }
 
 // GetDocument implements DocStore
-func (*PGDocStore) GetDocument(ctx context.Context, uuid string, version int64) (*Document, error) {
-	panic("unimplemented")
+func (s *PGDocStore) GetDocument(
+	ctx context.Context, uuid uuid.UUID, version int64,
+) (*Document, error) {
+	var (
+		err  error
+		data []byte
+	)
+
+	if version == 0 {
+		data, err = s.reader.GetDocumentData(ctx, uuid)
+	} else {
+		data, err = s.reader.GetDocumentVersionData(ctx,
+			postgres.GetDocumentVersionDataParams{
+				Uuid:    uuid,
+				Version: version,
+			})
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, DocStoreErrorf(ErrCodeNotFound, "not found")
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to fetch document data: %w", err)
+	}
+
+	// TODO: check for nil data after archiving has been implemented.
+
+	var doc Document
+
+	err = json.Unmarshal(data, &doc)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"got an unreadable document from the database: %w", err)
+	}
+
+	return &doc, nil
+}
+
+func (s *PGDocStore) GetVersion(
+	ctx context.Context, uuid uuid.UUID, version int64,
+) (DocumentUpdate, error) {
+	v, err := s.reader.GetVersion(ctx, postgres.GetVersionParams{
+		Uuid:    uuid,
+		Version: version,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DocumentUpdate{}, DocStoreErrorf(
+			ErrCodeNotFound, "not found")
+	} else if err != nil {
+		return DocumentUpdate{}, fmt.Errorf(
+			"failed to fetch version info: %w", err)
+	}
+
+	up := DocumentUpdate{
+		Version: version,
+		Creator: v.CreatorUri,
+		Created: v.Created.Time,
+	}
+
+	if v.Meta != nil {
+		err := json.Unmarshal(v.Meta, &up.Meta)
+		if err != nil {
+			return DocumentUpdate{}, fmt.Errorf(
+				"failed to unmarshal metadata for version %d: %err",
+				version, err)
+		}
+	}
+
+	return up, nil
+}
+
+func (s *PGDocStore) GetVersionHistory(
+	ctx context.Context, uuid uuid.UUID,
+	before int64, count int,
+) ([]DocumentUpdate, error) {
+	history, err := s.reader.GetVersions(ctx, postgres.GetVersionsParams{
+		Uuid:   uuid,
+		Before: before,
+		Count:  int32(count),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch version history: %w", err)
+	}
+
+	var updates []DocumentUpdate
+
+	for _, v := range history {
+		up := DocumentUpdate{
+			Version: v.Version,
+			Creator: v.CreatorUri,
+			Created: v.Created.Time,
+		}
+
+		if v.Meta != nil {
+			err := json.Unmarshal(v.Meta, &up.Meta)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to unmarshal metadata for version %d: %err",
+					v.Version, err)
+			}
+		}
+
+		updates = append(updates, up)
+	}
+
+	return updates, nil
 }
 
 // GetDocumentMeta implements DocStore
-func (*PGDocStore) GetDocumentMeta(ctx context.Context, uuid string) (*DocumentMeta, error) {
-	panic("unimplemented")
+func (s *PGDocStore) GetDocumentMeta(
+	ctx context.Context, uuid uuid.UUID,
+) (*DocumentMeta, error) {
+	info, err := s.reader.GetDocumentInfo(ctx, uuid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, DocStoreErrorf(ErrCodeNotFound, "not found")
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to fetch document info: %w", err)
+	}
+
+	if info.Deleting {
+		return &DocumentMeta{Deleting: true}, nil
+	}
+
+	meta := DocumentMeta{
+		Created:        info.Created.Time,
+		Modified:       info.Updated.Time,
+		CurrentVersion: info.CurrentVersion,
+		Statuses:       make(map[string]Status),
+		Deleting:       info.Deleting,
+	}
+
+	heads, err := s.reader.GetFullDocumentHeads(ctx, uuid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch document heads: %w", err)
+	}
+
+	for _, head := range heads {
+		status := Status{
+			ID:      head.ID,
+			Version: head.Version,
+			Creator: head.CreatorUri,
+			Created: head.Created.Time,
+		}
+
+		if head.Meta != nil {
+			err := json.Unmarshal(head.Meta, &status.Meta)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to decode %q metadata: %w",
+					head.Name, err)
+			}
+		}
+
+		meta.Statuses[head.Name] = status
+	}
+
+	return &meta, nil
 }
 
 // Update implements DocStore
@@ -69,7 +312,7 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 		mj, err := json.Marshal(update.Meta)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"failed to marshal document for storage: %w", err)
+				"failed to marshal metadata for storage: %w", err)
 		}
 
 		metaJSON = mj
@@ -100,38 +343,17 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 	// error.
 	defer s.safeRollback(ctx, tx, "document update")
 
-	docUUID := uuid.MustParse(update.UUID)
-
 	q := postgres.New(tx)
 
-	info, err := q.GetDocumentForUpdate(ctx, docUUID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get document information: %w", err)
-	}
-
-	exists := !errors.Is(err, pgx.ErrNoRows)
-	currentVersion := info.CurrentVersion
-
-	switch update.IfMatch {
-	case 0:
-	case -1:
-		if exists {
-			return nil, DocStoreErrorf(ErrCodeOptimisticLock,
-				"document already exists")
-		}
-	default:
-		if currentVersion != update.IfMatch {
-			return nil, DocStoreErrorf(ErrCodeOptimisticLock,
-				"document version is %d, not %d as expected",
-				info.CurrentVersion, update.IfMatch,
-			)
-		}
+	info, err := s.updatePreflight(ctx, q, update.UUID, update.IfMatch)
+	if err != nil {
+		return nil, err
 	}
 
 	up := DocumentUpdate{
-		Version: currentVersion,
-		Created: update.Created,
-		Updater: update.Updater,
+		Version: info.Info.CurrentVersion,
+		Created: update.Updated,
+		Creator: update.Updater,
 		Meta:    update.Meta,
 	}
 
@@ -139,10 +361,10 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 		up.Version++
 
 		err = q.CreateVersion(ctx, postgres.CreateVersionParams{
-			Uuid:         docUUID,
+			Uuid:         update.UUID,
 			Version:      up.Version,
 			Created:      pgTime(up.Created),
-			CreatorUri:   up.Updater.URI,
+			CreatorUri:   up.Creator,
 			Meta:         metaJSON,
 			DocumentData: docJSON,
 		})
@@ -155,7 +377,7 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 	statusHeads := make(map[string]int64)
 
 	if len(update.Status) > 0 {
-		heads, err := q.GetDocumentHeads(ctx, docUUID)
+		heads, err := q.GetDocumentHeads(ctx, update.UUID)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"failed to get current document status heads: %w", err)
@@ -170,7 +392,7 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 		statusID := statusHeads[stat.Name] + 1
 
 		status := Status{
-			Updater: up.Updater,
+			Creator: up.Creator,
 			Version: stat.Version,
 			Meta:    stat.Meta,
 			Created: up.Created,
@@ -181,12 +403,12 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 		}
 
 		err = q.CreateStatus(ctx, postgres.CreateStatusParams{
-			Uuid:       docUUID,
+			Uuid:       update.UUID,
 			Name:       stat.Name,
 			ID:         statusID,
 			Version:    status.Version,
 			Created:    pgTime(up.Created),
-			CreatorUri: up.Updater.URI,
+			CreatorUri: up.Creator,
 			Meta:       statusMeta[i],
 		})
 		if err != nil {
@@ -196,12 +418,61 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 		}
 	}
 
+	// TODO: model links, or should we just skip that? Could a stored
+	// procedure iterate over links instead of us doing the batch thing
+	// here?
+
 	err = tx.Commit(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to commit: %w", err)
 	}
 
-	return nil, errors.New("not implemented")
+	return &up, nil
+}
+
+type updatePrefligthInfo struct {
+	Info   postgres.GetDocumentForUpdateRow
+	Exists bool
+}
+
+func (s *PGDocStore) updatePreflight(
+	ctx context.Context, q *postgres.Queries,
+	uuid uuid.UUID, ifMatch int64,
+) (*updatePrefligthInfo, error) {
+	info, err := q.GetDocumentForUpdate(ctx, uuid)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf(
+			"failed to get document information: %w", err)
+	}
+
+	exists := !errors.Is(err, pgx.ErrNoRows)
+	currentVersion := info.CurrentVersion
+
+	if info.Deleting {
+		return nil, DocStoreErrorf(ErrCodeDeleteLock,
+			"the document is being deleted")
+	}
+
+	switch ifMatch {
+	case 0:
+	case -1:
+		if exists {
+			return nil, DocStoreErrorf(ErrCodeOptimisticLock,
+				"document already exists")
+		}
+	default:
+		if currentVersion != ifMatch {
+			return nil, DocStoreErrorf(ErrCodeOptimisticLock,
+				"document version is %d, not %d as expected",
+				info.CurrentVersion, ifMatch,
+			)
+		}
+	}
+
+	return &updatePrefligthInfo{
+		Info:   info,
+		Exists: exists,
+	}, nil
 }
 
 func pgTime(t time.Time) pgtype.Timestamptz {

@@ -51,7 +51,7 @@ message DocumentVersion {
   // created.
   string created = 2;
   // Creator of the version.
-  IdentityReference creator = 3;
+  string creator = 3;
   // Meta data to for the document version.
   map<string, string> meta = 4;
 }
@@ -77,6 +77,17 @@ message UpdateRequest {
   repeated StatusUpdate status  = 5;
   // ACL is an ACL list controlling access to the document.
   repeated ACLEntry acl = 6;
+  // ImportDirective can be used to preserve timestamps and authorship
+  // information from originating systems, but requires the "import_directive"
+  // scope for use.
+  ImportDirective import_directive = 7;
+}
+
+// ImportDirective can be used to preserve timestamps and authorship information
+// from originating systems.
+message ImportDirective {
+  string originallyCreated = 1;
+  string originalCreator = 2;
 }
 
 // UpdateResponse describes the result of an update request.
@@ -140,9 +151,11 @@ message UpdatePermissionsResponse {}
 message DeleteDocumentRequest {
   // UUID of the document to delete.
   string uuid = 1;
+  // Meta data to include with the delete record.
+  map<string, string> meta = 2;
   // IfMatch is used for optimistic locks. Set to the version that you require
   // to be the current one for the delete to be performed.
-  int64 if_match = 2;
+  int64 if_match = 3;
 }
 
 message DeleteDocumentResponse {}
@@ -177,7 +190,7 @@ message Status {
   // Version of the document that the status refers to.
   int64 version = 2;
   // Creator of the status.
-  IdentityReference creator = 3;
+  string creator = 3;
   // Created timestamp is the RFC3339 timestamp for when the statue was created.
   string created = 4;
   // Meta data for the status.
@@ -191,13 +204,6 @@ message ACLEntry {
   string name = 2;
   // Permissions given to the grantee.
   repeated string permissions = 3;
-}
-
-message IdentityReference {
-  // URI that identifies the entity.
-  string uri = 1;
-  // Name of the entity.
-  string name = 2;
 }
 
 // Document is the content

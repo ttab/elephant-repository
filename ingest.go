@@ -13,8 +13,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	navigadoc "github.com/navigacontentlab/navigadoc/doc"
 	"github.com/navigacontentlab/revisor"
+	"github.com/sirupsen/logrus"
+	"github.com/ttab/docformat/rpc/repository"
 )
 
 //go:embed constraints/*.json
@@ -37,7 +41,17 @@ type ObjectGetter interface {
 	) (http.Header, error)
 }
 
+type WriteAPI interface {
+	Update(
+		ctx context.Context, req *repository.UpdateRequest,
+	) (*repository.UpdateResponse, error)
+	Delete(
+		ctx context.Context, req *repository.DeleteDocumentRequest,
+	) (*repository.DeleteDocumentResponse, error)
+}
+
 type IngestOptions struct {
+	Logger          *logrus.Logger
 	DefaultLanguage string
 	Identity        IdentityStore
 	LogPos          LogPosStore
@@ -45,7 +59,7 @@ type IngestOptions struct {
 	GetDocument     GetDocumentFunc
 	Objects         ObjectGetter
 	OCProps         PropertyGetter
-	DocStore        DocStore
+	API             WriteAPI
 	Blocklist       *Blocklist
 	Validator       *revisor.Validator
 	Done            chan OCLogEvent
@@ -127,6 +141,15 @@ func (in *Ingester) iteration(ctx context.Context, pos int) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to read content log: %w", err)
 	}
+
+	ctx = SetAuthInfo(ctx, &AuthInfo{
+		Claims: JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject: "system://oc-importer",
+			},
+			Scope: "doc_write import_directive",
+		},
+	})
 
 	for _, e := range log.Events {
 		err := in.handleEvent(ctx, e)
@@ -257,21 +280,34 @@ func (in *Ingester) handleEvent(ctx context.Context, evt OCLogEvent) error {
 }
 
 func (in *Ingester) delete(ctx context.Context, evt OCLogEvent) error {
+	// Patch up the bad medtop data.
+	if strings.HasPrefix(evt.UUID, "medtop-") {
+		evt.UUID, _ = mediaTopicIdentity(evt.UUID)
+	}
+
 	info, err := in.opt.Identity.GetCurrentVersion(evt.UUID)
 	if err != nil {
 		return fmt.Errorf("failed to get current version info: %w", err)
 	}
 
-	err = in.opt.DocStore.Delete(ctx, info.OriginalUUID)
-	if err != nil {
-		return fmt.Errorf(
-			"failed to delete document with original UUID: %w", err)
+	if info.OriginalUUID != "" {
+		_, err = in.opt.API.Delete(ctx, &repository.DeleteDocumentRequest{
+			Uuid: info.OriginalUUID,
+		})
+		if err != nil {
+			return fmt.Errorf(
+				"failed to delete document with original UUID: %w", err)
+		}
 	}
 
-	err = in.opt.DocStore.Delete(ctx, evt.UUID)
-	if err != nil {
-		return fmt.Errorf(
-			"failed to delete document with event UUID: %w", err)
+	if info.OriginalUUID != evt.UUID {
+		_, err = in.opt.API.Delete(ctx, &repository.DeleteDocumentRequest{
+			Uuid: evt.UUID,
+		})
+		if err != nil {
+			return fmt.Errorf(
+				"failed to delete document with event UUID: %w", err)
+		}
 	}
 
 	return nil
@@ -280,9 +316,9 @@ func (in *Ingester) delete(ctx context.Context, evt OCLogEvent) error {
 type ConvertedDoc struct {
 	Document     Document
 	ReplacesUUID []string
-	Updater      IdentityReference
-	Creator      IdentityReference
-	Units        []IdentityReference
+	Updater      string
+	Creator      string
+	Units        []string
 	Status       string
 }
 
@@ -418,50 +454,84 @@ func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 		return nil
 	}
 
+	docUUID, err := uuid.Parse(doc.UUID)
+	if err != nil {
+		return fmt.Errorf("invalid document UUID %q: %w", doc.UUID, err)
+	}
+
 	status, err := in.checkStatus(ctx, cd.Status)
 	if err != nil {
 		return fmt.Errorf("failed to check for status updates: %w", err)
 	}
 
-	acl := []ACLEntry{
+	acl := []*repository.ACLEntry{
 		{
-			Name:        cd.Creator.Name,
-			URI:         cd.Creator.URI,
+			Uri:         cd.Creator,
 			Permissions: []string{"r", "w"},
 		},
 	}
 
 	for _, unit := range cd.Units {
-		acl = append(acl, ACLEntry{
-			Name:        unit.Name,
-			URI:         unit.URI,
+		acl = append(acl, &repository.ACLEntry{
+			Uri:         unit,
 			Permissions: []string{"r", "w"},
 		})
 	}
+
+	doc.URI = fixDocumentURI(doc.UUID, doc.URI)
 
 	err = in.validateDocument(doc)
 	if err != nil {
 		return err
 	}
 
-	_, err = in.opt.DocStore.Update(ctx, UpdateRequest{
-		UUID:    doc.UUID,
-		Created: evt.Created,
-		Updater: cd.Updater,
+	_, err = in.opt.API.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID.String(),
+		Document: DocumentToRPC(&doc),
 		Meta: DataMap{
 			"oc-source":  evt.UUID,
 			"oc-version": strconv.Itoa(evt.Content.Version),
 			"oc-event":   strconv.Itoa(evt.ID),
 		},
-		Document: &doc,
-		Status:   status,
-		ACL:      acl,
+		Status: status,
+		Acl:    acl,
+		ImportDirective: &repository.ImportDirective{
+			OriginallyCreated: evt.Created.Format(time.RFC3339),
+			OriginalCreator:   cd.Creator,
+		},
 	})
 	if err != nil {
-		return fmt.Errorf("failed to store update: %w", err)
+		in.opt.Logger.WithContext(ctx).WithFields(logrus.Fields{
+			"document_uuid": docUUID.String(),
+			"oc-source":     evt.UUID,
+			"oc-version":    strconv.Itoa(evt.Content.Version),
+			"oc-event":      strconv.Itoa(evt.ID),
+		}).Errorf("failed to store update: %v", err)
 	}
 
 	return nil
+}
+
+func fixDocumentURI(docUuid, uri string) string {
+	if uri == "core://article/" {
+		return "core://article/" + docUuid
+	}
+
+	segs := strings.Split(uri, "/")
+	base := segs[len(segs)-1]
+
+	validUUID, err := uuid.Parse(base)
+	if err != nil {
+		return uri
+	}
+
+	if validUUID.String() != docUuid {
+		segs[len(segs)-1] = docUuid
+
+		return strings.Join(segs, "/")
+	}
+
+	return uri
 }
 
 func (in *Ingester) validateDocument(doc Document) error {
@@ -542,15 +612,9 @@ func (in *Ingester) ccaImport(ctx context.Context, evt OCLogEvent) (*ConvertedDo
 		case "irel:previousVersion":
 			out.ReplacesUUID = append(out.ReplacesUUID, link.UUID)
 		case "updater":
-			out.Updater = IdentityReference{
-				Name: link.Title,
-				URI:  link.URI,
-			}
+			out.Updater = link.URI
 		case "creator":
-			out.Creator = IdentityReference{
-				Name: link.Title,
-				URI:  link.URI,
-			}
+			out.Creator = link.URI
 
 			unit, ok := unitReference(link)
 			if ok {
@@ -568,24 +632,22 @@ func (in *Ingester) ccaImport(ctx context.Context, evt OCLogEvent) (*ConvertedDo
 	return &out, nil
 }
 
-func sharedWithUnit(link navigadoc.Block) (IdentityReference, bool) {
+func sharedWithUnit(link navigadoc.Block) (string, bool) {
 	for _, u := range link.Links {
 		if u.Type != "x-imid/unit" ||
 			u.Rel != "shared-with" {
 			continue
 		}
 
-		return IdentityReference{
-			Name: u.Title,
-			URI: strings.Replace(u.URI,
-				"imid://unit/", "core://unit/", 1),
-		}, true
+		return strings.Replace(u.URI,
+			"imid://unit/", "core://unit/", 1,
+		), true
 	}
 
-	return IdentityReference{}, false
+	return "", false
 }
 
-func unitReference(link navigadoc.Block) (IdentityReference, bool) {
+func unitReference(link navigadoc.Block) (string, bool) {
 	for _, l := range link.Links {
 		if l.Type != "x-imid/organisation" ||
 			l.Rel != "affiliation" {
@@ -598,25 +660,23 @@ func unitReference(link navigadoc.Block) (IdentityReference, bool) {
 				continue
 			}
 
-			return IdentityReference{
-				Name: u.Title,
-				URI: strings.Replace(u.URI,
-					"imid://unit/", "core://unit/", 1),
-			}, true
+			return strings.Replace(u.URI,
+				"imid://unit/", "core://unit/", 1,
+			), true
 		}
 	}
 
-	return IdentityReference{}, false
+	return "", false
 }
 
 func (in *Ingester) checkStatus(
 	ctx context.Context, status string,
-) ([]StatusUpdate, error) {
+) ([]*repository.StatusUpdate, error) {
 	if status == "draft" {
 		return nil, nil
 	}
 
-	return []StatusUpdate{
+	return []*repository.StatusUpdate{
 		{Name: status},
 	}, nil
 }

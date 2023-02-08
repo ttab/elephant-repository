@@ -12,7 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/schollz/progressbar/v3"
+	"github.com/sirupsen/logrus"
 	"github.com/ttab/docformat"
 	"github.com/ttab/docformat/private/cmd"
 	"github.com/urfave/cli/v2"
@@ -20,125 +22,120 @@ import (
 )
 
 func main() {
+	convertCCACommand := cli.Command{
+		Name:        "cca-document",
+		Description: "Converts a CCA document",
+		Action:      convertCcaAction,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "url",
+				Value: "https://cca-eu-west-1.saas-prod.infomaker.io",
+			},
+			&cli.StringFlag{
+				Name:     "uuid",
+				Required: true,
+			},
+			&cli.IntFlag{
+				Name: "version",
+			},
+			&cli.StringFlag{
+				Name:     "token",
+				Required: true,
+				EnvVars: []string{
+					"NAVIGA_BEARER_TOKEN",
+				},
+			},
+			&cli.StringFlag{
+				Name:  "state-dir",
+				Value: "state",
+			},
+		},
+	}
+
+	ingestCommand := cli.Command{
+		Name:        "ingest",
+		Description: "Imports documents using the content log",
+		Action:      ingestAction,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "cca-url",
+				Value: "https://cca-eu-west-1.saas-stage.infomaker.io",
+			},
+			&cli.StringFlag{
+				Name:  "oc-url",
+				Value: "https://xlibris.editorial.stage.oc.tt.infomaker.io:7777",
+			},
+			&cli.StringFlag{
+				Name:     "token",
+				Required: true,
+				EnvVars: []string{
+					"NAVIGA_BEARER_TOKEN",
+				},
+			},
+			&cli.StringFlag{
+				Name:  "state-dir",
+				Value: "state",
+			},
+			&cli.StringFlag{
+				Name:  "default-lang",
+				Value: "sv",
+			},
+			&cli.IntFlag{
+				Name: "start-pos",
+			},
+			&cli.BoolFlag{
+				Name:    "tail",
+				Aliases: []string{"f"},
+			},
+			&cli.BoolFlag{
+				Name:  "ui",
+				Usage: "Enable web ui",
+			},
+			&cli.StringFlag{
+				Name:  "addr",
+				Value: "127.0.0.1:1080",
+			},
+			&cli.BoolFlag{
+				Name:  "replacements",
+				Usage: "Preload replacements",
+			},
+		},
+	}
+
+	ingestCommand.Flags = append(ingestCommand.Flags, cmd.BackendFlags()...)
+
+	webUICommand := cli.Command{
+		Name:        "ui",
+		Description: "Serve a web UI",
+		Action:      webUIAction,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "addr",
+				Value: "127.0.0.1:1080",
+			},
+			&cli.StringFlag{
+				Name:  "oc-url",
+				Value: "https://xlibris.editorial.stage.oc.tt.infomaker.io:7777",
+			},
+			&cli.StringFlag{
+				Name:     "token",
+				Required: true,
+				EnvVars: []string{
+					"NAVIGA_BEARER_TOKEN",
+				},
+			},
+		},
+	}
+
+	webUICommand.Flags = append(webUICommand.Flags, cmd.BackendFlags()...)
+
 	app := &cli.App{
 		Name:  "docformat",
 		Usage: "work with document data",
 		Commands: []*cli.Command{
-			{
-				Name:        "cca-document",
-				Description: "Converts a CCA document",
-				Action:      convertCCA,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:  "url",
-						Value: "https://cca-eu-west-1.saas-prod.infomaker.io",
-					},
-					&cli.StringFlag{
-						Name:     "uuid",
-						Required: true,
-					},
-					&cli.IntFlag{
-						Name: "version",
-					},
-					&cli.StringFlag{
-						Name:     "token",
-						Required: true,
-						EnvVars: []string{
-							"NAVIGA_BEARER_TOKEN",
-						},
-					},
-					&cli.StringFlag{
-						Name:  "state-dir",
-						Value: "state",
-					},
-				},
-			},
-			{
-				Name:        "ingest",
-				Description: "Imports documents using the content log",
-				Action:      ingestCommand,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:  "cca-url",
-						Value: "https://cca-eu-west-1.saas-stage.infomaker.io",
-					},
-					&cli.StringFlag{
-						Name:  "oc-url",
-						Value: "https://xlibris.editorial.stage.oc.tt.infomaker.io:7777",
-					},
-					&cli.StringFlag{
-						Name:     "token",
-						Required: true,
-						EnvVars: []string{
-							"NAVIGA_BEARER_TOKEN",
-						},
-					},
-					&cli.StringFlag{
-						Name:  "state-dir",
-						Value: "state",
-					},
-					&cli.StringFlag{
-						Name:  "default-lang",
-						Value: "sv",
-					},
-					&cli.IntFlag{
-						Name: "start-pos",
-					},
-					&cli.BoolFlag{
-						Name:    "tail",
-						Aliases: []string{"f"},
-					},
-					&cli.BoolFlag{
-						Name:  "ui",
-						Usage: "Enable web ui",
-					},
-					&cli.StringFlag{
-						Name:  "addr",
-						Value: "127.0.0.1:1080",
-					},
-					&cli.BoolFlag{
-						Name:  "replacements",
-						Usage: "Preload replacements",
-					},
-				},
-			},
-			{
-				Name:        "index",
-				Description: "re-index documents",
-				Action:      indexCommand,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:  "state-dir",
-						Value: "state",
-					},
-				},
-			},
-			{
-				Name:        "ui",
-				Description: "Serve a web UI",
-				Action:      webUICommand,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:  "state-dir",
-						Value: "state",
-					},
-					&cli.StringFlag{
-						Name:  "addr",
-						Value: "127.0.0.1:1080",
-					},
-					&cli.StringFlag{
-						Name:  "oc-url",
-						Value: "https://xlibris.editorial.stage.oc.tt.infomaker.io:7777",
-					},
-					&cli.StringFlag{
-						Name:     "token",
-						Required: true,
-						EnvVars: []string{
-							"NAVIGA_BEARER_TOKEN",
-						},
-					},
-				},
-			},
+			&convertCCACommand,
+			&ingestCommand,
+			&webUICommand,
 		},
 	}
 
@@ -148,23 +145,19 @@ func main() {
 	}
 }
 
-func webUICommand(c *cli.Context) error {
+func webUIAction(c *cli.Context) error {
 	var (
-		stateDir = c.String("state-dir")
-		addr     = c.String("addr")
-		ocURL    = c.String("oc-url")
-		token    = c.String("token")
+		addr  = c.String("addr")
+		ocURL = c.String("oc-url")
+		token = c.String("token")
+		conf  = cmd.BackendConfigFromContext(c)
 	)
 
-	docDir := filepath.Join(stateDir, "data", "documents")
-	indexPath := filepath.Join(stateDir, "data", "index.bleve")
-
-	index, err := docformat.NewSearchIndex(indexPath)
+	dbpool, err := pgxpool.New(context.Background(), conf.DB)
 	if err != nil {
-		return fmt.Errorf("failed to create search index: %w", err)
+		return fmt.Errorf("unable to create connection pool: %w", err)
 	}
-
-	store := docformat.NewFSDocStore(docDir, index)
+	defer dbpool.Close()
 
 	client := &http.Client{
 		Transport: docformat.TransportWithToken{
@@ -173,9 +166,9 @@ func webUICommand(c *cli.Context) error {
 		},
 	}
 
-	validator, err := cmd.DefaultValidator()
+	store, err := docformat.NewPGDocStore(dbpool)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create doc store: %w", err)
 	}
 
 	oc, err := docformat.NewOCClient(client, ocURL)
@@ -184,43 +177,11 @@ func webUICommand(c *cli.Context) error {
 	}
 
 	return docformat.RunServer(c.Context, addr,
-		docformat.WithUIServer(store, index, oc),
-		docformat.WithAPIServer(nil, store, validator),
+		docformat.WithUIServer(store, oc),
 	)
 }
 
-func indexCommand(c *cli.Context) error {
-	var (
-		stateDir = c.String("state-dir")
-	)
-
-	docDir := filepath.Join(stateDir, "data", "documents")
-	indexPath := filepath.Join(stateDir, "data", "index.bleve")
-
-	index, err := docformat.NewSearchIndex(indexPath)
-	if err != nil {
-		return fmt.Errorf("failed to create search index: %w", err)
-	}
-
-	bar := progressbar.Default(-1, "indexing")
-	doneChan := make(chan string)
-
-	defer close(doneChan)
-
-	go func() {
-		for range doneChan {
-			_ = bar.Add(1)
-		}
-
-		_ = bar.Finish()
-	}()
-
-	store := docformat.NewFSDocStore(docDir, index)
-
-	return store.ReIndex(doneChan)
-}
-
-func ingestCommand(c *cli.Context) error {
+func ingestAction(c *cli.Context) error {
 	var (
 		ccaURL           = c.String("cca-url")
 		ocURL            = c.String("oc-url")
@@ -232,17 +193,27 @@ func ingestCommand(c *cli.Context) error {
 		ui               = c.Bool("ui")
 		addr             = c.String("addr")
 		loadReplacements = c.Bool("replacements")
+		conf             = cmd.BackendConfigFromContext(c)
 	)
 
-	docDir := filepath.Join(stateDir, "data", "documents")
 	stateDB := filepath.Join(stateDir, "data", "state.db")
-	indexPath := filepath.Join(stateDir, "data", "index.bleve")
 	blocklistPath := filepath.Join(stateDir, "blocklist.txt")
 	cacheDir := filepath.Join(stateDir, "cache")
 
 	db, err := docformat.NewBadgerStore(stateDB)
 	if err != nil {
 		return fmt.Errorf("failed to create badger store: %w", err)
+	}
+
+	dbpool, err := pgxpool.New(context.Background(), conf.DB)
+	if err != nil {
+		return fmt.Errorf("unable to create connection pool: %w", err)
+	}
+	defer dbpool.Close()
+
+	store, err := docformat.NewPGDocStore(dbpool)
+	if err != nil {
+		return fmt.Errorf("failed to create doc store: %w", err)
 	}
 
 	if startPos != 0 {
@@ -259,11 +230,6 @@ func ingestCommand(c *cli.Context) error {
 		}
 
 		startPos = pos
-	}
-
-	index, err := docformat.NewSearchIndex(indexPath)
-	if err != nil {
-		return fmt.Errorf("failed to create search index: %w", err)
 	}
 
 	client := &http.Client{
@@ -293,11 +259,6 @@ func ingestCommand(c *cli.Context) error {
 	blocklist, err := docformat.BlocklistFromFile(blocklistPath)
 	if err != nil {
 		return fmt.Errorf("failed to load blocklist: %w", err)
-	}
-
-	validator, err := cmd.DefaultValidator()
-	if err != nil {
-		return err
 	}
 
 	lastEvent, err := oc.GetEventLog(context.Background(), -1)
@@ -360,7 +321,15 @@ func ingestCommand(c *cli.Context) error {
 	propFSCache := docformat.NewFSCache(filepath.Join(cacheDir, "properties"))
 	cachedProps := docformat.NewPropertyCache(propFSCache, oc)
 
+	validator, err := cmd.DefaultValidator()
+	if err != nil {
+		return err
+	}
+
+	apiServer := docformat.NewAPIServer(store, validator)
+
 	opts := docformat.IngestOptions{
+		Logger:          logrus.New(),
 		DefaultLanguage: lang,
 		Identity:        db,
 		LogPos:          db,
@@ -368,7 +337,7 @@ func ingestCommand(c *cli.Context) error {
 		GetDocument:     cachedGet,
 		Objects:         oc,
 		OCProps:         cachedProps,
-		DocStore:        docformat.NewFSDocStore(docDir, index),
+		API:             apiServer,
 		Blocklist:       blocklist,
 		Validator:       validator,
 		Done:            doneChan,
@@ -390,8 +359,7 @@ func ingestCommand(c *cli.Context) error {
 	if ui {
 		group.Go(func() error {
 			return docformat.RunServer(c.Context, addr,
-				docformat.WithUIServer(opts.DocStore, index, oc),
-				docformat.WithAPIServer(nil, opts.DocStore, validator),
+				docformat.WithUIServer(store, oc),
 			)
 		})
 	}
@@ -478,7 +446,7 @@ func preloadReplacements(ctx context.Context,
 	return nil
 }
 
-func convertCCA(c *cli.Context) error {
+func convertCcaAction(c *cli.Context) error {
 	var (
 		baseURL = c.String("cca-url")
 		uuid    = c.String("uuid")

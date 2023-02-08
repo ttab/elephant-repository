@@ -7,12 +7,18 @@ create table document(
        creator_uri text not null,
        updated timestamptz not null,
        updater_uri text not null,
-       current_version bigint not null
+       current_version bigint not null,
+       deleting bool not null default false
 );
 
+CREATE INDEX document_deleting
+ON document (created)
+WHERE deleting = true;
+
 create table delete_record(
-       id int generated always as identity primary key,
+       id bigint generated always as identity primary key,
        uuid uuid not null,
+       uri text not null,
        version bigint not null,
        created timestamptz not null,
        creator_uri text not null,
@@ -20,6 +26,25 @@ create table delete_record(
 );
 
 create index delete_record_uuid_idx on delete_record(uuid);
+
+create function delete_document
+(
+        in uuid uuid,
+        in uri text,
+        in record_id bigint
+)
+returns void
+language sql
+as $$
+   delete from document where uuid = delete_document.uuid;
+
+   insert into document(
+          uuid, uri, created, creator_uri, updated, updater_uri,
+          current_version, deleting
+   ) values (
+     uuid, uri, now(), '', now(), '', record_id, true
+   );
+$$;
 
 -- Should we model document links in the RDBMs? We would gain referential
 -- integrity, but do we really need that? I guess that we could go for just
@@ -29,6 +54,7 @@ create table document_link(
        version bigint not null,
        to_document uuid not null,
        rel text,
+       type text,
        primary key(from_document, to_document),
        foreign key(from_document) references document(uuid)
                on delete cascade,
@@ -42,18 +68,23 @@ create table document_version(
        uuid uuid not null,
        uri text not null,
        version bigint not null,
-       title text not null,
+       title text,
        type text not null,
-       language text not null,
+       language text,
        created timestamptz not null,
        creator_uri text not null,
        meta jsonb default null,
        document_data jsonb,
-       archived bool not null,
+       archived bool not null default false,
+       signature text,
        primary key(uuid, version),
        foreign key(uuid) references document(uuid)
                on delete cascade
 );
+
+CREATE INDEX document_version_archived
+ON document_version (created)
+WHERE archived = false;
 
 create function create_version
 (
@@ -100,10 +131,17 @@ create table document_status(
        created timestamptz not null,
        creator_uri text not null,
        meta jsonb default null,
+       archived bool not null default false,
+       signature text,
        primary key(uuid, name, id),
        foreign key(uuid) references document(uuid)
                on delete cascade
 );
+
+-- TODO: Check if these indexes are effective
+CREATE INDEX document_status_archived
+ON document_status (created)
+WHERE archived = false;
 
 create table status_heads(
        uuid uuid not null,
@@ -159,6 +197,11 @@ create table acl(
                on delete cascade
 );
 
+create table signing_keys(
+       kid text primary key,
+       spec jsonb not null
+);
+
 create publication eventlog
 for table document, status_heads, delete_record, acl;
 
@@ -167,13 +210,19 @@ for table document, status_heads, delete_record, acl;
 drop publication eventlog;
 drop function create_version(
      uuid, bigint, timestamptz, text, jsonb, jsonb);
+drop function delete_document(
+     uuid, text, bigint);
 drop function create_status(
      uuid, varchar(32), bigint, bigint, timestamptz, text, jsonb);
+drop table signing_keys;
 drop index document_link_rel_idx;
 drop table document_link;
+drop index document_version_archived;
 drop table document_version;
 drop table status_heads;
+drop index document_status_archived;
 drop table document_status;
 drop table delete_record;
 drop table acl;
+drop index document_deleting;
 drop table document;

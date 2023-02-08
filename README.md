@@ -2,21 +2,49 @@
 
 Local application meant for exploring DAWROC data format conversion.
 
-Executable entrypoint in cmd/docformat.
+Executable entrypoints in cmd/docformat and cmd/repository.
 
-## Running
+TODO: UI is in a broken state at the moment, prioritised getting Postgres store right.
 
-Set `NAVIGA_BEARER_TOKEN` to the value of the "dev-imidToken" (your session cookie when logged in to [Dashboard](https://tt.stage.dashboard.infomaker.io/)) cookie and start ingest using:
+## Preparing the environment
+
+Follow the instructions to get the database up and running. Then start minio as well, and log into http://localhost:9001/ using minioadmin/minioadmin. Go to "Access Keys" and create an access key for use in the ".env" file.
+
+Create a ".env" file containing the following values:
+
+```
+S3_ENDPOINT=http://localhost:9000/
+S3_ACCESS_KEY_ID=[your access key]
+S3_ACCESS_KEY_SECRET=[your access key secret]
+JWT_SIGNING_KEY='MIGkAgEBBDAgdjcifmVXiJoQh7IbTnsCS81CxYHQ1r6ftXE6ykJDz1SoQJEB6LppaCLpNBJhGNugBwYFK4EEACKhZANiAAS4LqvuFUwFXUNpCPTtgeMy61hE-Pdm57OVzTaVKUz7GzzPKNoGbcTllPGDg7nzXIga9ObRNs8ytSLQMOWIO8xJW35Xko4kwPR_CVsTS5oMaoYnBCOZYEO2NXND7gU7GoM'
+```
+
+I load this environment file using `export $(cat .env | xargs)`.
+
+The server will generate and log a JWT signing key if it's missing from the environment.
+
+## Running ingester
+
+Set `NAVIGA_BEARER_TOKEN` to the value of the "dev-imidToken" (your session cookie when logged in to [Dashboard](https://tt.stage.dashboard.infomaker.io/)) cookie and start ingest like so:
 
 ``` shell
-go run ./cmd/docformat ingest --state-dir ../docformat.data
+export NAVIGA_BEARER_TOKEN=[your cookie value]
+go run ./cmd/docformat ingest --state-dir ../localstate/docformat.data
 ```
 
 Pass in `--start-pos=-5000` to start from the last 5000 events, or an exact event number to start after.
 
 Pass in `--ui` to start a web UI on ":1080", pass in f.ex. `--addr 1026.30.32:8080` if you want to start the listener on a different port or interface.
 
-### Running against production
+## Running the repository server
+
+The repository server runs the API, archiver, and replicator. If your environment has been set up correctly (env vars, postgres, and minio) you should be able to run it like this:
+
+``` shell
+go run ./cmd/repository run
+```
+
+### Running ingester against production
 
 Use the imidToken cookie instead, and set
 
@@ -37,7 +65,7 @@ Run `make proto` to re-generate code based on the protobuf declaration. This wil
 
 ``` shell
 curl --request POST \
-  --url http://localhost:1080/twirp/elephant.repository.Documents/Get \
+  --url http://localhost:1337/twirp/elephant.repository.Documents/Get \
   --header 'Content-Type: application/json' \
   --data '{
 	"uuid": "8090ff79-030e-419b-952e-12917cfdaaac"
@@ -50,7 +78,7 @@ Here you can specify `version` to fetch a specific version, or `status` to fetch
 
 ``` shell
 curl --request POST \
-  --url http://localhost:1080/twirp/elephant.repository.Documents/GetMeta \
+  --url http://localhost:1337/twirp/elephant.repository.Documents/GetMeta \
   --header 'Content-Type: application/json' \
   --data '{
 	"uuid": "8090ff79-030e-419b-952e-12917cfdaaac"
@@ -89,9 +117,43 @@ TODO: Currently the implementation just logs the events, but the plan is for it 
 
 ### Archiving data
 
-TODO: The repository will have an archiving subsystem that records all document changes to a S3 compatible store. We will use this fact to be able to purge document data from old versions in the database. 
+The repository has an archiving subsystem that records all document changes (versions and statuses) to a S3 compatible store. TODO: We will use this fact to be able to purge document data from old versions in the database.
 
-TODO: Archiving will also be used to support the delete functionality. A delete request will acquire a row lock for the document, and then wait for it to be fully archived. The next step is to move the archived data to another bucket (or prefix) and delete the document from the database. Lifecyc
+TODO: The archiver doesn't use any form of concurrency at the moment, so expect it to start lagging behind if the system is put on a write load above 1 op/s.
+
+#### Signing
+
+The repository maintains a set of ECDSA P-384 signing keys that are used to sign
+archived objects. The signature is an ASN1 signature of the sha256 hash of the
+marshalled data of the archive object. The format of a signature string looks
+like this:
+
+```
+v1.[key ID].[sha256 hash as raw URL base64].[signature as raw URL base64]
+```
+
+The signature is set as the metadata header "X-Amz-Meta-Elephant-Signature" on
+the S3 object itself. After the object has been archived the database row is
+updated with `archived=true` and the `signature`.
+
+Status and version archive objects contain the signature of their parents to
+create a signature chain that can be verified.
+
+The reason that signing has to be done during archiving is that the jsonb data type isn't guaranteed to be byte stable. Verifying signatures on the archive objects is straightforward, verifying signatures for the database would have to be done by verifying the signature for the archive signature, and then verifying that the data in the database is "logically" equivalent to the archive data.
+
+Signing keys are used for 180 days, a new signing key will be created and published 30 days before it's taken into use.
+
+#### Fetching signing keys
+
+TODO: Not implemented yet, the idea is to borrow heavily from JWKS and to that end the internal `SigningKey` data struct is based on a JWK key spec.
+
+#### Deletes
+
+Archiving is used to support the delete functionality. A delete request will acquire a row lock for the document, and then wait for its versions and statuses to be fully archived. It then creates a delete_record with information about the delete, and deletes the document row to replace it with a `deleting` placeholder. From the clients' standpoint the delete is now finished. But no reads of, or updates to the document are allowed until the delete has been finalised by an archiver. The reason that the archiver is responsible for finalising the delete is that we then can ensure that the database and S3 archive are consistent. Otherwise we would be forced to manage error handling and consistency across a db transaction and the object store.
+
+The archiver looks for documents with pending deletes and then moves the objects from the "documents/[uuid]" prefix to a "deleted/[uuid]/[delete record id]" prefix in the bucket. Once the move is complete the document row is deleted, and the only thing that remains is the delete_record and the archived objects.
+
+#### TODO: Restoring from archive
 
 ## Some starting points
 

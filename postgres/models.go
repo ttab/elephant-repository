@@ -18,8 +18,9 @@ type Acl struct {
 }
 
 type DeleteRecord struct {
-	ID         int32
+	ID         int64
 	Uuid       uuid.UUID
+	Uri        string
 	Version    int64
 	Created    pgtype.Timestamptz
 	CreatorUri string
@@ -34,6 +35,7 @@ type Document struct {
 	Updated        pgtype.Timestamptz
 	UpdaterUri     string
 	CurrentVersion int64
+	Deleting       bool
 }
 
 type DocumentLink struct {
@@ -41,6 +43,7 @@ type DocumentLink struct {
 	Version      int64
 	ToDocument   uuid.UUID
 	Rel          pgtype.Text
+	Type         pgtype.Text
 }
 
 type DocumentStatus struct {
@@ -51,24 +54,32 @@ type DocumentStatus struct {
 	Created    pgtype.Timestamptz
 	CreatorUri string
 	Meta       []byte
+	Archived   bool
+	Signature  pgtype.Text
 }
 
 type DocumentVersion struct {
 	Uuid         uuid.UUID
 	Uri          string
 	Version      int64
-	Title        string
+	Title        pgtype.Text
 	Type         string
-	Language     string
+	Language     pgtype.Text
 	Created      pgtype.Timestamptz
 	CreatorUri   string
 	Meta         []byte
 	DocumentData []byte
 	Archived     bool
+	Signature    pgtype.Text
 }
 
 type SchemaVersion struct {
 	Version int32
+}
+
+type SigningKey struct {
+	Kid  string
+	Spec []byte
 }
 
 type StatusHead struct {

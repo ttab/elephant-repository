@@ -22,7 +22,7 @@ func (q *Queries) AcquireTXLock(ctx context.Context, id int64) error {
 }
 
 const createStatus = `-- name: CreateStatus :exec
-select create_status(
+SELECT create_status(
        $1::uuid, $2::varchar(32), $3::bigint, $4::bigint,
        $5::timestamptz, $6::text, $7::jsonb
 )
@@ -52,7 +52,7 @@ func (q *Queries) CreateStatus(ctx context.Context, arg CreateStatusParams) erro
 }
 
 const createVersion = `-- name: CreateVersion :exec
-select create_version(
+SELECT create_version(
        $1::uuid, $2::bigint, $3::timestamptz,
        $4::text, $5::jsonb, $6::jsonb
 )
@@ -77,6 +77,36 @@ func (q *Queries) CreateVersion(ctx context.Context, arg CreateVersionParams) er
 		arg.DocumentData,
 	)
 	return err
+}
+
+const deleteDocument = `-- name: DeleteDocument :exec
+SELECT delete_document(
+       $1::uuid, $2::text, $3::bigint
+)
+`
+
+type DeleteDocumentParams struct {
+	Uuid     uuid.UUID
+	Uri      string
+	RecordID int64
+}
+
+func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) error {
+	_, err := q.db.Exec(ctx, deleteDocument, arg.Uuid, arg.Uri, arg.RecordID)
+	return err
+}
+
+const finaliseDelete = `-- name: FinaliseDelete :execrows
+DELETE FROM document
+WHERE uuid = $1 AND deleting = true
+`
+
+func (q *Queries) FinaliseDelete(ctx context.Context, uuid uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, finaliseDelete, uuid)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getDocumentACL = `-- name: GetDocumentACL :many
@@ -109,8 +139,43 @@ func (q *Queries) GetDocumentACL(ctx context.Context, uuid uuid.UUID) ([]GetDocu
 	return items, nil
 }
 
+const getDocumentData = `-- name: GetDocumentData :one
+SELECT v.document_data
+FROM document as d
+     INNER JOIN document_version AS v ON
+           v.uuid = d.uuid And v.version = d.current_version
+WHERE d.uuid = $1
+`
+
+func (q *Queries) GetDocumentData(ctx context.Context, uuid uuid.UUID) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getDocumentData, uuid)
+	var document_data []byte
+	err := row.Scan(&document_data)
+	return document_data, err
+}
+
+const getDocumentForDeletion = `-- name: GetDocumentForDeletion :one
+SELECT uuid, current_version AS delete_record_id FROM document
+WHERE deleting = true
+ORDER BY created
+FOR UPDATE SKIP LOCKED
+LIMIT 1
+`
+
+type GetDocumentForDeletionRow struct {
+	Uuid           uuid.UUID
+	DeleteRecordID int64
+}
+
+func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDeletionRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentForDeletion)
+	var i GetDocumentForDeletionRow
+	err := row.Scan(&i.Uuid, &i.DeleteRecordID)
+	return i, err
+}
+
 const getDocumentForUpdate = `-- name: GetDocumentForUpdate :one
-SELECT uri, current_version FROM document
+SELECT uri, current_version, deleting FROM document
 WHERE uuid = $1
 FOR UPDATE
 `
@@ -118,18 +183,19 @@ FOR UPDATE
 type GetDocumentForUpdateRow struct {
 	Uri            string
 	CurrentVersion int64
+	Deleting       bool
 }
 
 func (q *Queries) GetDocumentForUpdate(ctx context.Context, uuid uuid.UUID) (GetDocumentForUpdateRow, error) {
 	row := q.db.QueryRow(ctx, getDocumentForUpdate, uuid)
 	var i GetDocumentForUpdateRow
-	err := row.Scan(&i.Uri, &i.CurrentVersion)
+	err := row.Scan(&i.Uri, &i.CurrentVersion, &i.Deleting)
 	return i, err
 }
 
 const getDocumentHeads = `-- name: GetDocumentHeads :many
 SELECT name, id
-FROM status_heads 
+FROM status_heads
 WHERE uuid = $1
 `
 
@@ -158,6 +224,216 @@ func (q *Queries) GetDocumentHeads(ctx context.Context, uuid uuid.UUID) ([]GetDo
 	return items, nil
 }
 
+const getDocumentInfo = `-- name: GetDocumentInfo :one
+SELECT
+        uuid, uri, created, creator_uri, updated, updater_uri, current_version,
+        deleting
+FROM document
+WHERE uuid = $1
+`
+
+func (q *Queries) GetDocumentInfo(ctx context.Context, uuid uuid.UUID) (Document, error) {
+	row := q.db.QueryRow(ctx, getDocumentInfo, uuid)
+	var i Document
+	err := row.Scan(
+		&i.Uuid,
+		&i.Uri,
+		&i.Created,
+		&i.CreatorUri,
+		&i.Updated,
+		&i.UpdaterUri,
+		&i.CurrentVersion,
+		&i.Deleting,
+	)
+	return i, err
+}
+
+const getDocumentStatusForArchiving = `-- name: GetDocumentStatusForArchiving :one
+SELECT
+        s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
+        p.signature AS parent_signature, v.signature AS version_signature
+FROM document_status AS s
+     INNER JOIN document_version AS v
+           ON v.uuid = s.uuid
+              AND v.version = s.version
+              AND v.signature IS NOT NULL
+     LEFT JOIN document_status AS p
+          ON p.uuid = s.uuid AND p.name = s.name AND p.id = s.id-1
+WHERE s.archived = false
+AND (s.id = 1 OR p.archived = true)
+ORDER BY s.created
+FOR UPDATE OF s SKIP LOCKED
+LIMIT 1
+`
+
+type GetDocumentStatusForArchivingRow struct {
+	Uuid             uuid.UUID
+	Name             string
+	ID               int64
+	Version          int64
+	Created          pgtype.Timestamptz
+	CreatorUri       string
+	Meta             []byte
+	ParentSignature  pgtype.Text
+	VersionSignature pgtype.Text
+}
+
+func (q *Queries) GetDocumentStatusForArchiving(ctx context.Context) (GetDocumentStatusForArchivingRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentStatusForArchiving)
+	var i GetDocumentStatusForArchivingRow
+	err := row.Scan(
+		&i.Uuid,
+		&i.Name,
+		&i.ID,
+		&i.Version,
+		&i.Created,
+		&i.CreatorUri,
+		&i.Meta,
+		&i.ParentSignature,
+		&i.VersionSignature,
+	)
+	return i, err
+}
+
+const getDocumentUnarchivedCount = `-- name: GetDocumentUnarchivedCount :one
+SELECT SUM(num) FROM (
+       SELECT COUNT(*) as num
+              FROM document_status AS s
+              WHERE s.uuid = $1 AND s.archived = false
+       UNION
+       SELECT COUNT(*) as num
+              FROM document_version AS v
+              WHERE v.uuid = $1 AND v.archived = false
+) AS unarchived
+`
+
+func (q *Queries) GetDocumentUnarchivedCount(ctx context.Context, uuid uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getDocumentUnarchivedCount, uuid)
+	var sum int64
+	err := row.Scan(&sum)
+	return sum, err
+}
+
+const getDocumentVersionData = `-- name: GetDocumentVersionData :one
+SELECT document_data
+FROM document_version
+WHERE uuid = $1 AND version = $2
+`
+
+type GetDocumentVersionDataParams struct {
+	Uuid    uuid.UUID
+	Version int64
+}
+
+func (q *Queries) GetDocumentVersionData(ctx context.Context, arg GetDocumentVersionDataParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getDocumentVersionData, arg.Uuid, arg.Version)
+	var document_data []byte
+	err := row.Scan(&document_data)
+	return document_data, err
+}
+
+const getDocumentVersionForArchiving = `-- name: GetDocumentVersionForArchiving :one
+SELECT
+        v.uuid, v.version, v.created, v.creator_uri, v.meta, v.document_data,
+        p.signature AS parent_signature
+FROM document_version AS v
+     LEFT JOIN document_version AS p
+          ON p.uuid = v.uuid AND p.version = v.version-1
+WHERE v.archived = false
+AND (v.version = 1 OR p.archived = true)
+ORDER BY v.created
+FOR UPDATE OF v SKIP LOCKED
+LIMIT 1
+`
+
+type GetDocumentVersionForArchivingRow struct {
+	Uuid            uuid.UUID
+	Version         int64
+	Created         pgtype.Timestamptz
+	CreatorUri      string
+	Meta            []byte
+	DocumentData    []byte
+	ParentSignature pgtype.Text
+}
+
+func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context) (GetDocumentVersionForArchivingRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentVersionForArchiving)
+	var i GetDocumentVersionForArchivingRow
+	err := row.Scan(
+		&i.Uuid,
+		&i.Version,
+		&i.Created,
+		&i.CreatorUri,
+		&i.Meta,
+		&i.DocumentData,
+		&i.ParentSignature,
+	)
+	return i, err
+}
+
+const getFullDocumentHeads = `-- name: GetFullDocumentHeads :many
+SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
+       s.archived, s.signature
+FROM status_heads AS h
+     INNER JOIN document_status AS s ON
+           s.uuid = h.uuid AND s.name = h.name AND s.id = h.id
+WHERE h.uuid = $1
+`
+
+func (q *Queries) GetFullDocumentHeads(ctx context.Context, uuid uuid.UUID) ([]DocumentStatus, error) {
+	rows, err := q.db.Query(ctx, getFullDocumentHeads, uuid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DocumentStatus
+	for rows.Next() {
+		var i DocumentStatus
+		if err := rows.Scan(
+			&i.Uuid,
+			&i.Name,
+			&i.ID,
+			&i.Version,
+			&i.Created,
+			&i.CreatorUri,
+			&i.Meta,
+			&i.Archived,
+			&i.Signature,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSigningKeys = `-- name: GetSigningKeys :many
+SELECT kid, spec FROM signing_keys
+`
+
+func (q *Queries) GetSigningKeys(ctx context.Context) ([]SigningKey, error) {
+	rows, err := q.db.Query(ctx, getSigningKeys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SigningKey
+	for rows.Next() {
+		var i SigningKey
+		if err := rows.Scan(&i.Kid, &i.Spec); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getStatuses = `-- name: GetStatuses :many
 SELECT uuid, name, id, version, created, creator_uri, meta
 FROM document_status
@@ -173,7 +449,17 @@ type GetStatusesParams struct {
 	Limit   int32
 }
 
-func (q *Queries) GetStatuses(ctx context.Context, arg GetStatusesParams) ([]DocumentStatus, error) {
+type GetStatusesRow struct {
+	Uuid       uuid.UUID
+	Name       string
+	ID         int64
+	Version    int64
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Meta       []byte
+}
+
+func (q *Queries) GetStatuses(ctx context.Context, arg GetStatusesParams) ([]GetStatusesRow, error) {
 	rows, err := q.db.Query(ctx, getStatuses,
 		arg.Uuid,
 		arg.Name,
@@ -184,9 +470,9 @@ func (q *Queries) GetStatuses(ctx context.Context, arg GetStatusesParams) ([]Doc
 		return nil, err
 	}
 	defer rows.Close()
-	var items []DocumentStatus
+	var items []GetStatusesRow
 	for rows.Next() {
-		var i DocumentStatus
+		var i GetStatusesRow
 		if err := rows.Scan(
 			&i.Uuid,
 			&i.Name,
@@ -206,43 +492,73 @@ func (q *Queries) GetStatuses(ctx context.Context, arg GetStatusesParams) ([]Doc
 	return items, nil
 }
 
+const getVersion = `-- name: GetVersion :one
+SELECT created, creator_uri, meta, archived
+FROM document_version
+WHERE uuid = $1 AND version = $2
+`
+
+type GetVersionParams struct {
+	Uuid    uuid.UUID
+	Version int64
+}
+
+type GetVersionRow struct {
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Meta       []byte
+	Archived   bool
+}
+
+func (q *Queries) GetVersion(ctx context.Context, arg GetVersionParams) (GetVersionRow, error) {
+	row := q.db.QueryRow(ctx, getVersion, arg.Uuid, arg.Version)
+	var i GetVersionRow
+	err := row.Scan(
+		&i.Created,
+		&i.CreatorUri,
+		&i.Meta,
+		&i.Archived,
+	)
+	return i, err
+}
+
 const getVersions = `-- name: GetVersions :many
-SELECT uuid, name, id, version, created, creator_uri, meta
-FROM document_status
-WHERE uuid = $1 AND name = $2 AND ($3 = 0 OR id < $3)
-ORDER BY id DESC
-LIMIT $4
+SELECT version, created, creator_uri, meta, archived
+FROM document_version
+WHERE uuid = $1 AND ($2::bigint = 0 OR version < $2::bigint)
+ORDER BY version DESC
+LIMIT $3
 `
 
 type GetVersionsParams struct {
-	Uuid    uuid.UUID
-	Name    string
-	Column3 interface{}
-	Limit   int32
+	Uuid   uuid.UUID
+	Before int64
+	Count  int32
 }
 
-func (q *Queries) GetVersions(ctx context.Context, arg GetVersionsParams) ([]DocumentStatus, error) {
-	rows, err := q.db.Query(ctx, getVersions,
-		arg.Uuid,
-		arg.Name,
-		arg.Column3,
-		arg.Limit,
-	)
+type GetVersionsRow struct {
+	Version    int64
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Meta       []byte
+	Archived   bool
+}
+
+func (q *Queries) GetVersions(ctx context.Context, arg GetVersionsParams) ([]GetVersionsRow, error) {
+	rows, err := q.db.Query(ctx, getVersions, arg.Uuid, arg.Before, arg.Count)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []DocumentStatus
+	var items []GetVersionsRow
 	for rows.Next() {
-		var i DocumentStatus
+		var i GetVersionsRow
 		if err := rows.Scan(
-			&i.Uuid,
-			&i.Name,
-			&i.ID,
 			&i.Version,
 			&i.Created,
 			&i.CreatorUri,
 			&i.Meta,
+			&i.Archived,
 		); err != nil {
 			return nil, err
 		}
@@ -252,6 +568,51 @@ func (q *Queries) GetVersions(ctx context.Context, arg GetVersionsParams) ([]Doc
 		return nil, err
 	}
 	return items, nil
+}
+
+const insertDeleteRecord = `-- name: InsertDeleteRecord :one
+INSERT INTO delete_record(
+       uuid, uri, version, created, creator_uri, meta
+) VALUES(
+       $1, $2, $3, $4, $5, $6
+) RETURNING id
+`
+
+type InsertDeleteRecordParams struct {
+	Uuid       uuid.UUID
+	Uri        string
+	Version    int64
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Meta       []byte
+}
+
+func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecordParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertDeleteRecord,
+		arg.Uuid,
+		arg.Uri,
+		arg.Version,
+		arg.Created,
+		arg.CreatorUri,
+		arg.Meta,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const insertSigningKey = `-- name: InsertSigningKey :exec
+INSERT INTO signing_keys(kid, spec) VALUES($1, $2)
+`
+
+type InsertSigningKeyParams struct {
+	Kid  string
+	Spec []byte
+}
+
+func (q *Queries) InsertSigningKey(ctx context.Context, arg InsertSigningKeyParams) error {
+	_, err := q.db.Exec(ctx, insertSigningKey, arg.Kid, arg.Spec)
+	return err
 }
 
 const notify = `-- name: Notify :exec
@@ -265,5 +626,39 @@ type NotifyParams struct {
 
 func (q *Queries) Notify(ctx context.Context, arg NotifyParams) error {
 	_, err := q.db.Exec(ctx, notify, arg.Channel, arg.Message)
+	return err
+}
+
+const setDocumentStatusAsArchived = `-- name: SetDocumentStatusAsArchived :exec
+UPDATE document_status
+SET archived = true, signature = $1::text
+WHERE uuid = $2 AND id = $3
+`
+
+type SetDocumentStatusAsArchivedParams struct {
+	Signature string
+	Uuid      uuid.UUID
+	ID        int64
+}
+
+func (q *Queries) SetDocumentStatusAsArchived(ctx context.Context, arg SetDocumentStatusAsArchivedParams) error {
+	_, err := q.db.Exec(ctx, setDocumentStatusAsArchived, arg.Signature, arg.Uuid, arg.ID)
+	return err
+}
+
+const setDocumentVersionAsArchived = `-- name: SetDocumentVersionAsArchived :exec
+UPDATE document_version
+SET archived = true, signature = $1::text
+WHERE uuid = $2 AND version = $3
+`
+
+type SetDocumentVersionAsArchivedParams struct {
+	Signature string
+	Uuid      uuid.UUID
+	Version   int64
+}
+
+func (q *Queries) SetDocumentVersionAsArchived(ctx context.Context, arg SetDocumentVersionAsArchivedParams) error {
+	_, err := q.db.Exec(ctx, setDocumentVersionAsArchived, arg.Signature, arg.Uuid, arg.Version)
 	return err
 }

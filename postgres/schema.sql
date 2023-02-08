@@ -113,6 +113,26 @@ $$;
 
 ALTER FUNCTION public.create_version(uuid uuid, uri text, version bigint, hash bytea, title text, type text, language text, created timestamp with time zone, creator_uri text, meta jsonb, document_data jsonb) OWNER TO repository;
 
+--
+-- Name: delete_document(uuid, text, bigint); Type: FUNCTION; Schema: public; Owner: repository
+--
+
+CREATE FUNCTION public.delete_document(uuid uuid, uri text, record_id bigint) RETURNS void
+    LANGUAGE sql
+    AS $$
+   delete from document where uuid = delete_document.uuid;
+
+   insert into document(
+          uuid, uri, created, creator_uri, updated, updater_uri,
+          current_version, deleting
+   ) values (
+     uuid, uri, now(), '', now(), '', record_id, true
+   );
+$$;
+
+
+ALTER FUNCTION public.delete_document(uuid uuid, uri text, record_id bigint) OWNER TO repository;
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -137,8 +157,9 @@ ALTER TABLE public.acl OWNER TO repository;
 --
 
 CREATE TABLE public.delete_record (
-    id integer NOT NULL,
+    id bigint NOT NULL,
     uuid uuid NOT NULL,
+    uri text NOT NULL,
     version bigint NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
@@ -173,7 +194,8 @@ CREATE TABLE public.document (
     creator_uri text NOT NULL,
     updated timestamp with time zone NOT NULL,
     updater_uri text NOT NULL,
-    current_version bigint NOT NULL
+    current_version bigint NOT NULL,
+    deleting boolean DEFAULT false NOT NULL
 );
 
 
@@ -187,7 +209,8 @@ CREATE TABLE public.document_link (
     from_document uuid NOT NULL,
     version bigint NOT NULL,
     to_document uuid NOT NULL,
-    rel text
+    rel text,
+    type text
 );
 
 
@@ -204,7 +227,9 @@ CREATE TABLE public.document_status (
     version bigint NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
-    meta jsonb
+    meta jsonb,
+    archived boolean DEFAULT false NOT NULL,
+    signature text
 );
 
 
@@ -218,14 +243,15 @@ CREATE TABLE public.document_version (
     uuid uuid NOT NULL,
     uri text NOT NULL,
     version bigint NOT NULL,
-    title text NOT NULL,
+    title text,
     type text NOT NULL,
-    language text NOT NULL,
+    language text,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
     meta jsonb,
     document_data jsonb,
-    archived boolean NOT NULL
+    archived boolean DEFAULT false NOT NULL,
+    signature text
 );
 
 
@@ -241,6 +267,18 @@ CREATE TABLE public.schema_version (
 
 
 ALTER TABLE public.schema_version OWNER TO repository;
+
+--
+-- Name: signing_keys; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.signing_keys (
+    kid text NOT NULL,
+    spec jsonb NOT NULL
+);
+
+
+ALTER TABLE public.signing_keys OWNER TO repository;
 
 --
 -- Name: status_heads; Type: TABLE; Schema: public; Owner: repository
@@ -314,6 +352,14 @@ ALTER TABLE ONLY public.document_version
 
 
 --
+-- Name: signing_keys signing_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.signing_keys
+    ADD CONSTRAINT signing_keys_pkey PRIMARY KEY (kid);
+
+
+--
 -- Name: status_heads status_heads_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -329,10 +375,31 @@ CREATE INDEX delete_record_uuid_idx ON public.delete_record USING btree (uuid);
 
 
 --
+-- Name: document_deleting; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX document_deleting ON public.document USING btree (created) WHERE (deleting = true);
+
+
+--
 -- Name: document_link_rel_idx; Type: INDEX; Schema: public; Owner: repository
 --
 
 CREATE INDEX document_link_rel_idx ON public.document_link USING btree (rel, to_document);
+
+
+--
+-- Name: document_status_archived; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX document_status_archived ON public.document_status USING btree (created) WHERE (archived = false);
+
+
+--
+-- Name: document_version_archived; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX document_version_archived ON public.document_version USING btree (created) WHERE (archived = false);
 
 
 --

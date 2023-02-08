@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/sirupsen/logrus"
 	"github.com/ttab/docformat/postgres"
 )
 
@@ -38,17 +39,45 @@ type Event struct {
 }
 
 type PGReplication struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	dbURI  string
+	logger *logrus.Logger
 }
 
-func NewPGReplication(pool *pgxpool.Pool) *PGReplication {
+func NewPGReplication(
+	logger *logrus.Logger,
+	pool *pgxpool.Pool,
+	dbURI string,
+) *PGReplication {
 	return &PGReplication{
-		pool: pool,
+		pool:   pool,
+		logger: logger,
+		dbURI:  dbURI,
 	}
 }
 
-func (pr *PGReplication) Run(
-	ctx context.Context, dbURI string,
+func (pr *PGReplication) Run(ctx context.Context) {
+	const restartWaitSeconds = 10
+
+	for {
+		err := pr.startReplication(ctx)
+		if err != nil {
+			pr.logger.WithContext(ctx).WithError(err).Errorf(
+				"replication error, restarting in %d seconds",
+				restartWaitSeconds,
+			)
+		}
+
+		select {
+		case <-time.After(restartWaitSeconds * time.Second):
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (pr *PGReplication) startReplication(
+	ctx context.Context,
 ) error {
 	lockTx, err := pr.pool.Begin(ctx)
 	if err != nil {
@@ -64,7 +93,7 @@ func (pr *PGReplication) Run(
 		return fmt.Errorf("failed to acquire replication lock: %w", err)
 	}
 
-	conn, err := pgconn.Connect(ctx, dbURI+"?replication=database")
+	conn, err := pgconn.Connect(ctx, pr.dbURI+"?replication=database")
 	if err != nil {
 		return fmt.Errorf(
 			"failed to create replication connection: %w", err)

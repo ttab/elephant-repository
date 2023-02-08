@@ -5,24 +5,33 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type DocStore interface {
 	GetDocumentMeta(
-		ctx context.Context, uuid string) (*DocumentMeta, error)
+		ctx context.Context, uuid uuid.UUID) (*DocumentMeta, error)
 	GetDocument(
-		ctx context.Context, uuid string, version int64,
+		ctx context.Context, uuid uuid.UUID, version int64,
 	) (*Document, error)
+	GetVersion(
+		ctx context.Context, uuid uuid.UUID, version int64,
+	) (DocumentUpdate, error)
+	GetVersionHistory(
+		ctx context.Context, uuid uuid.UUID,
+		before int64, count int,
+	) ([]DocumentUpdate, error)
 	Update(
 		ctx context.Context, update UpdateRequest,
 	) (*DocumentUpdate, error)
-	Delete(ctx context.Context, uuid string) error
+	Delete(ctx context.Context, req DeleteRequest) error
 }
 
 type UpdateRequest struct {
-	UUID     string
-	Created  time.Time
-	Updater  IdentityReference
+	UUID     uuid.UUID
+	Updated  time.Time
+	Updater  string
 	Meta     DataMap
 	ACL      []ACLEntry
 	Status   []StatusUpdate
@@ -30,14 +39,21 @@ type UpdateRequest struct {
 	IfMatch  int64
 }
 
+type DeleteRequest struct {
+	UUID    uuid.UUID
+	Updated time.Time
+	Updater string
+	Meta    DataMap
+	IfMatch int64
+}
+
 type DocumentMeta struct {
 	Created        time.Time
 	Modified       time.Time
 	CurrentVersion int64
 	ACL            []ACLEntry
-	Updates        []DocumentUpdate
-	Statuses       map[string][]Status
-	Deleted        bool
+	Statuses       map[string]Status
+	Deleting       bool
 }
 
 type ACLEntry struct {
@@ -47,21 +63,16 @@ type ACLEntry struct {
 }
 
 type DocumentUpdate struct {
-	Version       int64
-	Updater       IdentityReference
-	Created       time.Time
-	Meta          DataMap
-	SchemaVersion int
-}
-
-type IdentityReference struct {
-	URI  string
-	Name string
+	Version int64
+	Creator string
+	Created time.Time
+	Meta    DataMap
 }
 
 type Status struct {
+	ID      int64
 	Version int64
-	Updater IdentityReference
+	Creator string
 	Created time.Time
 	Meta    DataMap
 }
@@ -78,6 +89,7 @@ const (
 	NoErrCode             DocStoreErrorCode = ""
 	ErrCodeNotFound       DocStoreErrorCode = "not-found"
 	ErrCodeOptimisticLock DocStoreErrorCode = "optimistic-lock"
+	ErrCodeDeleteLock     DocStoreErrorCode = "delete-lock"
 	ErrCodeBadRequest     DocStoreErrorCode = "bad-request"
 )
 

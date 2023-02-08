@@ -13,7 +13,20 @@ import (
 type JWTClaims struct {
 	jwt.RegisteredClaims
 
-	Name string `json:"sub_name"`
+	Name  string `json:"sub_name"`
+	Scope string `json:"scope"`
+}
+
+func (c JWTClaims) HasScope(s string) bool {
+	set := strings.Split(s, " ")
+
+	for i := range set {
+		if set[i] == s {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (c JWTClaims) Valid() error {

@@ -30,12 +30,60 @@ func NewAPIServer(store DocStore, validator *revisor.Validator) *APIServer {
 var _ repository.Documents = &APIServer{}
 
 // Delete implements repository.Documents
-func (*APIServer) Delete(context.Context, *repository.DeleteDocumentRequest) (*repository.DeleteDocumentResponse, error) {
-	return nil, twirp.Unimplemented.Error("not implemented yet")
+func (a *APIServer) Delete(
+	ctx context.Context, req *repository.DeleteDocumentRequest,
+) (*repository.DeleteDocumentResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("doc_delete") {
+		return nil, twirp.PermissionDenied.Error(
+			"no delete permission")
+	}
+
+	if req.IfMatch < -1 {
+		return nil, twirp.InvalidArgumentError("if_match",
+			"cannot be less than -1")
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.store.Delete(ctx, DeleteRequest{
+		UUID:    docUUID,
+		Updated: time.Now(),
+		Updater: auth.Claims.Subject,
+		Meta:    req.Meta,
+		IfMatch: req.IfMatch,
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to delete document from data store: %w", err)
+	}
+
+	return &repository.DeleteDocumentResponse{}, nil
 }
 
 // Get implements repository.Documents
-func (a *APIServer) Get(ctx context.Context, req *repository.GetDocumentRequest) (*repository.GetDocumentResponse, error) {
+func (a *APIServer) Get(
+	ctx context.Context, req *repository.GetDocumentRequest,
+) (*repository.GetDocumentResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("doc_read") {
+		return nil, twirp.PermissionDenied.Error(
+			"no read permission")
+	}
+
 	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
 	if err != nil {
 		return nil, err
@@ -47,7 +95,8 @@ func (a *APIServer) Get(ctx context.Context, req *repository.GetDocumentRequest)
 	}
 
 	if req.Lock {
-		return nil, twirp.Unimplemented.Error("locking is not implemented yet")
+		return nil, twirp.Unimplemented.Error(
+			"locking is not implemented yet")
 	}
 
 	if req.Version > 0 && req.Status != "" {
@@ -55,6 +104,7 @@ func (a *APIServer) Get(ctx context.Context, req *repository.GetDocumentRequest)
 			"status cannot be specified together with a version")
 	}
 
+	// TODO: This is a bit wasteful to request for all document loads.
 	meta, err := a.store.GetDocumentMeta(ctx, docUUID)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, twirp.NotFoundError("the document doesn't exist")
@@ -63,19 +113,24 @@ func (a *APIServer) Get(ctx context.Context, req *repository.GetDocumentRequest)
 			"failed to load document metadata: %w", err)
 	}
 
+	if meta.Deleting {
+		return nil, twirp.FailedPrecondition.Error(
+			"document is being deleted")
+	}
+
 	var version int64
 
 	switch {
 	case req.Version > 0:
 		version = req.Version
 	case req.Status != "":
-		count := len(meta.Statuses[req.Status])
-		if count == 0 {
+		status, ok := meta.Statuses[req.Status]
+		if !ok {
 			return nil, twirp.NotFoundError(
 				"no such status set for the document")
 		}
 
-		version = meta.Statuses[req.Status][count-1].Version
+		version = status.Version
 		if version == -1 {
 			return nil, twirp.NotFoundError(
 				"no such status set for the document")
@@ -102,6 +157,17 @@ func (a *APIServer) Get(ctx context.Context, req *repository.GetDocumentRequest)
 func (a *APIServer) GetHistory(
 	ctx context.Context, req *repository.GetHistoryRequest,
 ) (*repository.GetHistoryResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("doc_read") {
+		return nil, twirp.PermissionDenied.Error(
+			"no read permission")
+	}
+
 	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
 	if err != nil {
 		return nil, err
@@ -112,42 +178,42 @@ func (a *APIServer) GetHistory(
 			"cannot be non-zero and less that 2")
 	}
 
-	meta, err := a.store.GetDocumentMeta(ctx, docUUID)
+	history, err := a.store.GetVersionHistory(
+		ctx, docUUID, req.Before, 10,
+	)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, twirp.NotFoundError("the document doesn't exist")
 	}
 
-	start := req.Before - 1
-	if start < 0 {
-		start = meta.Updates[len(meta.Updates)-1].Version
-	}
-
 	var res repository.GetHistoryResponse
 
-	for i := len(meta.Updates) - 1; i >= 0; i-- {
-		if meta.Updates[i].Version > start {
-			continue
-		}
-
-		up := meta.Updates[i]
-
+	for _, up := range history {
 		res.Versions = append(res.Versions, &repository.DocumentVersion{
-			Version: int64(up.Version),
+			Version: up.Version,
 			Created: up.Created.Format(time.RFC3339),
-			Creator: IdentityReferenceToRPC(up.Updater),
+			Creator: up.Creator,
 			Meta:    up.Meta,
 		})
-
-		if len(res.Versions) == 10 {
-			break
-		}
 	}
 
 	return &res, nil
 }
 
 // GetMeta implements repository.Documents
-func (a *APIServer) GetMeta(ctx context.Context, req *repository.GetMetaRequest) (*repository.GetMetaResponse, error) {
+func (a *APIServer) GetMeta(
+	ctx context.Context, req *repository.GetMetaRequest,
+) (*repository.GetMetaResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("doc_read") {
+		return nil, twirp.PermissionDenied.Error(
+			"no read permission")
+	}
+
 	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
 	if err != nil {
 		return nil, err
@@ -164,27 +230,20 @@ func (a *APIServer) GetMeta(ctx context.Context, req *repository.GetMetaRequest)
 		CurrentVersion: int64(meta.CurrentVersion),
 	}
 
-	for status := range meta.Statuses {
-		if len(meta.Statuses[status]) == 0 {
-			continue
-		}
-
+	for name, head := range meta.Statuses {
 		if resp.Heads == nil {
 			resp.Heads = make(map[string]*repository.Status)
 		}
 
-		statusCount := len(meta.Statuses[status])
-		head := meta.Statuses[status][statusCount-1]
-
 		s := repository.Status{
-			Id:      int64(statusCount),
-			Version: int64(head.Version),
-			Creator: IdentityReferenceToRPC(head.Updater),
+			Id:      head.ID,
+			Version: head.Version,
+			Creator: head.Creator,
 			Created: head.Created.Format(time.RFC3339),
 			Meta:    head.Meta,
 		}
 
-		resp.Heads[status] = &s
+		resp.Heads[name] = &s
 	}
 
 	for _, acl := range meta.ACL {
@@ -200,23 +259,39 @@ func (a *APIServer) GetMeta(ctx context.Context, req *repository.GetMetaRequest)
 	}, nil
 }
 
-func validateRequiredUUIDParam(v string, name string) (string, error) {
+func validateRequiredUUIDParam(v string, name string) (uuid.UUID, error) {
 	if v == "" {
-		return "", twirp.RequiredArgumentError(name)
+		return uuid.Nil, twirp.RequiredArgumentError(name)
 	}
 
 	u, err := uuid.Parse(v)
 	if err != nil {
-		return "", twirp.InvalidArgumentError(name, err.Error())
+		return uuid.Nil, twirp.InvalidArgumentError(name, err.Error())
 	}
 
-	return u.String(), nil
+	return u, nil
 }
 
 // Update implements repository.Documents
 func (a *APIServer) Update(
 	ctx context.Context, req *repository.UpdateRequest,
 ) (*repository.UpdateResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("doc_write") {
+		return nil, twirp.PermissionDenied.Error(
+			"no write permission")
+	}
+
+	if req.ImportDirective != nil && !auth.Claims.HasScope("import_direcive") {
+		return nil, twirp.PermissionDenied.Error(
+			"no import directive permission")
+	}
+
 	if req.Document == nil && len(req.Status) == 0 && len(req.Acl) == 0 {
 		return nil, twirp.InvalidArgumentError(
 			"document",
@@ -234,8 +309,8 @@ func (a *APIServer) Update(
 	}
 
 	if req.Document != nil && req.Document.Uuid == "" {
-		req.Document.Uuid = docUUID
-	} else if req.Document != nil && req.Document.Uuid != docUUID {
+		req.Document.Uuid = docUUID.String()
+	} else if req.Document != nil && req.Document.Uuid != docUUID.String() {
 		return nil, twirp.InvalidArgumentError("document.uuid",
 			"the document must have the same UUID as the request uuid")
 	}
@@ -274,10 +349,33 @@ func (a *APIServer) Update(
 		}
 	}
 
+	updater := auth.Claims.Subject
+	updated := time.Now()
+
+	if req.ImportDirective != nil {
+		id := req.ImportDirective
+
+		if id.OriginalCreator != "" {
+			updater = req.ImportDirective.OriginalCreator
+		}
+
+		if id.OriginallyCreated != "" {
+			t, err := time.Parse(time.RFC3339, id.OriginallyCreated)
+			if err != nil {
+				return nil, twirp.InvalidArgumentError(
+					"import_directive.originally_created",
+					fmt.Sprintf("invalid date: %v", err),
+				)
+			}
+
+			updated = t
+		}
+	}
+
 	doc := RPCToDocument(req.Document)
 
 	if doc != nil {
-		doc.UUID = docUUID
+		doc.UUID = docUUID.String()
 
 		validationResult, err := a.validateDocument(*doc)
 		if err != nil {
@@ -303,12 +401,9 @@ func (a *APIServer) Update(
 	}
 
 	up := UpdateRequest{
-		UUID:    docUUID,
-		Created: time.Now(),
-		Updater: IdentityReference{
-			URI:  "core://user/fakesson",
-			Name: "Fake McFakesson",
-		},
+		UUID:     docUUID,
+		Updated:  updated,
+		Updater:  updater,
 		Meta:     req.Meta,
 		Status:   RPCToStatusUpdate(req.Status),
 		Document: doc,
@@ -324,10 +419,13 @@ func (a *APIServer) Update(
 	}
 
 	res, err := a.store.Update(ctx, up)
+	// TODO: generic docstore-to-twirp error translation is needed
 	if IsDocStoreErrorCode(err, ErrCodeOptimisticLock) {
 		return nil, twirp.FailedPrecondition.Error(err.Error())
 	} else if IsDocStoreErrorCode(err, ErrCodeBadRequest) {
-		return nil, twirp.InvalidArgument.Error(err.Error())
+		return nil, twirp.InvalidArgumentError("document", err.Error())
+	} else if IsDocStoreErrorCode(err, ErrCodeDeleteLock) {
+		return nil, twirp.FailedPrecondition.Error(err.Error())
 	} else if err != nil {
 		return nil, twirp.InternalErrorf(
 			"failed to update document: %w", err)
@@ -384,7 +482,20 @@ func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {
 }
 
 // UpdatePermissions implements repository.Documents
-func (*APIServer) UpdatePermissions(context.Context, *repository.UpdatePermissionsRequest) (*repository.UpdatePermissionsResponse, error) {
+func (*APIServer) UpdatePermissions(
+	ctx context.Context, req *repository.UpdatePermissionsRequest,
+) (*repository.UpdatePermissionsResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("doc_write") {
+		return nil, twirp.PermissionDenied.Error(
+			"no write permission")
+	}
+
 	return nil, twirp.Unimplemented.Error("not implemented yet")
 }
 
@@ -426,20 +537,6 @@ func RPCToStatusUpdate(update []*repository.StatusUpdate) []StatusUpdate {
 	}
 
 	return out
-}
-
-func IdentityReferenceToRPC(ref IdentityReference) *repository.IdentityReference {
-	return &repository.IdentityReference{
-		Uri:  ref.URI,
-		Name: ref.Name,
-	}
-}
-
-func RPCToIdentityReference(ref *repository.IdentityReference) IdentityReference {
-	return IdentityReference{
-		URI:  ref.Uri,
-		Name: ref.Name,
-	}
 }
 
 func DocumentToRPC(doc *Document) *repository.Document {

@@ -1,6 +1,6 @@
 module github.com/ttab/docformat
 
-go 1.19
+go 1.20
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.17.3
@@ -11,9 +11,7 @@ require (
 	github.com/dgraph-io/badger/v3 v3.2103.5
 	github.com/golang-jwt/jwt/v4 v4.4.3
 	github.com/google/uuid v1.3.0
-	github.com/jackc/pgconn v1.13.0
 	github.com/jackc/pglogrepl v0.0.0-20221125161640-1e972958ba03
-	github.com/jackc/pgproto3 v1.1.0
 	github.com/jackc/pgx/v5 v5.2.0
 	github.com/jackc/tern v1.13.0
 	github.com/julienschmidt/httprouter v1.3.0
@@ -21,10 +19,25 @@ require (
 	github.com/navigacontentlab/navigadoc v0.1.2
 	github.com/navigacontentlab/revisor v0.1.0
 	github.com/schollz/progressbar/v3 v3.12.2
+	github.com/stretchr/testify v1.8.1
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.23.7
 	golang.org/x/sync v0.1.0
 	google.golang.org/protobuf v1.28.1
+)
+
+require (
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0 // indirect
+	github.com/goccy/go-json v0.9.11 // indirect
+	github.com/jackc/pgconn v1.13.0 // indirect
+	github.com/lestrrat-go/blackmagic v1.0.1 // indirect
+	github.com/lestrrat-go/httpcc v1.0.1 // indirect
+	github.com/lestrrat-go/httprc v1.0.4 // indirect
+	github.com/lestrrat-go/iter v1.0.2 // indirect
+	github.com/lestrrat-go/jwx/v2 v2.0.8 // indirect
+	github.com/lestrrat-go/option v1.0.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/rakutentech/jwk-go v1.1.2 // indirect
 )
 
 require (
@@ -69,7 +82,7 @@ require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/cubicdaiya/gonp v1.0.4 // indirect
 	github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
@@ -83,7 +96,6 @@ require (
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/imdario/mergo v0.3.9 // indirect
 	github.com/inconshreveable/mousetrap v1.0.1 // indirect
-	github.com/jackc/chunkreader v1.0.0 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -109,6 +121,7 @@ require (
 	github.com/rivo/uniseg v0.4.3 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.6.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/vaughan0/go-ini v0.0.0-20130923145212-a98ad7ee00ec // indirect

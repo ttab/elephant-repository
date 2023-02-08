@@ -174,15 +174,9 @@ func assignmentImport(
 	for _, link := range assignment.Links {
 		switch link.Rel {
 		case "updater":
-			out.Updater = IdentityReference{
-				Name: link.Title,
-				URI:  link.URI,
-			}
+			out.Updater = link.URI
 		case "creator":
-			out.Creator = IdentityReference{
-				Name: link.Title,
-				URI:  link.URI,
-			}
+			out.Creator = link.URI
 
 			unit, ok := newsMLUnitReference(link)
 			if ok {
@@ -244,7 +238,7 @@ func parseGranularTime(
 	return t.UTC(), t.Format("2006-01-02"), granularity, nil
 }
 
-func newsMLUnitReference(link NMLBlock) (IdentityReference, bool) {
+func newsMLUnitReference(link NMLBlock) (string, bool) {
 	for _, l := range link.Links {
 		if l.Type != "x-imid/organisation" ||
 			l.Rel != "affiliation" {
@@ -257,13 +251,11 @@ func newsMLUnitReference(link NMLBlock) (IdentityReference, bool) {
 				continue
 			}
 
-			return IdentityReference{
-				Name: u.Title,
-				URI: strings.Replace(u.URI,
-					"imid://unit/", "core://unit/", 1),
-			}, true
+			return strings.Replace(u.URI,
+				"imid://unit/", "core://unit/", 1,
+			), true
 		}
 	}
 
-	return IdentityReference{}, false
+	return "", false
 }

@@ -6,7 +6,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/x509"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,8 +22,9 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
-	"github.com/navigacontentlab/revisor"
+	"github.com/sirupsen/logrus"
 	"github.com/ttab/docformat/rpc/repository"
 	"github.com/twitchtv/twirp"
 )
@@ -91,23 +94,24 @@ func RunServer(
 
 type ServerOption func(router *httprouter.Router) error
 
-func WithUIServer(store DocStore, index *SearchIndex, oc *OCClient) ServerOption {
+func WithUIServer(store DocStore, oc *OCClient) ServerOption {
 	return func(router *httprouter.Router) error {
-		return uiServer(router, store, index, oc)
+		return uiServer(router, store, oc)
 	}
 }
 
 func WithAPIServer(
-	jwtKey *ecdsa.PrivateKey, store DocStore, validator *revisor.Validator,
+	logger *logrus.Logger,
+	jwtKey *ecdsa.PrivateKey, server repository.Documents,
 ) ServerOption {
 	return func(router *httprouter.Router) error {
-		return apiServer(router, jwtKey, store, validator)
+		return apiServer(logger, router, jwtKey, server)
 	}
 }
 
 func uiServer(
 	router *httprouter.Router,
-	store DocStore, index *SearchIndex, oc *OCClient,
+	store DocStore, oc *OCClient,
 ) error {
 	tFuncs := template.New("").Funcs(template.FuncMap{
 		"json": func(o any) string {
@@ -153,13 +157,8 @@ func uiServer(
 			query = "title:*"
 		}
 
-		hits, err := index.Search(query)
-		if err != nil {
-			renderErrorPage(w, err)
-			return
-		}
-
-		data.Hits = hits
+		// TODO: new solution
+		data.Hits = []SearchHit{}
 
 		_ = templates.ExecuteTemplate(w, "index.html", data)
 	})
@@ -167,22 +166,18 @@ func uiServer(
 	router.GET("/document/:uuid/", func(
 		w http.ResponseWriter, r *http.Request, ps httprouter.Params,
 	) {
-		uuid := ps.ByName("uuid")
-
-		data := DocumentPageData{
-			Title: fmt.Sprintf("Document %s", uuid),
-			UUID:  uuid,
-		}
-
-		fields, err := index.Fields(data.UUID)
+		uuid, err := uuid.Parse(ps.ByName("uuid"))
 		if err != nil {
 			renderErrorPage(w, err)
 			return
 		}
 
-		data.Fields = fields
+		data := DocumentPageData{
+			Title: fmt.Sprintf("Document %s", uuid),
+			UUID:  uuid.String(),
+		}
 
-		doc, err := store.GetDocumentMeta(r.Context(), data.UUID)
+		doc, err := store.GetDocumentMeta(r.Context(), uuid)
 		if err != nil {
 			renderErrorPage(w, err)
 			return
@@ -196,8 +191,14 @@ func uiServer(
 	router.GET("/document/:uuid/:version/", func(
 		w http.ResponseWriter, r *http.Request, ps httprouter.Params,
 	) {
+		uuid, err := uuid.Parse(ps.ByName("uuid"))
+		if err != nil {
+			renderErrorPage(w, err)
+			return
+		}
+
 		data := VersionPageData{
-			UUID: ps.ByName("uuid"),
+			UUID: uuid.String(),
 		}
 
 		version, err := strconv.ParseInt(ps.ByName("version"), 10, 64)
@@ -210,7 +211,7 @@ func uiServer(
 		data.Version = version
 
 		doc, err := store.GetDocument(r.Context(),
-			data.UUID, data.Version)
+			uuid, data.Version)
 		if err != nil {
 			renderErrorPage(w, err)
 			return
@@ -263,7 +264,11 @@ func uiServer(
 	router.GET("/document/:uuid/:version/document", func(
 		w http.ResponseWriter, r *http.Request, ps httprouter.Params,
 	) {
-		uuid := ps.ByName("uuid")
+		uuid, err := uuid.Parse(ps.ByName("uuid"))
+		if err != nil {
+			renderErrorPage(w, err)
+			return
+		}
 
 		version, err := strconv.ParseInt(ps.ByName("version"), 10, 64)
 		if err != nil {
@@ -290,7 +295,11 @@ func uiServer(
 	router.GET("/document/:uuid/:version/newsml", func(
 		w http.ResponseWriter, r *http.Request, ps httprouter.Params,
 	) {
-		uuid := ps.ByName("uuid")
+		uuid, err := uuid.Parse(ps.ByName("uuid"))
+		if err != nil {
+			renderErrorPage(w, err)
+			return
+		}
 
 		version, err := strconv.ParseInt(ps.ByName("version"), 10, 64)
 		if err != nil {
@@ -299,28 +308,23 @@ func uiServer(
 			return
 		}
 
-		meta, err := store.GetDocumentMeta(r.Context(), uuid)
+		vInfo, err := store.GetVersion(r.Context(), uuid, version)
 		if err != nil {
 			renderErrorPage(w, fmt.Errorf(
-				"failed to load metadata: %w", err))
+				"failed to get version information: %w", err))
 			return
 		}
 
-		var (
-			ocUUID    string
-			ocVersion int
-		)
+		if vInfo.Meta == nil || vInfo.Meta["oc-source"] == "" {
+			renderErrorPage(w, errors.New("not a OC document"))
+			return
+		}
 
-		for _, u := range meta.Updates {
-			if u.Version != version {
-				continue
-			}
+		ocUUID := vInfo.Meta["oc-source"]
 
-			ocUUID = u.Meta["oc-source"]
-
-			if ocv, ok := u.Meta["oc-version"]; ok {
-				ocVersion, _ = strconv.Atoi(ocv)
-			}
+		var ocVersion int
+		if ocv, ok := vInfo.Meta["oc-version"]; ok {
+			ocVersion, _ = strconv.Atoi(ocv)
 		}
 
 		resp, err := oc.GetRawObject(r.Context(), ocUUID, ocVersion)
@@ -362,8 +366,9 @@ func uiServer(
 }
 
 func apiServer(
+	logger *logrus.Logger,
 	router *httprouter.Router, jwtKey *ecdsa.PrivateKey,
-	store DocStore, validator *revisor.Validator,
+	server repository.Documents,
 ) error {
 	if jwtKey == nil {
 		var err error
@@ -372,10 +377,21 @@ func apiServer(
 		if err != nil {
 			return fmt.Errorf("failed to generate key: %w", err)
 		}
+
+		keyData, err := x509.MarshalECPrivateKey(jwtKey)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to marshal private key: %w", err)
+		}
+
+		logger.WithField(
+			"key", base64.RawURLEncoding.EncodeToString(keyData),
+		).Warn(
+			"running with temporary signing key for JWTs, tokens won't be valid across intances or restarts")
 	}
 
 	api := repository.NewDocumentsServer(
-		NewAPIServer(store, validator),
+		server,
 		twirp.WithServerJSONSkipDefaults(true),
 		twirp.WithServerHooks(&twirp.ServerHooks{
 			RequestReceived: func(
@@ -434,6 +450,8 @@ func apiServer(
 				"missing 'username'")
 		}
 
+		scope := form.Get("scope")
+
 		name, uriPart, ok := strings.Cut(username, " <")
 		if !ok || !strings.HasSuffix(uriPart, ">") {
 			return HTTPErrorf(http.StatusBadRequest,
@@ -450,7 +468,8 @@ func apiServer(
 				Issuer:  "test",
 				Subject: subURI,
 			},
-			Name: name,
+			Name:  name,
+			Scope: scope,
 		}
 
 		token := jwt.NewWithClaims(jwt.SigningMethodES384, claims)

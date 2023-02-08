@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -162,25 +161,19 @@ func (si SearchIndex) IndexDocument(meta DocumentMeta, doc Document) error {
 	flat.Add("uri", doc.Language)
 	flat.Add("url", doc.Language)
 	flat.Add("language", doc.Language)
-	flat.Add("deleted", strconv.FormatBool(meta.Deleted))
-	flat.Add("modified", meta.Updates[0].Created.Format(time.RFC3339))
+	flat.Add("modified", meta.Modified.Format(time.RFC3339))
 
 	var (
 		lastStatusName string
 		lastStatus     Status
 	)
 
-	for name, list := range meta.Statuses {
-		if len(list) == 0 {
-			continue
-		}
-
+	for name, head := range meta.Statuses {
 		flat.Add("status", name)
-		flat.Add(name+".count", len(list))
 
-		if list[len(list)-1].Created.After(lastStatus.Created) {
+		if head.Created.After(lastStatus.Created) {
 			lastStatusName = name
-			lastStatus = list[len(list)-1]
+			lastStatus = head
 		}
 	}
 
@@ -188,12 +181,7 @@ func (si SearchIndex) IndexDocument(meta DocumentMeta, doc Document) error {
 
 	updaters := make(map[string]bool)
 
-	for _, rev := range meta.Updates {
-		updaters[rev.Updater.Name] = true
-		flat.Add("modified", rev.Created.Format(time.RFC3339))
-	}
-
-	flat.Add("versions.count", len(meta.Updates))
+	flat.Add("versions.count", meta.CurrentVersion)
 
 	for name := range updaters {
 		flat.Add("updater", name)
