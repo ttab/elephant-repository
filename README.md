@@ -8,7 +8,7 @@ TODO: UI is in a broken state at the moment, prioritised getting Postgres store 
 
 ## Preparing the environment
 
-Follow the instructions to get the database up and running. Then start minio as well, and log into http://localhost:9001/ using minioadmin/minioadmin. Go to "Access Keys" and create an access key for use in the ".env" file.
+Follow [the instructions](#the-database) to get the database up and running. Then start minio as well, and log into http://localhost:9001/ using minioadmin/minioadmin. Go to "Access Keys" and create an access key for use in the ".env" file.
 
 Create a ".env" file containing the following values:
 
