@@ -18,7 +18,7 @@ type JWTClaims struct {
 }
 
 func (c JWTClaims) HasScope(s string) bool {
-	set := strings.Split(s, " ")
+	set := strings.Split(c.Scope, " ")
 
 	for i := range set {
 		if set[i] == s {

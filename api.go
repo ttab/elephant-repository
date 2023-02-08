@@ -287,7 +287,7 @@ func (a *APIServer) Update(
 			"no write permission")
 	}
 
-	if req.ImportDirective != nil && !auth.Claims.HasScope("import_direcive") {
+	if req.ImportDirective != nil && !auth.Claims.HasScope("import_directive") {
 		return nil, twirp.PermissionDenied.Error(
 			"no import directive permission")
 	}
