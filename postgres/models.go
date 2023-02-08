@@ -12,9 +12,16 @@ import (
 type Acl struct {
 	Uuid        uuid.UUID
 	Uri         string
-	Created     pgtype.Timestamptz
-	CreatorUri  string
 	Permissions pgtype.Array[string]
+}
+
+type AclAudit struct {
+	ID         int64
+	Uuid       uuid.UUID
+	Updated    pgtype.Timestamptz
+	UpdaterUri string
+	State      []byte
+	Archived   bool
 }
 
 type DeleteRecord struct {

@@ -13,16 +13,31 @@ import (
 type JWTClaims struct {
 	jwt.RegisteredClaims
 
-	Name  string `json:"sub_name"`
-	Scope string `json:"scope"`
+	Name  string   `json:"sub_name"`
+	Scope string   `json:"scope"`
+	Units []string `json:"units,omitempty"`
 }
 
-func (c JWTClaims) HasScope(s string) bool {
-	set := strings.Split(c.Scope, " ")
+func (c JWTClaims) HasScope(name string) bool {
+	scopes := strings.Split(c.Scope, " ")
 
-	for i := range set {
-		if set[i] == s {
+	for i := range scopes {
+		if scopes[i] == name {
 			return true
+		}
+	}
+
+	return false
+}
+
+func (c JWTClaims) HasAnyScope(names ...string) bool {
+	scopes := strings.Split(c.Scope, " ")
+
+	for i := range scopes {
+		for j := range names {
+			if scopes[i] == names[j] {
+				return true
+			}
 		}
 	}
 

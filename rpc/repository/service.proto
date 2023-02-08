@@ -11,7 +11,6 @@ service Documents {
   rpc Validate(ValidateRequest) returns (ValidateResponse);
   rpc Delete(DeleteDocumentRequest) returns (DeleteDocumentResponse);
   rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
-  rpc UpdatePermissions(UpdatePermissionsRequest) returns (UpdatePermissionsResponse);
 }
 
 message GetDocumentRequest {
@@ -140,10 +139,10 @@ message StatusUpdate {
 }
 
 message UpdatePermissionsRequest {
+  // UUID of the document to update permissions for.
+  string uuid = 1;
   // Set (upsert based on URI) this list of ACL entries. 
-  repeated ACLEntry set = 1;
-  // Drop ACL entries with the specified URIs 
-  repeated string drop = 2;
+  repeated ACLEntry list = 2;
 }
 
 message UpdatePermissionsResponse {}
@@ -200,10 +199,8 @@ message Status {
 message ACLEntry {
   // URI that identifies the party that's granted access.
   string uri = 1;
-  // Name of the grantee.
-  string name = 2;
   // Permissions given to the grantee.
-  repeated string permissions = 3;
+  repeated string permissions = 2;
 }
 
 // Document is the content

@@ -21,6 +21,28 @@ func (q *Queries) AcquireTXLock(ctx context.Context, id int64) error {
 	return err
 }
 
+const checkPermission = `-- name: CheckPermission :one
+SELECT (acl.uri IS NOT NULL) = true AS has_access
+FROM document AS d
+     LEFT JOIN acl
+          ON acl.uuid = d.uuid AND acl.uri = ANY($1::text[])
+          AND $2::text = ANY(permissions)
+WHERE d.uuid = $3
+`
+
+type CheckPermissionParams struct {
+	Uri        pgtype.Array[string]
+	Permission string
+	Uuid       uuid.UUID
+}
+
+func (q *Queries) CheckPermission(ctx context.Context, arg CheckPermissionParams) (bool, error) {
+	row := q.db.QueryRow(ctx, checkPermission, arg.Uri, arg.Permission, arg.Uuid)
+	var has_access bool
+	err := row.Scan(&has_access)
+	return has_access, err
+}
+
 const createStatus = `-- name: CreateStatus :exec
 SELECT create_status(
        $1::uuid, $2::varchar(32), $3::bigint, $4::bigint,
@@ -96,6 +118,20 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 	return err
 }
 
+const dropACL = `-- name: DropACL :exec
+DELETE FROM acl WHERE uuid = $1 AND uri = $2
+`
+
+type DropACLParams struct {
+	Uuid uuid.UUID
+	Uri  string
+}
+
+func (q *Queries) DropACL(ctx context.Context, arg DropACLParams) error {
+	_, err := q.db.Exec(ctx, dropACL, arg.Uuid, arg.Uri)
+	return err
+}
+
 const finaliseDelete = `-- name: FinaliseDelete :execrows
 DELETE FROM document
 WHERE uuid = $1 AND deleting = true
@@ -113,21 +149,15 @@ const getDocumentACL = `-- name: GetDocumentACL :many
 SELECT uuid, uri, permissions FROM acl WHERE uuid = $1
 `
 
-type GetDocumentACLRow struct {
-	Uuid        uuid.UUID
-	Uri         string
-	Permissions pgtype.Array[string]
-}
-
-func (q *Queries) GetDocumentACL(ctx context.Context, uuid uuid.UUID) ([]GetDocumentACLRow, error) {
+func (q *Queries) GetDocumentACL(ctx context.Context, uuid uuid.UUID) ([]Acl, error) {
 	rows, err := q.db.Query(ctx, getDocumentACL, uuid)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetDocumentACLRow
+	var items []Acl
 	for rows.Next() {
-		var i GetDocumentACLRow
+		var i Acl
 		if err := rows.Scan(&i.Uuid, &i.Uri, &i.Permissions); err != nil {
 			return nil, err
 		}
@@ -568,6 +598,59 @@ func (q *Queries) GetVersions(ctx context.Context, arg GetVersionsParams) ([]Get
 		return nil, err
 	}
 	return items, nil
+}
+
+const granteesWithPermission = `-- name: GranteesWithPermission :many
+SELECT uri
+FROM acl
+WHERE uuid = $1
+      AND $2::text = ANY(permissions)
+`
+
+type GranteesWithPermissionParams struct {
+	Uuid       uuid.UUID
+	Permission string
+}
+
+func (q *Queries) GranteesWithPermission(ctx context.Context, arg GranteesWithPermissionParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, granteesWithPermission, arg.Uuid, arg.Permission)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var uri string
+		if err := rows.Scan(&uri); err != nil {
+			return nil, err
+		}
+		items = append(items, uri)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const insertACLAuditEntry = `-- name: InsertACLAuditEntry :exec
+INSERT INTO acl_audit(uuid, updated, updater_uri, state)
+SELECT $1::uuid, $2::timestamptz, $3::text, json_agg(l)
+FROM (
+       SELECT uri, permissions
+       FROM acl
+       WHERE uuid = $1::uuid
+) AS l
+`
+
+type InsertACLAuditEntryParams struct {
+	Uuid       uuid.UUID
+	Updated    pgtype.Timestamptz
+	UpdaterUri string
+}
+
+func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEntryParams) error {
+	_, err := q.db.Exec(ctx, insertACLAuditEntry, arg.Uuid, arg.Updated, arg.UpdaterUri)
+	return err
 }
 
 const insertDeleteRecord = `-- name: InsertDeleteRecord :one

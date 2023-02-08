@@ -154,3 +154,35 @@ SELECT kid, spec FROM signing_keys;
 
 -- name: InsertSigningKey :exec
 INSERT INTO signing_keys(kid, spec) VALUES(@kid, @spec);
+
+-- name: ACLUpdate :batchexec
+INSERT INTO acl(uuid, uri, permissions)
+VALUES (@uuid, @uri, @permissions::text[])
+       ON CONFLICT(uuid, uri) DO UPDATE SET
+          permissions = @permissions::text[];
+
+-- name: DropACL :exec
+DELETE FROM acl WHERE uuid = @uuid AND uri = @uri;
+
+-- name: CheckPermission :one
+SELECT (acl.uri IS NOT NULL) = true AS has_access
+FROM document AS d
+     LEFT JOIN acl
+          ON acl.uuid = d.uuid AND acl.uri = ANY(@uri::text[])
+          AND @permission::text = ANY(permissions)
+WHERE d.uuid = @uuid;
+
+-- name: InsertACLAuditEntry :exec
+INSERT INTO acl_audit(uuid, updated, updater_uri, state)
+SELECT @uuid::uuid, @updated::timestamptz, @updater_uri::text, json_agg(l)
+FROM (
+       SELECT uri, permissions
+       FROM acl
+       WHERE uuid = @uuid::uuid
+) AS l;
+
+-- name: GranteesWithPermission :many
+SELECT uri
+FROM acl
+WHERE uuid = @uuid
+      AND @permission::text = ANY(permissions);

@@ -189,10 +189,19 @@ $$;
 create table acl(
        uuid uuid not null,
        uri text not null,
-       created timestamptz not null,
-       creator_uri text not null,
-       permissions char(1)[] not null,
+       permissions text[] not null,
        primary key(uuid, uri),
+       foreign key(uuid) references document(uuid)
+               on delete cascade
+);
+
+create table acl_audit(
+       id bigint generated always as identity primary key,
+       uuid uuid not null,
+       updated timestamptz not null,
+       updater_uri text not null,
+       state jsonb not null,
+       archived bool not null default false,
        foreign key(uuid) references document(uuid)
                on delete cascade
 );
@@ -224,5 +233,6 @@ drop index document_status_archived;
 drop table document_status;
 drop table delete_record;
 drop table acl;
+drop table acl_audit;
 drop index document_deleting;
 drop table document;

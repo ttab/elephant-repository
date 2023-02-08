@@ -144,13 +144,41 @@ SET default_table_access_method = heap;
 CREATE TABLE public.acl (
     uuid uuid NOT NULL,
     uri text NOT NULL,
-    created timestamp with time zone NOT NULL,
-    creator_uri text NOT NULL,
-    permissions character(1)[] NOT NULL
+    permissions text[] NOT NULL
 );
 
 
 ALTER TABLE public.acl OWNER TO repository;
+
+--
+-- Name: acl_audit; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.acl_audit (
+    id bigint NOT NULL,
+    uuid uuid NOT NULL,
+    updated timestamp with time zone NOT NULL,
+    updater_uri text NOT NULL,
+    state jsonb NOT NULL,
+    archived boolean DEFAULT false NOT NULL
+);
+
+
+ALTER TABLE public.acl_audit OWNER TO repository;
+
+--
+-- Name: acl_audit_id_seq; Type: SEQUENCE; Schema: public; Owner: repository
+--
+
+ALTER TABLE public.acl_audit ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.acl_audit_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
 
 --
 -- Name: delete_record; Type: TABLE; Schema: public; Owner: repository
@@ -296,6 +324,14 @@ CREATE TABLE public.status_heads (
 ALTER TABLE public.status_heads OWNER TO repository;
 
 --
+-- Name: acl_audit acl_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.acl_audit
+    ADD CONSTRAINT acl_audit_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: acl acl_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -400,6 +436,14 @@ CREATE INDEX document_status_archived ON public.document_status USING btree (cre
 --
 
 CREATE INDEX document_version_archived ON public.document_version USING btree (created) WHERE (archived = false);
+
+
+--
+-- Name: acl_audit acl_audit_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.acl_audit
+    ADD CONSTRAINT acl_audit_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
 
 
 --

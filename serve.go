@@ -461,15 +461,21 @@ func apiServer(
 		subURI := strings.TrimSuffix(uriPart, ">")
 		expiresIn := 10 * time.Minute
 
+		sub, units, ok := strings.Cut(subURI, ", ")
+
 		claims := JWTClaims{
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(
 					time.Now().Add(expiresIn)),
 				Issuer:  "test",
-				Subject: subURI,
+				Subject: sub,
 			},
 			Name:  name,
 			Scope: scope,
+		}
+
+		if len(units) > 0 {
+			claims.Units = strings.Split(units, ", ")
 		}
 
 		token := jwt.NewWithClaims(jwt.SigningMethodES384, claims)

@@ -26,17 +26,35 @@ type DocStore interface {
 		ctx context.Context, update UpdateRequest,
 	) (*DocumentUpdate, error)
 	Delete(ctx context.Context, req DeleteRequest) error
+	CheckPermission(
+		ctx context.Context, req CheckPermissionRequest,
+	) (CheckPermissionResult, error)
 }
 
+type CheckPermissionRequest struct {
+	UUID        uuid.UUID
+	GranteeURIs []string
+	Permission  string
+}
+
+type CheckPermissionResult int
+
+const (
+	PermissionCheckDenied = iota
+	PermissionCheckAllowed
+	PermissionCheckNoSuchDocument
+)
+
 type UpdateRequest struct {
-	UUID     uuid.UUID
-	Updated  time.Time
-	Updater  string
-	Meta     DataMap
-	ACL      []ACLEntry
-	Status   []StatusUpdate
-	Document *Document
-	IfMatch  int64
+	UUID       uuid.UUID
+	Updated    time.Time
+	Updater    string
+	Meta       DataMap
+	ACL        []ACLEntry
+	DefaultACL []ACLEntry
+	Status     []StatusUpdate
+	Document   *Document
+	IfMatch    int64
 }
 
 type DeleteRequest struct {
@@ -58,7 +76,6 @@ type DocumentMeta struct {
 
 type ACLEntry struct {
 	URI         string
-	Name        string
 	Permissions []string
 }
 

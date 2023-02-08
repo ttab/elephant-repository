@@ -54,6 +54,28 @@ func (a *APIServer) Delete(
 		return nil, err
 	}
 
+	access, err := a.store.CheckPermission(ctx, CheckPermissionRequest{
+		UUID: docUUID,
+		GranteeURIs: append([]string{auth.Claims.Subject},
+			auth.Claims.Units...),
+		Permission: "w",
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to check document permissions: %w", err)
+	}
+
+	switch access {
+	case PermissionCheckNoSuchDocument:
+		return &repository.DeleteDocumentResponse{}, nil
+	case PermissionCheckAllowed:
+	case PermissionCheckDenied:
+		if !auth.Claims.HasScope("superuser") {
+			return nil, twirp.PermissionDenied.Error(
+				"no write permission for the document")
+		}
+	}
+
 	err = a.store.Delete(ctx, DeleteRequest{
 		UUID:    docUUID,
 		Updated: time.Now(),
@@ -84,11 +106,6 @@ func (a *APIServer) Get(
 			"no read permission")
 	}
 
-	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
-	if err != nil {
-		return nil, err
-	}
-
 	if req.Version < 0 {
 		return nil, twirp.InvalidArgumentError("version",
 			"cannot be a negative number")
@@ -102,6 +119,16 @@ func (a *APIServer) Get(
 	if req.Version > 0 && req.Status != "" {
 		return nil, twirp.InvalidArgumentError("status",
 			"status cannot be specified together with a version")
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.readAccessCheck(ctx, auth, docUUID)
+	if err != nil {
+		return nil, err
 	}
 
 	// TODO: This is a bit wasteful to request for all document loads.
@@ -173,6 +200,11 @@ func (a *APIServer) GetHistory(
 		return nil, err
 	}
 
+	err = a.readAccessCheck(ctx, auth, docUUID)
+	if err != nil {
+		return nil, err
+	}
+
 	if req.Before != 0 && req.Before < 2 {
 		return nil, twirp.InvalidArgumentError("before",
 			"cannot be non-zero and less that 2")
@@ -182,7 +214,7 @@ func (a *APIServer) GetHistory(
 		ctx, docUUID, req.Before, 10,
 	)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-		return nil, twirp.NotFoundError("the document doesn't exist")
+		return nil, twirp.NotFoundError("no such version")
 	}
 
 	var res repository.GetHistoryResponse
@@ -197,6 +229,64 @@ func (a *APIServer) GetHistory(
 	}
 
 	return &res, nil
+}
+
+func (a *APIServer) readAccessCheck(
+	ctx context.Context,
+	auth *AuthInfo, docUUID uuid.UUID,
+) error {
+	access, err := a.store.CheckPermission(ctx, CheckPermissionRequest{
+		UUID: docUUID,
+		GranteeURIs: append([]string{auth.Claims.Subject},
+			auth.Claims.Units...),
+		Permission: "r",
+	})
+	if err != nil {
+		return twirp.InternalErrorf(
+			"failed to check document permissions: %w", err)
+	}
+
+	switch access {
+	case PermissionCheckNoSuchDocument:
+		return twirp.NotFoundError("no such document")
+	case PermissionCheckAllowed:
+	case PermissionCheckDenied:
+		if !auth.Claims.HasScope("superuser") {
+			return twirp.PermissionDenied.Error(
+				"no read permission for the document")
+		}
+	}
+
+	return nil
+}
+
+func (a *APIServer) writeAccessCheck(
+	ctx context.Context,
+	auth *AuthInfo, docUUID uuid.UUID,
+) error {
+	access, err := a.store.CheckPermission(ctx, CheckPermissionRequest{
+		UUID: docUUID,
+		GranteeURIs: append([]string{auth.Claims.Subject},
+			auth.Claims.Units...),
+		Permission: "w",
+	})
+	if err != nil {
+		return twirp.InternalErrorf(
+			"failed to check document permissions: %w", err)
+	}
+
+	switch access {
+	case PermissionCheckNoSuchDocument:
+		return twirp.NotFoundError("no such document")
+	case PermissionCheckAllowed:
+	case PermissionCheckDenied:
+		if !auth.Claims.HasScope("superuser") {
+			return twirp.PermissionDenied.Error(
+				"no write permission for the document")
+		}
+	}
+
+	return nil
 }
 
 // GetMeta implements repository.Documents
@@ -219,9 +309,16 @@ func (a *APIServer) GetMeta(
 		return nil, err
 	}
 
+	err = a.readAccessCheck(ctx, auth, docUUID)
+	if err != nil {
+		return nil, err
+	}
+
 	meta, err := a.store.GetDocumentMeta(ctx, docUUID)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, twirp.NotFoundError("the document doesn't exist")
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to load basic metadata: %w", err)
 	}
 
 	resp := repository.DocumentMeta{
@@ -249,7 +346,6 @@ func (a *APIServer) GetMeta(
 	for _, acl := range meta.ACL {
 		resp.Acl = append(resp.Acl, &repository.ACLEntry{
 			Uri:         acl.URI,
-			Name:        acl.Name,
 			Permissions: acl.Permissions,
 		})
 	}
@@ -347,6 +443,45 @@ func (a *APIServer) Update(
 				fmt.Sprintf("acl.%d", i),
 				"an ACL entry cannot be nil")
 		}
+
+		if e.Uri == "" {
+			return nil, twirp.InvalidArgumentError(
+				fmt.Sprintf("acl.%d.uri", i),
+				"an ACL grantee URI cannot be empty")
+		}
+
+		for _, p := range e.Permissions {
+			// TODO: Should be validated against a list of
+			// acceptable permissions, it's not like
+			// []string{"z",".","k"} is valid.
+			if len(p) != 1 {
+				return nil, twirp.InvalidArgumentError(
+					fmt.Sprintf("acl.%d.permissions", i),
+					"a permission must be a single character")
+			}
+		}
+	}
+
+	access, err := a.store.CheckPermission(ctx, CheckPermissionRequest{
+		UUID: docUUID,
+		GranteeURIs: append([]string{auth.Claims.Subject},
+			auth.Claims.Units...),
+		Permission: "w",
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to check document permissions: %w", err)
+	}
+
+	switch access {
+	case PermissionCheckNoSuchDocument:
+		// Allowed to create documents given a doc_write scope is set
+	case PermissionCheckAllowed:
+	case PermissionCheckDenied:
+		if !auth.Claims.HasScope("superuser") {
+			return nil, twirp.PermissionDenied.Error(
+				"no write permission for the document")
+		}
 	}
 
 	updater := auth.Claims.Subject
@@ -413,8 +548,19 @@ func (a *APIServer) Update(
 	for _, e := range req.Acl {
 		up.ACL = append(up.ACL, ACLEntry{
 			URI:         e.Uri,
-			Name:        e.Name,
 			Permissions: e.Permissions,
+		})
+	}
+
+	up.DefaultACL = append(up.DefaultACL, ACLEntry{
+		URI:         updater,
+		Permissions: []string{"r", "w"},
+	})
+
+	if updater != auth.Claims.Subject {
+		up.DefaultACL = append(up.DefaultACL, ACLEntry{
+			URI:         auth.Claims.Subject,
+			Permissions: []string{"r", "w"},
 		})
 	}
 
@@ -479,24 +625,6 @@ func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {
 	}
 
 	return out
-}
-
-// UpdatePermissions implements repository.Documents
-func (*APIServer) UpdatePermissions(
-	ctx context.Context, req *repository.UpdatePermissionsRequest,
-) (*repository.UpdatePermissionsResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("doc_write") {
-		return nil, twirp.PermissionDenied.Error(
-			"no write permission")
-	}
-
-	return nil, twirp.Unimplemented.Error("not implemented yet")
 }
 
 func (a *APIServer) validateDocument(

@@ -101,14 +101,15 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 		}
 	}
 
-	recordID, err := q.InsertDeleteRecord(ctx, postgres.InsertDeleteRecordParams{
-		Uuid:       req.UUID,
-		Uri:        info.Info.Uri,
-		Version:    info.Info.CurrentVersion,
-		Created:    pgTime(req.Updated),
-		CreatorUri: req.Updater,
-		Meta:       metaJSON,
-	})
+	recordID, err := q.InsertDeleteRecord(ctx,
+		postgres.InsertDeleteRecordParams{
+			Uuid:       req.UUID,
+			Uri:        info.Info.Uri,
+			Version:    info.Info.CurrentVersion,
+			Created:    pgTime(req.Updated),
+			CreatorUri: req.Updater,
+			Meta:       metaJSON,
+		})
 	if err != nil {
 		return fmt.Errorf("failed to create delete record: %w", err)
 	}
@@ -289,6 +290,43 @@ func (s *PGDocStore) GetDocumentMeta(
 	return &meta, nil
 }
 
+// CheckPermission implements DocStore
+func (s *PGDocStore) CheckPermission(
+	ctx context.Context, req CheckPermissionRequest,
+) (CheckPermissionResult, error) {
+	access, err := s.reader.CheckPermission(ctx,
+		postgres.CheckPermissionParams{
+			Uuid:       req.UUID,
+			Uri:        pgStringArray(req.GranteeURIs),
+			Permission: req.Permission,
+		})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PermissionCheckNoSuchDocument, nil
+	} else if err != nil {
+		return PermissionCheckDenied, fmt.Errorf(
+			"failed check acl: %w", err)
+	}
+
+	if !access {
+		return PermissionCheckDenied, nil
+	}
+
+	return PermissionCheckAllowed, nil
+}
+
+func pgStringArray(v []string) pgtype.Array[string] {
+	return pgtype.Array[string]{
+		Elements: v,
+		Valid:    v != nil,
+		Dims: []pgtype.ArrayDimension{
+			{
+				Length:     int32(len(v)),
+				LowerBound: 1,
+			},
+		},
+	}
+}
+
 // Update implements DocStore
 func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*DocumentUpdate, error) {
 	var docJSON, metaJSON []byte
@@ -418,6 +456,17 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 		}
 	}
 
+	updateACL := update.ACL
+
+	if len(updateACL) == 0 && !info.Exists {
+		updateACL = update.DefaultACL
+	}
+
+	err = s.updateACL(ctx, q, update.UUID, updateACL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update ACL: %w", err)
+	}
+
 	// TODO: model links, or should we just skip that? Could a stored
 	// procedure iterate over links instead of us doing the batch thing
 	// here?
@@ -428,6 +477,72 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 	}
 
 	return &up, nil
+}
+
+func (s *PGDocStore) updateACL(
+	ctx context.Context, q *postgres.Queries,
+	docUUID uuid.UUID, updateACL []ACLEntry,
+) error {
+	if len(updateACL) == 0 {
+		return nil
+	}
+
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return errors.New("unauthenticated context")
+	}
+
+	// Batch ACL updates, ACLs with empty permissions are dropped
+	// immediately.
+	var acls []postgres.ACLUpdateParams
+
+	for _, acl := range updateACL {
+		if len(acl.Permissions) == 0 {
+			err := q.DropACL(ctx, postgres.DropACLParams{
+				Uuid: docUUID,
+				Uri:  acl.URI,
+			})
+			if err != nil {
+				return fmt.Errorf(
+					"failed to drop entry for %q: %w",
+					acl.URI, err)
+			}
+
+			continue
+		}
+
+		acls = append(acls, postgres.ACLUpdateParams{
+			Uuid:        docUUID,
+			Uri:         acl.URI,
+			Permissions: pgStringArray(acl.Permissions),
+		})
+	}
+
+	if len(acls) > 0 {
+		var errs []error
+
+		q.ACLUpdate(ctx, acls).Exec(func(_ int, err error) {
+			if err != nil {
+				errs = append(errs, err)
+			}
+		})
+
+		if len(errs) > 0 {
+			return fmt.Errorf("failed to update entries: %w",
+				errors.Join(errs...))
+		}
+	}
+
+	err := q.InsertACLAuditEntry(ctx, postgres.InsertACLAuditEntryParams{
+		Uuid:       docUUID,
+		Updated:    pgTime(time.Now()),
+		UpdaterUri: auth.Claims.Subject,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to record audit trail: %w", err)
+	}
+
+	return nil
 }
 
 type updatePrefligthInfo struct {
