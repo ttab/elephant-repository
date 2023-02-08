@@ -18,6 +18,7 @@ require (
 	github.com/kyleconroy/sqlc v1.16.1-0.20230119081828-f1eef01c0f50
 	github.com/navigacontentlab/navigadoc v0.1.2
 	github.com/navigacontentlab/revisor v0.1.0
+	github.com/rakutentech/jwk-go v1.1.2
 	github.com/schollz/progressbar/v3 v3.12.2
 	github.com/stretchr/testify v1.8.1
 	github.com/twitchtv/twirp v8.1.3+incompatible
@@ -27,17 +28,8 @@ require (
 )
 
 require (
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0 // indirect
-	github.com/goccy/go-json v0.9.11 // indirect
 	github.com/jackc/pgconn v1.13.0 // indirect
-	github.com/lestrrat-go/blackmagic v1.0.1 // indirect
-	github.com/lestrrat-go/httpcc v1.0.1 // indirect
-	github.com/lestrrat-go/httprc v1.0.4 // indirect
-	github.com/lestrrat-go/iter v1.0.2 // indirect
-	github.com/lestrrat-go/jwx/v2 v2.0.8 // indirect
-	github.com/lestrrat-go/option v1.0.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/rakutentech/jwk-go v1.1.2 // indirect
 )
 
 require (
