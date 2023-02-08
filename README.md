@@ -236,17 +236,6 @@ Local search index
 
 Local key-value store database that tracks things like the log position, replaces-relationships, and last known OC versions of documents. 
 
-### data/documents
-
-Document data organised by:
-
-```
-- data/documents
-  - [uuid]
-    - meta.json # Document metadata (versions, statuses, et.c.)
-    - N.json    # the document data for a specific versions
-```
-
 ### cache/documents
 
 Cached documents from CCA
