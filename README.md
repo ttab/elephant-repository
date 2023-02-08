@@ -61,11 +61,41 @@ The API is defined in [service.proto](rpc/repository/service.proto).
 
 Run `make proto` to re-generate code based on the protobuf declaration. This will run in a local docker image (to avoid a dep on local protoc), so it'll take some time to build the first time, but should be quick after that.
 
+### Retrieving a token
+
+The API service has an endpoint for fetching dummy tokens for use with the API.
+
+``` shell
+curl http://localhost:1080/token \
+    -d grant_type=password \
+    -d 'username=Hugo Wetterberg <user://tt/hugo>' \
+    -d 'scope=doc_read doc_write doc_delete'
+```
+
+It's essentially a password-less password grant where you can specify your own permissions and identity.
+
+Example scripting usage:
+
+``` shell
+TOKEN=$(curl -s http://localhost:1080/token \
+    -d grant_type=password \
+    -d 'username=Hugo Wetterberg <user://tt/hugo>' \
+    -d 'scope=doc_read doc_write doc_delete' | jq -r .access_token)
+
+curl --request POST \
+  --url http://localhost:1080/twirp/elephant.repository.Documents/Get \
+  --header "Authorization: Bearer $TOKEN" \
+  --header 'Content-Type: application/json' \
+  --data '{
+        "uuid": "23ba8778-36c2-417b-abc7-323db47a7472"
+}'
+```
+
 ### Fetching a document
 
 ``` shell
 curl --request POST \
-  --url http://localhost:1337/twirp/elephant.repository.Documents/Get \
+  --url http://localhost:1080/twirp/elephant.repository.Documents/Get \
   --header 'Content-Type: application/json' \
   --data '{
 	"uuid": "8090ff79-030e-419b-952e-12917cfdaaac"
@@ -78,7 +108,7 @@ Here you can specify `version` to fetch a specific version, or `status` to fetch
 
 ``` shell
 curl --request POST \
-  --url http://localhost:1337/twirp/elephant.repository.Documents/GetMeta \
+  --url http://localhost:1080/twirp/elephant.repository.Documents/GetMeta \
   --header 'Content-Type: application/json' \
   --data '{
 	"uuid": "8090ff79-030e-419b-952e-12917cfdaaac"
