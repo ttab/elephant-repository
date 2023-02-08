@@ -68,8 +68,24 @@ The API service has an endpoint for fetching dummy tokens for use with the API.
 ``` shell
 curl http://localhost:1080/token \
     -d grant_type=password \
-    -d 'username=Hugo Wetterberg <user://tt/hugo>' \
+    -d 'username=Hugo Wetterberg <user://tt/hugo, unit://tt/unit/a, unit://tt/unit/b>' \
     -d 'scope=doc_read doc_write doc_delete'
+```
+
+This will yeild a JWT with the following claims:
+
+``` json
+{
+  "iss": "test",
+  "sub": "user://tt/hugo",
+  "exp": 1675894185,
+  "sub_name": "Hugo Wetterberg",
+  "scope": "doc_read doc_write doc_delete",
+  "units": [
+    "unit://tt/unit/a",
+    "unit://tt/unit/b"
+  ]
+}
 ```
 
 It's essentially a password-less password grant where you can specify your own permissions and identity.
@@ -79,7 +95,7 @@ Example scripting usage:
 ``` shell
 TOKEN=$(curl -s http://localhost:1080/token \
     -d grant_type=password \
-    -d 'username=Hugo Wetterberg <user://tt/hugo>' \
+    -d 'username=Hugo Wetterberg <user://tt/hugo, unit://tt/unit/a, unit://tt/unit/b>' \
     -d 'scope=doc_read doc_write doc_delete' | jq -r .access_token)
 
 curl --request POST \
