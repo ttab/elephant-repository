@@ -162,11 +162,14 @@ An update to a document always starts with getting a row lock on the `document(u
 `¤` is `NULL`, in other words it's the initial publication of an article.
 
 ``` sql
-~# SELECT date(s.created), s.meta->>'cause' AS cause, COUNT(*) AS num
+SELECT date(s.created), s.meta->>'cause' AS cause, COUNT(*) AS num
 FROM document_status AS s
 WHERE s.name='usable'
 GROUP BY date(s.created), cause
 ORDER BY date(s.created), cause NULLS FIRST;
+```
+
+```
     date    │    cause    │ num 
 ════════════╪═════════════╪═════
  2023-02-07 │ ¤           │ 620
@@ -191,12 +194,15 @@ ORDER BY date(s.created), cause NULLS FIRST;
 #### Time to correction after first publish
 
 ``` sql
-~# SELECT s.uuid, i.created AS initially_published, s.created-i.created AS time_to_correction
+SELECT s.uuid, i.created AS initially_published, s.created-i.created AS time_to_correction
 FROM document_status AS s
      INNER JOIN document_status AS i
            ON i.uuid = s.uuid AND i.name = s.name AND i.id = 1
 WHERE s.name='usable' AND s.meta->>'cause' = 'correction'
 ORDER BY s.created;
+```
+
+```
                  uuid                 │  initially_published   │    time_to_correction
 ══════════════════════════════════════╪════════════════════════╪═══════════════════════════
  54123854-9303-4cc6-b98d-afa9b2656602 │ 2023-02-07 09:19:50+00 │ @ 11 mins 55 secs
@@ -218,7 +224,7 @@ ORDER BY s.created;
 #### High newsvalue articles per section
 
 ``` sql
-~# SELECT vs.section, vs.newsvalue, COUNT(*)
+SELECT vs.section, vs.newsvalue, COUNT(*)
 FROM (
      SELECT d.uuid, s.created,
             (jsonb_path_query_first(
@@ -243,7 +249,9 @@ FROM (
 WHERE vs.newsvalue <= 2 AND newsvalue > 0
 GROUP BY vs.section, vs.newsvalue
 ORDER BY vs.section, vs.newsvalue;
+```
 
+```
  section │ newsvalue │ count 
 ═════════╪═══════════╪═══════
  Ekonomi │         1 │     2
