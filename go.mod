@@ -1,4 +1,4 @@
-module github.com/ttab/docformat
+module github.com/ttab/elephant
 
 go 1.20
 

@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "schema://elephant/doc/spec",
+  "title": "Elephant document spec format",
+  "type":"object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "name": {
+      "type": "string"
+    },
+    "documents": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/document" }
+    },
+    "meta": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/block" }
+    },
+    "links": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/block" }
+    },
+    "content": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/block" }
+    },
+    "htmlPolicies": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/htmlPolicy" }
+    },
+    "attributes": { "$ref": "#/definitions/docAttrConstraints" }
+  },
+  "additionalProperties": false,
+  "required": ["version", "name"],
+  "definitions": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "name": {"type":"string"},
+        "description": {"type":"string"},
+        "declares": {"type":"string"},
+        "meta": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/block" }
+        },
+        "links": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/block" }
+        },
+        "content": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/block" }
+        },
+        "properties": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": { "$ref": "#/definitions/property" }
+        }
+      }
+    },
+    "htmlPolicy": {
+      "type": "object",
+      "properties": {
+        "name": {"type":"string"},
+        "description": {"type":"string"},
+        "elements": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "attributes": { "$ref": "#/definitions/stringConstraintMap" }
+            }
+          }
+        }
+      }
+    },
+    "block": {
+      "type": "object",
+      "properties": {
+        "name": {"type":"string"},
+        "description": {"type":"string"},
+        "count": {"type":"integer"},
+        "maxCount": {"type":"integer"},
+        "minCount": {"type":"integer"},
+        "declares": { "$ref": "#/definitions/blockDeclaration" },
+        "match": { "$ref": "#/definitions/blockMatchConstraints" },
+        "attributes": { "$ref": "#/definitions/blockAttrConstraints" },
+        "data": { "$ref": "#/definitions/stringConstraintMap" },
+        "meta": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/block" }
+        },
+        "links": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/block" }
+        },
+        "content": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/block" }
+        },
+        "blocksFrom": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/blocksFrom" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "blocksFrom": {
+      "type": "object",
+      "properties": {
+        "docType": {"type":"string"},
+        "global": {"type":"boolean"},
+        "kind": {
+          "type":"string",
+          "enum": ["link", "meta", "content"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "docAttrConstraints": {
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "uuid", "type", "language", "status", "uri", "url", "title",
+          "provider", "subtype", "path"
+        ]
+      },
+      "additionalProperties": { "$ref": "#/definitions/stringConstraint" }
+    },
+    "docMatchConstraints": {
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "type", "subtype", "provider"
+        ]
+      },
+      "additionalProperties": { "$ref": "#/definitions/stringConstraint" }
+    },
+    "blockDeclaration": {
+      "type": "object",
+      "properties": {
+        "type": {"type":"string"},
+        "rel": {"type":"string"}
+      },
+      "anyOf": [
+        {"required": ["type"]},
+        {"required": ["rel"]}
+      ],
+      "additionalProperties": false
+    },
+    "blockAttrConstraints": {
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "uuid", "type", "uri", "url", "title", "rel",
+          "name", "value", "contenttype", "role"
+        ]
+      },
+      "additionalProperties": { "$ref": "#/definitions/stringConstraint" }
+    },
+    "blockMatchConstraints": {
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "type", "uri", "url", "rel",
+          "name", "value", "contenttype", "role"
+        ]
+      },
+      "additionalProperties": { "$ref": "#/definitions/stringConstraint" }
+    },
+    "stringConstraintMap": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": { "$ref": "#/definitions/stringConstraint" }
+    },
+    "stringConstraint": {
+      "type": "object",
+      "properties": {
+        "name": {"type":"string"},
+        "description": {"type":"string"},
+        "optional": {"type":"boolean"},
+        "allowEmpty": {"type":"boolean"},
+        "const": {"type":"string"},
+        "enum": {
+          "type": "array",
+          "items": {"type":"string"}
+        },
+        "pattern": {"type":"string"},
+        "glob": {
+          "type": "array",
+          "items": {"type":"string"}
+        },
+        "template": {"type":"string"},
+        "format": {
+          "format": "string",
+          "enum": ["RFC3339", "int", "float", "bool", "html"]
+        },
+        "time": {"type":"string"},
+        "htmlPolicy": {"type":"string"}
+      }
+    }
+  }
+}

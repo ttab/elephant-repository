@@ -15,8 +15,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/schollz/progressbar/v3"
 	"github.com/sirupsen/logrus"
-	"github.com/ttab/docformat"
-	"github.com/ttab/docformat/private/cmd"
+	"github.com/ttab/elephant/ingest"
+	"github.com/ttab/elephant/internal/cmd"
+	"github.com/ttab/elephant/repository"
+	"github.com/ttab/elephant/revisor/constraints"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
 )
@@ -160,24 +162,24 @@ func webUIAction(c *cli.Context) error {
 	defer dbpool.Close()
 
 	client := &http.Client{
-		Transport: docformat.TransportWithToken{
+		Transport: ingest.TransportWithToken{
 			Transport: http.DefaultTransport,
 			Token:     token,
 		},
 	}
 
-	store, err := docformat.NewPGDocStore(dbpool)
+	store, err := repository.NewPGDocStore(dbpool)
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
 
-	oc, err := docformat.NewOCClient(client, ocURL)
+	oc, err := ingest.NewOCClient(client, ocURL)
 	if err != nil {
 		return fmt.Errorf("failed to create OC client: %w", err)
 	}
 
-	return docformat.RunServer(c.Context, addr,
-		docformat.WithUIServer(store, oc),
+	return repository.RunServer(c.Context, addr,
+		ingest.WithUIServer(store, oc),
 	)
 }
 
@@ -200,7 +202,7 @@ func ingestAction(c *cli.Context) error {
 	blocklistPath := filepath.Join(stateDir, "blocklist.txt")
 	cacheDir := filepath.Join(stateDir, "cache")
 
-	db, err := docformat.NewBadgerStore(stateDB)
+	db, err := ingest.NewBadgerStore(stateDB)
 	if err != nil {
 		return fmt.Errorf("failed to create badger store: %w", err)
 	}
@@ -211,7 +213,7 @@ func ingestAction(c *cli.Context) error {
 	}
 	defer dbpool.Close()
 
-	store, err := docformat.NewPGDocStore(dbpool)
+	store, err := repository.NewPGDocStore(dbpool)
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
@@ -233,18 +235,18 @@ func ingestAction(c *cli.Context) error {
 	}
 
 	client := &http.Client{
-		Transport: docformat.TransportWithToken{
+		Transport: ingest.TransportWithToken{
 			Transport: http.DefaultTransport,
 			Token:     token,
 		},
 	}
 
-	cca, err := docformat.NewCCAlient(client, ccaURL)
+	cca, err := ingest.NewCCAlient(client, ccaURL)
 	if err != nil {
 		return fmt.Errorf("failed to create CCA client: %w", err)
 	}
 
-	oc, err := docformat.NewOCClient(client, ocURL)
+	oc, err := ingest.NewOCClient(client, ocURL)
 	if err != nil {
 		return fmt.Errorf("failed to create OC client: %w", err)
 	}
@@ -256,7 +258,7 @@ func ingestAction(c *cli.Context) error {
 		}
 	}
 
-	blocklist, err := docformat.BlocklistFromFile(blocklistPath)
+	blocklist, err := ingest.BlocklistFromFile(blocklistPath)
 	if err != nil {
 		return fmt.Errorf("failed to load blocklist: %w", err)
 	}
@@ -273,7 +275,7 @@ func ingestAction(c *cli.Context) error {
 	maxPos := lastEvent.Events[0].ID
 	bar := progressbar.NewOptions(maxPos-startPos,
 		progressbar.OptionSetWriter(os.Stderr))
-	doneChan := make(chan docformat.OCLogEvent)
+	doneChan := make(chan ingest.OCLogEvent)
 
 	go func() {
 		for e := range doneChan {
@@ -315,20 +317,20 @@ func ingestAction(c *cli.Context) error {
 		}
 	}()
 
-	fsCache := docformat.NewFSCache(filepath.Join(cacheDir, "documents"))
-	cachedGet := docformat.WrapGetDocumentFunc(cca.GetDocument, fsCache)
+	fsCache := ingest.NewFSCache(filepath.Join(cacheDir, "documents"))
+	cachedGet := ingest.WrapGetDocumentFunc(cca.GetDocument, fsCache)
 
-	propFSCache := docformat.NewFSCache(filepath.Join(cacheDir, "properties"))
-	cachedProps := docformat.NewPropertyCache(propFSCache, oc)
+	propFSCache := ingest.NewFSCache(filepath.Join(cacheDir, "properties"))
+	cachedProps := ingest.NewPropertyCache(propFSCache, oc)
 
-	validator, err := cmd.DefaultValidator()
+	validator, err := constraints.DefaultValidator()
 	if err != nil {
 		return err
 	}
 
-	apiServer := docformat.NewAPIServer(store, validator)
+	apiServer := repository.NewAPIServer(store, validator)
 
-	opts := docformat.IngestOptions{
+	opts := ingest.IngestOptions{
 		Logger:          logrus.New(),
 		DefaultLanguage: lang,
 		Identity:        db,
@@ -343,7 +345,7 @@ func ingestAction(c *cli.Context) error {
 		Done:            doneChan,
 	}
 
-	ingest := docformat.NewIngester(opts)
+	ingester := ingest.NewIngester(opts)
 
 	ingestCtx, cancel := context.WithCancel(c.Context)
 
@@ -358,16 +360,16 @@ func ingestAction(c *cli.Context) error {
 
 	if ui {
 		group.Go(func() error {
-			return docformat.RunServer(c.Context, addr,
-				docformat.WithUIServer(store, oc),
+			return repository.RunServer(c.Context, addr,
+				ingest.WithUIServer(store, oc),
 			)
 		})
 	}
 
 	group.Go(func() error {
-		var ve *docformat.ValidationError
+		var ve *ingest.ValidationError
 
-		err = ingest.Start(gCtx, tail)
+		err = ingester.Start(gCtx, tail)
 
 		if errors.As(err, &ve) {
 			for i := range ve.Errors {
@@ -394,7 +396,7 @@ func ingestAction(c *cli.Context) error {
 }
 
 func preloadReplacements(ctx context.Context,
-	oc *docformat.OCClient, db docformat.IdentityStore,
+	oc *ingest.OCClient, db ingest.IdentityStore,
 ) error {
 
 	var (
@@ -455,22 +457,22 @@ func convertCcaAction(c *cli.Context) error {
 	)
 
 	client := &http.Client{
-		Transport: docformat.TransportWithToken{
+		Transport: ingest.TransportWithToken{
 			Transport: http.DefaultTransport,
 			Token:     token,
 		},
 	}
 
-	cca, err := docformat.NewCCAlient(client, baseURL)
+	cca, err := ingest.NewCCAlient(client, baseURL)
 	if err != nil {
 		return fmt.Errorf("failed to create CCA client: %w", err)
 	}
 
-	fsCache := docformat.NewFSCache(filepath.Join("cache", "documents"))
+	fsCache := ingest.NewFSCache(filepath.Join("cache", "documents"))
 
-	cachedGet := docformat.WrapGetDocumentFunc(cca.GetDocument, fsCache)
+	cachedGet := ingest.WrapGetDocumentFunc(cca.GetDocument, fsCache)
 
-	res, err := cachedGet(c.Context, docformat.GetDocumentRequest{
+	res, err := cachedGet(c.Context, ingest.GetDocumentRequest{
 		UUID:    uuid,
 		Version: version,
 	})
@@ -478,7 +480,7 @@ func convertCcaAction(c *cli.Context) error {
 		return fmt.Errorf("failed to fetch document through CCA: %w", err)
 	}
 
-	doc, err := docformat.ConvertNavigaDoc(res.Document)
+	doc, err := ingest.ConvertNavigaDoc(res.Document)
 	if err != nil {
 		return fmt.Errorf("failed to convert document: %w", err)
 	}

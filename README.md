@@ -4,6 +4,8 @@ Local application meant for exploring DAWROC data format conversion.
 
 Executable entrypoints in cmd/docformat and cmd/repository.
 
+Revisor is documented separately in the [revisor package](revisor/README.md).
+
 TODO: UI is in a broken state at the moment, prioritised getting Postgres store right.
 
 ## Preparing the environment
@@ -151,6 +153,112 @@ Each document has a single row in the `document` table. New versions of the docu
 
 An update to a document always starts with getting a row lock on the `document(uuid)` table for the transaction. This gives us serialisation guarantees for writes to a single document, and lets us use straight-forward numbering for document versions and status updates.
 
+### Data mining examples
+
+
+
+#### Published article cause
+
+`¤` is `NULL`, in other words it's the initial publication of an article.
+
+``` sql
+~# SELECT date(s.created), s.meta->>'cause' AS cause, COUNT(*) AS num
+FROM document_status AS s
+WHERE s.name='usable'
+GROUP BY date(s.created), cause
+ORDER BY date(s.created), cause NULLS FIRST;
+    date    │    cause    │ num 
+════════════╪═════════════╪═════
+ 2023-02-07 │ ¤           │ 620
+ 2023-02-07 │ correction  │   4
+ 2023-02-07 │ development │  64
+ 2023-02-07 │ fix         │  10
+ 2023-02-08 │ ¤           │ 734
+ 2023-02-08 │ correction  │   3
+ 2023-02-08 │ development │  97
+ 2023-02-08 │ fix         │  14
+ 2023-02-09 │ ¤           │ 613
+ 2023-02-09 │ correction  │   5
+ 2023-02-09 │ development │  89
+ 2023-02-09 │ fix         │   8
+ 2023-02-10 │ ¤           │ 428
+ 2023-02-10 │ correction  │   2
+ 2023-02-10 │ development │  52
+ 2023-02-10 │ fix         │  12
+(16 rows)
+```
+
+#### Time to correction after first publish
+
+``` sql
+~# SELECT s.uuid, i.created AS initially_published, s.created-i.created AS time_to_correction
+FROM document_status AS s
+     INNER JOIN document_status AS i
+           ON i.uuid = s.uuid AND i.name = s.name AND i.id = 1
+WHERE s.name='usable' AND s.meta->>'cause' = 'correction'
+ORDER BY s.created;
+                 uuid                 │  initially_published   │    time_to_correction
+══════════════════════════════════════╪════════════════════════╪═══════════════════════════
+ 54123854-9303-4cc6-b98d-afa9b2656602 │ 2023-02-07 09:19:50+00 │ @ 11 mins 55 secs
+ eedf4fe2-5b3a-4fa4-a2c8-cf2029ca268b │ 2023-02-07 09:20:58+00 │ @ 1 hour 59 mins 30 secs
+ 03d47f19-a4b5-4de5-b6e2-664d759683ec │ 2023-02-07 12:58:07+00 │ @ 4 mins 34 secs
+ 37041f9b-386b-47f5-a974-f054bb628292 │ 2023-02-07 13:10:55+00 │ @ 17 mins 5 secs
+ f550fbce-6c8c-43cc-a31d-0cbdb464a681 │ 2023-02-08 05:15:02+00 │ @ 1 hour 13 mins 13 secs
+ f550fbce-6c8c-43cc-a31d-0cbdb464a681 │ 2023-02-08 05:15:02+00 │ @ 3 hours 15 mins 2 secs
+ 6ee43615-2cb8-441a-9c0f-fb68a675e1f2 │ 2023-02-08 08:30:02+00 │ @ 3 mins 56 secs
+ 5d75600e-4d26-488e-bcd2-1c27bd05794f │ 2023-02-09 01:30:02+00 │ @ 1 hour 2 mins 31 secs
+ 629ddc10-47e0-46ae-b47d-6c9fbb3ad7e0 │ 2023-02-09 08:24:37+00 │ @ 1 hour 27 mins 13 secs
+ 44e6653b-8be7-4175-8e4c-0c24c132e774 │ 2023-02-09 10:36:31+00 │ @ 5 hours 9 mins 25 secs
+ 71b61828-510d-4a6b-a8fa-574101eb54f5 │ 2023-02-09 08:30:26+00 │ @ 9 hours 54 mins 52 secs
+ be6c03f8-81d1-40dd-bbe1-9b0c727b39a8 │ 2023-02-09 09:54:13+00 │ @ 8 hours 40 mins 27 secs
+ d6413696-d189-4ad0-9454-8f0681a3f541 │ 2023-02-10 05:00:02+00 │ @ 1 hour 32 mins 2 secs
+(13 rows)
+```
+
+#### High newsvalue articles per section
+
+``` sql
+~# SELECT vs.section, vs.newsvalue, COUNT(*)
+FROM (
+     SELECT d.uuid, s.created,
+            (jsonb_path_query_first(
+                v.document_data,
+                '$.meta[*] ? (@.type == "core/newsvalue").data'
+            )->>'score')::int AS newsvalue,
+            jsonb_path_query_first(
+                v.document_data,
+                '$.links[*] ? (@.rel == "subject" && @.type == "core/section")'
+            )->>'title' AS section
+     FROM document_status AS s
+          INNER JOIN document AS d ON d.uuid = s.uuid
+          INNER JOIN document_version AS v
+                ON v.uuid = d.uuid
+                   AND v.version = d.current_version
+                   AND v.type = 'core/article'
+     WHERE
+        s.name='usable'
+        AND s.id = 1
+        AND date(s.created) = '2023-02-08'
+) AS vs
+WHERE vs.newsvalue <= 2 AND newsvalue > 0
+GROUP BY vs.section, vs.newsvalue
+ORDER BY vs.section, vs.newsvalue;
+
+ section │ newsvalue │ count 
+═════════╪═══════════╪═══════
+ Ekonomi │         1 │     2
+ Ekonomi │         2 │     5
+ Inrikes │         1 │     2
+ Inrikes │         2 │    12
+ Kultur  │         2 │     2
+ Nöje    │         2 │     5
+ Sport   │         1 │     4
+ Sport   │         2 │     7
+ Utrikes │         1 │     2
+ Utrikes │         2 │     7
+(10 rows)
+```
+
 ### Change data capture
 
 As part of the schema the `eventlog` [publication](https://www.postgresql.org/docs/current/sql-createpublication.html) is created, and it captures changes for the tables `document`, `status_heads`, `delete_record` and `acl`. See `PGReplication` in "./eventlog.go" for the beginnings of an implementation.
@@ -208,7 +316,6 @@ The archiver looks for documents with pending deletes and then moves the objects
 * `ingest.go`: ingestion implementation
 * `planning.go`: parsing of NewsML planning items
 * `concepts.go`: concept post-processing to get rid of properties.
-* `fsdocstore.go`: implementation of the on-disk document store.
 * `pgdocstore.go`: implementation of the PostgreSQL document store.
 
 ## Common errors

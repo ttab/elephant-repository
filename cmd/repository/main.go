@@ -7,12 +7,15 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sirupsen/logrus"
-	"github.com/ttab/docformat"
-	"github.com/ttab/docformat/private/cmd"
+	"github.com/ttab/elephant/internal/cmd"
+	"github.com/ttab/elephant/repository"
+	"github.com/ttab/elephant/revisor/constraints"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -82,56 +85,89 @@ func runServer(c *cli.Context) error {
 		signingKey = k
 	}
 
-	dbpool, err := pgxpool.New(context.Background(), conf.DB)
+	dbpool, err := pgxpool.New(c.Context, conf.DB)
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)
 	}
 	defer dbpool.Close()
 
-	store, err := docformat.NewPGDocStore(dbpool)
+	err = dbpool.Ping(c.Context)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	store, err := repository.NewPGDocStore(dbpool)
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
 
+	setupCtx, cancel := context.WithTimeout(c.Context, 10*time.Second)
+	defer cancel()
+
+	group, gCtx := errgroup.WithContext(setupCtx)
+
 	if !conf.NoReplicator {
-		logger.Debug("setting up replication")
+		group.Go(func() error {
+			logger.Debug("setting up replication")
 
-		repl := docformat.NewPGReplication(logger, dbpool, conf.DB)
+			repl := repository.NewPGReplication(logger, dbpool, conf.DB)
 
-		go repl.Run(c.Context)
+			go repl.Run(c.Context)
+
+			return nil
+		})
 	}
 
 	if !conf.NoArchiver {
-		logger.Debug("setting up archiver")
-
-		aS3, err := docformat.ArchiveS3Client(c.Context, conf.S3Options)
-		if err != nil {
-			return fmt.Errorf("failed to create S3 client: %w", err)
-		}
-
-		archiver := docformat.NewArchiver(docformat.ArchiverOptions{
-			Logger: logger,
-			S3:     aS3,
-			Bucket: conf.ArchiveBucket,
-			DB:     dbpool,
+		group.Go(func() error {
+			return startArchiver(c.Context, gCtx,
+				logger, conf, dbpool)
 		})
-
-		err = archiver.Run(c.Context)
-		if err != nil {
-			return fmt.Errorf("failed to run archiver: %w", err)
-		}
 	}
 
-	validator, err := cmd.DefaultValidator()
+	err = group.Wait()
+	if err != nil {
+		return fmt.Errorf("subsystem setup failed: %w", err)
+	}
+
+	validator, err := constraints.DefaultValidator()
 	if err != nil {
 		return fmt.Errorf("failed to create validator: %w", err)
 	}
 
-	apiServer := docformat.NewAPIServer(store, validator)
+	apiServer := repository.NewAPIServer(store, validator)
 
 	logger.Debug("starting API server")
 
-	return docformat.RunServer(c.Context, addr,
-		docformat.WithAPIServer(logger, signingKey, apiServer),
+	return repository.RunServer(c.Context, addr,
+		repository.WithAPIServer(logger, signingKey, apiServer),
 	)
+}
+
+func startArchiver(
+	ctx context.Context, setupCtx context.Context, logger *logrus.Logger,
+	conf cmd.BackendConfig, dbpool *pgxpool.Pool,
+) error {
+	logger.Debug("setting up archiver")
+
+	aS3, err := repository.ArchiveS3Client(setupCtx, conf.S3Options)
+	if err != nil {
+		return fmt.Errorf("failed to create S3 client: %w", err)
+	}
+
+	archiver := repository.NewArchiver(repository.ArchiverOptions{
+		Logger: logger,
+		S3:     aS3,
+		Bucket: conf.ArchiveBucket,
+		DB:     dbpool,
+	})
+
+	logger.Debug("starting archiver")
+
+	err = archiver.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to run archiver: %w", err)
+	}
+
+	return nil
 }
