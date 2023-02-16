@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/ttab/elephant/doc"
+	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/revisor"
-	"github.com/ttab/elephant/revisor/internal"
 )
 
 func BenchmarkValidateDocument(b *testing.B) {
@@ -16,13 +16,7 @@ func BenchmarkValidateDocument(b *testing.B) {
 		extraConstraints revisor.ConstraintSet
 	)
 
-	err := internal.UnmarshalFile("constraints/naviga.json", &constraints)
-	if err != nil {
-		panic(fmt.Errorf(
-			"failed to load constraints: %w", err))
-	}
-
-	err = internal.UnmarshalFile("constraints/example.json", &extraConstraints)
+	err := internal.UnmarshalFile("constraints/core.json", &constraints)
 	if err != nil {
 		panic(fmt.Errorf(
 			"failed to load constraints: %w", err))

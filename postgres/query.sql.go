@@ -21,6 +21,23 @@ func (q *Queries) AcquireTXLock(ctx context.Context, id int64) error {
 	return err
 }
 
+const activateSchema = `-- name: ActivateSchema :exec
+INSERT INTO active_schemas(name, version)
+VALUES ($1, $2)
+       ON CONFLICT(name) DO UPDATE SET
+          version = $2
+`
+
+type ActivateSchemaParams struct {
+	Name    string
+	Version string
+}
+
+func (q *Queries) ActivateSchema(ctx context.Context, arg ActivateSchemaParams) error {
+	_, err := q.db.Exec(ctx, activateSchema, arg.Name, arg.Version)
+	return err
+}
+
 const checkPermission = `-- name: CheckPermission :one
 SELECT (acl.uri IS NOT NULL) = true AS has_access
 FROM document AS d
@@ -101,6 +118,16 @@ func (q *Queries) CreateVersion(ctx context.Context, arg CreateVersionParams) er
 	return err
 }
 
+const deactivateSchema = `-- name: DeactivateSchema :exec
+DELETE FROM active_schemas
+WHERE name = $1
+`
+
+func (q *Queries) DeactivateSchema(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, deactivateSchema, name)
+	return err
+}
+
 const deleteDocument = `-- name: DeleteDocument :exec
 SELECT delete_document(
        $1::uuid, $2::text, $3::bigint
@@ -143,6 +170,48 @@ func (q *Queries) FinaliseDelete(ctx context.Context, uuid uuid.UUID) (int64, er
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getActiveSchema = `-- name: GetActiveSchema :one
+SELECT s.name, s.version, s.spec
+FROM active_schemas AS a
+     INNER JOIN document_schema AS s
+           ON s.name = a.name AND s.version = a.version
+WHERE a.name = $1
+`
+
+func (q *Queries) GetActiveSchema(ctx context.Context, name string) (DocumentSchema, error) {
+	row := q.db.QueryRow(ctx, getActiveSchema, name)
+	var i DocumentSchema
+	err := row.Scan(&i.Name, &i.Version, &i.Spec)
+	return i, err
+}
+
+const getActiveSchemas = `-- name: GetActiveSchemas :many
+SELECT s.name, s.version, s.spec
+FROM active_schemas AS a
+     INNER JOIN document_schema AS s
+           ON s.name = a.name AND s.version = a.version
+`
+
+func (q *Queries) GetActiveSchemas(ctx context.Context) ([]DocumentSchema, error) {
+	rows, err := q.db.Query(ctx, getActiveSchemas)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DocumentSchema
+	for rows.Next() {
+		var i DocumentSchema
+		if err := rows.Scan(&i.Name, &i.Version, &i.Spec); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getDocumentACL = `-- name: GetDocumentACL :many
@@ -440,6 +509,24 @@ func (q *Queries) GetFullDocumentHeads(ctx context.Context, uuid uuid.UUID) ([]D
 	return items, nil
 }
 
+const getSchema = `-- name: GetSchema :one
+SELECT s.name, s.version, s.spec
+FROM document_schema AS s
+WHERE s.name = $1 AND s.version = $2
+`
+
+type GetSchemaParams struct {
+	Name    string
+	Version string
+}
+
+func (q *Queries) GetSchema(ctx context.Context, arg GetSchemaParams) (DocumentSchema, error) {
+	row := q.db.QueryRow(ctx, getSchema, arg.Name, arg.Version)
+	var i DocumentSchema
+	err := row.Scan(&i.Name, &i.Version, &i.Spec)
+	return i, err
+}
+
 const getSigningKeys = `-- name: GetSigningKeys :many
 SELECT kid, spec FROM signing_keys
 `
@@ -709,6 +796,22 @@ type NotifyParams struct {
 
 func (q *Queries) Notify(ctx context.Context, arg NotifyParams) error {
 	_, err := q.db.Exec(ctx, notify, arg.Channel, arg.Message)
+	return err
+}
+
+const registerSchema = `-- name: RegisterSchema :exec
+INSERT INTO document_schema(name, version, spec)
+VALUES ($1, $2, $3)
+`
+
+type RegisterSchemaParams struct {
+	Name    string
+	Version string
+	Spec    []byte
+}
+
+func (q *Queries) RegisterSchema(ctx context.Context, arg RegisterSchemaParams) error {
+	_, err := q.db.Exec(ctx, registerSchema, arg.Name, arg.Version, arg.Spec)
 	return err
 }
 

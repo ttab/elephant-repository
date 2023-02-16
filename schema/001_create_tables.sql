@@ -211,6 +211,20 @@ create table signing_keys(
        spec jsonb not null
 );
 
+create table document_schema(
+       name text not null,
+       version text not null,
+       spec jsonb not null,
+       primary key(name, version)
+);
+
+create table active_schemas(
+       name text primary key,
+       version text not null,
+       foreign key(name, version) references
+               document_schema(name, version)
+);
+
 create publication eventlog
 for table document, status_heads, delete_record, acl;
 

@@ -186,3 +186,35 @@ SELECT uri
 FROM acl
 WHERE uuid = @uuid
       AND @permission::text = ANY(permissions);
+
+-- name: RegisterSchema :exec
+INSERT INTO document_schema(name, version, spec)
+VALUES (@name, @version, @spec);
+
+-- name: ActivateSchema :exec
+INSERT INTO active_schemas(name, version)
+VALUES (@name, @version)
+       ON CONFLICT(name) DO UPDATE SET
+          version = @version;
+
+-- name: DeactivateSchema :exec
+DELETE FROM active_schemas
+WHERE name = @name;
+
+-- name: GetActiveSchema :one
+SELECT s.name, s.version, s.spec
+FROM active_schemas AS a
+     INNER JOIN document_schema AS s
+           ON s.name = a.name AND s.version = a.version
+WHERE a.name = @name;
+
+-- name: GetSchema :one
+SELECT s.name, s.version, s.spec
+FROM document_schema AS s
+WHERE s.name = @name AND s.version = @version;
+
+-- name: GetActiveSchemas :many
+SELECT s.name, s.version, s.spec
+FROM active_schemas AS a
+     INNER JOIN document_schema AS s
+           ON s.name = a.name AND s.version = a.version;

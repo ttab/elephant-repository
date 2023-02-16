@@ -9,11 +9,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/postgres"
+	"github.com/ttab/elephant/revisor"
 )
 
 const (
@@ -23,31 +26,118 @@ const (
 )
 
 type PGDocStore struct {
+	logger   *logrus.Logger
 	pool     *pgxpool.Pool
 	reader   *postgres.Queries
 	archived *FanOut[ArchivedEvent]
+	schemas  *FanOut[SchemaEvent]
 }
 
-type ArchiveEventType int
-
-const (
-	ArchiveEventTypeStatus ArchiveEventType = iota
-	ArchiveEventTypeVersion
-)
-
-type ArchivedEvent struct {
-	Type    ArchiveEventType
-	UUID    uuid.UUID
-	Version int64
-	Name    string
-}
-
-func NewPGDocStore(pool *pgxpool.Pool) (*PGDocStore, error) {
+func NewPGDocStore(logger *logrus.Logger, pool *pgxpool.Pool) (*PGDocStore, error) {
 	return &PGDocStore{
+		logger:   logger,
 		pool:     pool,
 		reader:   postgres.New(pool),
 		archived: NewFanOut[ArchivedEvent](),
+		schemas:  NewFanOut[SchemaEvent](),
 	}, nil
+}
+
+// OnSchemaUpdate notifies the channel ch of all archived status
+// updates. Subscription is automatically cancelled once the context is
+// cancelled.
+//
+// Note that we don't provide any delivery guarantees for these events.
+// non-blocking send is used on ch, so if it's unbuffered events will be
+// discarded if the reciever is busy.
+func (s *PGDocStore) OnArchivedUpdate(
+	ctx context.Context, ch chan ArchivedEvent,
+) {
+	go s.archived.Listen(ctx, ch, func(_ ArchivedEvent) bool {
+		return true
+	})
+}
+
+// OnSchemaUpdate notifies the channel ch of all schema updates. Subscription is
+// automatically cancelled once the context is cancelled.
+//
+// Note that we don't provide any delivery guarantees for these events.
+// non-blocking send is used on ch, so if it's unbuffered events will be
+// discarded if the reciever is busy.
+func (s *PGDocStore) OnSchemaUpdate(
+	ctx context.Context, ch chan SchemaEvent,
+) {
+	go s.schemas.Listen(ctx, ch, func(_ SchemaEvent) bool {
+		return true
+	})
+}
+
+// RunListener opens a connection to the database and subscribes to all store
+// notifications.
+func (s *PGDocStore) RunListener(ctx context.Context) {
+	for {
+		err := s.runListener(ctx)
+		if errors.Is(err, context.Canceled) {
+			return
+		} else {
+			s.logger.WithError(err).Error(
+				"failed to run notification listener")
+		}
+
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func (s *PGDocStore) runListener(ctx context.Context) error {
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire connection from pool: %w", err)
+	}
+
+	defer conn.Release()
+
+	notifications := []NotifyChannel{NotifyArchived, NotifySchemasUpdated}
+
+	for _, channel := range notifications {
+		ident := pgx.Identifier{string(channel)}
+
+		_, err := conn.Exec(ctx, "LISTEN "+ident.Sanitize())
+		if err != nil {
+			return fmt.Errorf("failed to start listening to %q: %w",
+				channel, err)
+		}
+	}
+
+	for {
+		notification, err := conn.Conn().WaitForNotification(ctx)
+		if err != nil {
+			return fmt.Errorf(
+				"error while waiting for notification: %w", err)
+		}
+
+		switch NotifyChannel(notification.Channel) {
+		case NotifySchemasUpdated:
+			var e SchemaEvent
+
+			err := json.Unmarshal(
+				[]byte(notification.Payload), &e)
+			if err != nil {
+				break
+			}
+
+			s.schemas.Notify(e)
+		case NotifyArchived:
+			var e ArchivedEvent
+
+			err := json.Unmarshal(
+				[]byte(notification.Payload), &e)
+			if err != nil {
+				break
+			}
+
+			s.archived.Notify(e)
+		}
+	}
 }
 
 // Delete implements DocStore
@@ -478,6 +568,194 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 	}
 
 	return &up, nil
+}
+
+// RegisterSchema implements DocStore
+func (s *PGDocStore) RegisterSchema(
+	ctx context.Context, req RegisterSchemaRequest,
+) error {
+	var spec []byte
+
+	if req.Specification != nil {
+		var err error
+
+		spec, err = json.Marshal(req.Specification)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to marshal specification for storage: %w", err)
+		}
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// We defer a rollback, rollback after commit won't be treated as an
+	// error.
+	defer s.safeRollback(ctx, tx, "schema registration")
+
+	q := postgres.New(tx)
+
+	if req.Specification != nil {
+		err = q.RegisterSchema(ctx, postgres.RegisterSchemaParams{
+			Name:    req.Name,
+			Version: req.Version,
+			Spec:    spec,
+		})
+		if isConstraintError(err, "document_schema_pkey") {
+			return DocStoreErrorf(ErrCodeExists,
+				"schema version already exists")
+		} else if err != nil {
+			return fmt.Errorf("failed to register schema version: %w", err)
+		}
+	}
+
+	if req.Activate {
+		err = q.ActivateSchema(ctx, postgres.ActivateSchemaParams{
+			Name:    req.Name,
+			Version: req.Version,
+		})
+		if err != nil {
+			return fmt.Errorf(
+				"failed to activate schema version: %w", err)
+		}
+
+		notifySchemaUpdated(ctx, s.logger, q, SchemaEvent{
+			Type: SchemaEventTypeActivation,
+			Name: req.Name,
+		})
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to commit: %w", err)
+	}
+
+	return nil
+}
+
+// DeactivateSchema implements DocStore
+func (s *PGDocStore) DeactivateSchema(ctx context.Context, name string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// We defer a rollback, rollback after commit won't be treated as an
+	// error.
+	defer s.safeRollback(ctx, tx, "schema registration")
+
+	q := postgres.New(tx)
+
+	err = q.DeactivateSchema(ctx, name)
+	if err != nil {
+		return fmt.Errorf("failed to remove active schema: %w", err)
+	}
+
+	notifySchemaUpdated(ctx, s.logger, q, SchemaEvent{
+		Type: SchemaEventTypeDeactivation,
+		Name: name,
+	})
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to commit: %w", err)
+	}
+
+	return nil
+}
+
+// GetActiveSchemas implements DocStore
+func (s *PGDocStore) GetActiveSchemas(
+	ctx context.Context,
+) ([]*Schema, error) {
+	rows, err := s.reader.GetActiveSchemas(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch active schemas: %w", err)
+	}
+
+	res := make([]*Schema, len(rows))
+
+	for i := range rows {
+		var spec revisor.ConstraintSet
+
+		err := json.Unmarshal(rows[i].Spec, &spec)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"invalid specification for %s@%s in database: %w",
+				rows[i].Name, rows[i].Version, err)
+		}
+
+		res = append(res, &Schema{
+			Name:          rows[i].Name,
+			Version:       rows[i].Version,
+			Specification: &spec,
+		})
+	}
+
+	return res, nil
+}
+
+// GetSchema implements DocStore
+func (s *PGDocStore) GetSchema(
+	ctx context.Context, name string, version string,
+) (*Schema, error) {
+	var schema *postgres.DocumentSchema
+
+	if version == "" {
+		s, err := s.reader.GetActiveSchema(ctx, name)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, DocStoreErrorf(ErrCodeNotFound,
+				"no active schema for %q", name)
+		} else if err != nil {
+			return nil, fmt.Errorf(
+				"failed to get currently active schema: %w", err)
+		}
+
+		schema = &s
+	} else {
+		s, err := s.reader.GetSchema(ctx, postgres.GetSchemaParams{
+			Name:    name,
+			Version: version,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, DocStoreErrorf(ErrCodeNotFound,
+				"no such schema version")
+		} else if err != nil {
+			return nil, fmt.Errorf(
+				"failed to get schema version: %w", err)
+		}
+
+		schema = &s
+	}
+
+	var spec revisor.ConstraintSet
+
+	err := json.Unmarshal(schema.Spec, &spec)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"invalid specification in database: %w", err)
+	}
+
+	return &Schema{
+		Name:          schema.Name,
+		Version:       schema.Version,
+		Specification: &spec,
+	}, nil
+}
+
+func isConstraintError(err error, constraint string) bool {
+	if err == nil {
+		return false
+	}
+
+	pgerr, ok := err.(*pgconn.PgError)
+	if !ok {
+		return false
+	}
+
+	return pgerr.ConstraintName == constraint
 }
 
 func (s *PGDocStore) updateACL(

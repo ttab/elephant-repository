@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/ttab/elephant/doc"
+	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/revisor"
-	"github.com/ttab/elephant/revisor/internal"
 )
 
 func FuzzValidationWide(f *testing.F) {

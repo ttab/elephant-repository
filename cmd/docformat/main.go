@@ -168,7 +168,7 @@ func webUIAction(c *cli.Context) error {
 		},
 	}
 
-	store, err := repository.NewPGDocStore(dbpool)
+	store, err := repository.NewPGDocStore(logrus.New(), dbpool)
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
@@ -213,7 +213,7 @@ func ingestAction(c *cli.Context) error {
 	}
 	defer dbpool.Close()
 
-	store, err := repository.NewPGDocStore(dbpool)
+	store, err := repository.NewPGDocStore(logrus.New(), dbpool)
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}

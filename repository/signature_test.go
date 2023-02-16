@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/ttab/docformat"
+	"github.com/ttab/elephant/repository"
 )
 
 const testKeys = `
@@ -56,8 +56,8 @@ const testSignature = `v1.1.vZr1mhSxTiT_LNBP4S8eXfGUrmazfdjVZRGWoV2bhYE.MGUCMQDA
 
 const badSignature = `v1.1.vZr1mhSxTiT_LNBP4S8eXfGUrmazfdjVZRGWoV2bhYE.MGYCMQDqIFIWo2gE9n2Hp7mzsfvFK2E-i0A-sa6pJSXSbpwiUjwi32OIsfFPHdO9_C-bescCMQCGr_xCyqGk1vqyt3q4Qxa-SpcK9ESu4gYKeeBx86kndRCkT7pBTL8VezOJ-W2K8FU`
 
-func getTestKeys(t assert.TestingT) *docformat.SigningKeySet {
-	var set docformat.SigningKeySet
+func getTestKeys(t assert.TestingT) *repository.SigningKeySet {
+	var set repository.SigningKeySet
 
 	err := json.Unmarshal([]byte(testKeys), &set)
 	assert.NotErrorIs(t, err, assert.AnError, "failed to unmarshal test keys")
@@ -81,7 +81,7 @@ func TestArchiveSignature_GenerateAndVerify(t *testing.T) {
 		someData := []byte(`{"my":"json"}`)
 		hashData := sha256.Sum256(someData)
 
-		sig, err := docformat.NewArchiveSignature(key, hashData)
+		sig, err := repository.NewArchiveSignature(key, hashData)
 		assert.Nil(t, err, "failed to generate signature")
 		assert.Equal(t, sig.KeyID, key.Spec.KeyID,
 			"wrong key declared by signature")
@@ -94,7 +94,7 @@ func TestArchiveSignature_GenerateAndVerify(t *testing.T) {
 func TestArchiveSignature_ParseAndVerify(t *testing.T) {
 	keys := getTestKeys(t)
 
-	sig, err := docformat.ParseArchiveSignature(testSignature)
+	sig, err := repository.ParseArchiveSignature(testSignature)
 	assert.Nil(t, err, "failed to parse signature")
 
 	key := keys.GetKeyByID(sig.KeyID)
@@ -107,7 +107,7 @@ func TestArchiveSignature_ParseAndVerify(t *testing.T) {
 func TestArchiveSignature_ParseAndDetectBadSignature(t *testing.T) {
 	keys := getTestKeys(t)
 
-	sig, err := docformat.ParseArchiveSignature(badSignature)
+	sig, err := repository.ParseArchiveSignature(badSignature)
 	assert.Nil(t, err, "failed to parse signature")
 
 	key := keys.GetKeyByID(sig.KeyID)
@@ -134,7 +134,7 @@ func FuzzArchiveSignature_Parsing(f *testing.F) {
 	f.Add("v1.2.vZr1mhSxTiT_LNBP4S8eXfGUrmazfdjVZRGWoV2bhYE.")
 
 	f.Fuzz(func(t *testing.T, a string) {
-		s, err := docformat.ParseArchiveSignature(a)
+		s, err := repository.ParseArchiveSignature(a)
 		if err != nil {
 			return
 		}

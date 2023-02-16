@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ttab/elephant/doc"
+	"github.com/ttab/elephant/revisor"
 )
 
 type DocStore interface {
@@ -30,6 +31,29 @@ type DocStore interface {
 	CheckPermission(
 		ctx context.Context, req CheckPermissionRequest,
 	) (CheckPermissionResult, error)
+	RegisterSchema(
+		ctx context.Context, req RegisterSchemaRequest,
+	) error
+	DeactivateSchema(
+		ctx context.Context, name string,
+	) error
+	GetSchema(
+		ctx context.Context, name, version string,
+	) (*Schema, error)
+	GetActiveSchemas(ctx context.Context) ([]*Schema, error)
+}
+
+type Schema struct {
+	Name          string
+	Version       string
+	Specification *revisor.ConstraintSet
+}
+
+type RegisterSchemaRequest struct {
+	Name          string
+	Version       string
+	Specification *revisor.ConstraintSet
+	Activate      bool
 }
 
 type CheckPermissionRequest struct {
@@ -109,6 +133,7 @@ const (
 	ErrCodeOptimisticLock DocStoreErrorCode = "optimistic-lock"
 	ErrCodeDeleteLock     DocStoreErrorCode = "delete-lock"
 	ErrCodeBadRequest     DocStoreErrorCode = "bad-request"
+	ErrCodeExists         DocStoreErrorCode = "exists"
 )
 
 type DocStoreError struct {

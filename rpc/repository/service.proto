@@ -11,6 +11,10 @@ service Documents {
   rpc Validate(ValidateRequest) returns (ValidateResponse);
   rpc Delete(DeleteDocumentRequest) returns (DeleteDocumentResponse);
   rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
+  rpc RegisterSchema(RegisterSchemaRequest) returns (RegisterSchemaResponse);
+  rpc SetActiveSchema(SetActiveSchemaRequest) returns (SetActiveSchemaResponse);
+  rpc GetSchema(GetSchemaRequest) returns (GetSchemaResponse);
+  rpc GetActiveSchemas(GetActiveSchemasRequest) returns (GetActiveSchemasResponse);
 }
 
 message GetDocumentRequest {
@@ -271,4 +275,49 @@ message Block {
   repeated Block content = 14;
   // Meta is used to embed metadata
   repeated Block meta = 15;
+}
+
+message RegisterSchemaRequest {
+  Schema schema = 1;
+  // Activate the registered schema immediately.
+  bool activate = 2;
+}
+
+message RegisterSchemaResponse {}
+
+message SetActiveSchemaRequest {
+  // Name is the name of the schema to activate or deactivate, required.
+  string name = 1;
+  // Version of the schema to activate, required when activating a new version.
+  string version = 2;
+  // Deactivate is used to disable a schema, activate new schema versions
+  // instead if you want to start using a new version.
+  bool deactivate = 3;
+}
+
+message SetActiveSchemaResponse {}
+
+message GetSchemaRequest {
+  // Name of the schema to get.
+  string name = 1;
+  // Version of the schema to get, optional. The currently active version of the
+  // schema will be returned if no version is specified.
+  string version = 2;
+}
+
+message GetSchemaResponse {
+  string version = 1;
+  bytes spec = 2;
+}
+
+message GetActiveSchemasRequest {}
+
+message GetActiveSchemasResponse {
+  repeated Schema schemas = 1;
+}
+
+message Schema {
+  string name = 1;
+  string version = 2;
+  bytes spec = 3;
 }

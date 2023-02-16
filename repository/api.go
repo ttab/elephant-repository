@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/ttab/elephant/revisor"
 	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
+	"golang.org/x/mod/semver"
 )
 
 type APIServer struct {
@@ -599,6 +601,181 @@ func (a *APIServer) Validate(
 	}
 
 	return &res, nil
+}
+
+// GetActiveSchemas implements repository.Documents
+func (a *APIServer) GetActiveSchemas(
+	ctx context.Context, req *repository.GetActiveSchemasRequest,
+) (*repository.GetActiveSchemasResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("schema_admin") {
+		return nil, twirp.PermissionDenied.Error(
+			"no administrative schema permission")
+	}
+
+	schemas, err := a.store.GetActiveSchemas(ctx)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to retrieve active schemas: %w", err)
+	}
+
+	var res repository.GetActiveSchemasResponse
+
+	for i := range schemas {
+		data, err := json.Marshal(schemas[i].Specification)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to marshal %q@v specification for response: %w",
+				schemas[i].Name, schemas[i].Version, err)
+		}
+
+		res.Schemas = append(res.Schemas, &repository.Schema{
+			Name:    schemas[i].Name,
+			Version: schemas[i].Version,
+			Spec:    data,
+		})
+	}
+
+	return &res, nil
+}
+
+// GetSchema implements repository.Documents
+func (a *APIServer) GetSchema(
+	ctx context.Context, req *repository.GetSchemaRequest,
+) (*repository.GetSchemaResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("schema_admin") {
+		return nil, twirp.PermissionDenied.Error(
+			"no administrative schema permission")
+	}
+
+	schema, err := a.store.GetSchema(ctx, req.Name, req.Version)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to retrieve schema: %w", err)
+	}
+
+	data, err := json.Marshal(schema.Specification)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to marshal specification for response: %w",
+			err)
+	}
+
+	return &repository.GetSchemaResponse{
+		Version: schema.Version,
+		Spec:    data,
+	}, nil
+}
+
+// RegisterSchema implements repository.Documents
+func (a *APIServer) RegisterSchema(
+	ctx context.Context, req *repository.RegisterSchemaRequest,
+) (*repository.RegisterSchemaResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("schema_admin") {
+		return nil, twirp.PermissionDenied.Error(
+			"no administrative schema permission")
+	}
+
+	if req.Schema == nil {
+		return nil, twirp.RequiredArgumentError("schema")
+	}
+
+	if req.Schema.Name == "" {
+		return nil, twirp.RequiredArgumentError("schema.name")
+	}
+
+	if req.Schema.Version == "" {
+		return nil, twirp.RequiredArgumentError("schema.version")
+	}
+
+	version := semver.Canonical(req.Schema.Version)
+	if version == "" {
+		return nil, twirp.InvalidArgumentError(
+			"schema.version", "invalid semver version")
+	}
+
+	var spec revisor.ConstraintSet
+
+	err := json.Unmarshal(req.Schema.Spec, &spec)
+	if err != nil {
+		return nil, twirp.InvalidArgument.Errorf("schema.spec",
+			"invalid schema: %w", err)
+	}
+
+	err = a.store.RegisterSchema(ctx, RegisterSchemaRequest{
+		Name:          req.Schema.Name,
+		Version:       version,
+		Specification: &spec,
+	})
+	if IsDocStoreErrorCode(err, ErrCodeExists) {
+		return nil, twirp.FailedPrecondition.Error(
+			"schema version already exists")
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to register schema: %w", err)
+	}
+
+	return &repository.RegisterSchemaResponse{}, nil
+}
+
+// SetActiveSchema implements repository.Documents
+func (a *APIServer) SetActiveSchema(
+	ctx context.Context, req *repository.SetActiveSchemaRequest,
+) (*repository.SetActiveSchemaResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("schema_admin") {
+		return nil, twirp.PermissionDenied.Error(
+			"no administrative schema permission")
+	}
+
+	if req.Name == "" {
+		return nil, twirp.RequiredArgumentError("name")
+	}
+
+	if !req.Deactivate && req.Version == "" {
+		return nil, twirp.RequiredArgumentError("version")
+	}
+
+	if req.Deactivate {
+		err := a.store.DeactivateSchema(ctx, req.Name)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to deactivate schema: %w", err)
+		}
+	} else {
+		err := a.store.RegisterSchema(ctx, RegisterSchemaRequest{
+			Name:     req.Name,
+			Version:  req.Version,
+			Activate: true,
+		})
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to register activation: %w", err)
+		}
+	}
+
+	return &repository.SetActiveSchemaResponse{}, nil
 }
 
 func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {

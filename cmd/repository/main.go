@@ -96,10 +96,12 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	store, err := repository.NewPGDocStore(dbpool)
+	store, err := repository.NewPGDocStore(logger, dbpool)
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
+
+	go store.RunListener(c.Context)
 
 	setupCtx, cancel := context.WithTimeout(c.Context, 10*time.Second)
 	defer cancel()

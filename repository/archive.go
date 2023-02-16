@@ -388,16 +388,11 @@ func (a *Archiver) archiveDocumentVersions(
 			"failed to store archive object: %w", err)
 	}
 
-	err = q.Notify(ctx, postgres.NotifyParams{
-		Channel: "archived",
-		Message: fmt.Sprintf("version:%s:%d", dv.UUID, dv.Version),
+	notifyArchived(ctx, a.logger, q, ArchivedEvent{
+		Type:    ArchiveEventTypeVersion,
+		UUID:    dv.UUID,
+		Version: dv.Version,
 	})
-	if err != nil {
-		a.logger.WithContext(ctx).WithFields(logrus.Fields{
-			"document_uuid":    dv.UUID,
-			"document_version": dv.Version,
-		}).Error("failed to send archive notification")
-	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
@@ -514,18 +509,12 @@ func (a *Archiver) archiveDocumentStatuses(
 			"failed to store archive object: %w", err)
 	}
 
-	err = q.Notify(ctx, postgres.NotifyParams{
-		Channel: "archived",
-		Message: fmt.Sprintf("status:%s:%s:%d",
-			ds.UUID, ds.Name, ds.ID),
+	notifyArchived(ctx, a.logger, q, ArchivedEvent{
+		Type:    ArchiveEventTypeStatus,
+		UUID:    ds.UUID,
+		Name:    ds.Name,
+		Version: ds.ID,
 	})
-	if err != nil {
-		a.logger.WithContext(ctx).WithFields(logrus.Fields{
-			"document_uuid":      ds.UUID,
-			"document_status":    ds.Name,
-			"document_status_id": ds.ID,
-		}).Error("failed to send archive notification")
-	}
 
 	err = tx.Commit(ctx)
 	if err != nil {

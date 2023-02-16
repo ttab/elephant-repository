@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/ttab/elephant/doc"
+	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/revisor"
 	"github.com/ttab/elephant/revisor/constraints"
-	"github.com/ttab/elephant/revisor/internal"
 	"github.com/urfave/cli/v2"
 )
 

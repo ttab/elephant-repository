@@ -148,6 +148,18 @@ ALTER TABLE public.acl_audit ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: active_schemas; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.active_schemas (
+    name text NOT NULL,
+    version text NOT NULL
+);
+
+
+ALTER TABLE public.active_schemas OWNER TO repository;
+
+--
 -- Name: delete_record; Type: TABLE; Schema: public; Owner: repository
 --
 
@@ -210,6 +222,19 @@ CREATE TABLE public.document_link (
 
 
 ALTER TABLE public.document_link OWNER TO repository;
+
+--
+-- Name: document_schema; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.document_schema (
+    name text NOT NULL,
+    version text NOT NULL,
+    spec jsonb NOT NULL
+);
+
+
+ALTER TABLE public.document_schema OWNER TO repository;
 
 --
 -- Name: document_status; Type: TABLE; Schema: public; Owner: repository
@@ -307,6 +332,14 @@ ALTER TABLE ONLY public.acl
 
 
 --
+-- Name: active_schemas active_schemas_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.active_schemas
+    ADD CONSTRAINT active_schemas_pkey PRIMARY KEY (name);
+
+
+--
 -- Name: delete_record delete_record_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -328,6 +361,14 @@ ALTER TABLE ONLY public.document_link
 
 ALTER TABLE ONLY public.document
     ADD CONSTRAINT document_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: document_schema document_schema_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.document_schema
+    ADD CONSTRAINT document_schema_pkey PRIMARY KEY (name, version);
 
 
 --
@@ -419,6 +460,14 @@ ALTER TABLE ONLY public.acl_audit
 
 ALTER TABLE ONLY public.acl
     ADD CONSTRAINT acl_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: active_schemas active_schemas_name_version_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.active_schemas
+    ADD CONSTRAINT active_schemas_name_version_fkey FOREIGN KEY (name, version) REFERENCES public.document_schema(name, version);
 
 
 --

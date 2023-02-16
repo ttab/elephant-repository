@@ -24,6 +24,11 @@ type AclAudit struct {
 	Archived   bool
 }
 
+type ActiveSchema struct {
+	Name    string
+	Version string
+}
+
 type DeleteRecord struct {
 	ID         int64
 	Uuid       uuid.UUID
@@ -51,6 +56,12 @@ type DocumentLink struct {
 	ToDocument   uuid.UUID
 	Rel          pgtype.Text
 	Type         pgtype.Text
+}
+
+type DocumentSchema struct {
+	Name    string
+	Version string
+	Spec    []byte
 }
 
 type DocumentStatus struct {
