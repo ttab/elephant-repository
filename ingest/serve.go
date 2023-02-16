@@ -78,10 +78,20 @@ func uiServer(
 		return fmt.Errorf("failed to parse templates: %w", err)
 	}
 
-	renderErrorPage := func(w http.ResponseWriter, err error) {
-		_ = templates.ExecuteTemplate(w, "error.html", ErrorPageData{
-			Error: err.Error(),
-		})
+	errWrap := func(fn func(
+		w http.ResponseWriter, r *http.Request, p httprouter.Params,
+	) error) httprouter.Handle {
+		return func(
+			w http.ResponseWriter, r *http.Request, p httprouter.Params,
+		) {
+			err := fn(w, r, p)
+			if err != nil {
+				_ = templates.ExecuteTemplate(w, "error.html",
+					ErrorPageData{
+						Error: err.Error(),
+					})
+			}
+		}
 	}
 
 	assetDir, err := fs.Sub(assetFS, "assets")
@@ -100,21 +110,19 @@ func uiServer(
 			Query: params.Get("q"),
 		}
 
-		query := data.Query
-		if query == "" {
-			query = "title:*"
+		if data.Query == "" {
+			data.Query = "title:*"
 		}
 
 		_ = templates.ExecuteTemplate(w, "index.html", data)
 	})
 
-	router.GET("/document/:uuid/", func(
+	router.GET("/document/:uuid/", errWrap(func(
 		w http.ResponseWriter, r *http.Request, ps httprouter.Params,
-	) {
+	) error {
 		uuid, err := uuid.Parse(ps.ByName("uuid"))
 		if err != nil {
-			renderErrorPage(w, err)
-			return
+			return fmt.Errorf("failed to parse uuid: %w", err)
 		}
 
 		data := DocumentPageData{
@@ -124,22 +132,22 @@ func uiServer(
 
 		doc, err := store.GetDocumentMeta(r.Context(), uuid)
 		if err != nil {
-			renderErrorPage(w, err)
-			return
+			return fmt.Errorf("failed to fetch document meta: %w", err)
 		}
 
 		data.Meta = *doc
 
 		_ = templates.ExecuteTemplate(w, "document.html", data)
-	})
 
-	router.GET("/document/:uuid/:version/", func(
+		return nil
+	}))
+
+	router.GET("/document/:uuid/:version/", errWrap(func(
 		w http.ResponseWriter, r *http.Request, ps httprouter.Params,
-	) {
+	) error {
 		uuid, err := uuid.Parse(ps.ByName("uuid"))
 		if err != nil {
-			renderErrorPage(w, err)
-			return
+			return fmt.Errorf("failed to parse uuid: %w", err)
 		}
 
 		data := VersionPageData{
@@ -148,9 +156,8 @@ func uiServer(
 
 		version, err := strconv.ParseInt(ps.ByName("version"), 10, 64)
 		if err != nil {
-			renderErrorPage(w, fmt.Errorf(
-				"invalid version number: %w", err))
-			return
+			return fmt.Errorf(
+				"invalid version number: %w", err)
 		}
 
 		data.Version = version
@@ -158,8 +165,7 @@ func uiServer(
 		doc, err := store.GetDocument(r.Context(),
 			uuid, data.Version)
 		if err != nil {
-			renderErrorPage(w, err)
-			return
+			return fmt.Errorf("failed to load document: %w", err)
 		}
 
 		data.Document = *doc
@@ -204,29 +210,28 @@ func uiServer(
 		}
 
 		_ = templates.ExecuteTemplate(w, "version.html", data)
-	})
 
-	router.GET("/document/:uuid/:version/document", func(
+		return nil
+	}))
+
+	router.GET("/document/:uuid/:version/document", errWrap(func(
 		w http.ResponseWriter, r *http.Request, ps httprouter.Params,
-	) {
+	) error {
 		uuid, err := uuid.Parse(ps.ByName("uuid"))
 		if err != nil {
-			renderErrorPage(w, err)
-			return
+			return fmt.Errorf("failed to parse UUID: %w", err)
 		}
 
 		version, err := strconv.ParseInt(ps.ByName("version"), 10, 64)
 		if err != nil {
-			renderErrorPage(w, fmt.Errorf(
-				"invalid version number: %w", err))
-			return
+			return fmt.Errorf(
+				"invalid version number: %w", err)
 		}
 
 		doc, err := store.GetDocument(r.Context(), uuid, version)
 		if err != nil {
-			renderErrorPage(w, fmt.Errorf(
-				"failed to get document: %w", err))
-			return
+			return fmt.Errorf(
+				"failed to get document: %w", err)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -235,34 +240,32 @@ func uiServer(
 		enc.SetIndent("", "  ")
 
 		_ = enc.Encode(doc)
-	})
 
-	router.GET("/document/:uuid/:version/newsml", func(
+		return nil
+	}))
+
+	router.GET("/document/:uuid/:version/newsml", errWrap(func(
 		w http.ResponseWriter, r *http.Request, ps httprouter.Params,
-	) {
+	) error {
 		uuid, err := uuid.Parse(ps.ByName("uuid"))
 		if err != nil {
-			renderErrorPage(w, err)
-			return
+			return fmt.Errorf("failed to parse UUID: %w", err)
 		}
 
 		version, err := strconv.ParseInt(ps.ByName("version"), 10, 64)
 		if err != nil {
-			renderErrorPage(w, fmt.Errorf(
-				"invalid version number: %w", err))
-			return
+			return fmt.Errorf(
+				"invalid version number: %w", err)
 		}
 
 		vInfo, err := store.GetVersion(r.Context(), uuid, version)
 		if err != nil {
-			renderErrorPage(w, fmt.Errorf(
-				"failed to get version information: %w", err))
-			return
+			return fmt.Errorf(
+				"failed to get version information: %w", err)
 		}
 
 		if vInfo.Meta == nil || vInfo.Meta["oc-source"] == "" {
-			renderErrorPage(w, errors.New("not a OC document"))
-			return
+			return errors.New("not a OC document")
 		}
 
 		ocUUID := vInfo.Meta["oc-source"]
@@ -274,17 +277,15 @@ func uiServer(
 
 		resp, err := oc.GetRawObject(r.Context(), ocUUID, ocVersion)
 		if err != nil {
-			renderErrorPage(w, fmt.Errorf(
-				"failed to load NewsML: %w", err))
-			return
+			return fmt.Errorf(
+				"failed to load NewsML: %w", err)
 		}
 
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			renderErrorPage(w, fmt.Errorf(
-				"OC responded with: %s", resp.Status))
-			return
+			return fmt.Errorf(
+				"OC responded with: %s", resp.Status)
 		}
 
 		transfer := []string{
@@ -305,7 +306,9 @@ func uiServer(
 		w.Header().Add("Content-Type", "text/xml")
 
 		_, _ = io.Copy(w, resp.Body)
-	})
+
+		return nil
+	}))
 
 	return nil
 }
@@ -344,7 +347,7 @@ func renderFactbox(
 
 	_ = tpl.Execute(&buf, data)
 
-	return template.HTML(buf.String())
+	return template.HTML(buf.String()) //nolint:gosec
 }
 
 func renderTTVisual(c RenderedContent) template.HTML {
@@ -393,7 +396,7 @@ func renderTTVisual(c RenderedContent) template.HTML {
 
 	_ = tpl.Execute(&buf, data)
 
-	return template.HTML(buf.String())
+	return template.HTML(buf.String()) //nolint:gosec
 }
 
 func tagWrap(
@@ -406,6 +409,7 @@ func tagWrap(
 	}
 
 	return func(c RenderedContent) template.HTML {
+		//nolint:gosec
 		return template.HTML(fmt.Sprintf(
 			"<%[1]s %[2]s>%[3]s</%[1]s>",
 			tag, class, c.Block.Data["text"]))

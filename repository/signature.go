@@ -24,14 +24,14 @@ type SigningKey struct {
 
 type SigningKeySet struct {
 	m    sync.RWMutex
-	keys []SigningKey `json:"keys"`
+	Keys []SigningKey `json:"keys"`
 }
 
 func (s *SigningKeySet) Replace(keys []SigningKey) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	s.keys = keys
+	s.Keys = keys
 }
 
 func (s *SigningKeySet) LatestKey() *SigningKey {
@@ -40,14 +40,15 @@ func (s *SigningKeySet) LatestKey() *SigningKey {
 
 	var l *SigningKey
 
-	for i := range s.keys {
+	for i := range s.Keys {
 		if l == nil {
-			l = &s.keys[i]
+			l = &s.Keys[i]
+
 			continue
 		}
 
-		if s.keys[i].IssuedAt.After(l.IssuedAt) {
-			l = &s.keys[i]
+		if s.Keys[i].IssuedAt.After(l.IssuedAt) {
+			l = &s.Keys[i]
 		}
 	}
 
@@ -60,18 +61,19 @@ func (s *SigningKeySet) CurrentKey(t time.Time) *SigningKey {
 
 	var c *SigningKey
 
-	for i := range s.keys {
-		valid := t.After(s.keys[i].NotBefore)
+	for i := range s.Keys {
+		valid := t.After(s.Keys[i].NotBefore)
 
 		if c == nil {
 			if valid {
-				c = &s.keys[i]
+				c = &s.Keys[i]
 			}
+
 			continue
 		}
 
-		if valid && s.keys[i].IssuedAt.After(c.IssuedAt) {
-			c = &s.keys[i]
+		if valid && s.Keys[i].IssuedAt.After(c.IssuedAt) {
+			c = &s.Keys[i]
 		}
 	}
 
@@ -82,9 +84,9 @@ func (s *SigningKeySet) GetKeyByID(kid string) *SigningKey {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
-	for i := range s.keys {
-		if s.keys[i].Spec.KeyID == kid {
-			return &s.keys[i]
+	for i := range s.Keys {
+		if s.Keys[i].Spec.KeyID == kid {
+			return &s.Keys[i]
 		}
 	}
 

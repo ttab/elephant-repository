@@ -27,10 +27,10 @@ func NewAPIServer(store DocStore, validator *revisor.Validator) *APIServer {
 	}
 }
 
-// Interface guard
+// Interface guard.
 var _ repository.Documents = &APIServer{}
 
-// Delete implements repository.Documents
+// Delete implements repository.Documents.
 func (a *APIServer) Delete(
 	ctx context.Context, req *repository.DeleteDocumentRequest,
 ) (*repository.DeleteDocumentResponse, error) {
@@ -50,7 +50,12 @@ func (a *APIServer) Delete(
 			"cannot be less than -1")
 	}
 
-	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.writeAccessCheck(ctx, auth, docUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +97,7 @@ func (a *APIServer) Delete(
 	return &repository.DeleteDocumentResponse{}, nil
 }
 
-// Get implements repository.Documents
+// Get implements repository.Documents.
 func (a *APIServer) Get(
 	ctx context.Context, req *repository.GetDocumentRequest,
 ) (*repository.GetDocumentResponse, error) {
@@ -122,7 +127,7 @@ func (a *APIServer) Get(
 			"status cannot be specified together with a version")
 	}
 
-	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
 	if err != nil {
 		return nil, err
 	}
@@ -177,11 +182,11 @@ func (a *APIServer) Get(
 
 	return &repository.GetDocumentResponse{
 		Document: DocumentToRPC(doc),
-		Version:  int64(version),
+		Version:  version,
 	}, nil
 }
 
-// GetHistory implements repository.Documents
+// GetHistory implements repository.Documents.
 func (a *APIServer) GetHistory(
 	ctx context.Context, req *repository.GetHistoryRequest,
 ) (*repository.GetHistoryResponse, error) {
@@ -196,7 +201,7 @@ func (a *APIServer) GetHistory(
 			"no read permission")
 	}
 
-	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +295,7 @@ func (a *APIServer) writeAccessCheck(
 	return nil
 }
 
-// GetMeta implements repository.Documents
+// GetMeta implements repository.Documents.
 func (a *APIServer) GetMeta(
 	ctx context.Context, req *repository.GetMetaRequest,
 ) (*repository.GetMetaResponse, error) {
@@ -305,7 +310,7 @@ func (a *APIServer) GetMeta(
 			"no read permission")
 	}
 
-	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +330,7 @@ func (a *APIServer) GetMeta(
 	resp := repository.DocumentMeta{
 		Created:        meta.Created.Format(time.RFC3339),
 		Modified:       meta.Modified.Format(time.RFC3339),
-		CurrentVersion: int64(meta.CurrentVersion),
+		CurrentVersion: meta.CurrentVersion,
 	}
 
 	for name, head := range meta.Statuses {
@@ -356,20 +361,20 @@ func (a *APIServer) GetMeta(
 	}, nil
 }
 
-func validateRequiredUUIDParam(v string, name string) (uuid.UUID, error) {
+func validateRequiredUUIDParam(v string) (uuid.UUID, error) {
 	if v == "" {
-		return uuid.Nil, twirp.RequiredArgumentError(name)
+		return uuid.Nil, twirp.RequiredArgumentError("uuid")
 	}
 
 	u, err := uuid.Parse(v)
 	if err != nil {
-		return uuid.Nil, twirp.InvalidArgumentError(name, err.Error())
+		return uuid.Nil, twirp.InvalidArgumentError("uuid", err.Error())
 	}
 
 	return u, nil
 }
 
-// Update implements repository.Documents
+// Update implements repository.Documents.
 func (a *APIServer) Update(
 	ctx context.Context, req *repository.UpdateRequest,
 ) (*repository.UpdateResponse, error) {
@@ -400,7 +405,12 @@ func (a *APIServer) Update(
 			"cannot be less than -1")
 	}
 
-	docUUID, err := validateRequiredUUIDParam(req.Uuid, "uuid")
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.writeAccessCheck(ctx, auth, docUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -562,24 +572,26 @@ func (a *APIServer) Update(
 	}
 
 	res, err := a.store.Update(ctx, up)
+
 	// TODO: generic docstore-to-twirp error translation is needed
-	if IsDocStoreErrorCode(err, ErrCodeOptimisticLock) {
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeOptimisticLock):
 		return nil, twirp.FailedPrecondition.Error(err.Error())
-	} else if IsDocStoreErrorCode(err, ErrCodeBadRequest) {
+	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
 		return nil, twirp.InvalidArgumentError("document", err.Error())
-	} else if IsDocStoreErrorCode(err, ErrCodeDeleteLock) {
+	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
 		return nil, twirp.FailedPrecondition.Error(err.Error())
-	} else if err != nil {
+	case err != nil:
 		return nil, twirp.InternalErrorf(
 			"failed to update document: %w", err)
 	}
 
 	return &repository.UpdateResponse{
-		Version: int64(res.Version),
+		Version: res.Version,
 	}, nil
 }
 
-// Validate implements repository.Documents
+// Validate implements repository.Documents.
 func (a *APIServer) Validate(
 	ctx context.Context, req *repository.ValidateRequest,
 ) (*repository.ValidateResponse, error) {
@@ -603,7 +615,7 @@ func (a *APIServer) Validate(
 	return &res, nil
 }
 
-// GetActiveSchemas implements repository.Documents
+// GetActiveSchemas implements repository.Documents.
 func (a *APIServer) GetActiveSchemas(
 	ctx context.Context, req *repository.GetActiveSchemasRequest,
 ) (*repository.GetActiveSchemasResponse, error) {
@@ -630,7 +642,7 @@ func (a *APIServer) GetActiveSchemas(
 		data, err := json.Marshal(schemas[i].Specification)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"failed to marshal %q@v specification for response: %w",
+				"failed to marshal %q@%s specification for response: %w",
 				schemas[i].Name, schemas[i].Version, err)
 		}
 
@@ -644,7 +656,7 @@ func (a *APIServer) GetActiveSchemas(
 	return &res, nil
 }
 
-// GetSchema implements repository.Documents
+// GetSchema implements repository.Documents.
 func (a *APIServer) GetSchema(
 	ctx context.Context, req *repository.GetSchemaRequest,
 ) (*repository.GetSchemaResponse, error) {
@@ -678,7 +690,7 @@ func (a *APIServer) GetSchema(
 	}, nil
 }
 
-// RegisterSchema implements repository.Documents
+// RegisterSchema implements repository.Documents.
 func (a *APIServer) RegisterSchema(
 	ctx context.Context, req *repository.RegisterSchemaRequest,
 ) (*repository.RegisterSchemaResponse, error) {
@@ -715,7 +727,7 @@ func (a *APIServer) RegisterSchema(
 
 	err := json.Unmarshal(req.Schema.Spec, &spec)
 	if err != nil {
-		return nil, twirp.InvalidArgument.Errorf("schema.spec",
+		return nil, twirp.InvalidArgument.Errorf(
 			"invalid schema: %w", err)
 	}
 
@@ -734,7 +746,7 @@ func (a *APIServer) RegisterSchema(
 	return &repository.RegisterSchemaResponse{}, nil
 }
 
-// SetActiveSchema implements repository.Documents
+// SetActiveSchema implements repository.Documents.
 func (a *APIServer) SetActiveSchema(
 	ctx context.Context, req *repository.SetActiveSchemaRequest,
 ) (*repository.SetActiveSchemaResponse, error) {

@@ -29,8 +29,9 @@ func RunServer(
 	router := httprouter.New()
 
 	server := http.Server{
-		Addr:    addr,
-		Handler: router,
+		Addr:              addr,
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	for _, opt := range opts {
@@ -42,6 +43,7 @@ func RunServer(
 
 	go func() {
 		<-ctx.Done()
+
 		_ = server.Close()
 	}()
 
@@ -49,7 +51,7 @@ func RunServer(
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	} else if err != nil {
-		return err
+		return fmt.Errorf("failed to start listening: %w", err)
 	}
 
 	return nil
@@ -115,7 +117,7 @@ func apiServer(
 	) error {
 		auth, err := AuthInfoFromHeader(&jwtKey.PublicKey,
 			r.Header.Get("Authorization"))
-		if err != nil {
+		if err != nil && !errors.Is(err, ErrNoAuthorization) {
 			return internal.HTTPErrorf(http.StatusUnauthorized,
 				"invalid authorization method: %v", err)
 		}
@@ -162,7 +164,7 @@ func apiServer(
 		subURI := strings.TrimSuffix(uriPart, ">")
 		expiresIn := 10 * time.Minute
 
-		sub, units, ok := strings.Cut(subURI, ", ")
+		sub, units, _ := strings.Cut(subURI, ", ")
 
 		claims := JWTClaims{
 			RegisteredClaims: jwt.RegisteredClaims{

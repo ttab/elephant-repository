@@ -62,7 +62,7 @@ type NMLDataElement struct {
 }
 
 func assignmentImport(
-	ctx context.Context, evt OCLogEvent, opt IngestOptions,
+	ctx context.Context, evt OCLogEvent, opt Options,
 	ccaImport converterFunc,
 ) (*ConvertedDoc, error) {
 	var assignment Planning
@@ -77,7 +77,7 @@ func assignmentImport(
 		// TODO: dirty solution to dirty data in stage, let's revisit.
 		if strings.Contains(err.Error(), "XML syntax error") {
 			opt.Blocklist.Add(evt.UUID, fmt.Errorf(
-				"failed to load planning item: %v", err,
+				"failed to load planning item: %w", err,
 			))
 
 			return nil, errIgnoreDocument

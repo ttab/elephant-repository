@@ -25,7 +25,7 @@ func (tt TransportWithToken) RoundTrip(
 ) (*http.Response, error) {
 	req.Header.Set("Authorization", "Bearer "+tt.Token)
 
-	return tt.Transport.RoundTrip(req)
+	return tt.Transport.RoundTrip(req) //nolint:wrapcheck
 }
 
 type OCClient struct {
@@ -58,10 +58,18 @@ type OCLogResponse struct {
 	Events []OCLogEvent
 }
 
+type OCEventType string
+
+const (
+	OCDeleteEvent OCEventType = "DELETE"
+	OCAddEvent    OCEventType = "ADD"
+	OCUpdateEvent OCEventType = "UPDATE"
+)
+
 type OCLogEvent struct {
 	ID        int
 	UUID      string
-	EventType string
+	EventType OCEventType
 	Created   time.Time
 	Content   OCLogContent
 }

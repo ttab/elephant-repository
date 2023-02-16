@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/doc"
+	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
 	"github.com/ttab/elephant/revisor"
 )
@@ -49,7 +49,7 @@ func NewPGDocStore(logger *logrus.Logger, pool *pgxpool.Pool) (*PGDocStore, erro
 //
 // Note that we don't provide any delivery guarantees for these events.
 // non-blocking send is used on ch, so if it's unbuffered events will be
-// discarded if the reciever is busy.
+// discarded if the receiver is busy.
 func (s *PGDocStore) OnArchivedUpdate(
 	ctx context.Context, ch chan ArchivedEvent,
 ) {
@@ -63,7 +63,7 @@ func (s *PGDocStore) OnArchivedUpdate(
 //
 // Note that we don't provide any delivery guarantees for these events.
 // non-blocking send is used on ch, so if it's unbuffered events will be
-// discarded if the reciever is busy.
+// discarded if the receiver is busy.
 func (s *PGDocStore) OnSchemaUpdate(
 	ctx context.Context, ch chan SchemaEvent,
 ) {
@@ -79,7 +79,7 @@ func (s *PGDocStore) RunListener(ctx context.Context) {
 		err := s.runListener(ctx)
 		if errors.Is(err, context.Canceled) {
 			return
-		} else {
+		} else if err != nil {
 			s.logger.WithError(err).Error(
 				"failed to run notification listener")
 		}
@@ -140,7 +140,7 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 	}
 }
 
-// Delete implements DocStore
+// Delete implements DocStore.
 func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 	var metaJSON []byte
 
@@ -161,7 +161,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer s.safeRollback(ctx, tx, "document delete")
+	internal.SafeRollback(ctx, s.logger, tx, "document delete")
 
 	q := postgres.New(tx)
 
@@ -188,7 +188,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 		select {
 		case <-time.After(1 * time.Second):
 		case <-ctx.Done():
-			return ctx.Err()
+			return ctx.Err() //nolint:wrapcheck
 		}
 	}
 
@@ -197,7 +197,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 			Uuid:       req.UUID,
 			Uri:        info.Info.Uri,
 			Version:    info.Info.CurrentVersion,
-			Created:    pgTime(req.Updated),
+			Created:    internal.PGTime(req.Updated),
 			CreatorUri: req.Updater,
 			Meta:       metaJSON,
 		})
@@ -223,7 +223,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 	return nil
 }
 
-// GetDocument implements DocStore
+// GetDocument implements DocStore.
 func (s *PGDocStore) GetDocument(
 	ctx context.Context, uuid uuid.UUID, version int64,
 ) (*doc.Document, error) {
@@ -241,6 +241,7 @@ func (s *PGDocStore) GetDocument(
 				Version: version,
 			})
 	}
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, DocStoreErrorf(ErrCodeNotFound, "not found")
 	} else if err != nil {
@@ -285,7 +286,7 @@ func (s *PGDocStore) GetVersion(
 		err := json.Unmarshal(v.Meta, &up.Meta)
 		if err != nil {
 			return DocumentUpdate{}, fmt.Errorf(
-				"failed to unmarshal metadata for version %d: %err",
+				"failed to unmarshal metadata for version %d: %w",
 				version, err)
 		}
 	}
@@ -319,7 +320,7 @@ func (s *PGDocStore) GetVersionHistory(
 			err := json.Unmarshal(v.Meta, &up.Meta)
 			if err != nil {
 				return nil, fmt.Errorf(
-					"failed to unmarshal metadata for version %d: %err",
+					"failed to unmarshal metadata for version %d: %w",
 					v.Version, err)
 			}
 		}
@@ -330,7 +331,7 @@ func (s *PGDocStore) GetVersionHistory(
 	return updates, nil
 }
 
-// GetDocumentMeta implements DocStore
+// GetDocumentMeta implements DocStore.
 func (s *PGDocStore) GetDocumentMeta(
 	ctx context.Context, uuid uuid.UUID,
 ) (*DocumentMeta, error) {
@@ -381,7 +382,7 @@ func (s *PGDocStore) GetDocumentMeta(
 	return &meta, nil
 }
 
-// CheckPermission implements DocStore
+// CheckPermission implements DocStore.
 func (s *PGDocStore) CheckPermission(
 	ctx context.Context, req CheckPermissionRequest,
 ) (CheckPermissionResult, error) {
@@ -418,7 +419,7 @@ func pgStringArray(v []string) pgtype.Array[string] {
 	}
 }
 
-// Update implements DocStore
+// Update implements DocStore.
 func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*DocumentUpdate, error) {
 	var docJSON, metaJSON []byte
 
@@ -448,6 +449,7 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 	}
 
 	statusMeta := make([][]byte, len(update.Status))
+
 	for i, stat := range update.Status {
 		if len(stat.Meta) == 0 {
 			continue
@@ -470,7 +472,7 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer s.safeRollback(ctx, tx, "document update")
+	defer internal.SafeRollback(ctx, s.logger, tx, "document update")
 
 	q := postgres.New(tx)
 
@@ -492,7 +494,7 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 		err = q.CreateVersion(ctx, postgres.CreateVersionParams{
 			Uuid:         update.UUID,
 			Version:      up.Version,
-			Created:      pgTime(up.Created),
+			Created:      internal.PGTime(up.Created),
 			CreatorUri:   up.Creator,
 			Meta:         metaJSON,
 			DocumentData: docJSON,
@@ -536,7 +538,7 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 			Name:       stat.Name,
 			ID:         statusID,
 			Version:    status.Version,
-			Created:    pgTime(up.Created),
+			Created:    internal.PGTime(up.Created),
 			CreatorUri: up.Creator,
 			Meta:       statusMeta[i],
 		})
@@ -570,7 +572,7 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 	return &up, nil
 }
 
-// RegisterSchema implements DocStore
+// RegisterSchema implements DocStore.
 func (s *PGDocStore) RegisterSchema(
 	ctx context.Context, req RegisterSchemaRequest,
 ) error {
@@ -593,7 +595,7 @@ func (s *PGDocStore) RegisterSchema(
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer s.safeRollback(ctx, tx, "schema registration")
+	defer internal.SafeRollback(ctx, s.logger, tx, "schema registration")
 
 	q := postgres.New(tx)
 
@@ -635,7 +637,7 @@ func (s *PGDocStore) RegisterSchema(
 	return nil
 }
 
-// DeactivateSchema implements DocStore
+// DeactivateSchema implements DocStore.
 func (s *PGDocStore) DeactivateSchema(ctx context.Context, name string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -644,7 +646,7 @@ func (s *PGDocStore) DeactivateSchema(ctx context.Context, name string) error {
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer s.safeRollback(ctx, tx, "schema registration")
+	defer internal.SafeRollback(ctx, s.logger, tx, "schema deactivation")
 
 	q := postgres.New(tx)
 
@@ -666,7 +668,7 @@ func (s *PGDocStore) DeactivateSchema(ctx context.Context, name string) error {
 	return nil
 }
 
-// GetActiveSchemas implements DocStore
+// GetActiveSchemas implements DocStore.
 func (s *PGDocStore) GetActiveSchemas(
 	ctx context.Context,
 ) ([]*Schema, error) {
@@ -687,52 +689,44 @@ func (s *PGDocStore) GetActiveSchemas(
 				rows[i].Name, rows[i].Version, err)
 		}
 
-		res = append(res, &Schema{
+		res[i] = &Schema{
 			Name:          rows[i].Name,
 			Version:       rows[i].Version,
 			Specification: &spec,
-		})
+		}
 	}
 
 	return res, nil
 }
 
-// GetSchema implements DocStore
+// GetSchema implements DocStore.
 func (s *PGDocStore) GetSchema(
 	ctx context.Context, name string, version string,
 ) (*Schema, error) {
-	var schema *postgres.DocumentSchema
+	var (
+		schema postgres.DocumentSchema
+		err    error
+	)
 
 	if version == "" {
-		s, err := s.reader.GetActiveSchema(ctx, name)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, DocStoreErrorf(ErrCodeNotFound,
-				"no active schema for %q", name)
-		} else if err != nil {
-			return nil, fmt.Errorf(
-				"failed to get currently active schema: %w", err)
-		}
-
-		schema = &s
+		schema, err = s.reader.GetActiveSchema(ctx, name)
 	} else {
-		s, err := s.reader.GetSchema(ctx, postgres.GetSchemaParams{
+		schema, err = s.reader.GetSchema(ctx, postgres.GetSchemaParams{
 			Name:    name,
 			Version: version,
 		})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, DocStoreErrorf(ErrCodeNotFound,
-				"no such schema version")
-		} else if err != nil {
-			return nil, fmt.Errorf(
-				"failed to get schema version: %w", err)
-		}
+	}
 
-		schema = &s
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, DocStoreErrorf(ErrCodeNotFound, "not found")
+	} else if err != nil {
+		return nil, fmt.Errorf(
+			"failed to load schema: %w", err)
 	}
 
 	var spec revisor.ConstraintSet
 
-	err := json.Unmarshal(schema.Spec, &spec)
+	err = json.Unmarshal(schema.Spec, &spec)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"invalid specification in database: %w", err)
@@ -750,7 +744,9 @@ func isConstraintError(err error, constraint string) bool {
 		return false
 	}
 
-	pgerr, ok := err.(*pgconn.PgError)
+	var pgerr *pgconn.PgError
+
+	ok := errors.As(err, &pgerr)
 	if !ok {
 		return false
 	}
@@ -814,7 +810,7 @@ func (s *PGDocStore) updateACL(
 
 	err := q.InsertACLAuditEntry(ctx, postgres.InsertACLAuditEntryParams{
 		Uuid:       docUUID,
-		Updated:    pgTime(time.Now()),
+		Updated:    internal.PGTime(time.Now()),
 		UpdaterUri: auth.Claims.Subject,
 	})
 	if err != nil {
@@ -869,20 +865,5 @@ func (s *PGDocStore) updatePreflight(
 	}, nil
 }
 
-func pgTime(t time.Time) pgtype.Timestamptz {
-	return pgtype.Timestamptz{
-		Time:  t,
-		Valid: true,
-	}
-}
-
-func (s *PGDocStore) safeRollback(ctx context.Context, tx pgx.Tx, txName string) {
-	err := tx.Rollback(context.Background())
-	if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		// TODO: better logging
-		log.Println("failed to roll back", txName, err.Error())
-	}
-}
-
-// Interface guard
+// Interface guard.
 var _ DocStore = &PGDocStore{}

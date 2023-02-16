@@ -25,6 +25,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/sirupsen/logrus"
+	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
 	"golang.org/x/sync/errgroup"
 )
@@ -39,8 +40,10 @@ type S3Options struct {
 func ArchiveS3Client(
 	ctx context.Context, opts S3Options,
 ) (*s3.Client, error) {
-	var options []func(*config.LoadOptions) error
-	var s3Options []func(*s3.Options)
+	var (
+		options   []func(*config.LoadOptions) error
+		s3Options []func(*s3.Options)
+	)
 
 	if opts.Endpoint != "" {
 		customResolver := aws.EndpointResolverWithOptionsFunc(func(
@@ -91,7 +94,8 @@ type ArchiverOptions struct {
 	DB     *pgxpool.Pool
 }
 
-// Archiver reads unarchived document versions, and statuses and writes a copy to S3. It does this using SELECT ... FOR UPDATE SKIP LOCKED.
+// Archiver reads unarchived document versions, and statuses and writes a copy
+// to S3. It does this using SELECT ... FOR UPDATE SKIP LOCKED.
 type Archiver struct {
 	logger             *logrus.Logger
 	s3                 *s3.Client
@@ -175,7 +179,6 @@ func (a *Archiver) loop(ctx context.Context) error {
 		case <-time.After(wait):
 		case <-ctx.Done():
 			return nil
-
 		}
 	}
 }
@@ -188,7 +191,8 @@ func (a *Archiver) processDeletes(
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer a.safeRollback(ctx, tx, "document version archiving")
+	defer internal.SafeRollback(ctx, a.logger, tx,
+		"document version archiving")
 
 	q := postgres.New(tx)
 
@@ -272,7 +276,6 @@ func (a *Archiver) processDeletes(
 func (a *Archiver) moveDeletedObject(
 	ctx context.Context, key string, dstKey string,
 ) error {
-
 	_, err := a.s3.CopyObject(ctx, &s3.CopyObjectInput{
 		Bucket: aws.String(a.bucket),
 		Key:    aws.String(dstKey),
@@ -315,7 +318,8 @@ func (a *Archiver) archiveDocumentVersions(
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer a.safeRollback(ctx, tx, "document version archiving")
+	defer internal.SafeRollback(ctx, a.logger, tx,
+		"document version archiving")
 
 	q := postgres.New(tx)
 
@@ -433,7 +437,8 @@ func (a *Archiver) archiveDocumentStatuses(
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer a.safeRollback(ctx, tx, "document version archiving")
+	defer internal.SafeRollback(ctx, a.logger, tx,
+		"document version archiving")
 
 	q := postgres.New(tx)
 
@@ -537,8 +542,11 @@ func (a *Archiver) archiveDocumentStatuses(
 
 func (a *Archiver) ensureSigningKeys(ctx context.Context) error {
 	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
 
-	defer a.safeRollback(ctx, tx, "signing keys")
+	defer internal.SafeRollback(ctx, a.logger, tx, "signing keys")
 
 	q := postgres.New(tx)
 
@@ -563,7 +571,7 @@ func (a *Archiver) ensureSigningKeys(ctx context.Context) error {
 				keys[i].Kid, err)
 		}
 
-		set.keys = append(set.keys, spec)
+		set.Keys = append(set.Keys, spec)
 	}
 
 	validFor := 180 * 24 * time.Hour
@@ -612,7 +620,7 @@ func (a *Archiver) ensureSigningKeys(ctx context.Context) error {
 			return fmt.Errorf("failed to store signing key: %w", err)
 		}
 
-		set.keys = append(set.keys, signingKey)
+		set.Keys = append(set.Keys, signingKey)
 	}
 
 	err = tx.Commit(ctx)
@@ -621,16 +629,7 @@ func (a *Archiver) ensureSigningKeys(ctx context.Context) error {
 	}
 
 	a.signingKeysChecked = time.Now()
-	a.signingKeys.Replace(set.keys)
+	a.signingKeys.Replace(set.Keys)
 
 	return nil
-}
-
-func (a *Archiver) safeRollback(ctx context.Context, tx pgx.Tx, txName string) {
-	err := tx.Rollback(context.Background())
-	if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		a.logger.WithContext(ctx).WithError(err).WithField(
-			"transaction", txName,
-		).Error("failed to roll back")
-	}
 }

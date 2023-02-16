@@ -11,20 +11,20 @@ func postprocessEvent(nDoc navigadoc.Document, d *doc.Document) error {
 	// Navigadoc conversion takes care of most of these.
 	for _, prop := range nDoc.Properties {
 		switch prop.Name {
-		case "nrpdate:start":
-		case "nrpdate:end":
-		case "nrpdate:created":
-		case "nrpdate:modified":
-		case "urgency":
-		case "conceptid":
-		case "copyrightHolder":
+		case propNRPStart:
+		case propNRPEnd:
+		case propNRPCreated:
+		case propNRPModified:
+		case propUrgency:
+		case propConceptID:
+		case propCopyright:
 			d.Links = append(d.Links, doc.Block{
 				Rel:   "copyrightholder",
 				Title: prop.Value,
 			})
-		case "definition":
+		case propDefinition:
 			processDefinitionProp(prop, d)
-		case "headline":
+		case propHeadline:
 			d.Meta = withBlockOfType("core/event", d.Meta,
 				func(block doc.Block) doc.Block {
 					if block.Data == nil {
@@ -45,8 +45,7 @@ func postprocessEvent(nDoc navigadoc.Document, d *doc.Document) error {
 	}
 
 	for i := range d.Links {
-		switch d.Links[i].Rel {
-		case "topic":
+		if d.Links[i].Rel == relTopic {
 			d.Links[i].Rel = "subject"
 		}
 	}
@@ -56,6 +55,7 @@ func postprocessEvent(nDoc navigadoc.Document, d *doc.Document) error {
 	for i := range d.Meta {
 		if d.Meta[i].Type == "core/event" {
 			eventMeta = &d.Meta[i]
+
 			break
 		}
 	}

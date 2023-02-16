@@ -64,8 +64,8 @@ type CCAClient struct {
 	AsyncError func(_ context.Context, err error)
 }
 
-func (oc *CCAClient) asyncErrorf(ctx context.Context, format string, a ...any) {
-	oc.AsyncError(ctx, fmt.Errorf(format, a...))
+func (cca *CCAClient) asyncErrorf(ctx context.Context, format string, a ...any) {
+	cca.AsyncError(ctx, fmt.Errorf(format, a...))
 }
 
 func NewCCAlient(client *http.Client, baseURL string) (*CCAClient, error) {

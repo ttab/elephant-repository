@@ -142,7 +142,7 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		println(err.Error())
+		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
@@ -178,6 +178,7 @@ func webUIAction(c *cli.Context) error {
 		return fmt.Errorf("failed to create OC client: %w", err)
 	}
 
+	//nolint:wrapcheck
 	return repository.RunServer(c.Context, addr,
 		ingest.WithUIServer(store, oc),
 	)
@@ -221,8 +222,8 @@ func ingestAction(c *cli.Context) error {
 	if startPos != 0 {
 		err := db.SetLogPosition(startPos)
 		if err != nil {
-			return fmt.Errorf("failed to set starting position %d",
-				err)
+			return fmt.Errorf("failed to set starting position %d: %w",
+				startPos, err)
 		}
 	} else {
 		pos, err := db.GetLogPosition()
@@ -325,12 +326,12 @@ func ingestAction(c *cli.Context) error {
 
 	validator, err := constraints.DefaultValidator()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get default validator: %w", err)
 	}
 
 	apiServer := repository.NewAPIServer(store, validator)
 
-	opts := ingest.IngestOptions{
+	opts := ingest.Options{
 		Logger:          logrus.New(),
 		DefaultLanguage: lang,
 		Identity:        db,
@@ -351,6 +352,7 @@ func ingestAction(c *cli.Context) error {
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
+
 	go func() {
 		<-interrupt
 		cancel()
@@ -360,6 +362,7 @@ func ingestAction(c *cli.Context) error {
 
 	if ui {
 		group.Go(func() error {
+			//nolint:wrapcheck
 			return repository.RunServer(c.Context, addr,
 				ingest.WithUIServer(store, oc),
 			)
@@ -373,16 +376,17 @@ func ingestAction(c *cli.Context) error {
 
 		if errors.As(err, &ve) {
 			for i := range ve.Errors {
-				println("-", ve.Errors[i].String())
+				fmt.Fprintf(os.Stderr, "-%s\n", ve.Errors[i])
 			}
 
 			data, _ := json.MarshalIndent(ve.Document, "", "  ")
+
 			_ = os.WriteFile(filepath.Join(stateDir, "invalid_doc.json"),
-				data, 0666)
+				data, 0600)
 		}
 
 		if err != nil {
-			return err
+			return err //nolint:wrapcheck
 		}
 
 		// Cancel ingest context when we're done, that will shut down
@@ -392,13 +396,12 @@ func ingestAction(c *cli.Context) error {
 		return nil
 	})
 
-	return group.Wait()
+	return group.Wait() //nolint:wrapcheck
 }
 
 func preloadReplacements(ctx context.Context,
 	oc *ingest.OCClient, db ingest.IdentityStore,
 ) error {
-
 	var (
 		start int
 		bar   *progressbar.ProgressBar

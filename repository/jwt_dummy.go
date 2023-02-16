@@ -45,7 +45,7 @@ func (c JWTClaims) HasAnyScope(names ...string) bool {
 }
 
 func (c JWTClaims) Valid() error {
-	return c.RegisteredClaims.Valid()
+	return c.RegisteredClaims.Valid() //nolint:wrapcheck
 }
 
 type ctxKey int
@@ -60,7 +60,7 @@ var ErrNoAuthorization = errors.New("no authorization provided")
 
 func AuthInfoFromHeader(key *ecdsa.PublicKey, authorization string) (*AuthInfo, error) {
 	if authorization == "" {
-		return nil, nil
+		return nil, ErrNoAuthorization
 	}
 
 	tokenType, token, _ := strings.Cut(authorization, " ")
@@ -96,6 +96,7 @@ func SetAuthInfo(ctx context.Context, info *AuthInfo) context.Context {
 
 func GetAuthInfo(ctx context.Context) (*AuthInfo, bool) {
 	info, ok := ctx.Value(authInfoCtxKey).(*AuthInfo)
+
 	return info, ok && info != nil
 }
 

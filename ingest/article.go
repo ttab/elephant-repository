@@ -10,21 +10,21 @@ import (
 func postprocessArticle(nDoc navigadoc.Document, d *doc.Document) error {
 	for _, prop := range nDoc.Properties {
 		switch prop.Name {
-		case "imext:haspublishedversion":
-		case "ttext:typ":
-		case "by", "creator", "headline", "infoSource", "profil",
-			"urgency", "ttext:orglink":
+		case propHasPublished:
+		case propTTType:
+		case propBy, propCreator, propHeadline, propInfoSource,
+			propProfile, propUrgency, propTTOrgLink:
 			// Leaked data from wires most probably
-		case "ttext:week", "ttext:featsub":
+		case propTTWeek, propTTFeatSub:
 			// TODO: check if this really just was some testing data.
-		case "ttext:usage":
+		case propTTUsage:
 			// All non-articles are already filtered out
-		case "slugline":
+		case propSlugline:
 			d.Meta = append(d.Meta, doc.Block{
 				Type:  "tt/slugline",
 				Value: prop.Value,
 			})
-		case "description": // Internal?
+		case propDescription: // Internal?
 			if prop.Value == "" {
 				break
 			}
@@ -36,15 +36,15 @@ func postprocessArticle(nDoc navigadoc.Document, d *doc.Document) error {
 					"text": prop.Value,
 				},
 			})
-		case "altId":
+		case propAlternateID:
 			d.Links = append(d.Links, doc.Block{
 				Rel:  "alternate",
 				Type: "tt/alt-id",
 				URI:  prop.Value,
 			})
-		case "language":
+		case propLanguage:
 			d.Language = prop.Value
-		case "sector":
+		case propTTSector:
 			d.Meta = append(d.Meta, doc.Block{
 				Type:  "tt/sector",
 				Value: prop.Value,

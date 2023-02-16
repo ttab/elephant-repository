@@ -78,6 +78,7 @@ func writeHTTPError(w http.ResponseWriter, err error) {
 
 	if !errors.As(err, &httpErr) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+
 		return
 	}
 

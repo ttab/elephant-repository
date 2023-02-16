@@ -12,6 +12,53 @@ import (
 	"github.com/ttab/elephant/doc"
 )
 
+// Property names.
+const (
+	propHeadline     = "headline"
+	propConceptID    = "conceptid"
+	propCopyright    = "copyrightHolder"
+	propNRPCreated   = "nrpdate:created"
+	propNRPModified  = "nrpdate:modified"
+	propNRPStart     = "nrpdate:start"
+	propNRPEnd       = "nrpdate:end"
+	propDefinition   = "definition"
+	propHasPublished = "imext:haspublishedversion"
+	propFirstName    = "imext:firstName"
+	propLastName     = "imext:lastName"
+	propSlugline     = "slugline"
+	propBy           = "by"
+	propCreator      = "creator"
+	propInfoSource   = "infoSource"
+	propProfile      = "profil"
+	propUrgency      = "urgency"
+	propDescription  = "description"
+	propAlternateID  = "altId"
+	propLanguage     = "language"
+
+	// TODO: TT specials, look at extensibility.
+	propTTInitials  = "imext:initials"
+	propTTSignature = "imext:signature"
+	propTTType      = "ttext:typ"
+	propTTUsage     = "ttext:usage"
+	propTTWeek      = "ttext:week"
+	propTTFeatSub   = "ttext:featsub"
+	propTTAccountID = "tt:kontid"
+	propTTOrgLink   = "ttext:orglink"
+	propTTSector    = "sector"
+)
+
+const (
+	unitMIMEType = "x-imid/unit"
+	orgMimeType  = "x-imid/organisation"
+)
+
+const (
+	relCreator     = "creator"
+	relTopic       = "topic"
+	relAffiliation = "affiliation"
+	relSharedWith  = "shared-with"
+)
+
 type BlockProcessor interface {
 	ProcessBlock(in doc.Block) (doc.Block, error)
 }
@@ -297,7 +344,7 @@ func ConvertBlocks(
 	return out, nil
 }
 
-func selectProcessor(
+func selectProcessor( //nolint:ireturn
 	in doc.Block, proc map[string]BlockProcessor,
 ) (BlockProcessor, error) {
 	keys := []string{
@@ -313,11 +360,9 @@ func selectProcessor(
 		if ok {
 			return processor, nil
 		}
-
 	}
 
 	return nil, fmt.Errorf("unknown block type %q", keys[0])
-
 }
 
 func convertTextBlock(typeName string) BlockProcessorFunc {
@@ -362,7 +407,7 @@ func (bc BlockChain) ProcessBlock(in doc.Block) (doc.Block, error) {
 	for i := range bc {
 		o, err := bc[i].ProcessBlock(out)
 		if err != nil {
-			return doc.Block{}, err
+			return doc.Block{}, err //nolint:wrapcheck
 		}
 
 		out = o
@@ -602,6 +647,7 @@ func fixTTAuthorLink(in doc.Block) (doc.Block, error) {
 	for k, v := range in.Data {
 		if k == "id" {
 			out.Title = v
+
 			continue
 		}
 
@@ -677,7 +723,7 @@ func imBlockToCore(in doc.Block) doc.Block {
 	}
 
 	for i := range in.Meta {
-		out.Links = append(out.Meta,
+		out.Meta = append(out.Meta,
 			imBlockToCore(in.Meta[i]))
 	}
 

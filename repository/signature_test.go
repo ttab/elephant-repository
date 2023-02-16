@@ -52,14 +52,17 @@ const testKeys = `
   ]
 }`
 
-const testSignature = `v1.1.vZr1mhSxTiT_LNBP4S8eXfGUrmazfdjVZRGWoV2bhYE.MGUCMQDAPPOW2qn7XtSEsvr0Iy5u9n12vZZTZVruKj15AC7x5u2uzzbgCIXHvgjP9rksNS4CMAH_XbIUBXxtZDr-rRL-q53w0UnGZmszWp6W__reZuZ5kazFXjoc_4Fr1uA1T-kGcw`
-
-const badSignature = `v1.1.vZr1mhSxTiT_LNBP4S8eXfGUrmazfdjVZRGWoV2bhYE.MGYCMQDqIFIWo2gE9n2Hp7mzsfvFK2E-i0A-sa6pJSXSbpwiUjwi32OIsfFPHdO9_C-bescCMQCGr_xCyqGk1vqyt3q4Qxa-SpcK9ESu4gYKeeBx86kndRCkT7pBTL8VezOJ-W2K8FU`
+//nolint:lll
+const (
+	testSignature = `v1.1.vZr1mhSxTiT_LNBP4S8eXfGUrmazfdjVZRGWoV2bhYE.MGUCMQDAPPOW2qn7XtSEsvr0Iy5u9n12vZZTZVruKj15AC7x5u2uzzbgCIXHvgjP9rksNS4CMAH_XbIUBXxtZDr-rRL-q53w0UnGZmszWp6W__reZuZ5kazFXjoc_4Fr1uA1T-kGcw`
+	badSignature  = `v1.1.vZr1mhSxTiT_LNBP4S8eXfGUrmazfdjVZRGWoV2bhYE.MGYCMQDqIFIWo2gE9n2Hp7mzsfvFK2E-i0A-sa6pJSXSbpwiUjwi32OIsfFPHdO9_C-bescCMQCGr_xCyqGk1vqyt3q4Qxa-SpcK9ESu4gYKeeBx86kndRCkT7pBTL8VezOJ-W2K8FU`
+)
 
 func getTestKeys(t assert.TestingT) *repository.SigningKeySet {
 	var set repository.SigningKeySet
 
 	err := json.Unmarshal([]byte(testKeys), &set)
+
 	assert.NotErrorIs(t, err, assert.AnError, "failed to unmarshal test keys")
 
 	return &set
@@ -117,7 +120,7 @@ func TestArchiveSignature_ParseAndDetectBadSignature(t *testing.T) {
 	assert.NotNil(t, err, "incorrectly verified bad signature")
 }
 
-func FuzzArchiveSignature_Parsing(f *testing.F) {
+func FuzzArchiveSignatureParsing(f *testing.F) {
 	keys := getTestKeys(f)
 	time := time.Date(2023, 02, 10, 00, 00, 00, 00, time.UTC)
 

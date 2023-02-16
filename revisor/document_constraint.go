@@ -98,20 +98,14 @@ type documentAttributeKey string
 const (
 	docAttrType     documentAttributeKey = "type"
 	docAttrLanguage documentAttributeKey = "language"
-	docAttrStatus   documentAttributeKey = "status"
 	docAttrTitle    documentAttributeKey = "title"
-	docAttrProvider documentAttributeKey = "provider"
-	docAttrSubtype  documentAttributeKey = "subtype"
 	docAttrUUID     documentAttributeKey = "uuid"
 	docAttrURI      documentAttributeKey = "uri"
 	docAttrURL      documentAttributeKey = "url"
-	docAttrPath     documentAttributeKey = "path"
 )
 
 func documentMatchAttribute(d *doc.Document, name string) (string, bool) {
-	//nolint:exhaustive
-	switch documentAttributeKey(name) {
-	case docAttrType:
+	if documentAttributeKey(name) == docAttrType {
 		return d.Type, true
 	}
 

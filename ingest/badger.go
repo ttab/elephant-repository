@@ -30,7 +30,7 @@ type BadgerStore struct {
 }
 
 func (bs *BadgerStore) Close() error {
-	return bs.db.Close()
+	return bs.db.Close() //nolint:wrapcheck
 }
 
 func (bs *BadgerStore) GetCurrentVersion(

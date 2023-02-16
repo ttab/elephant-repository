@@ -11,20 +11,11 @@ import (
 func postprocessContact(nDoc navigadoc.Document, d *doc.Document) error {
 	for _, prop := range nDoc.Properties {
 		switch prop.Name {
-		case "headline", "conceptid", "copyrightHolder",
-			"nrpdate:created", "nrpdate:modified", "ttext:typ":
-		case "tt:kontid":
-			d.Meta = withBlockOfType("core/contact", d.Meta,
-				func(block doc.Block) doc.Block {
-					if block.Data == nil {
-						block.Data = make(doc.DataMap)
-					}
-
-					block.Data["kontid"] = prop.Value
-
-					return block
-				})
-		case "definition":
+		case propHeadline, propConceptID, propCopyright,
+			propNRPCreated, propNRPModified, propTTType:
+		case propTTAccountID:
+			break
+		case propDefinition:
 			processDefinitionProp(prop, d)
 		default:
 			return fmt.Errorf("unknown property %q", prop.Name)
@@ -37,8 +28,8 @@ func postprocessContact(nDoc navigadoc.Document, d *doc.Document) error {
 func postprocessPerson(nDoc navigadoc.Document, doc *doc.Document) error {
 	for _, prop := range nDoc.Properties {
 		switch prop.Name {
-		case "headline", "conceptid":
-		case "definition":
+		case propHeadline, propConceptID:
+		case propDefinition:
 			processDefinitionProp(prop, doc)
 		default:
 			return fmt.Errorf("unknown property %q", prop.Name)
@@ -51,8 +42,8 @@ func postprocessPerson(nDoc navigadoc.Document, doc *doc.Document) error {
 func postprocessOrganisation(nDoc navigadoc.Document, doc *doc.Document) error {
 	for _, prop := range nDoc.Properties {
 		switch prop.Name {
-		case "headline", "conceptid", "ttext:typ":
-		case "definition":
+		case propHeadline, propConceptID, propTTType:
+		case propDefinition:
 			processDefinitionProp(prop, doc)
 		default:
 			return fmt.Errorf("unknown property %q", prop.Name)
@@ -65,16 +56,11 @@ func postprocessOrganisation(nDoc navigadoc.Document, doc *doc.Document) error {
 func postprocessGroup(nDoc navigadoc.Document, d *doc.Document) error {
 	for _, prop := range nDoc.Properties {
 		switch prop.Name {
-		case "headline", "nrpdate:created", "copyrightHolder",
-			"nrpdate:modified", "conceptid":
-		case "tt:kontid":
-			d.Meta = append(d.Meta, doc.Block{
-				Type: "core/group",
-				Data: doc.DataMap{
-					"kontid": prop.Value,
-				},
-			})
-		case "definition":
+		case propHeadline, propNRPCreated, propCopyright,
+			propNRPModified, propConceptID:
+		case propTTAccountID:
+			break
+		case propDefinition:
 			processDefinitionProp(prop, d)
 		default:
 			return fmt.Errorf("unknown property %q", prop.Name)
@@ -87,8 +73,8 @@ func postprocessGroup(nDoc navigadoc.Document, d *doc.Document) error {
 func postprocessTopic(nDoc navigadoc.Document, doc *doc.Document) error {
 	for _, prop := range nDoc.Properties {
 		switch prop.Name {
-		case "conceptid":
-		case "definition":
+		case propConceptID:
+		case propDefinition:
 			processDefinitionProp(prop, doc)
 		default:
 			return fmt.Errorf("unknown property %q", prop.Name)
@@ -101,8 +87,8 @@ func postprocessTopic(nDoc navigadoc.Document, doc *doc.Document) error {
 func postprocessStory(nDoc navigadoc.Document, doc *doc.Document) error {
 	for _, prop := range nDoc.Properties {
 		switch prop.Name {
-		case "conceptid":
-		case "definition":
+		case propConceptID:
+		case propDefinition:
 			processDefinitionProp(prop, doc)
 		default:
 			return fmt.Errorf("unknown property %q", prop.Name)
@@ -144,13 +130,13 @@ func postprocessAuthor(nDoc navigadoc.Document, d *doc.Document) error {
 
 	for _, prop := range nDoc.Properties {
 		switch prop.Name {
-		case "ttext:typ", "conceptid", "imext:haspublishedversion":
-		case "definition":
+		case propTTType, propConceptID, propHasPublished:
+		case propDefinition:
 			processDefinitionProp(prop, d)
-		case "headline":
+		case propHeadline:
 			meta.Data["name"] = prop.Value
-		case "imext:firstName", "imext:lastName",
-			"imext:initials", "imext:signature":
+		case propFirstName, propLastName,
+			propTTInitials, propTTSignature:
 			attr := strings.TrimPrefix(prop.Name, "imext:")
 
 			meta.Data[attr] = prop.Value
@@ -159,11 +145,19 @@ func postprocessAuthor(nDoc navigadoc.Document, d *doc.Document) error {
 		}
 	}
 
+	if meta.Data["initials"] == "" {
+		meta.Data["initials"] = meta.Data["signature"]
+	}
+
+	if meta.Data["initials"] == meta.Data["signature"] {
+		delete(meta.Data, "signature")
+	}
+
 	dropEmptyData(meta.Data)
 
 	// Clean up bad creator links
 	for i, l := range d.Links {
-		if l.Rel != "creator" || l.Type != "core/author" {
+		if l.Rel != relCreator || l.Type != "core/author" {
 			continue
 		}
 
@@ -174,6 +168,12 @@ func postprocessAuthor(nDoc navigadoc.Document, d *doc.Document) error {
 	return nil
 }
 
+// withBlockOfType is a helper function that finds a block of the given type and
+// lets the callback function modify it. If no block with a matching type is
+// found the callback is called with a new block and the result is appended to
+// the block slice.
+//
+// The function returns a copy of the input blocks slice.
 func withBlockOfType(
 	blockType string, blocks []doc.Block,
 	fn func(block doc.Block) doc.Block,
@@ -183,17 +183,24 @@ func withBlockOfType(
 	copy(newKids, blocks)
 
 	idx := -1
+
 	for i := range newKids {
 		if newKids[i].Type == blockType {
 			idx = i
+
 			break
 		}
 	}
 
 	if idx == -1 {
-		return append(newKids, fn(doc.Block{
+		// This is safe as we've populated the full newKids slice using
+		// copy().
+		newKids = append(newKids, fn(doc.Block{ //nolint:makezero
+
 			Type: blockType,
 		}))
+
+		return newKids
 	}
 
 	newKids[idx] = fn(newKids[idx])

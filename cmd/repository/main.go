@@ -45,7 +45,7 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		println(err.Error())
+		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
@@ -61,6 +61,7 @@ func runServer(c *cli.Context) error {
 	level, err := logrus.ParseLevel(logLevel)
 	if err != nil {
 		level = logrus.ErrorLevel
+
 		logger.Errorf("invalid log level %q", logLevel)
 	}
 
@@ -141,9 +142,14 @@ func runServer(c *cli.Context) error {
 
 	logger.Debug("starting API server")
 
-	return repository.RunServer(c.Context, addr,
+	err = repository.RunServer(c.Context, addr,
 		repository.WithAPIServer(logger, signingKey, apiServer),
 	)
+	if err != nil {
+		return fmt.Errorf("failed to run server: %w", err)
+	}
+
+	return nil
 }
 
 func startArchiver(

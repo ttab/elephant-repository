@@ -2,7 +2,7 @@ package ingest
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,7 +79,7 @@ func (fc FSCache) path(ref VersionReference, parameters string) string {
 		))
 	}
 
-	hash := sha1.Sum([]byte(parameters))
+	hash := sha256.Sum256([]byte(parameters))
 
 	return filepath.Join(fc.dir, ref.UUID, fmt.Sprintf(
 		"%d-%x.json", ref.Version, hash,
@@ -94,7 +94,7 @@ func (fc FSCache) StoreDocument(ref VersionReference, parameters string, doc []b
 		return fmt.Errorf("failed to ensure directory structure: %w", err)
 	}
 
-	err = os.WriteFile(path, doc, 0660)
+	err = os.WriteFile(path, doc, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write document to disk: %w", err)
 	}
@@ -110,9 +110,7 @@ func (fc FSCache) FetchDocument(ref VersionReference, parameters string) ([]byte
 	path := fc.path(ref, parameters)
 
 	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	} else if err != nil {
+	if err != nil {
 		return nil, fmt.Errorf("failed to load data from disk: %w", err)
 	}
 
@@ -159,7 +157,7 @@ func (pc *PropertyCache) GetProperties(
 
 	res, err := pc.source.GetProperties(ctx, uuid, version, props)
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck
 	}
 
 	if version != 0 {

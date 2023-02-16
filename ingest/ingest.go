@@ -49,7 +49,7 @@ type WriteAPI interface {
 	) (*rpc.DeleteDocumentResponse, error)
 }
 
-type IngestOptions struct {
+type Options struct {
 	Logger          *logrus.Logger
 	DefaultLanguage string
 	Identity        IdentityStore
@@ -81,12 +81,12 @@ func (ve ValidationError) Error() string {
 }
 
 type Ingester struct {
-	opt IngestOptions
+	opt Options
 
 	AsyncError func(_ context.Context, err error)
 }
 
-func NewIngester(opt IngestOptions) *Ingester {
+func NewIngester(opt Options) *Ingester {
 	return &Ingester{
 		opt: opt,
 		AsyncError: func(_ context.Context, err error) {
@@ -95,7 +95,9 @@ func NewIngester(opt IngestOptions) *Ingester {
 	}
 }
 
-type includeCheckerFunc func(ctx context.Context, evt OCLogEvent) (bool, string, error)
+type includeCheckerFunc func(
+	ctx context.Context, evt OCLogEvent,
+) (bool, OCEventType, error)
 
 func (in *Ingester) Start(ctx context.Context, tail bool) error {
 	pos, err := in.opt.LogPos.GetLogPosition()
@@ -126,10 +128,9 @@ func (in *Ingester) Start(ctx context.Context, tail bool) error {
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return ctx.Err() //nolint:wrapcheck
 		case <-time.After(delay):
 		}
-
 	}
 
 	return nil
@@ -178,24 +179,25 @@ func (in *Ingester) iteration(ctx context.Context, pos int) (int, error) {
 
 func (in *Ingester) shouldArticleBeImported(
 	ctx context.Context, evt OCLogEvent,
-) (bool, string, error) {
-	if evt.EventType == "DELETE" {
+) (bool, OCEventType, error) {
+	if evt.EventType == OCDeleteEvent {
 		return true, evt.EventType, nil
 	}
 
 	props, err := in.opt.OCProps.GetProperties(ctx, evt.UUID, evt.Content.Version,
 		[]string{"TTArticleType"})
-	if internal.IsHTTPErrorWithStatus(err, http.StatusNotFound) {
-		return true, "DELETE", nil
-	} else if internal.IsHTTPErrorWithStatus(err, http.StatusInternalServerError) {
+
+	switch {
+	case internal.IsHTTPErrorWithStatus(err, http.StatusNotFound):
+		return true, OCDeleteEvent, nil
+	case internal.IsHTTPErrorWithStatus(err, http.StatusInternalServerError):
 		// TODO: this is not sound logic outside of a test, there might
 		// be 500-errors that have nothing to do with corrupted data.
-
 		in.opt.Blocklist.Add(evt.UUID, fmt.Errorf(
 			"article import check failed: %w", err))
 
 		return false, "", nil
-	} else if err != nil {
+	case err != nil:
 		return false, "", fmt.Errorf(
 			"failed to get TTArticleType from OC: %w", err)
 	}
@@ -249,7 +251,7 @@ func (in *Ingester) handleEvent(ctx context.Context, evt OCLogEvent) error {
 	}
 
 	switch eventType {
-	case "ADD", "UPDATE":
+	case OCAddEvent, OCUpdateEvent:
 		err := in.backfillIngest(ctx, evt)
 		if err != nil {
 			// Check for known errors that should lead to the
@@ -267,12 +269,14 @@ func (in *Ingester) handleEvent(ctx context.Context, evt OCLogEvent) error {
 			return fmt.Errorf(
 				"failed to ingest %q: %w", evt.UUID, err)
 		}
-	case "DELETE":
+	case OCDeleteEvent:
 		err := in.delete(ctx, evt)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to delete %q: %w", evt.UUID, err)
 		}
+	default:
+		return fmt.Errorf("unknown event type %q", eventType)
 	}
 
 	return nil
@@ -450,6 +454,7 @@ func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 	if err != nil {
 		in.opt.Blocklist.Add(evt.UUID, fmt.Errorf(
 			"failed to fix UUIDs: %w", err))
+
 		return nil
 	}
 
@@ -458,10 +463,7 @@ func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 		return fmt.Errorf("invalid document UUID %q: %w", d.UUID, err)
 	}
 
-	status, err := in.checkStatus(ctx, cd.Status, d.Meta)
-	if err != nil {
-		return fmt.Errorf("failed to check for status updates: %w", err)
-	}
+	status := in.checkStatus(ctx, cd.Status, d.Meta)
 
 	acl := []*rpc.ACLEntry{
 		{
@@ -511,9 +513,9 @@ func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 	return nil
 }
 
-func fixDocumentURI(docUuid, uri string) string {
+func fixDocumentURI(docUUID, uri string) string {
 	if uri == "core://article/" {
-		return "core://article/" + docUuid
+		return "core://article/" + docUUID
 	}
 
 	segs := strings.Split(uri, "/")
@@ -524,8 +526,8 @@ func fixDocumentURI(docUuid, uri string) string {
 		return uri
 	}
 
-	if validUUID.String() != docUuid {
-		segs[len(segs)-1] = docUuid
+	if validUUID.String() != docUUID {
+		segs[len(segs)-1] = docUUID
 
 		return strings.Join(segs, "/")
 	}
@@ -567,6 +569,7 @@ func (in *Ingester) ccaImport(ctx context.Context, evt OCLogEvent) (*ConvertedDo
 		for _, f := range flags {
 			if strings.Contains(err.Error(), f) {
 				permError = true
+
 				break
 			}
 		}
@@ -611,7 +614,6 @@ func (in *Ingester) ccaImport(ctx context.Context, evt OCLogEvent) (*ConvertedDo
 				out.Units = append(out.Units, unit)
 			}
 		}
-
 	}
 
 	return &out, nil
@@ -619,7 +621,7 @@ func (in *Ingester) ccaImport(ctx context.Context, evt OCLogEvent) (*ConvertedDo
 
 func sharedWithUnit(link navigadoc.Block) (string, bool) {
 	for _, u := range link.Links {
-		if u.Type != "x-imid/unit" ||
+		if u.Type != unitMIMEType ||
 			u.Rel != "shared-with" {
 			continue
 		}
@@ -634,14 +636,12 @@ func sharedWithUnit(link navigadoc.Block) (string, bool) {
 
 func unitReference(link navigadoc.Block) (string, bool) {
 	for _, l := range link.Links {
-		if l.Type != "x-imid/organisation" ||
-			l.Rel != "affiliation" {
+		if l.Type != orgMimeType || l.Rel != relAffiliation {
 			continue
 		}
 
 		for _, u := range l.Links {
-			if u.Type != "x-imid/unit" ||
-				u.Rel != "affiliation" {
+			if u.Type != unitMIMEType || u.Rel != relAffiliation {
 				continue
 			}
 
@@ -655,17 +655,17 @@ func unitReference(link navigadoc.Block) (string, bool) {
 }
 
 func (in *Ingester) checkStatus(
-	ctx context.Context, status string, metaBlocks []doc.Block,
-) ([]*rpc.StatusUpdate, error) {
+	_ context.Context, status string, metaBlocks []doc.Block,
+) []*rpc.StatusUpdate {
 	if status == "draft" {
-		return nil, nil
+		return nil
 	}
 
 	up := rpc.StatusUpdate{Name: status}
 
 	up.Meta = populateSlugMeta(up.Meta, metaBlocks)
 
-	return []*rpc.StatusUpdate{&up}, nil
+	return []*rpc.StatusUpdate{&up}
 }
 
 var slugPatterns = map[string]*regexp.Regexp{

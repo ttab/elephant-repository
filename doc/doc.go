@@ -3,6 +3,7 @@ package doc
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"sort"
 )
 
@@ -88,6 +89,7 @@ func (bd DataMap) MarshalJSON() ([]byte, error) {
 	sort.Strings(keys)
 
 	buf.WriteString("{")
+
 	for i, k := range keys {
 		if i != 0 {
 			buf.WriteString(",")
@@ -96,7 +98,8 @@ func (bd DataMap) MarshalJSON() ([]byte, error) {
 		// marshal key
 		key, err := json.Marshal(k)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf(
+				"failed to marshal data key: %w", err)
 		}
 
 		buf.Write(key)
@@ -104,7 +107,8 @@ func (bd DataMap) MarshalJSON() ([]byte, error) {
 
 		val, err := json.Marshal(bd[k])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf(
+				"failed to marshal data value: %w", err)
 		}
 
 		buf.Write(val)

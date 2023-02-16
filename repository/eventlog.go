@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sirupsen/logrus"
+	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
 )
 
@@ -84,7 +85,7 @@ func (pr *PGReplication) startReplication(
 		return fmt.Errorf("failed to begin locking transaction: %w", err)
 	}
 
-	defer lockTx.Rollback(context.Background())
+	defer internal.SafeRollback(ctx, pr.logger, lockTx, "replication lock")
 
 	lockQueries := postgres.New(lockTx)
 
@@ -162,6 +163,7 @@ func (pr *PGReplication) replicationLoop(
 		rcvCtx, cancel := context.WithDeadline(
 			ctx, nextStandbyMessageDeadline)
 		rawMsg, err := conn.ReceiveMessage(rcvCtx)
+
 		cancel()
 
 		if err != nil {
@@ -169,11 +171,11 @@ func (pr *PGReplication) replicationLoop(
 				continue
 			}
 
-			return fmt.Errorf("failed to recieve message: %w", err)
+			return fmt.Errorf("failed to receive message: %w", err)
 		}
 
 		if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
-			return fmt.Errorf("recieved wal error (%s %s): %s",
+			return fmt.Errorf("received wal error (%s %s): %s",
 				errMsg.Code,
 				errMsg.Severity,
 				errMsg.Message)
@@ -182,6 +184,7 @@ func (pr *PGReplication) replicationLoop(
 		msg, ok := rawMsg.(*pgproto3.CopyData)
 		if !ok {
 			log.Printf("Received unexpected message: %T\n", rawMsg)
+
 			continue
 		}
 
@@ -293,11 +296,12 @@ func (td *TupleDecoder) DecodeValues(
 
 	for idx, col := range tuple.Columns {
 		colName := rel.Columns[idx].Name
+
 		switch col.DataType {
 		case 'n': // null
 			values[colName] = nil
 		case 'u': // unchanged toast
-		case 't': //text
+		case 't': // text
 			val, err := decodeTextColumnData(
 				td.typeMap, col.Data, rel.Columns[idx].DataType)
 			if err != nil {
@@ -313,10 +317,19 @@ func (td *TupleDecoder) DecodeValues(
 	return rel, values, nil
 }
 
-func decodeTextColumnData(mi *pgtype.Map, data []byte, dataType uint32) (interface{}, error) {
+func decodeTextColumnData(
+	mi *pgtype.Map, data []byte, dataType uint32,
+) (interface{}, error) {
 	if dt, ok := mi.TypeForOID(dataType); ok {
-		return dt.Codec.DecodeValue(mi, dataType, pgtype.TextFormatCode, data)
+		v, err := dt.Codec.DecodeValue(
+			mi, dataType, pgtype.TextFormatCode, data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode value: %w", err)
+		}
+
+		return v, nil
 	}
+
 	return string(data), nil
 }
 

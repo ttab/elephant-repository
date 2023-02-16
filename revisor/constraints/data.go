@@ -1,10 +1,11 @@
 package constraints
 
 import (
+	"bytes"
 	"embed"
-	_ "embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 
 	"github.com/ttab/elephant/revisor"
@@ -16,18 +17,16 @@ import (
 var BuiltInConstraints embed.FS
 
 func Core() revisor.ConstraintSet {
-	var spec revisor.ConstraintSet
-
-	f, err := BuiltInConstraints.Open("core.json")
+	data, err := fs.ReadFile(BuiltInConstraints, "core.json")
 	if err != nil {
-		log.Fatalf("failed to open core contstraint file: %v", err)
+		log.Fatalf("failed to read core constraints: %v", err)
 	}
 
-	defer f.Close()
-
-	dec := json.NewDecoder(f)
+	dec := json.NewDecoder(bytes.NewReader(data))
 
 	dec.DisallowUnknownFields()
+
+	var spec revisor.ConstraintSet
 
 	err = dec.Decode(&spec)
 	if err != nil {
