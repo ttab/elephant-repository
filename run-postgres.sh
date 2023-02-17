@@ -2,7 +2,8 @@
 
 set -o pipefail
 
-pgdata="$(dirname $PWD)/localstate/repo-pgdata"
+data_dir="${STATE_DIR:-$HOME/localstate}"
+pgdata="${data_dir}/repo-pgdata"
 
 containerStatus=$(docker inspect repository-postgres | jq -r '.[0].State.Status')
 

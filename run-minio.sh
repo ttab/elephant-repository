@@ -2,7 +2,8 @@
 
 set -o pipefail
 
-data="$(dirname $PWD)/localstate/minio"
+data_dir="${STATE_DIR:-$HOME/localstate}"
+data="${data_dir}/minio"
 
 containerStatus=$(docker inspect minio-server | jq -r '.[0].State.Status')
 
