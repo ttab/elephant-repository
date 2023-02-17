@@ -379,6 +379,18 @@ func (s *PGDocStore) GetDocumentMeta(
 		meta.Statuses[head.Name] = status
 	}
 
+	acl, err := s.reader.GetDocumentACL(ctx, uuid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch document ACL: %w", err)
+	}
+
+	for _, a := range acl {
+		meta.ACL = append(meta.ACL, ACLEntry{
+			URI:         a.Uri,
+			Permissions: a.Permissions.Elements,
+		})
+	}
+
 	return &meta, nil
 }
 
