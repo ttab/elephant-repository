@@ -1,6 +1,8 @@
 service_name = repository
 proto_file = rpc/$(service_name)/service.proto
-generated_files = rpc/$(service_name)/service.pb.go rpc/$(service_name)/service.twirp.go
+generated_files = rpc/$(service_name)/service.pb.go \
+	rpc/$(service_name)/service.twirp.go \
+	docs/repository-openapi.json
 
 UID := $(shell id -u)
 GID := $(shell id -g)
@@ -16,7 +18,11 @@ $(generated_files): $(proto_file) Dockerfile.generator Makefile
 		--build-arg protoc_version=3.21.9-r0
 	docker run --rm -v "${PWD}:/usr/src" -u $(UID):$(GID) \
 		docformat-generator:latest \
-		protoc --go_out=. --twirp_out=. $(proto_file)
+		protoc --go_out=. --twirp_out=. \
+		--openapi3_out=./docs --openapi3_opt=application=repository,version=v0.0.0 \
+		$(proto_file)
+	jq '. | del(.servers)' docs/repository-openapi.json \
+		| sponge docs/repository-openapi.json
 
 # Looks like we'll have to use a snapshot version of sqlc until pgx/v5 support
 # lands in v1.17.0. See https://github.com/kyleconroy/sqlc/issues/1823

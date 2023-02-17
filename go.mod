@@ -10,7 +10,6 @@ require (
 	github.com/dgraph-io/badger/v3 v3.2103.5
 	github.com/golang-jwt/jwt/v4 v4.4.3
 	github.com/google/uuid v1.3.0
-	github.com/jackc/pgconn v1.13.0
 	github.com/jackc/pglogrepl v0.0.0-20221125161640-1e972958ba03
 	github.com/jackc/pgx/v5 v5.2.0
 	github.com/jackc/tern v1.13.0
@@ -18,6 +17,7 @@ require (
 	github.com/kyleconroy/sqlc v1.16.1-0.20230119081828-f1eef01c0f50
 	github.com/navigacontentlab/navigadoc v0.1.2
 	github.com/navigacontentlab/revisor v0.1.0
+	github.com/navigacontentlab/twopdocs v0.2.1
 	github.com/rakutentech/jwk-go v1.1.2
 	github.com/schollz/progressbar/v3 v3.12.2
 	github.com/stretchr/testify v1.8.1
@@ -28,7 +28,16 @@ require (
 	google.golang.org/protobuf v1.28.1
 )
 
-require github.com/pmezard/go-difflib v1.0.0 // indirect
+require (
+	github.com/getkin/kin-openapi v0.98.0 // indirect
+	github.com/go-openapi/jsonpointer v0.19.5 // indirect
+	github.com/go-openapi/swag v0.22.3 // indirect
+	github.com/invopop/yaml v0.2.0 // indirect
+	github.com/jackc/pgconn v1.13.0 // indirect
+	github.com/josharian/intern v1.0.0 // indirect
+	github.com/mailru/easyjson v0.7.7 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+)
 
 require (
 	github.com/Masterminds/goutils v1.1.0 // indirect
