@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ttab/elephant/doc"
+	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/revisor"
 	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
@@ -55,31 +56,12 @@ func (a *APIServer) Delete(
 		return nil, err
 	}
 
-	err = a.writeAccessCheck(ctx, auth, docUUID)
-	if err != nil {
-		return nil, err
-	}
-
-	access, err := a.store.CheckPermission(ctx, CheckPermissionRequest{
-		UUID: docUUID,
-		GranteeURIs: append([]string{auth.Claims.Subject},
-			auth.Claims.Units...),
-		Permission: "w",
-	})
-	if err != nil {
-		return nil, twirp.InternalErrorf(
-			"failed to check document permissions: %w", err)
-	}
-
-	switch access {
-	case PermissionCheckNoSuchDocument:
+	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+	if internal.IsTwirpErrorCode(err, twirp.NotFound) {
+		// Treat a delete of a document that doesn't exist as ok.
 		return &repository.DeleteDocumentResponse{}, nil
-	case PermissionCheckAllowed:
-	case PermissionCheckDenied:
-		if !auth.Claims.HasScope("superuser") {
-			return nil, twirp.PermissionDenied.Error(
-				"no write permission for the document")
-		}
+	} else if err != nil {
+		return nil, err
 	}
 
 	err = a.store.Delete(ctx, DeleteRequest{
@@ -132,7 +114,7 @@ func (a *APIServer) Get(
 		return nil, err
 	}
 
-	err = a.readAccessCheck(ctx, auth, docUUID)
+	err = a.accessCheck(ctx, auth, docUUID, ReadPermission)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +188,7 @@ func (a *APIServer) GetHistory(
 		return nil, err
 	}
 
-	err = a.readAccessCheck(ctx, auth, docUUID)
+	err = a.accessCheck(ctx, auth, docUUID, ReadPermission)
 	if err != nil {
 		return nil, err
 	}
@@ -237,15 +219,20 @@ func (a *APIServer) GetHistory(
 	return &res, nil
 }
 
-func (a *APIServer) readAccessCheck(
+func (a *APIServer) accessCheck(
 	ctx context.Context,
 	auth *AuthInfo, docUUID uuid.UUID,
+	permission Permission,
 ) error {
+	if auth.Claims.HasScope("superuser") {
+		return nil
+	}
+
 	access, err := a.store.CheckPermission(ctx, CheckPermissionRequest{
 		UUID: docUUID,
 		GranteeURIs: append([]string{auth.Claims.Subject},
 			auth.Claims.Units...),
-		Permission: "r",
+		Permission: permission,
 	})
 	if err != nil {
 		return twirp.InternalErrorf(
@@ -255,41 +242,10 @@ func (a *APIServer) readAccessCheck(
 	switch access {
 	case PermissionCheckNoSuchDocument:
 		return twirp.NotFoundError("no such document")
-	case PermissionCheckAllowed:
 	case PermissionCheckDenied:
-		if !auth.Claims.HasScope("superuser") {
-			return twirp.PermissionDenied.Error(
-				"no read permission for the document")
-		}
-	}
-
-	return nil
-}
-
-func (a *APIServer) writeAccessCheck(
-	ctx context.Context,
-	auth *AuthInfo, docUUID uuid.UUID,
-) error {
-	access, err := a.store.CheckPermission(ctx, CheckPermissionRequest{
-		UUID: docUUID,
-		GranteeURIs: append([]string{auth.Claims.Subject},
-			auth.Claims.Units...),
-		Permission: "w",
-	})
-	if err != nil {
-		return twirp.InternalErrorf(
-			"failed to check document permissions: %w", err)
-	}
-
-	switch access {
-	case PermissionCheckNoSuchDocument:
-		return twirp.NotFoundError("no such document")
+		return twirp.PermissionDenied.Errorf(
+			"no %s permission for the document", permission.Name())
 	case PermissionCheckAllowed:
-	case PermissionCheckDenied:
-		if !auth.Claims.HasScope("superuser") {
-			return twirp.PermissionDenied.Error(
-				"no write permission for the document")
-		}
 	}
 
 	return nil
@@ -315,7 +271,7 @@ func (a *APIServer) GetMeta(
 		return nil, err
 	}
 
-	err = a.readAccessCheck(ctx, auth, docUUID)
+	err = a.accessCheck(ctx, auth, docUUID, ReadPermission)
 	if err != nil {
 		return nil, err
 	}
@@ -410,11 +366,6 @@ func (a *APIServer) Update(
 		return nil, err
 	}
 
-	err = a.writeAccessCheck(ctx, auth, docUUID)
-	if err != nil {
-		return nil, err
-	}
-
 	if req.Document != nil && req.Document.Uuid == "" {
 		req.Document.Uuid = docUUID.String()
 	} else if req.Document != nil && req.Document.Uuid != docUUID.String() {
@@ -473,26 +424,11 @@ func (a *APIServer) Update(
 		}
 	}
 
-	access, err := a.store.CheckPermission(ctx, CheckPermissionRequest{
-		UUID: docUUID,
-		GranteeURIs: append([]string{auth.Claims.Subject},
-			auth.Claims.Units...),
-		Permission: "w",
-	})
-	if err != nil {
-		return nil, twirp.InternalErrorf(
-			"failed to check document permissions: %w", err)
-	}
-
-	switch access {
-	case PermissionCheckNoSuchDocument:
+	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+	if internal.IsTwirpErrorCode(err, twirp.NotFound) {
 		// Allowed to create documents given a doc_write scope is set
-	case PermissionCheckAllowed:
-	case PermissionCheckDenied:
-		if !auth.Claims.HasScope("superuser") {
-			return nil, twirp.PermissionDenied.Error(
-				"no write permission for the document")
-		}
+	} else if err != nil {
+		return nil, err
 	}
 
 	updater := auth.Claims.Subject

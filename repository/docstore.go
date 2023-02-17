@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,10 +57,28 @@ type RegisterSchemaRequest struct {
 	Activate      bool
 }
 
+type Permission string
+
+const (
+	ReadPermission  Permission = "r"
+	WritePermission Permission = "w"
+)
+
+func (p Permission) Name() string {
+	switch p {
+	case ReadPermission:
+		return "read"
+	case WritePermission:
+		return "write"
+	}
+
+	return strconv.Quote(string(p))
+}
+
 type CheckPermissionRequest struct {
 	UUID        uuid.UUID
 	GranteeURIs []string
-	Permission  string
+	Permission  Permission
 }
 
 type CheckPermissionResult int

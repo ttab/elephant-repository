@@ -390,7 +390,7 @@ func (s *PGDocStore) CheckPermission(
 		postgres.CheckPermissionParams{
 			Uuid:       req.UUID,
 			Uri:        pgStringArray(req.GranteeURIs),
-			Permission: req.Permission,
+			Permission: string(req.Permission),
 		})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PermissionCheckNoSuchDocument, nil
