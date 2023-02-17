@@ -1,6 +1,6 @@
-# Docformat
+# Elephant
 
-Local application meant for exploring DAWROC data format conversion.
+![Image](docs/elephant.png?raw=true)
 
 Executable entrypoints in cmd/docformat and cmd/repository.
 
