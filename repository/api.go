@@ -671,6 +671,7 @@ func (a *APIServer) RegisterSchema(
 		Name:          req.Schema.Name,
 		Version:       version,
 		Specification: &spec,
+		Activate:      req.Activate,
 	})
 	if IsDocStoreErrorCode(err, ErrCodeExists) {
 		return nil, twirp.FailedPrecondition.Error(
