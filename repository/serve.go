@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -142,9 +143,31 @@ func apiServer(
 
 		form := r.Form
 
-		if form.Get("grant_type") != "password" {
+		switch form.Get("grant_type") {
+		case "password":
+		case "refresh_token":
+			if form.Get("refresh_token") == "" {
+				return internal.HTTPErrorf(http.StatusBadRequest,
+					"missing 'refresh_token'")
+			}
+
+			rData, err := base64.RawStdEncoding.DecodeString(
+				form.Get("refresh_token"))
+			if err != nil {
+				return internal.HTTPErrorf(http.StatusBadRequest,
+					"invalid refresh token: %w", err)
+			}
+
+			f, err := url.ParseQuery(string(rData))
+			if err != nil {
+				return internal.HTTPErrorf(http.StatusBadRequest,
+					"invalid refresh contents: %w", err)
+			}
+
+			form = f
+		default:
 			return internal.HTTPErrorf(http.StatusBadRequest,
-				"we only support the \"password\" grant_type")
+				"we only support the \"password\" and \"refresh_token\" grant_type")
 		}
 
 		username := form.Get("username")
@@ -193,8 +216,11 @@ func apiServer(
 
 		err = json.NewEncoder(w).Encode(TokenResponse{
 			AccessToken: ss,
-			TokenType:   "Bearer",
-			ExpiresIn:   int(expiresIn.Seconds()),
+			RefreshToken: base64.RawURLEncoding.EncodeToString(
+				[]byte(form.Encode()),
+			),
+			TokenType: "Bearer",
+			ExpiresIn: int(expiresIn.Seconds()),
 		})
 		if err != nil {
 			return internal.HTTPErrorf(http.StatusInternalServerError,
