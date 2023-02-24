@@ -47,13 +47,13 @@ type DocStore interface {
 type Schema struct {
 	Name          string
 	Version       string
-	Specification *revisor.ConstraintSet
+	Specification revisor.ConstraintSet
 }
 
 type RegisterSchemaRequest struct {
 	Name          string
 	Version       string
-	Specification *revisor.ConstraintSet
+	Specification revisor.ConstraintSet
 	Activate      bool
 }
 

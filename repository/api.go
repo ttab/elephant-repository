@@ -16,12 +16,16 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-type APIServer struct {
-	store     DocStore
-	validator *revisor.Validator
+type DocumentValidator interface {
+	ValidateDocument(document *doc.Document) []revisor.ValidationResult
 }
 
-func NewAPIServer(store DocStore, validator *revisor.Validator) *APIServer {
+type APIServer struct {
+	store     DocStore
+	validator DocumentValidator
+}
+
+func NewAPIServer(store DocStore, validator DocumentValidator) *APIServer {
 	return &APIServer{
 		store:     store,
 		validator: validator,
@@ -670,7 +674,7 @@ func (a *APIServer) RegisterSchema(
 	err = a.store.RegisterSchema(ctx, RegisterSchemaRequest{
 		Name:          req.Schema.Name,
 		Version:       version,
-		Specification: &spec,
+		Specification: spec,
 		Activate:      req.Activate,
 	})
 	if IsDocStoreErrorCode(err, ErrCodeExists) {

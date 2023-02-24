@@ -13,7 +13,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/internal/cmd"
 	"github.com/ttab/elephant/repository"
-	"github.com/ttab/elephant/revisor/constraints"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
 )
@@ -133,7 +132,8 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("subsystem setup failed: %w", err)
 	}
 
-	validator, err := constraints.DefaultValidator()
+	validator, err := repository.NewValidator(
+		c.Context, logger, store)
 	if err != nil {
 		return fmt.Errorf("failed to create validator: %w", err)
 	}

@@ -588,30 +588,15 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 func (s *PGDocStore) RegisterSchema(
 	ctx context.Context, req RegisterSchemaRequest,
 ) error {
-	var spec []byte
-
-	if req.Specification != nil {
-		var err error
-
-		spec, err = json.Marshal(req.Specification)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to marshal specification for storage: %w", err)
-		}
-	}
-
-	tx, err := s.pool.Begin(ctx)
+	spec, err := json.Marshal(req.Specification)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return fmt.Errorf(
+			"failed to marshal specification for storage: %w", err)
 	}
 
-	// We defer a rollback, rollback after commit won't be treated as an
-	// error.
-	defer internal.SafeRollback(ctx, s.logger, tx, "schema registration")
+	err = s.withTX(ctx, "schema registration", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
 
-	q := postgres.New(tx)
-
-	if req.Specification != nil {
 		err = q.RegisterSchema(ctx, postgres.RegisterSchemaParams{
 			Name:    req.Name,
 			Version: req.Version,
@@ -623,22 +608,72 @@ func (s *PGDocStore) RegisterSchema(
 		} else if err != nil {
 			return fmt.Errorf("failed to register schema version: %w", err)
 		}
-	}
 
-	if req.Activate {
-		err = q.ActivateSchema(ctx, postgres.ActivateSchemaParams{
-			Name:    req.Name,
-			Version: req.Version,
-		})
-		if err != nil {
-			return fmt.Errorf(
-				"failed to activate schema version: %w", err)
+		if req.Activate {
+			err = s.activateSchema(ctx, q, req.Name, req.Version)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to activate schema version: %w", err)
+			}
 		}
 
-		notifySchemaUpdated(ctx, s.logger, q, SchemaEvent{
-			Type: SchemaEventTypeActivation,
-			Name: req.Name,
-		})
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RegisterSchema implements DocStore.
+func (s *PGDocStore) ActivateSchema(
+	ctx context.Context, name, version string,
+) error {
+	s.withTX(ctx, "schema registration", func(tx pgx.Tx) error {
+		return s.activateSchema(ctx, postgres.New(tx), name, version)
+	})
+
+	return nil
+}
+
+// RegisterSchema implements DocStore.
+func (s *PGDocStore) activateSchema(
+	ctx context.Context, q *postgres.Queries, name, version string,
+) error {
+	err := q.ActivateSchema(ctx, postgres.ActivateSchemaParams{
+		Name:    name,
+		Version: version,
+	})
+	if err != nil {
+		return fmt.Errorf(
+			"failed to activate schema version: %w", err)
+	}
+
+	notifySchemaUpdated(ctx, s.logger, q, SchemaEvent{
+		Type: SchemaEventTypeActivation,
+		Name: name,
+	})
+
+	return nil
+}
+
+func (s *PGDocStore) withTX(
+	ctx context.Context, name string,
+	fn func(tx pgx.Tx) error,
+) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// We defer a rollback, rollback after commit won't be treated as an
+	// error.
+	defer internal.SafeRollback(ctx, s.logger, tx, name)
+
+	err = fn(tx)
+	if err != nil {
+		return err
 	}
 
 	err = tx.Commit(ctx)
@@ -704,7 +739,7 @@ func (s *PGDocStore) GetActiveSchemas(
 		res[i] = &Schema{
 			Name:          rows[i].Name,
 			Version:       rows[i].Version,
-			Specification: &spec,
+			Specification: spec,
 		}
 	}
 
@@ -747,7 +782,7 @@ func (s *PGDocStore) GetSchema(
 	return &Schema{
 		Name:          schema.Name,
 		Version:       schema.Version,
-		Specification: &spec,
+		Specification: spec,
 	}, nil
 }
 
