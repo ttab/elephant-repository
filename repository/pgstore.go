@@ -554,7 +554,7 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 		}
 
 		for _, head := range heads {
-			statusHeads[head.Name] = head.ID
+			statusHeads[head.Name] = head.CurrentID
 		}
 	}
 

@@ -146,7 +146,7 @@ WHERE archived = false;
 create table status_heads(
        uuid uuid not null,
        name varchar(32) not null,
-       id bigint not null,
+       current_id bigint not null,
        updated timestamptz not null,
        updater_uri text not null,
        primary key(uuid, name),
@@ -158,7 +158,7 @@ create function create_status
 (
         in uuid uuid,
         in name varchar(32),
-        in id bigint,
+        in current_id bigint,
         in version bigint,
         in created timestamptz,
         in creator_uri text,
@@ -168,21 +168,21 @@ returns void
 language sql
 as $$
    insert into status_heads(
-               uuid, name, id, updated, updater_uri
+               uuid, name, current_id, updated, updater_uri
           )
           values(
-               uuid, name, id, created, creator_uri
+               uuid, name, current_id, created, creator_uri
           )
           on conflict (uuid, name) do update
              set updated = create_status.created,
                  updater_uri = create_status.creator_uri,
-                 id = create_status.id;
+                 current_id = create_status.current_id;
 
    insert into document_status(
                uuid, name, id, version, created, creator_uri, meta
           )
           values(
-               uuid, name, id, version, created, creator_uri, meta
+               uuid, name, current_id, version, created, creator_uri, meta
           );
 $$;
 
@@ -238,6 +238,8 @@ drop function delete_document(
 drop function create_status(
      uuid, varchar(32), bigint, bigint, timestamptz, text, jsonb);
 drop table signing_keys;
+drop table active_schemas;
+drop table document_schema;
 drop index document_link_rel_idx;
 drop table document_link;
 drop index document_version_archived;

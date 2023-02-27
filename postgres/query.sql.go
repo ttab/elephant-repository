@@ -293,14 +293,14 @@ func (q *Queries) GetDocumentForUpdate(ctx context.Context, uuid uuid.UUID) (Get
 }
 
 const getDocumentHeads = `-- name: GetDocumentHeads :many
-SELECT name, id
+SELECT name, current_id
 FROM status_heads
 WHERE uuid = $1
 `
 
 type GetDocumentHeadsRow struct {
-	Name string
-	ID   int64
+	Name      string
+	CurrentID int64
 }
 
 func (q *Queries) GetDocumentHeads(ctx context.Context, uuid uuid.UUID) ([]GetDocumentHeadsRow, error) {
@@ -312,7 +312,7 @@ func (q *Queries) GetDocumentHeads(ctx context.Context, uuid uuid.UUID) ([]GetDo
 	var items []GetDocumentHeadsRow
 	for rows.Next() {
 		var i GetDocumentHeadsRow
-		if err := rows.Scan(&i.Name, &i.ID); err != nil {
+		if err := rows.Scan(&i.Name, &i.CurrentID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -475,7 +475,7 @@ SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
        s.archived, s.signature
 FROM status_heads AS h
      INNER JOIN document_status AS s ON
-           s.uuid = h.uuid AND s.name = h.name AND s.id = h.id
+           s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
 WHERE h.uuid = $1
 `
 

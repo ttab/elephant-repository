@@ -4,7 +4,7 @@ WHERE uuid = $1
 FOR UPDATE;
 
 -- name: GetDocumentHeads :many
-SELECT name, id
+SELECT name, current_id
 FROM status_heads
 WHERE uuid = $1;
 
@@ -13,7 +13,7 @@ SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
        s.archived, s.signature
 FROM status_heads AS h
      INNER JOIN document_status AS s ON
-           s.uuid = h.uuid AND s.name = h.name AND s.id = h.id
+           s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
 WHERE h.uuid = $1;
 
 -- name: GetDocumentUnarchivedCount :one

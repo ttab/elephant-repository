@@ -103,7 +103,7 @@ type SigningKey struct {
 type StatusHead struct {
 	Uuid       uuid.UUID
 	Name       string
-	ID         int64
+	CurrentID  int64
 	Updated    pgtype.Timestamptz
 	UpdaterUri string
 }
