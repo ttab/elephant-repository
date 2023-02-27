@@ -25,6 +25,9 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	t.Parallel()
 
 	logger := logrus.New()
+
+	// TODO: We don't drain the archiver before finishing tests, so
+	// sometimes an archiver related error will be logged out of band.
 	tc := testingAPIServer(t, logger, true)
 
 	client := tc.DocumentsClient(t,
@@ -43,11 +46,9 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "failed to create article")
+	test.Must(t, err, "create article")
 
-	if res.Version != 1 {
-		t.Fatal("expected the first version to be version 1")
-	}
+	test.Equal(t, 1, res.Version, "expected this to be the first version")
 
 	doc2 := baseDocument(docUUID, docURI)
 
@@ -62,13 +63,11 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc2,
 	})
-	test.Must(t, err, "failed to update article")
+	test.Must(t, err, "update article")
 
-	if res.Version != 2 {
-		t.Fatal("expected the second version to be version 2")
-	}
+	test.Equal(t, 2, res.Version, "expected this to be the second version")
 
-	doc3 := cloneMessage(doc2)
+	doc3 := test.CloneMessage(doc2)
 
 	doc3.Content = append(doc3.Content, &rpc.Block{
 		Type: "something/made-up",
@@ -76,7 +75,8 @@ func TestIntegrationBasicCrud(t *testing.T) {
 			"text": "Dunno what this is",
 		},
 	})
-	res, err = client.Update(ctx, &rpc.UpdateRequest{
+
+	_, err = client.Update(ctx, &rpc.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc3,
 	})
@@ -85,24 +85,24 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	currentVersion, err := client.Get(ctx, &rpc.GetDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "failed to get the document")
+	test.Must(t, err, "get the document")
 
-	equalMessage(t, doc2, currentVersion.Document,
+	test.EqualMessage(t, doc2, currentVersion.Document,
 		"expected the last document to be returned")
 
 	firstVersion, err := client.Get(ctx, &rpc.GetDocumentRequest{
 		Uuid:    docUUID,
 		Version: 1,
 	})
-	test.Must(t, err, "failed to get the first version of the document")
+	test.Must(t, err, "get the first version of the document")
 
-	equalMessage(t, doc, firstVersion.Document,
+	test.EqualMessage(t, doc, firstVersion.Document,
 		"expected the first document to be returned")
 
 	_, err = client.Delete(ctx, &rpc.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "failed to delete the document")
+	test.Must(t, err, "delete the document")
 
 	_, err = client.Get(ctx, &rpc.GetDocumentRequest{
 		Uuid: docUUID,
@@ -144,18 +144,18 @@ func TestIntegrationStatuses(t *testing.T) {
 			{Name: "usable"},
 		},
 	})
-	test.Must(t, err, "failed to create article")
+	test.Must(t, err, "create article")
 
-	doc2 := cloneMessage(doc)
+	doc2 := test.CloneMessage(doc)
 	doc2.Title = "Drafty McDraftface"
 
 	_, err = client.Update(ctx, &rpc.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc2,
 	})
-	test.Must(t, err, "failed to update article")
+	test.Must(t, err, "update article")
 
-	doc3 := cloneMessage(doc2)
+	doc3 := test.CloneMessage(doc2)
 	doc3.Title = "More appropriate title"
 
 	res3, err := client.Update(ctx, &rpc.UpdateRequest{
@@ -165,19 +165,20 @@ func TestIntegrationStatuses(t *testing.T) {
 			{Name: "done"},
 		},
 	})
-	test.Must(t, err, "failed to update article")
+	test.Must(t, err, "update article with 'done' status")
 
 	currentUsable, err := client.Get(ctx, &rpc.GetDocumentRequest{
 		Uuid:   docUUID,
 		Status: "usable",
 	})
-	test.Must(t, err, "failed to fetch the currently published version")
+	test.Must(t, err, "fetch the currently published version")
 
-	if currentUsable.Version != 1 {
-		t.Fatalf("expected the currently publised version to be 1")
-	}
-
-	equalMessage(t, doc, currentUsable.Document, "expected the contents of v1")
+	test.EqualMessage(t,
+		&rpc.GetDocumentResponse{
+			Version:  1,
+			Document: doc,
+		}, currentUsable,
+		"expected the currently publised version to be unchanged")
 
 	_, err = client.Update(ctx, &rpc.UpdateRequest{
 		Uuid: docUUID,
@@ -185,7 +186,7 @@ func TestIntegrationStatuses(t *testing.T) {
 			{Name: "usable", Version: res3.Version},
 		},
 	})
-	test.Must(t, err, "failed to set version 3 to usable")
+	test.Must(t, err, "set version 3 to usable")
 }
 
 func TestIntegrationACL(t *testing.T) {
@@ -223,7 +224,7 @@ func TestIntegrationACL(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "failed to create first article")
+	test.Must(t, err, "create first article")
 
 	doc2 := baseDocument(doc2UUID, doc2URI)
 
@@ -237,7 +238,7 @@ func TestIntegrationACL(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "failed to create second article")
+	test.Must(t, err, "create second article")
 
 	_, err = otherClient.Get(ctx, &rpc.GetDocumentRequest{
 		Uuid: docUUID,
@@ -267,7 +268,7 @@ func TestIntegrationACL(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "failed to update ACL for document one")
+	test.Must(t, err, "update ACL for document one")
 
 	_, err = otherClient.Get(ctx, &rpc.GetDocumentRequest{
 		Uuid: docUUID,

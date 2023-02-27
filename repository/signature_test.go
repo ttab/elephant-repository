@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/ttab/elephant/internal/test"
 	"github.com/ttab/elephant/repository"
 )
 
@@ -58,12 +58,13 @@ const (
 	badSignature  = `v1.1.vZr1mhSxTiT_LNBP4S8eXfGUrmazfdjVZRGWoV2bhYE.MGYCMQDqIFIWo2gE9n2Hp7mzsfvFK2E-i0A-sa6pJSXSbpwiUjwi32OIsfFPHdO9_C-bescCMQCGr_xCyqGk1vqyt3q4Qxa-SpcK9ESu4gYKeeBx86kndRCkT7pBTL8VezOJ-W2K8FU`
 )
 
-func getTestKeys(t assert.TestingT) *repository.SigningKeySet {
+func getTestKeys(t test.TestingT) *repository.SigningKeySet {
+	t.Helper()
+
 	var set repository.SigningKeySet
 
 	err := json.Unmarshal([]byte(testKeys), &set)
-
-	assert.NotErrorIs(t, err, assert.AnError, "failed to unmarshal test keys")
+	test.Must(t, err, "unmarshal test keys")
 
 	return &set
 }
@@ -78,19 +79,20 @@ func TestArchiveSignature_GenerateAndVerify(t *testing.T) {
 
 	for kid, t0 := range keySelection {
 		key := keys.CurrentKey(t0)
-		assert.NotNil(t, key, "expected there to be a current key")
-		assert.Equal(t, kid, key.Spec.KeyID, "wrong key selected")
+		test.NotNil(t, key,
+			"expected there to be a current key for %v", t0)
+		test.Equal(t, kid, key.Spec.KeyID, "correct key selected")
 
 		someData := []byte(`{"my":"json"}`)
 		hashData := sha256.Sum256(someData)
 
 		sig, err := repository.NewArchiveSignature(key, hashData)
-		assert.Nil(t, err, "failed to generate signature")
-		assert.Equal(t, sig.KeyID, key.Spec.KeyID,
-			"wrong key declared by signature")
+		test.Must(t, err, "generate signature")
+		test.Equal(t, sig.KeyID, key.Spec.KeyID,
+			"correct key ID declared by signature")
 
 		err = sig.Verify(key)
-		assert.Nil(t, err, "failed to verify generated signature")
+		test.Must(t, err, "verify generated signature")
 	}
 }
 
@@ -98,26 +100,26 @@ func TestArchiveSignature_ParseAndVerify(t *testing.T) {
 	keys := getTestKeys(t)
 
 	sig, err := repository.ParseArchiveSignature(testSignature)
-	assert.Nil(t, err, "failed to parse signature")
+	test.Must(t, err, "parse signature")
 
 	key := keys.GetKeyByID(sig.KeyID)
-	assert.NotNil(t, key, "failed to look up key")
+	test.NotNil(t, key, "look up key")
 
 	err = sig.Verify(key)
-	assert.Nil(t, err, "failed to verify parsed signature")
+	test.Must(t, err, "verify parsed signature")
 }
 
 func TestArchiveSignature_ParseAndDetectBadSignature(t *testing.T) {
 	keys := getTestKeys(t)
 
 	sig, err := repository.ParseArchiveSignature(badSignature)
-	assert.Nil(t, err, "failed to parse signature")
+	test.Must(t, err, "parse signature")
 
 	key := keys.GetKeyByID(sig.KeyID)
-	assert.NotNil(t, key, "failed to look up key")
+	test.NotNil(t, key, "look up key")
 
 	err = sig.Verify(key)
-	assert.NotNil(t, err, "incorrectly verified bad signature")
+	test.MustNot(t, err, "expect to get error for bad signature")
 }
 
 func FuzzArchiveSignatureParsing(f *testing.F) {
@@ -125,7 +127,7 @@ func FuzzArchiveSignatureParsing(f *testing.F) {
 	time := time.Date(2023, 02, 10, 00, 00, 00, 00, time.UTC)
 
 	key := keys.CurrentKey(time)
-	assert.NotNil(f, key, "failed to get current key")
+	test.NotNil(f, key, "get current key")
 
 	f.Add(testSignature)
 	f.Add(badSignature)

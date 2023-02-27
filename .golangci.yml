@@ -55,3 +55,8 @@ linters-settings:
     keywords:
       - FIXME
       - BUG
+issues:
+  exclude-rules:
+    - linters:
+        - ireturn
+      text: CloneMessage
