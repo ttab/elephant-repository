@@ -68,6 +68,20 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		t.Fatal("expected the second version to be version 2")
 	}
 
+	doc3 := cloneMessage(doc2)
+
+	doc3.Content = append(doc3.Content, &rpc.Block{
+		Type: "something/made-up",
+		Data: map[string]string{
+			"text": "Dunno what this is",
+		},
+	})
+	res, err = client.Update(ctx, &rpc.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc3,
+	})
+	test.MustNot(t, err, "expected unknown content block to fail validation")
+
 	currentVersion, err := client.Get(ctx, &rpc.GetDocumentRequest{
 		Uuid: docUUID,
 	})
