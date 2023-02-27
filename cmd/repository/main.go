@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/julienschmidt/httprouter"
 	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/internal/cmd"
 	"github.com/ttab/elephant/repository"
@@ -142,11 +143,18 @@ func runServer(c *cli.Context) error {
 
 	logger.Debug("starting API server")
 
-	err = repository.RunServer(c.Context, addr,
+	router := httprouter.New()
+
+	err = repository.SetUpRouter(router,
 		repository.WithAPIServer(logger, signingKey, apiServer),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to run server: %w", err)
+		return fmt.Errorf("failed to set up router: %w", err)
+	}
+
+	err = repository.ListenAndServe(c.Context, addr, router)
+	if err != nil {
+		return fmt.Errorf("failed to start server: %w", err)
 	}
 
 	return nil

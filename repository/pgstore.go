@@ -17,6 +17,7 @@ import (
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
 	"github.com/ttab/elephant/revisor"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -108,36 +109,62 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 		}
 	}
 
-	for {
-		notification, err := conn.Conn().WaitForNotification(ctx)
-		if err != nil {
-			return fmt.Errorf(
-				"error while waiting for notification: %w", err)
-		}
+	received := make(chan *pgconn.Notification)
+	grp, gCtx := errgroup.WithContext(ctx)
 
-		switch NotifyChannel(notification.Channel) {
-		case NotifySchemasUpdated:
-			var e SchemaEvent
-
-			err := json.Unmarshal(
-				[]byte(notification.Payload), &e)
+	grp.Go(func() error {
+		for {
+			notification, err := conn.Conn().WaitForNotification(gCtx)
 			if err != nil {
-				break
+				return fmt.Errorf(
+					"error while waiting for notification: %w", err)
 			}
 
-			s.schemas.Notify(e)
-		case NotifyArchived:
-			var e ArchivedEvent
+			received <- notification
+		}
+	})
 
-			err := json.Unmarshal(
-				[]byte(notification.Payload), &e)
-			if err != nil {
-				break
+	grp.Go(func() error {
+		for {
+			var notification *pgconn.Notification
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err() //nolint:wrapcheck
+			case notification = <-received:
 			}
 
-			s.archived.Notify(e)
+			switch NotifyChannel(notification.Channel) {
+			case NotifySchemasUpdated:
+				var e SchemaEvent
+
+				err := json.Unmarshal(
+					[]byte(notification.Payload), &e)
+				if err != nil {
+					break
+				}
+
+				s.schemas.Notify(e)
+			case NotifyArchived:
+				var e ArchivedEvent
+
+				err := json.Unmarshal(
+					[]byte(notification.Payload), &e)
+				if err != nil {
+					break
+				}
+
+				s.archived.Notify(e)
+			}
 		}
+	})
+
+	err = grp.Wait()
+	if err != nil {
+		return err //nolint:wrapcheck
 	}
+
+	return nil
 }
 
 // Delete implements DocStore.
@@ -161,7 +188,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	internal.SafeRollback(ctx, s.logger, tx, "document delete")
+	defer internal.SafeRollback(ctx, s.logger, tx, "document delete")
 
 	q := postgres.New(tx)
 
@@ -630,11 +657,9 @@ func (s *PGDocStore) RegisterSchema(
 func (s *PGDocStore) ActivateSchema(
 	ctx context.Context, name, version string,
 ) error {
-	s.withTX(ctx, "schema registration", func(tx pgx.Tx) error {
+	return s.withTX(ctx, "schema registration", func(tx pgx.Tx) error {
 		return s.activateSchema(ctx, postgres.New(tx), name, version)
 	})
-
-	return nil
 }
 
 // RegisterSchema implements DocStore.

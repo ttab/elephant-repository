@@ -3,6 +3,8 @@ package internal
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -28,4 +30,25 @@ func SafeRollback(
 			"transaction": txName,
 		}).Error("failed to roll back")
 	}
+}
+
+func SetConnStringVariables(conn string, vars url.Values) (string, error) {
+	u, err := url.Parse(conn)
+	if err != nil {
+		return "", fmt.Errorf("not a valid URI: %w", err)
+	}
+
+	if u.Scheme != "postgres" {
+		return "", fmt.Errorf("%q is not a postgres:// URI", conn)
+	}
+
+	q := u.Query()
+
+	for k, v := range vars {
+		q[k] = v
+	}
+
+	u.RawQuery = q.Encode()
+
+	return u.String(), nil
 }

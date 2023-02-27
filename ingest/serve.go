@@ -51,7 +51,7 @@ func linkedDocs(b doc.Block, links []doc.Block) []doc.Block {
 	return links
 }
 
-func WithUIServer(store repository.DocStore, oc *OCClient) repository.ServerOption {
+func WithUIServer(store repository.DocStore, oc *OCClient) repository.RouterOption {
 	return func(router *httprouter.Router) error {
 		return uiServer(router, store, oc)
 	}

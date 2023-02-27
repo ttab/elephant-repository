@@ -78,12 +78,18 @@ func main() {
 }
 
 func loadConstraints(
-	navigaSpec bool, sources ...string,
+	coreSpec bool, sources ...string,
 ) ([]revisor.ConstraintSet, error) {
 	var list []revisor.ConstraintSet
 
-	if navigaSpec {
-		list = append(list, constraints.Core())
+	if coreSpec {
+		core, err := constraints.CoreSchema()
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to load built in core schema: %w", err)
+		}
+
+		list = append(list, core)
 	}
 
 	for _, source := range sources {

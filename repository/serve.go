@@ -23,23 +23,25 @@ import (
 	"github.com/twitchtv/twirp"
 )
 
-func RunServer(
-	ctx context.Context, addr string,
-	opts ...ServerOption,
+func SetUpRouter(
+	router *httprouter.Router,
+	opts ...RouterOption,
 ) error {
-	router := httprouter.New()
-
-	server := http.Server{
-		Addr:              addr,
-		Handler:           router,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
 	for _, opt := range opts {
 		err := opt(router)
 		if err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
+	server := http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
@@ -58,12 +60,12 @@ func RunServer(
 	return nil
 }
 
-type ServerOption func(router *httprouter.Router) error
+type RouterOption func(router *httprouter.Router) error
 
 func WithAPIServer(
 	logger *logrus.Logger,
 	jwtKey *ecdsa.PrivateKey, server repository.Documents,
-) ServerOption {
+) RouterOption {
 	return func(router *httprouter.Router) error {
 		return apiServer(logger, router, jwtKey, server)
 	}
@@ -88,6 +90,8 @@ func apiServer(
 				"failed to marshal private key: %w", err)
 		}
 
+		// TODO: this is obviously just a local testing thing. Should be
+		// nuked once we want to have this running on an actual server.
 		logger.WithField(
 			"key", base64.RawURLEncoding.EncodeToString(keyData),
 		).Warn(
@@ -155,13 +159,13 @@ func apiServer(
 				form.Get("refresh_token"))
 			if err != nil {
 				return internal.HTTPErrorf(http.StatusBadRequest,
-					"invalid refresh token: %w", err)
+					"invalid refresh token: %v", err)
 			}
 
 			f, err := url.ParseQuery(string(rData))
 			if err != nil {
 				return internal.HTTPErrorf(http.StatusBadRequest,
-					"invalid refresh contents: %w", err)
+					"invalid refresh contents: %v", err)
 			}
 
 			form = f

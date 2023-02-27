@@ -26,7 +26,7 @@ func CoreSchema() (revisor.ConstraintSet, error) {
 	err := dec.Decode(&spec)
 	if err != nil {
 		return revisor.ConstraintSet{}, fmt.Errorf(
-			"failed to unmarshal core constraints: %v", err)
+			"failed to unmarshal core constraints: %w", err)
 	}
 
 	return spec, nil

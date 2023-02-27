@@ -77,7 +77,7 @@ func ArchiveS3Client(
 			config.WithCredentialsProvider(creds))
 	}
 
-	cfg, err := config.LoadDefaultConfig(context.Background(), options...)
+	cfg, err := config.LoadDefaultConfig(ctx, options...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS SDK config: %w", err)
 	}

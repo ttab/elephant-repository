@@ -377,6 +377,19 @@ func (a *APIServer) Update(
 			"the document must have the same UUID as the request uuid")
 	}
 
+	if req.Document != nil {
+		if req.Document.Uuid == "" {
+			req.Document.Uuid = docUUID.String()
+		} else if req.Document.Uuid != docUUID.String() {
+			return nil, twirp.InvalidArgumentError("document.uuid",
+				"the document must have the same UUID as the request uuid")
+		}
+
+		if req.Document.Uri == "" {
+			return nil, twirp.RequiredArgumentError("document.uri")
+		}
+	}
+
 	for i, s := range req.Status {
 		if s == nil {
 			return nil, twirp.InvalidArgumentError(
@@ -717,11 +730,7 @@ func (a *APIServer) SetActiveSchema(
 				"failed to deactivate schema: %w", err)
 		}
 	} else {
-		err := a.store.RegisterSchema(ctx, RegisterSchemaRequest{
-			Name:     req.Name,
-			Version:  req.Version,
-			Activate: true,
-		})
+		err := a.store.ActivateSchema(ctx, req.Name, req.Version)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"failed to register activation: %w", err)

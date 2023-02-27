@@ -35,6 +35,9 @@ type DocStore interface {
 	RegisterSchema(
 		ctx context.Context, req RegisterSchemaRequest,
 	) error
+	ActivateSchema(
+		ctx context.Context, name, version string,
+	) error
 	DeactivateSchema(
 		ctx context.Context, name string,
 	) error

@@ -14,12 +14,12 @@ import (
 )
 
 func FuzzValidationWide(f *testing.F) {
-	baseConstraints, err := os.ReadFile("constraints/naviga.json")
+	baseConstraints, err := os.ReadFile("constraints/core.json")
 	if err != nil {
 		f.Fatalf("failed to read base constraints: %v", err)
 	}
 
-	exampleConstraints, err := os.ReadFile("constraints/example.json")
+	exampleConstraints, err := os.ReadFile("constraints/tt.json")
 	if err != nil {
 		f.Fatalf("failed to read example constraints: %v", err)
 	}
@@ -138,12 +138,12 @@ func TestValidateDocument(t *testing.T) {
 		extraConstraints revisor.ConstraintSet
 	)
 
-	err := internal.UnmarshalFile("constraints/naviga.json", &constraints)
+	err := internal.UnmarshalFile("constraints/core.json", &constraints)
 	if err != nil {
 		t.Fatalf("failed to load base constraints: %v", err)
 	}
 
-	err = internal.UnmarshalFile("constraints/example.json", &extraConstraints)
+	err = internal.UnmarshalFile("constraints/tt.json", &extraConstraints)
 	if err != nil {
 		t.Fatalf("failed to load org constraints: %v", err)
 	}

@@ -13,11 +13,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/julienschmidt/httprouter"
 	"github.com/schollz/progressbar/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/ingest"
 	"github.com/ttab/elephant/internal/cmd"
 	"github.com/ttab/elephant/repository"
+	"github.com/ttab/elephant/revisor"
 	"github.com/ttab/elephant/revisor/constraints"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
@@ -178,10 +180,17 @@ func webUIAction(c *cli.Context) error {
 		return fmt.Errorf("failed to create OC client: %w", err)
 	}
 
-	//nolint:wrapcheck
-	return repository.RunServer(c.Context, addr,
+	router := httprouter.New()
+
+	err = repository.SetUpRouter(router,
 		ingest.WithUIServer(store, oc),
 	)
+	if err != nil {
+		return fmt.Errorf("failed to set up router: %w", err)
+	}
+
+	//nolint:wrapcheck
+	return repository.ListenAndServe(c.Context, addr, router)
 }
 
 func ingestAction(c *cli.Context) error {
@@ -324,10 +333,15 @@ func ingestAction(c *cli.Context) error {
 	propFSCache := ingest.NewFSCache(filepath.Join(cacheDir, "properties"))
 	cachedProps := ingest.NewPropertyCache(propFSCache, oc)
 
-	validator, err := constraints.DefaultValidator()
+	core, err := constraints.CoreSchema()
 	if err != nil {
-		return fmt.Errorf("failed to get default validator: %w", err)
+		return fmt.Errorf("failed to get core schema: %w", err)
 	}
+
+	// TODO: the new validator here is hobbled as it only uses the core
+	// schema. The ingester should be shifted to using the API, but before
+	// then we might want to add a cli flag for selecting a local schema.
+	validator, err := revisor.NewValidator(core)
 
 	apiServer := repository.NewAPIServer(store, validator)
 
@@ -362,10 +376,19 @@ func ingestAction(c *cli.Context) error {
 
 	if ui {
 		group.Go(func() error {
-			//nolint:wrapcheck
-			return repository.RunServer(c.Context, addr,
+			router := httprouter.New()
+
+			err := repository.SetUpRouter(
+				router,
 				ingest.WithUIServer(store, oc),
 			)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to set up router: %w", err)
+			}
+
+			//nolint:wrapcheck
+			return repository.ListenAndServe(gCtx, addr, router)
 		})
 	}
 
