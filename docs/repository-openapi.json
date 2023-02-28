@@ -254,10 +254,10 @@
         },
         "type": "object"
       },
-      "elephant.repository.GetActiveSchemasRequest": {
+      "elephant.repository.GetAllActiveSchemasRequest": {
         "type": "object"
       },
-      "elephant.repository.GetActiveSchemasResponse": {
+      "elephant.repository.GetAllActiveSchemasResponse": {
         "properties": {
           "schemas": {
             "items": {
@@ -596,6 +596,7 @@
   "paths": {
     "/twirp/elephant.repository.Documents/Delete": {
       "post": {
+        "description": "Delete deletes a document and all its associated data.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -633,6 +634,7 @@
     },
     "/twirp/elephant.repository.Documents/Get": {
       "post": {
+        "description": "Get retrieves a document version.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -668,45 +670,9 @@
         ]
       }
     },
-    "/twirp/elephant.repository.Documents/GetActiveSchemas": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/elephant.repository.GetActiveSchemasRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/elephant.repository.GetActiveSchemasResponse"
-                }
-              }
-            },
-            "description": "Method response"
-          },
-          "default": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "GetActiveSchemas",
-        "tags": [
-          "Documents"
-        ]
-      }
-    },
     "/twirp/elephant.repository.Documents/GetHistory": {
       "post": {
+        "description": "GetHistory lists the document version history.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -744,6 +710,7 @@
     },
     "/twirp/elephant.repository.Documents/GetMeta": {
       "post": {
+        "description": "GetMeta returns metadata for a document, including the ACL and current status heads.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -779,119 +746,9 @@
         ]
       }
     },
-    "/twirp/elephant.repository.Documents/GetSchema": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/elephant.repository.GetSchemaRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/elephant.repository.GetSchemaResponse"
-                }
-              }
-            },
-            "description": "Method response"
-          },
-          "default": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "GetSchema",
-        "tags": [
-          "Documents"
-        ]
-      }
-    },
-    "/twirp/elephant.repository.Documents/RegisterSchema": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/elephant.repository.RegisterSchemaRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/elephant.repository.RegisterSchemaResponse"
-                }
-              }
-            },
-            "description": "Method response"
-          },
-          "default": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "RegisterSchema",
-        "tags": [
-          "Documents"
-        ]
-      }
-    },
-    "/twirp/elephant.repository.Documents/SetActiveSchema": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/elephant.repository.SetActiveSchemaRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/elephant.repository.SetActiveSchemaResponse"
-                }
-              }
-            },
-            "description": "Method response"
-          },
-          "default": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "SetActiveSchema",
-        "tags": [
-          "Documents"
-        ]
-      }
-    },
     "/twirp/elephant.repository.Documents/Update": {
       "post": {
+        "description": "Update is used to create new document versions, set statuses, update ACLs.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -929,6 +786,7 @@
     },
     "/twirp/elephant.repository.Documents/Validate": {
       "post": {
+        "description": "Validate is used to validate a document without writing it to the repository.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -963,11 +821,166 @@
           "Documents"
         ]
       }
+    },
+    "/twirp/elephant.repository.Schemas/Get": {
+      "post": {
+        "description": "Get retrieves a schema.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.GetSchemaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.GetSchemaResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get",
+        "tags": [
+          "Schemas"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Schemas/GetAllActive": {
+      "post": {
+        "description": "GetAllActiveSchemas returns the currently active schemas.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.GetAllActiveSchemasRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.GetAllActiveSchemasResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "GetAllActive",
+        "tags": [
+          "Schemas"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Schemas/Register": {
+      "post": {
+        "description": "Register register a new validation schema version.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.RegisterSchemaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.RegisterSchemaResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Register",
+        "tags": [
+          "Schemas"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Schemas/SetActive": {
+      "post": {
+        "description": "SetActive activates schema versions.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.SetActiveSchemaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.SetActiveSchemaResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "SetActive",
+        "tags": [
+          "Schemas"
+        ]
+      }
     }
   },
   "tags": [
     {
       "name": "Documents"
+    },
+    {
+      "name": "Schemas"
     }
   ]
 }

@@ -5,16 +5,31 @@ package elephant.repository;
 option go_package = "./rpc/repository";
 
 service Documents {
+  // Get retrieves a document version.
   rpc Get(GetDocumentRequest) returns (GetDocumentResponse);
+  // GetHistory lists the document version history.
   rpc GetHistory(GetHistoryRequest) returns (GetHistoryResponse);
+  // Update is used to create new document versions, set statuses, update ACLs.
   rpc Update(UpdateRequest) returns (UpdateResponse);
+  // Validate is used to validate a document without writing it to the
+  // repository.
   rpc Validate(ValidateRequest) returns (ValidateResponse);
+  // Delete deletes a document and all its associated data.
   rpc Delete(DeleteDocumentRequest) returns (DeleteDocumentResponse);
+  // GetMeta returns metadata for a document, including the ACL and current
+  // status heads.
   rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
-  rpc RegisterSchema(RegisterSchemaRequest) returns (RegisterSchemaResponse);
-  rpc SetActiveSchema(SetActiveSchemaRequest) returns (SetActiveSchemaResponse);
-  rpc GetSchema(GetSchemaRequest) returns (GetSchemaResponse);
-  rpc GetActiveSchemas(GetActiveSchemasRequest) returns (GetActiveSchemasResponse);
+}
+
+service Schemas {
+  // Register register a new validation schema version.
+  rpc Register(RegisterSchemaRequest) returns (RegisterSchemaResponse);
+  // SetActive activates schema versions.
+  rpc SetActive(SetActiveSchemaRequest) returns (SetActiveSchemaResponse);
+  // Get retrieves a schema.
+  rpc Get(GetSchemaRequest) returns (GetSchemaResponse);
+  // GetAllActiveSchemas returns the currently active schemas.
+  rpc GetAllActive(GetAllActiveSchemasRequest) returns (GetAllActiveSchemasResponse);
 }
 
 message GetDocumentRequest {
@@ -310,9 +325,9 @@ message GetSchemaResponse {
   bytes spec = 2;
 }
 
-message GetActiveSchemasRequest {}
+message GetAllActiveSchemasRequest {}
 
-message GetActiveSchemasResponse {
+message GetAllActiveSchemasResponse {
   repeated Schema schemas = 1;
 }
 

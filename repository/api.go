@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -13,30 +12,29 @@ import (
 	"github.com/ttab/elephant/revisor"
 	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
-	"golang.org/x/mod/semver"
 )
 
 type DocumentValidator interface {
 	ValidateDocument(document *doc.Document) []revisor.ValidationResult
 }
 
-type APIServer struct {
+type DocumentsService struct {
 	store     DocStore
 	validator DocumentValidator
 }
 
-func NewAPIServer(store DocStore, validator DocumentValidator) *APIServer {
-	return &APIServer{
+func NewDocumentsService(store DocStore, validator DocumentValidator) *DocumentsService {
+	return &DocumentsService{
 		store:     store,
 		validator: validator,
 	}
 }
 
 // Interface guard.
-var _ repository.Documents = &APIServer{}
+var _ repository.Documents = &DocumentsService{}
 
 // Delete implements repository.Documents.
-func (a *APIServer) Delete(
+func (a *DocumentsService) Delete(
 	ctx context.Context, req *repository.DeleteDocumentRequest,
 ) (*repository.DeleteDocumentResponse, error) {
 	auth, ok := GetAuthInfo(ctx)
@@ -75,6 +73,7 @@ func (a *APIServer) Delete(
 		Meta:    req.Meta,
 		IfMatch: req.IfMatch,
 	})
+	// TODO: Check for delete in progress
 	if err != nil {
 		return nil, twirp.InternalErrorf(
 			"failed to delete document from data store: %w", err)
@@ -84,7 +83,7 @@ func (a *APIServer) Delete(
 }
 
 // Get implements repository.Documents.
-func (a *APIServer) Get(
+func (a *DocumentsService) Get(
 	ctx context.Context, req *repository.GetDocumentRequest,
 ) (*repository.GetDocumentResponse, error) {
 	auth, ok := GetAuthInfo(ctx)
@@ -173,7 +172,7 @@ func (a *APIServer) Get(
 }
 
 // GetHistory implements repository.Documents.
-func (a *APIServer) GetHistory(
+func (a *DocumentsService) GetHistory(
 	ctx context.Context, req *repository.GetHistoryRequest,
 ) (*repository.GetHistoryResponse, error) {
 	auth, ok := GetAuthInfo(ctx)
@@ -223,7 +222,7 @@ func (a *APIServer) GetHistory(
 	return &res, nil
 }
 
-func (a *APIServer) accessCheck(
+func (a *DocumentsService) accessCheck(
 	ctx context.Context,
 	auth *AuthInfo, docUUID uuid.UUID,
 	permission Permission,
@@ -256,7 +255,7 @@ func (a *APIServer) accessCheck(
 }
 
 // GetMeta implements repository.Documents.
-func (a *APIServer) GetMeta(
+func (a *DocumentsService) GetMeta(
 	ctx context.Context, req *repository.GetMetaRequest,
 ) (*repository.GetMetaResponse, error) {
 	auth, ok := GetAuthInfo(ctx)
@@ -335,7 +334,7 @@ func validateRequiredUUIDParam(v string) (uuid.UUID, error) {
 }
 
 // Update implements repository.Documents.
-func (a *APIServer) Update(
+func (a *DocumentsService) Update(
 	ctx context.Context, req *repository.UpdateRequest,
 ) (*repository.UpdateResponse, error) {
 	auth, ok := GetAuthInfo(ctx)
@@ -545,7 +544,7 @@ func (a *APIServer) Update(
 }
 
 // Validate implements repository.Documents.
-func (a *APIServer) Validate(
+func (a *DocumentsService) Validate(
 	ctx context.Context, req *repository.ValidateRequest,
 ) (*repository.ValidateResponse, error) {
 	if req.Document == nil {
@@ -566,178 +565,6 @@ func (a *APIServer) Validate(
 	}
 
 	return &res, nil
-}
-
-// GetActiveSchemas implements repository.Documents.
-func (a *APIServer) GetActiveSchemas(
-	ctx context.Context, req *repository.GetActiveSchemasRequest,
-) (*repository.GetActiveSchemasResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("schema_admin") {
-		return nil, twirp.PermissionDenied.Error(
-			"no administrative schema permission")
-	}
-
-	schemas, err := a.store.GetActiveSchemas(ctx)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to retrieve active schemas: %w", err)
-	}
-
-	var res repository.GetActiveSchemasResponse
-
-	for i := range schemas {
-		data, err := json.Marshal(schemas[i].Specification)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to marshal %q@%s specification for response: %w",
-				schemas[i].Name, schemas[i].Version, err)
-		}
-
-		res.Schemas = append(res.Schemas, &repository.Schema{
-			Name:    schemas[i].Name,
-			Version: schemas[i].Version,
-			Spec:    data,
-		})
-	}
-
-	return &res, nil
-}
-
-// GetSchema implements repository.Documents.
-func (a *APIServer) GetSchema(
-	ctx context.Context, req *repository.GetSchemaRequest,
-) (*repository.GetSchemaResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("schema_admin") {
-		return nil, twirp.PermissionDenied.Error(
-			"no administrative schema permission")
-	}
-
-	schema, err := a.store.GetSchema(ctx, req.Name, req.Version)
-	if err != nil {
-		return nil, twirp.InternalErrorf(
-			"failed to retrieve schema: %w", err)
-	}
-
-	data, err := json.Marshal(schema.Specification)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to marshal specification for response: %w",
-			err)
-	}
-
-	return &repository.GetSchemaResponse{
-		Version: schema.Version,
-		Spec:    data,
-	}, nil
-}
-
-// RegisterSchema implements repository.Documents.
-func (a *APIServer) RegisterSchema(
-	ctx context.Context, req *repository.RegisterSchemaRequest,
-) (*repository.RegisterSchemaResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("schema_admin") {
-		return nil, twirp.PermissionDenied.Error(
-			"no administrative schema permission")
-	}
-
-	if req.Schema == nil {
-		return nil, twirp.RequiredArgumentError("schema")
-	}
-
-	if req.Schema.Name == "" {
-		return nil, twirp.RequiredArgumentError("schema.name")
-	}
-
-	if req.Schema.Version == "" {
-		return nil, twirp.RequiredArgumentError("schema.version")
-	}
-
-	version := semver.Canonical(req.Schema.Version)
-	if version == "" {
-		return nil, twirp.InvalidArgumentError(
-			"schema.version", "invalid semver version")
-	}
-
-	var spec revisor.ConstraintSet
-
-	err := json.Unmarshal(req.Schema.Spec, &spec)
-	if err != nil {
-		return nil, twirp.InvalidArgument.Errorf(
-			"invalid schema: %w", err)
-	}
-
-	err = a.store.RegisterSchema(ctx, RegisterSchemaRequest{
-		Name:          req.Schema.Name,
-		Version:       version,
-		Specification: spec,
-		Activate:      req.Activate,
-	})
-	if IsDocStoreErrorCode(err, ErrCodeExists) {
-		return nil, twirp.FailedPrecondition.Error(
-			"schema version already exists")
-	} else if err != nil {
-		return nil, fmt.Errorf("failed to register schema: %w", err)
-	}
-
-	return &repository.RegisterSchemaResponse{}, nil
-}
-
-// SetActiveSchema implements repository.Documents.
-func (a *APIServer) SetActiveSchema(
-	ctx context.Context, req *repository.SetActiveSchemaRequest,
-) (*repository.SetActiveSchemaResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("schema_admin") {
-		return nil, twirp.PermissionDenied.Error(
-			"no administrative schema permission")
-	}
-
-	if req.Name == "" {
-		return nil, twirp.RequiredArgumentError("name")
-	}
-
-	if !req.Deactivate && req.Version == "" {
-		return nil, twirp.RequiredArgumentError("version")
-	}
-
-	if req.Deactivate {
-		err := a.store.DeactivateSchema(ctx, req.Name)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to deactivate schema: %w", err)
-		}
-	} else {
-		err := a.store.ActivateSchema(ctx, req.Name, req.Version)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to register activation: %w", err)
-		}
-	}
-
-	return &repository.SetActiveSchemaResponse{}, nil
 }
 
 func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {

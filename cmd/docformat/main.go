@@ -343,7 +343,7 @@ func ingestAction(c *cli.Context) error {
 	// then we might want to add a cli flag for selecting a local schema.
 	validator, err := revisor.NewValidator(core)
 
-	apiServer := repository.NewAPIServer(store, validator)
+	docService := repository.NewDocumentsService(store, validator)
 
 	opts := ingest.Options{
 		Logger:          logrus.New(),
@@ -354,7 +354,7 @@ func ingestAction(c *cli.Context) error {
 		GetDocument:     cachedGet,
 		Objects:         oc,
 		OCProps:         cachedProps,
-		API:             apiServer,
+		API:             docService,
 		Blocklist:       blocklist,
 		Validator:       validator,
 		Done:            doneChan,

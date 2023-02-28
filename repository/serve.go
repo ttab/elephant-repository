@@ -62,20 +62,86 @@ func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
 
 type RouterOption func(router *httprouter.Router) error
 
-func WithAPIServer(
+func WithDocumentsAPI(
 	logger *logrus.Logger,
-	jwtKey *ecdsa.PrivateKey, server repository.Documents,
+	jwtKey *ecdsa.PrivateKey, service repository.Documents,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		return apiServer(logger, router, jwtKey, server)
+		return documentAPI(logger, router, jwtKey, service)
 	}
 }
 
-func apiServer(
+func WithSchemasAPI(
+	logger *logrus.Logger,
+	jwtKey *ecdsa.PrivateKey, service repository.Schemas,
+) RouterOption {
+	return func(router *httprouter.Router) error {
+		api := repository.NewSchemasServer(
+			service,
+			twirp.WithServerJSONSkipDefaults(true),
+			twirp.WithServerHooks(defaultAPIHooks()),
+		)
+
+		registerAPI(router, jwtKey, api)
+
+		return nil
+	}
+}
+
+func defaultAPIHooks() *twirp.ServerHooks {
+	return &twirp.ServerHooks{
+		RequestReceived: func(
+			ctx context.Context,
+		) (context.Context, error) {
+			// Require auth for all methods
+			_, ok := GetAuthInfo(ctx)
+			if !ok {
+				return ctx, twirp.Unauthenticated.Error(
+					"no anonymous access allowed")
+			}
+
+			return ctx, nil
+		},
+	}
+}
+
+type apiServerForRouter interface {
+	http.Handler
+
+	PathPrefix() string
+}
+
+func registerAPI(
+	router *httprouter.Router, jwtKey *ecdsa.PrivateKey,
+	api apiServerForRouter,
+) {
+	router.POST(api.PathPrefix()+":method", internal.RHandleFunc(func(
+		w http.ResponseWriter, r *http.Request, _ httprouter.Params,
+	) error {
+		auth, err := AuthInfoFromHeader(&jwtKey.PublicKey,
+			r.Header.Get("Authorization"))
+		if err != nil && !errors.Is(err, ErrNoAuthorization) {
+			// TODO: Move the response part to a hook instead?
+			return internal.HTTPErrorf(http.StatusUnauthorized,
+				"invalid authorization method: %v", err)
+		}
+
+		if auth != nil {
+			r = r.WithContext(SetAuthInfo(r.Context(), auth))
+		}
+
+		api.ServeHTTP(w, r)
+
+		return nil
+	}))
+}
+
+func documentAPI(
 	logger *logrus.Logger,
 	router *httprouter.Router, jwtKey *ecdsa.PrivateKey,
 	server repository.Documents,
 ) error {
+	// TODO: this should not be here, move up the callchain.
 	if jwtKey == nil {
 		var err error
 
@@ -101,40 +167,10 @@ func apiServer(
 	api := repository.NewDocumentsServer(
 		server,
 		twirp.WithServerJSONSkipDefaults(true),
-		twirp.WithServerHooks(&twirp.ServerHooks{
-			RequestReceived: func(
-				ctx context.Context,
-			) (context.Context, error) {
-				// Require auth for all methods
-				_, ok := GetAuthInfo(ctx)
-				if !ok {
-					return ctx, twirp.Unauthenticated.Error(
-						"no anonymous access allowed")
-				}
-
-				return ctx, nil
-			},
-		}),
+		twirp.WithServerHooks(defaultAPIHooks()),
 	)
 
-	router.POST(api.PathPrefix()+":method", internal.RHandleFunc(func(
-		w http.ResponseWriter, r *http.Request, _ httprouter.Params,
-	) error {
-		auth, err := AuthInfoFromHeader(&jwtKey.PublicKey,
-			r.Header.Get("Authorization"))
-		if err != nil && !errors.Is(err, ErrNoAuthorization) {
-			return internal.HTTPErrorf(http.StatusUnauthorized,
-				"invalid authorization method: %v", err)
-		}
-
-		if auth != nil {
-			r = r.WithContext(SetAuthInfo(r.Context(), auth))
-		}
-
-		api.ServeHTTP(w, r)
-
-		return nil
-	}))
+	registerAPI(router, jwtKey, api)
 
 	router.POST("/token", internal.RHandleFunc(func(
 		w http.ResponseWriter, r *http.Request, _ httprouter.Params,

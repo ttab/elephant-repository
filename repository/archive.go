@@ -169,6 +169,8 @@ func (a *Archiver) loop(ctx context.Context) error {
 				"failed to archive document statuses: %w", err)
 		}
 
+		// TODO: Archive ACLs
+
 		err = a.processDeletes(ctx)
 		if err != nil {
 			return fmt.Errorf(
@@ -442,6 +444,9 @@ func (a *Archiver) archiveDocumentStatuses(
 
 	q := postgres.New(tx)
 
+	// TODO: Update query so that it takes into account that version can be
+	// -1. Potentially update the schema & code so that version is nullable
+	// instead.
 	unarchived, err := q.GetDocumentStatusForArchiving(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil

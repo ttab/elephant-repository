@@ -139,14 +139,16 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to create validator: %w", err)
 	}
 
-	apiServer := repository.NewAPIServer(store, validator)
+	docService := repository.NewDocumentsService(store, validator)
+	schemaService := repository.NewSchemasService(store)
 
 	logger.Debug("starting API server")
 
 	router := httprouter.New()
 
 	err = repository.SetUpRouter(router,
-		repository.WithAPIServer(logger, signingKey, apiServer),
+		repository.WithDocumentsAPI(logger, signingKey, docService),
+		repository.WithSchemasAPI(logger, signingKey, schemaService),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to set up router: %w", err)

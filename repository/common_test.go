@@ -80,14 +80,14 @@ func testingAPIServer(
 		ctx, logger, store)
 	test.Must(t, err, "create validator")
 
-	documentServer := repository.NewAPIServer(store, validator)
+	documentServer := repository.NewDocumentsService(store, validator)
 	router := httprouter.New()
 
 	jwtKey, err := test.NewSigningKey()
 	test.Must(t, err, "create signing key")
 
 	err = repository.SetUpRouter(router,
-		repository.WithAPIServer(logger, jwtKey, documentServer))
+		repository.WithDocumentsAPI(logger, jwtKey, documentServer))
 	test.Must(t, err, "set up router")
 
 	server := httptest.NewServer(router)
