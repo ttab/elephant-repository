@@ -150,12 +150,13 @@ type StatusUpdate struct {
 type DocStoreErrorCode string
 
 const (
-	NoErrCode             DocStoreErrorCode = ""
-	ErrCodeNotFound       DocStoreErrorCode = "not-found"
-	ErrCodeOptimisticLock DocStoreErrorCode = "optimistic-lock"
-	ErrCodeDeleteLock     DocStoreErrorCode = "delete-lock"
-	ErrCodeBadRequest     DocStoreErrorCode = "bad-request"
-	ErrCodeExists         DocStoreErrorCode = "exists"
+	NoErrCode               DocStoreErrorCode = ""
+	ErrCodeNotFound         DocStoreErrorCode = "not-found"
+	ErrCodeOptimisticLock   DocStoreErrorCode = "optimistic-lock"
+	ErrCodeDeleteLock       DocStoreErrorCode = "delete-lock"
+	ErrCodeBadRequest       DocStoreErrorCode = "bad-request"
+	ErrCodeExists           DocStoreErrorCode = "exists"
+	ErrCodePermissionDenied DocStoreErrorCode = "premission-denied"
 )
 
 type DocStoreError struct {

@@ -531,6 +531,8 @@ func (a *DocumentsService) Update(
 		return nil, twirp.FailedPrecondition.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
 		return nil, twirp.InvalidArgumentError("document", err.Error())
+	case IsDocStoreErrorCode(err, ErrCodePermissionDenied):
+		return nil, twirp.PermissionDenied.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
 		return nil, twirp.FailedPrecondition.Error(err.Error())
 	case err != nil:

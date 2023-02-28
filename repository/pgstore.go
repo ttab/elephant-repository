@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/antonmedv/expr"
+	"github.com/antonmedv/expr/vm"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -17,6 +20,7 @@ import (
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
 	"github.com/ttab/elephant/revisor"
+	"golang.org/x/exp/slices"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -544,24 +548,46 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 		}
 	}
 
-	statusHeads := make(map[string]int64)
+	statusHeads := make(map[string]*Status)
 
 	if len(update.Status) > 0 {
-		heads, err := q.GetDocumentHeads(ctx, update.UUID)
+		heads, err := q.GetFullDocumentHeads(ctx, update.UUID)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"failed to get current document status heads: %w", err)
 		}
 
+		// TODO: This probably duplicates work already done elsewhere.
 		for _, head := range heads {
-			statusHeads[head.Name] = head.CurrentID
+			stat := Status{
+				ID:      head.ID,
+				Version: head.Version,
+				Creator: head.CreatorUri,
+				Created: head.Created.Time,
+			}
+
+			if head.Meta != nil {
+				err := json.Unmarshal(head.Meta, &stat.Meta)
+				if err != nil {
+					return nil, fmt.Errorf(
+						"failed to unmarshal meta for head %q: %w",
+						head.Name, err)
+				}
+			}
+
+			statusHeads[head.Name] = &stat
 		}
 	}
 
 	for i, stat := range update.Status {
-		statusID := statusHeads[stat.Name] + 1
+		statusID := int64(1)
+
+		if statusHeads[stat.Name] != nil {
+			statusID = statusHeads[stat.Name].ID + 1
+		}
 
 		status := Status{
+			ID:      statusID,
 			Creator: up.Creator,
 			Version: stat.Version,
 			Meta:    stat.Meta,
@@ -570,6 +596,56 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 
 		if status.Version == 0 {
 			status.Version = up.Version
+		}
+
+		// TODO: We cannot check applicability based on document type
+		// here, as type is a property of the version of the
+		// document. This is another indicator that type belongs on the
+		// document level, and should be treated as immutable.
+		rules := applicableStatusRules(stat.Name)
+
+		if len(rules) > 0 {
+			input := StatusRuleInput{
+				Name:   stat.Name,
+				Status: status,
+				Update: up,
+				Heads:  statusHeads,
+			}
+
+			auth, ok := GetAuthInfo(ctx)
+			if ok {
+				input.User = auth.Claims
+			}
+
+			if update.Document != nil && status.Version == up.Version {
+				input.Document = *update.Document
+			} else if update.Document == nil {
+				d, err := s.loadDocument(
+					ctx, q, update.UUID, status.Version)
+				if err != nil {
+					return nil, fmt.Errorf(
+						"failed to retrieve document for rule evaluation: %w", err)
+				}
+
+				input.Document = *d
+			}
+
+			violations := evaluateStatusRules(input, rules)
+
+			for _, v := range violations {
+				if v.AccessViolation {
+					return nil, DocStoreErrorf(
+						ErrCodePermissionDenied,
+						v.Description)
+				}
+			}
+
+			if len(violations) > 0 {
+				return nil, DocStoreErrorf(ErrCodeBadRequest,
+					"status rule violation: %w", StatusRuleError{
+						Violations: violations,
+					})
+			}
 		}
 
 		err = q.CreateStatus(ctx, postgres.CreateStatusParams{
@@ -609,6 +685,191 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 	}
 
 	return &up, nil
+}
+
+func (s *PGDocStore) loadDocument(
+	ctx context.Context, q *postgres.Queries,
+	uuid uuid.UUID, version int64,
+) (*doc.Document, error) {
+	docData, err := q.GetDocumentVersionData(ctx,
+		postgres.GetDocumentVersionDataParams{
+			Uuid:    uuid,
+			Version: version,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("failed to load document data: %w", err)
+	}
+
+	if docData == nil {
+		// TODO: take pruned document versions into account
+		return nil, errors.New(
+			"no support for retrieving archived versions yet")
+	}
+
+	// TODO: should we restore pruned document data based on some condition
+	// here? If a new status is created that refers to a previouly pruned
+	// version we would probably like for it to be available later.
+
+	var d doc.Document
+
+	err = json.Unmarshal(docData, &d)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to parse stored document: %w", err)
+	}
+
+	return &d, nil
+}
+
+type StatusRuleInput struct {
+	Name     string
+	Status   Status
+	Update   DocumentUpdate
+	Document doc.Document
+	Heads    map[string]*Status
+	User     JWTClaims
+}
+
+type StatusRuleViolation struct {
+	Name            string
+	Description     string
+	Error           string
+	AccessViolation bool
+}
+
+type hardCodedRule struct {
+	AppliesTo   []string
+	Types       []string
+	Name        string
+	Description string
+	AccessRule  bool
+	Exp         *vm.Program
+}
+
+type StatusRuleError struct {
+	Violations []StatusRuleViolation
+}
+
+func (err StatusRuleError) Error() string {
+	var rules []string
+
+	for i := range err.Violations {
+		rules = append(rules, err.Violations[i].Name)
+	}
+
+	return fmt.Sprintf("violates the following status rules: %s",
+		strings.Join(rules, ", "))
+}
+
+// HACK: obviously this shouldn't be hard-coded.
+var hardRules = []hardCodedRule{
+	{
+		AppliesTo: []string{"usable"},
+		Types:     []string{"core/article"},
+		Name:      "must-be-approved",
+		Exp: mustCompileStatusRule(`
+Heads?.approved != nil and Heads.approved.Version == Status.Version`),
+	},
+	{
+		AppliesTo: []string{"usable"},
+		Types:     []string{"core/article"},
+		Name:      "republish-reason",
+		Exp: mustCompileStatusRule(`
+Status.ID == 1 or Status.Meta?.reason in ["fix", "correction", "development"]`),
+	},
+	{
+		AppliesTo: []string{"usable", "approved"},
+		Types:     []string{"core/article"},
+		Name:      "require-paragraphs",
+		Exp: mustCompileStatusRule(`
+any(Document.Content, {.Type == "core/paragraph"})`),
+	},
+	{
+		AppliesTo: []string{"usable", "approved"},
+		Types:     []string{"core/article"},
+		Name:      "start-with-heading",
+		Exp: mustCompileStatusRule(`
+len(Document.Content) > 0
+  and Document.Content[0].Type == "core/heading-1"`),
+	},
+	{
+		AppliesTo: []string{"usable"},
+		Types: []string{
+			"core/place", "core/person",
+			"core/organisation", "core/category",
+		},
+		Name:       "must-be-concept-admin",
+		AccessRule: true,
+		Exp: mustCompileStatusRule(`
+User.HasScope("concept-admin")`),
+	},
+	{
+		AppliesTo:   []string{"usable"},
+		Types:       []string{"core/article"},
+		Name:        "must-be-allowed-to-publish",
+		Description: "Publishing content requires the scope 'publish'",
+		AccessRule:  true,
+		Exp: mustCompileStatusRule(`
+User.HasScope("publish")`),
+	},
+}
+
+func applicableStatusRules(status string) []hardCodedRule {
+	var rules []hardCodedRule
+
+	for i := range hardRules {
+		if !slices.Contains(hardRules[i].AppliesTo, status) {
+			continue
+		}
+
+		rules = append(rules, hardRules[i])
+	}
+
+	return rules
+}
+
+// TODO: this doesn't belong in the PGDocStore layer, move on up!
+func evaluateStatusRules(
+	input StatusRuleInput, rules []hardCodedRule,
+) []StatusRuleViolation {
+	var violations []StatusRuleViolation
+
+	for i := range rules {
+		if !slices.Contains(rules[i].Types, input.Document.Type) {
+			continue
+		}
+
+		res, err := expr.Run(rules[i].Exp, input)
+		valid, ok := res.(bool)
+
+		if err != nil || !ok || !valid {
+			v := StatusRuleViolation{
+				Name:            rules[i].Name,
+				Description:     rules[i].Description,
+				AccessViolation: rules[i].AccessRule,
+			}
+
+			if err != nil {
+				v.Error = err.Error()
+			}
+
+			violations = append(violations, v)
+		}
+	}
+
+	return violations
+}
+
+func mustCompileStatusRule(expression string) *vm.Program {
+	p, err := expr.Compile(expression,
+		expr.Env(StatusRuleInput{}),
+		expr.AsBool(),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	return p
 }
 
 // RegisterSchema implements DocStore.
