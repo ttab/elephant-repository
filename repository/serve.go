@@ -3,8 +3,6 @@ package repository
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -165,16 +163,6 @@ func documentAPI(
 	router *httprouter.Router, jwtKey *ecdsa.PrivateKey,
 	server repository.Documents,
 ) error {
-	// TODO: this should not be here, move up the callchain.
-	if jwtKey == nil {
-		var err error
-
-		jwtKey, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-		if err != nil {
-			return fmt.Errorf("failed to generate key: %w", err)
-		}
-	}
-
 	api := repository.NewDocumentsServer(
 		server,
 		twirp.WithServerJSONSkipDefaults(true),

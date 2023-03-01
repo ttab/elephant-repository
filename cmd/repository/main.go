@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
@@ -90,6 +92,15 @@ func runServer(c *cli.Context) error {
 		}
 
 		signingKey = k
+	} else {
+		logger.Warn("no configured signing key")
+
+		key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+		if err != nil {
+			return fmt.Errorf("failed to generate key: %w", err)
+		}
+
+		signingKey = key
 	}
 
 	dbpool, err := pgxpool.New(c.Context, conf.DB)
