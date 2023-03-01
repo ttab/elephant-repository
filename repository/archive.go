@@ -24,9 +24,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rakutentech/jwk-go/jwk"
-	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
+	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -88,7 +88,7 @@ func ArchiveS3Client(
 }
 
 type ArchiverOptions struct {
-	Logger *logrus.Logger
+	Logger *slog.Logger
 	S3     *s3.Client
 	Bucket string
 	DB     *pgxpool.Pool
@@ -97,7 +97,7 @@ type ArchiverOptions struct {
 // Archiver reads unarchived document versions, and statuses and writes a copy
 // to S3. It does this using SELECT ... FOR UPDATE SKIP LOCKED.
 type Archiver struct {
-	logger             *logrus.Logger
+	logger             *slog.Logger
 	s3                 *s3.Client
 	bucket             string
 	pool               *pgxpool.Pool
@@ -131,9 +131,9 @@ func (a *Archiver) run(ctx context.Context) {
 	for {
 		err := a.loop(ctx)
 		if err != nil {
-			a.logger.WithContext(ctx).WithError(err).Errorf(
-				"archiver error, restarting in %d seconds",
-				restartWaitSeconds,
+			a.logger.ErrorCtx(
+				ctx, "archiver error, restarting", err,
+				slog.Duration(internal.LogKeyDelay, restartWaitSeconds),
 			)
 		}
 
@@ -408,9 +408,10 @@ func (a *Archiver) archiveDocumentVersions(
 			VersionId: putRes.VersionId,
 		})
 		if cErr != nil {
-			a.logger.WithContext(ctx).WithError(cErr).Error(
-				"failed to clean up archive object after commit failed",
-			)
+			a.logger.ErrorCtx(ctx,
+				"failed to clean up archive object after commit failed", cErr,
+				internal.LogKeyBucket, a.bucket,
+				internal.LogKeyObjectKey, key)
 		}
 
 		return fmt.Errorf("failed to commit transaction: %w", err)
@@ -534,9 +535,10 @@ func (a *Archiver) archiveDocumentStatuses(
 			VersionId: putRes.VersionId,
 		})
 		if cErr != nil {
-			a.logger.WithContext(ctx).WithError(cErr).Error(
-				"failed to clean up archive object after commit failed",
-			)
+			a.logger.ErrorCtx(ctx,
+				"failed to clean up archive object after commit failed", cErr,
+				internal.LogKeyBucket, a.bucket,
+				internal.LogKeyObjectKey, key)
 		}
 
 		return fmt.Errorf("failed to commit transaction: %w", err)

@@ -60,3 +60,6 @@ issues:
     - linters:
         - ireturn
       text: CloneMessage
+    - path: internal/test/log.go
+      linters:
+        - ireturn

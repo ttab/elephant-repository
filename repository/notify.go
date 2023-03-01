@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
+	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
+	"golang.org/x/exp/slog"
 )
 
 type NotifyChannel string
@@ -57,35 +58,34 @@ type WorkflowEvent struct {
 }
 
 func notifyArchived(
-	ctx context.Context, logger *logrus.Logger, q *postgres.Queries,
+	ctx context.Context, logger *slog.Logger, q *postgres.Queries,
 	payload ArchivedEvent,
 ) {
 	pgNotify(ctx, logger, q, NotifyArchived, payload)
 }
 
 func notifySchemaUpdated(
-	ctx context.Context, logger *logrus.Logger, q *postgres.Queries,
+	ctx context.Context, logger *slog.Logger, q *postgres.Queries,
 	payload SchemaEvent,
 ) {
 	pgNotify(ctx, logger, q, NotifySchemasUpdated, payload)
 }
 
 func notifyWorkflowUpdated(
-	ctx context.Context, logger *logrus.Logger, q *postgres.Queries,
+	ctx context.Context, logger *slog.Logger, q *postgres.Queries,
 	payload WorkflowEvent,
 ) {
 	pgNotify(ctx, logger, q, NotifyWorkflowsUpdated, payload)
 }
 
 func pgNotify[T any](
-	ctx context.Context, logger *logrus.Logger, q *postgres.Queries,
+	ctx context.Context, logger *slog.Logger, q *postgres.Queries,
 	channel NotifyChannel, payload T,
 ) {
 	message, err := json.Marshal(payload)
 	if err != nil {
-		logger.WithError(err).WithField(
-			"channel", channel,
-		).Error("failed to marshal payload for notification")
+		logger.Error("failed to marshal payload for notification", err,
+			internal.LogKeyChannel, channel)
 	}
 
 	err = q.Notify(ctx, postgres.NotifyParams{
@@ -93,9 +93,9 @@ func pgNotify[T any](
 		Message: string(message),
 	})
 	if err != nil {
-		logger.WithError(err).WithFields(logrus.Fields{
-			"channel": channel,
-			"message": json.RawMessage(message),
-		}).Error("failed to marshal payload for notification")
+		logger.Error(
+			"failed to marshal payload for notification", err,
+			internal.LogKeyChannel, channel,
+			internal.LogKeyMessage, json.RawMessage(message))
 	}
 }

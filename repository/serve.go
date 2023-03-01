@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -17,10 +16,10 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/julienschmidt/httprouter"
-	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
+	"golang.org/x/exp/slog"
 )
 
 func SetUpRouter(
@@ -63,16 +62,16 @@ func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
 type RouterOption func(router *httprouter.Router) error
 
 func WithDocumentsAPI(
-	logger *logrus.Logger,
+	logger *slog.Logger,
 	jwtKey *ecdsa.PrivateKey, service repository.Documents,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		return documentAPI(logger, router, jwtKey, service)
+		return documentAPI(router, jwtKey, service)
 	}
 }
 
 func WithSchemasAPI(
-	logger *logrus.Logger,
+	logger *slog.Logger,
 	jwtKey *ecdsa.PrivateKey, service repository.Schemas,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
@@ -91,7 +90,7 @@ func WithSchemasAPI(
 }
 
 func WithWorkflowsAPI(
-	logger *logrus.Logger,
+	logger *slog.Logger,
 	jwtKey *ecdsa.PrivateKey, service repository.Workflows,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
@@ -163,7 +162,6 @@ func registerAPI(
 }
 
 func documentAPI(
-	logger *logrus.Logger,
 	router *httprouter.Router, jwtKey *ecdsa.PrivateKey,
 	server repository.Documents,
 ) error {
@@ -175,19 +173,6 @@ func documentAPI(
 		if err != nil {
 			return fmt.Errorf("failed to generate key: %w", err)
 		}
-
-		keyData, err := x509.MarshalECPrivateKey(jwtKey)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to marshal private key: %w", err)
-		}
-
-		// TODO: this is obviously just a local testing thing. Should be
-		// nuked once we want to have this running on an actual server.
-		logger.WithField(
-			"key", base64.RawURLEncoding.EncodeToString(keyData),
-		).Warn(
-			"running with temporary signing key for JWTs, tokens won't be valid across intances or restarts")
 	}
 
 	api := repository.NewDocumentsServer(

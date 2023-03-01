@@ -6,10 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/doc"
+	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/revisor"
 	"github.com/ttab/elephant/revisor/constraints"
+	"golang.org/x/exp/slog"
 )
 
 type Validator struct {
@@ -23,7 +24,7 @@ type SchemaLoader interface {
 }
 
 func NewValidator(
-	ctx context.Context, logger *logrus.Logger, loader SchemaLoader,
+	ctx context.Context, logger *slog.Logger, loader SchemaLoader,
 ) (*Validator, error) {
 	var v Validator
 
@@ -38,7 +39,7 @@ func NewValidator(
 }
 
 func (v *Validator) reloadLoop(
-	ctx context.Context, logger *logrus.Logger, loader SchemaLoader,
+	ctx context.Context, logger *slog.Logger, loader SchemaLoader,
 ) {
 	recheckInterval := 5 * time.Minute
 
@@ -56,12 +57,9 @@ func (v *Validator) reloadLoop(
 
 		err := v.loadSchemas(ctx, loader)
 		if err != nil {
-			// TODO: this should be a metric that we can alert on as
-			// well. Look at slog, could we have a log level that
-			// triggers a counter metric? Would be neat.
-			logger.WithContext(ctx).WithError(
-				err,
-			).Error("failed to refresh schemas")
+			// TODO: add handler that reacts to LogKeyCountMetric
+			logger.ErrorCtx(ctx, "failed to refresh schemas", err,
+				internal.LogKeyCountMetric, "elephant_schema_refresh_failure_count")
 		}
 	}
 }

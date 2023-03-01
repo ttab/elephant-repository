@@ -15,12 +15,12 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	navigadoc "github.com/navigacontentlab/navigadoc/doc"
-	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/repository"
 	"github.com/ttab/elephant/revisor"
 	rpc "github.com/ttab/elephant/rpc/repository"
+	"golang.org/x/exp/slog"
 )
 
 type OCLogGetter interface {
@@ -50,7 +50,7 @@ type WriteAPI interface {
 }
 
 type Options struct {
-	Logger          *logrus.Logger
+	Logger          *slog.Logger
 	DefaultLanguage string
 	Identity        IdentityStore
 	LogPos          LogPosStore
@@ -502,12 +502,13 @@ func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 		},
 	})
 	if err != nil {
-		in.opt.Logger.WithContext(ctx).WithFields(logrus.Fields{
-			"document_uuid": docUUID.String(),
-			"oc-source":     evt.UUID,
-			"oc-version":    strconv.Itoa(evt.Content.Version),
-			"oc-event":      strconv.Itoa(evt.ID),
-		}).Errorf("failed to store update: %v", err)
+		in.opt.Logger.ErrorCtx(
+			ctx, "failed to store update", err,
+			internal.LogKeyDocumentUUID, docUUID.String(),
+			internal.LogKeyOCSource, evt.UUID,
+			internal.LogKeyOCVersion, evt.Content.Version,
+			internal.LogKeyOCEvent, evt.ID,
+		)
 	}
 
 	return nil

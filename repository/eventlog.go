@@ -14,9 +14,9 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
+	"golang.org/x/exp/slog"
 )
 
 type EventType string
@@ -42,11 +42,11 @@ type Event struct {
 type PGReplication struct {
 	pool   *pgxpool.Pool
 	dbURI  string
-	logger *logrus.Logger
+	logger *slog.Logger
 }
 
 func NewPGReplication(
-	logger *logrus.Logger,
+	logger *slog.Logger,
 	pool *pgxpool.Pool,
 	dbURI string,
 ) *PGReplication {
@@ -63,9 +63,9 @@ func (pr *PGReplication) Run(ctx context.Context) {
 	for {
 		err := pr.startReplication(ctx)
 		if err != nil {
-			pr.logger.WithContext(ctx).WithError(err).Errorf(
-				"replication error, restarting in %d seconds",
-				restartWaitSeconds,
+			pr.logger.ErrorCtx(
+				ctx, "replication error, restarting", err,
+				slog.Duration(internal.LogKeyDelay, restartWaitSeconds),
 			)
 		}
 

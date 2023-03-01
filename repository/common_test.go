@@ -9,11 +9,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
-	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/internal/test"
 	"github.com/ttab/elephant/repository"
 	rpc "github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
+	"golang.org/x/exp/slog"
 )
 
 type TestContext struct {
@@ -87,7 +87,7 @@ func (tc *TestContext) SchemasClient( //nolint:ireturn
 }
 
 func testingAPIServer(
-	t *testing.T, logger *logrus.Logger, runArchiver bool,
+	t *testing.T, logger *slog.Logger, runArchiver bool,
 ) TestContext {
 	t.Helper()
 

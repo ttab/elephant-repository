@@ -11,10 +11,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
-	"github.com/sirupsen/logrus"
+	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/internal/cmd"
 	"github.com/ttab/elephant/repository"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -55,17 +56,22 @@ func runServer(c *cli.Context) error {
 		addr     = c.String("addr")
 		logLevel = c.String("log-level")
 		conf     = cmd.BackendConfigFromContext(c)
-		logger   = logrus.New()
+		logger   = slog.New(slog.NewJSONHandler(os.Stdout))
 	)
 
-	level, err := logrus.ParseLevel(logLevel)
-	if err != nil {
-		level = logrus.ErrorLevel
+	var level slog.Level
 
-		logger.Errorf("invalid log level %q", logLevel)
+	err := level.UnmarshalText([]byte(logLevel))
+	if err != nil {
+		level = slog.LevelError
+
+		logger.Error("invalid log level", err,
+			internal.LogKeyLogLevel, logLevel)
 	}
 
-	logger.SetLevel(level)
+	logger = slog.New(slog.HandlerOptions{
+		Level: &level,
+	}.NewJSONHandler(os.Stdout))
 
 	var signingKey *ecdsa.PrivateKey
 
@@ -111,9 +117,11 @@ func runServer(c *cli.Context) error {
 
 	if !conf.NoReplicator {
 		group.Go(func() error {
-			logger.Debug("setting up replication")
+			log := logger.With(internal.LogKeyComponent, "replicator")
 
-			repl := repository.NewPGReplication(logger, dbpool, conf.DB)
+			log.Debug("setting up replication")
+
+			repl := repository.NewPGReplication(log, dbpool, conf.DB)
 
 			go repl.Run(c.Context)
 
@@ -123,8 +131,10 @@ func runServer(c *cli.Context) error {
 
 	if !conf.NoArchiver {
 		group.Go(func() error {
+			log := logger.With(internal.LogKeyComponent, "archiver")
+
 			return startArchiver(c.Context, gCtx,
-				logger, conf, dbpool)
+				log, conf, dbpool)
 		})
 	}
 
@@ -170,7 +180,7 @@ func runServer(c *cli.Context) error {
 }
 
 func startArchiver(
-	ctx context.Context, setupCtx context.Context, logger *logrus.Logger,
+	ctx context.Context, setupCtx context.Context, logger *slog.Logger,
 	conf cmd.BackendConfig, dbpool *pgxpool.Pool,
 ) error {
 	logger.Debug("setting up archiver")

@@ -13,11 +13,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
 	"github.com/ttab/elephant/revisor"
+	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -28,7 +28,7 @@ const (
 )
 
 type PGDocStore struct {
-	logger *logrus.Logger
+	logger *slog.Logger
 	pool   *pgxpool.Pool
 	reader *postgres.Queries
 
@@ -37,7 +37,7 @@ type PGDocStore struct {
 	workflows *FanOut[WorkflowEvent]
 }
 
-func NewPGDocStore(logger *logrus.Logger, pool *pgxpool.Pool) (*PGDocStore, error) {
+func NewPGDocStore(logger *slog.Logger, pool *pgxpool.Pool) (*PGDocStore, error) {
 	return &PGDocStore{
 		logger:    logger,
 		pool:      pool,
@@ -99,8 +99,8 @@ func (s *PGDocStore) RunListener(ctx context.Context) {
 		if errors.Is(err, context.Canceled) {
 			return
 		} else if err != nil {
-			s.logger.WithError(err).Error(
-				"failed to run notification listener")
+			s.logger.ErrorCtx(
+				ctx, "failed to run notification listener", err)
 		}
 
 		time.Sleep(5 * time.Second)

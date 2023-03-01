@@ -15,13 +15,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
 	"github.com/schollz/progressbar/v3"
-	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/ingest"
 	"github.com/ttab/elephant/internal/cmd"
 	"github.com/ttab/elephant/repository"
 	"github.com/ttab/elephant/revisor"
 	"github.com/ttab/elephant/revisor/constraints"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -157,6 +157,8 @@ func webUIAction(c *cli.Context) error {
 		conf  = cmd.BackendConfigFromContext(c)
 	)
 
+	logger := slog.New(slog.NewTextHandler(os.Stderr))
+
 	dbpool, err := pgxpool.New(context.Background(), conf.DB)
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)
@@ -170,7 +172,7 @@ func webUIAction(c *cli.Context) error {
 		},
 	}
 
-	store, err := repository.NewPGDocStore(logrus.New(), dbpool)
+	store, err := repository.NewPGDocStore(logger, dbpool)
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
@@ -212,7 +214,7 @@ func ingestAction(c *cli.Context) error {
 	blocklistPath := filepath.Join(stateDir, "blocklist.txt")
 	cacheDir := filepath.Join(stateDir, "cache")
 
-	logger := logrus.New()
+	logger := slog.New(slog.NewTextHandler(os.Stderr))
 
 	db, err := ingest.NewBadgerStore(stateDB)
 	if err != nil {
@@ -225,7 +227,7 @@ func ingestAction(c *cli.Context) error {
 	}
 	defer dbpool.Close()
 
-	store, err := repository.NewPGDocStore(logrus.New(), dbpool)
+	store, err := repository.NewPGDocStore(logger, dbpool)
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}

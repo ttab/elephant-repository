@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/internal/test"
 	rpc "github.com/ttab/elephant/rpc/repository"
+	"golang.org/x/exp/slog"
 )
 
 func baseDocument(uuid, uri string) *rpc.Document {
@@ -26,7 +26,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	t.Parallel()
 
-	logger := logrus.New()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	// TODO: We don't drain the archiver before finishing tests, so
 	// sometimes an archiver related error will be logged out of band.
@@ -126,7 +126,7 @@ func TestIntegrationStatuses(t *testing.T) {
 	t.Parallel()
 
 	ctx := test.Context(t)
-	logger := logrus.New()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	tc := testingAPIServer(t, logger, false)
 
 	workflowClient := tc.WorkflowsClient(t,
@@ -239,7 +239,7 @@ func TestIntegrationStatusRules(t *testing.T) {
 	t.Parallel()
 
 	ctx := test.Context(t)
-	logger := logrus.New()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	tc := testingAPIServer(t, logger, false)
 
 	workflowClient := tc.WorkflowsClient(t,
@@ -444,7 +444,7 @@ func TestIntegrationACL(t *testing.T) {
 
 	t.Parallel()
 
-	logger := logrus.New()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	ctx := test.Context(t)
 	tc := testingAPIServer(t, logger, false)
 

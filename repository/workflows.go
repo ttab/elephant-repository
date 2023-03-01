@@ -8,9 +8,10 @@ import (
 
 	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
-	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/doc"
+	"github.com/ttab/elephant/internal"
 	"golang.org/x/exp/slices"
+	"golang.org/x/exp/slog"
 )
 
 type Workflows struct {
@@ -27,7 +28,7 @@ type WorkflowLoader interface {
 }
 
 func NewWorkflows(
-	ctx context.Context, logger *logrus.Logger, loader WorkflowLoader,
+	ctx context.Context, logger *slog.Logger, loader WorkflowLoader,
 ) (*Workflows, error) {
 	var w Workflows
 
@@ -42,7 +43,7 @@ func NewWorkflows(
 }
 
 func (w *Workflows) reloadLoop(
-	ctx context.Context, logger *logrus.Logger, loader WorkflowLoader,
+	ctx context.Context, logger *slog.Logger, loader WorkflowLoader,
 ) {
 	recheckInterval := 5 * time.Minute
 
@@ -60,12 +61,9 @@ func (w *Workflows) reloadLoop(
 
 		err := w.loadWorkflows(ctx, loader)
 		if err != nil {
-			// TODO: this should be a metric that we can alert on as
-			// well. Look at slog, could we have a log level that
-			// triggers a counter metric? Would be neat.
-			logger.WithContext(ctx).WithError(
-				err,
-			).Error("failed to refresh workflows")
+			// TODO: add handler that reacts to LogKeyCountMetric
+			logger.ErrorCtx(ctx, "failed to refresh workfows", err,
+				internal.LogKeyCountMetric, "elephant_workflow_refresh_failure_count")
 		}
 	}
 }
