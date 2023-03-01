@@ -121,7 +121,7 @@ func defaultAPIHooks(scope string) *twirp.ServerHooks {
 			}
 
 			if scope != "" && !auth.Claims.HasScope(scope) {
-				return nil, twirp.PermissionDenied.Errorf(
+				return ctx, twirp.PermissionDenied.Errorf(
 					"the scope %q is required", scope)
 			}
 
