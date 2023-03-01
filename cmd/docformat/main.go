@@ -12,16 +12,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/julienschmidt/httprouter"
 	"github.com/schollz/progressbar/v3"
 	"github.com/ttab/elephant/ingest"
-	"github.com/ttab/elephant/internal/cmd"
-	"github.com/ttab/elephant/repository"
-	"github.com/ttab/elephant/revisor"
-	"github.com/ttab/elephant/revisor/constraints"
+	"github.com/ttab/elephant/rpc/repository"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/exp/slog"
+	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -56,6 +52,53 @@ func main() {
 		},
 	}
 
+	loadSchema := cli.Command{
+		Name:        "load-schema",
+		Description: "Load a revisor schema into the repository",
+		Action:      loadSchemaAction,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "repository",
+				Value: "http://localhost:1080",
+			},
+			&cli.PathFlag{
+				Name:  "schema",
+				Value: "revisor/constraints/tt.json",
+			},
+			&cli.StringFlag{
+				Name:  "name",
+				Value: "tt",
+			},
+			&cli.StringFlag{
+				Name:  "version",
+				Value: "v1.0.0",
+			},
+			&cli.BoolFlag{
+				Name:  "activate",
+				Value: true,
+			},
+		},
+	}
+
+	updateStatus := cli.Command{
+		Name:        "update-status",
+		Description: "Update status",
+		Action:      updateStatusAction,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "repository",
+				Value: "http://localhost:1080",
+			},
+			&cli.PathFlag{
+				Name:  "name",
+				Value: "usable",
+			},
+			&cli.BoolFlag{
+				Name: "disable",
+			},
+		},
+	}
+
 	ingestCommand := cli.Command{
 		Name:        "ingest",
 		Description: "Imports documents using the content log",
@@ -77,6 +120,10 @@ func main() {
 				},
 			},
 			&cli.StringFlag{
+				Name:  "repository",
+				Value: "http://localhost:1080",
+			},
+			&cli.StringFlag{
 				Name:  "state-dir",
 				Value: "state",
 			},
@@ -92,46 +139,11 @@ func main() {
 				Aliases: []string{"f"},
 			},
 			&cli.BoolFlag{
-				Name:  "ui",
-				Usage: "Enable web ui",
-			},
-			&cli.StringFlag{
-				Name:  "addr",
-				Value: "127.0.0.1:1080",
-			},
-			&cli.BoolFlag{
 				Name:  "replacements",
 				Usage: "Preload replacements",
 			},
 		},
 	}
-
-	ingestCommand.Flags = append(ingestCommand.Flags, cmd.BackendFlags()...)
-
-	webUICommand := cli.Command{
-		Name:        "ui",
-		Description: "Serve a web UI",
-		Action:      webUIAction,
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "addr",
-				Value: "127.0.0.1:1080",
-			},
-			&cli.StringFlag{
-				Name:  "oc-url",
-				Value: "https://xlibris.editorial.stage.oc.tt.infomaker.io:7777",
-			},
-			&cli.StringFlag{
-				Name:     "token",
-				Required: true,
-				EnvVars: []string{
-					"NAVIGA_BEARER_TOKEN",
-				},
-			},
-		},
-	}
-
-	webUICommand.Flags = append(webUICommand.Flags, cmd.BackendFlags()...)
 
 	app := &cli.App{
 		Name:  "docformat",
@@ -139,7 +151,8 @@ func main() {
 		Commands: []*cli.Command{
 			&convertCCACommand,
 			&ingestCommand,
-			&webUICommand,
+			&loadSchema,
+			&updateStatus,
 		},
 	}
 
@@ -149,50 +162,89 @@ func main() {
 	}
 }
 
-func webUIAction(c *cli.Context) error {
+func updateStatusAction(c *cli.Context) error {
 	var (
-		addr  = c.String("addr")
-		ocURL = c.String("oc-url")
-		token = c.String("token")
-		conf  = cmd.BackendConfigFromContext(c)
+		repositoryURL = c.String("repository")
+		name          = c.String("name")
+		disable       = c.Bool("disable")
 	)
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr))
-
-	dbpool, err := pgxpool.New(context.Background(), conf.DB)
-	if err != nil {
-		return fmt.Errorf("unable to create connection pool: %w", err)
-	}
-	defer dbpool.Close()
-
-	client := &http.Client{
-		Transport: ingest.TransportWithToken{
-			Transport: http.DefaultTransport,
-			Token:     token,
+	authConf := oauth2.Config{
+		Endpoint: oauth2.Endpoint{
+			TokenURL: repositoryURL + "/token",
+		},
+		Scopes: []string{
+			"workflow_admin",
 		},
 	}
 
-	store, err := repository.NewPGDocStore(logger, dbpool)
+	repoToken, err := authConf.PasswordCredentialsToken(c.Context,
+		"OC Importer <system://oc-importer>", "")
 	if err != nil {
-		return fmt.Errorf("failed to create doc store: %w", err)
+		return fmt.Errorf("failed to get access token: %w", err)
 	}
 
-	oc, err := ingest.NewOCClient(client, ocURL)
+	schemaClient := repository.NewWorkflowsProtobufClient(repositoryURL,
+		authConf.Client(c.Context, repoToken))
+
+	_, err = schemaClient.UpdateStatus(c.Context,
+		&repository.UpdateStatusRequest{
+			Name:     name,
+			Disabled: disable,
+		})
 	if err != nil {
-		return fmt.Errorf("failed to create OC client: %w", err)
+		return fmt.Errorf("failed to update status: %w", err)
 	}
 
-	router := httprouter.New()
+	return nil
+}
 
-	err = repository.SetUpRouter(router,
-		ingest.WithUIServer(store, oc),
+func loadSchemaAction(c *cli.Context) error {
+	var (
+		repositoryURL = c.String("repository")
+		schema        = c.Path("schema")
+		name          = c.String("name")
+		version       = c.String("version")
+		activate      = c.Bool("activate")
 	)
+
+	data, err := os.ReadFile(schema)
 	if err != nil {
-		return fmt.Errorf("failed to set up router: %w", err)
+		return fmt.Errorf("failed to read schema file: %w", err)
 	}
 
-	//nolint:wrapcheck
-	return repository.ListenAndServe(c.Context, addr, router)
+	authConf := oauth2.Config{
+		Endpoint: oauth2.Endpoint{
+			TokenURL: repositoryURL + "/token",
+		},
+		Scopes: []string{
+			"schema_admin",
+		},
+	}
+
+	repoToken, err := authConf.PasswordCredentialsToken(c.Context,
+		"OC Importer <system://oc-importer>", "")
+	if err != nil {
+		return fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	schemaClient := repository.NewSchemasProtobufClient(repositoryURL,
+		authConf.Client(c.Context, repoToken))
+
+	_, err = schemaClient.Register(c.Context,
+		&repository.RegisterSchemaRequest{
+			Schema: &repository.Schema{
+				Name:    name,
+				Version: version,
+				Spec:    data,
+			},
+			Activate: activate,
+		})
+	if err != nil {
+		return fmt.Errorf("failed to register schema: %w", err)
+	}
+
+	return nil
 }
 
 func ingestAction(c *cli.Context) error {
@@ -200,14 +252,12 @@ func ingestAction(c *cli.Context) error {
 		ccaURL           = c.String("cca-url")
 		ocURL            = c.String("oc-url")
 		token            = c.String("token")
+		repositoryURL    = c.String("repository")
 		stateDir         = c.String("state-dir")
 		lang             = c.String("default-lang")
 		startPos         = c.Int("start-pos")
 		tail             = c.Bool("tail")
-		ui               = c.Bool("ui")
-		addr             = c.String("addr")
 		loadReplacements = c.Bool("replacements")
-		conf             = cmd.BackendConfigFromContext(c)
 	)
 
 	stateDB := filepath.Join(stateDir, "data", "state.db")
@@ -219,17 +269,6 @@ func ingestAction(c *cli.Context) error {
 	db, err := ingest.NewBadgerStore(stateDB)
 	if err != nil {
 		return fmt.Errorf("failed to create badger store: %w", err)
-	}
-
-	dbpool, err := pgxpool.New(context.Background(), conf.DB)
-	if err != nil {
-		return fmt.Errorf("unable to create connection pool: %w", err)
-	}
-	defer dbpool.Close()
-
-	store, err := repository.NewPGDocStore(logger, dbpool)
-	if err != nil {
-		return fmt.Errorf("failed to create doc store: %w", err)
 	}
 
 	if startPos != 0 {
@@ -337,25 +376,24 @@ func ingestAction(c *cli.Context) error {
 	propFSCache := ingest.NewFSCache(filepath.Join(cacheDir, "properties"))
 	cachedProps := ingest.NewPropertyCache(propFSCache, oc)
 
-	core, err := constraints.CoreSchema()
-	if err != nil {
-		return fmt.Errorf("failed to get core schema: %w", err)
+	authConf := oauth2.Config{
+		Endpoint: oauth2.Endpoint{
+			TokenURL: repositoryURL + "/token",
+		},
+		Scopes: []string{
+			"doc_write", "doc_delete",
+			"import_directive", "superuser",
+		},
 	}
 
-	// TODO: the new validator here is hobbled as it only uses the core
-	// schema. The ingester should be shifted to using the API, but before
-	// then we might want to add a cli flag for selecting a local schema.
-	validator, err := revisor.NewValidator(core)
+	repoToken, err := authConf.PasswordCredentialsToken(c.Context,
+		"OC Importer <system://oc-importer>", "")
 	if err != nil {
-		return fmt.Errorf("failed to create validator: %w", err)
+		return fmt.Errorf("failed to get access token: %w", err)
 	}
 
-	workflows, err := repository.NewWorkflows(c.Context, logger, store)
-	if err != nil {
-		return fmt.Errorf("failed to create workflows: %w", err)
-	}
-
-	docService := repository.NewDocumentsService(store, validator, workflows)
+	repoClient := repository.NewDocumentsProtobufClient(repositoryURL,
+		authConf.Client(c.Context, repoToken))
 
 	opts := ingest.Options{
 		Logger:          logger,
@@ -366,9 +404,8 @@ func ingestAction(c *cli.Context) error {
 		GetDocument:     cachedGet,
 		Objects:         oc,
 		OCProps:         cachedProps,
-		API:             docService,
+		API:             repoClient,
 		Blocklist:       blocklist,
-		Validator:       validator,
 		Done:            doneChan,
 	}
 
@@ -385,24 +422,6 @@ func ingestAction(c *cli.Context) error {
 	}()
 
 	group, gCtx := errgroup.WithContext(ingestCtx)
-
-	if ui {
-		group.Go(func() error {
-			router := httprouter.New()
-
-			err := repository.SetUpRouter(
-				router,
-				ingest.WithUIServer(store, oc),
-			)
-			if err != nil {
-				return fmt.Errorf(
-					"failed to set up router: %w", err)
-			}
-
-			//nolint:wrapcheck
-			return repository.ListenAndServe(gCtx, addr, router)
-		})
-	}
 
 	group.Go(func() error {
 		var ve *ingest.ValidationError

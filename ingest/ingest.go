@@ -60,7 +60,6 @@ type Options struct {
 	OCProps         PropertyGetter
 	API             WriteAPI
 	Blocklist       *Blocklist
-	Validator       *revisor.Validator
 	Done            chan OCLogEvent
 }
 
@@ -481,11 +480,6 @@ func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 
 	d.URI = fixDocumentURI(d.UUID, d.URI)
 
-	err = in.validateDocument(d)
-	if err != nil {
-		return err
-	}
-
 	_, err = in.opt.API.Update(ctx, &rpc.UpdateRequest{
 		Uuid:     docUUID.String(),
 		Document: repository.DocumentToRPC(&d),
@@ -534,18 +528,6 @@ func fixDocumentURI(docUUID, uri string) string {
 	}
 
 	return uri
-}
-
-func (in *Ingester) validateDocument(d doc.Document) error {
-	errors := in.opt.Validator.ValidateDocument(&d)
-	if len(errors) > 0 {
-		return &ValidationError{
-			Document: d,
-			Errors:   errors,
-		}
-	}
-
-	return nil
 }
 
 func (in *Ingester) ccaImport(ctx context.Context, evt OCLogEvent) (*ConvertedDoc, error) {
