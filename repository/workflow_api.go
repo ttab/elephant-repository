@@ -21,7 +21,8 @@ func NewWorkflowsService(store WorkflowStore) *WorkflowsService {
 // Interface guard.
 var _ repository.Workflows = &WorkflowsService{}
 
-// CreateStatusRule implements repository.Workflows
+// CreateStatusRule creates or updates a status rule that should be applied when
+// setting statuses.
 func (s *WorkflowsService) CreateStatusRule(
 	ctx context.Context, req *repository.CreateStatusRuleRequest,
 ) (*repository.CreateStatusRuleResponse, error) {
@@ -73,7 +74,7 @@ func (s *WorkflowsService) CreateStatusRule(
 	return &repository.CreateStatusRuleResponse{}, nil
 }
 
-// DeleteStatusRule implements repository.Workflows
+// DeleteStatusRule removes a status rule.
 func (s *WorkflowsService) DeleteStatusRule(
 	ctx context.Context, req *repository.DeleteStatusRuleRequest,
 ) (*repository.DeleteStatusRuleResponse, error) {
@@ -89,7 +90,7 @@ func (s *WorkflowsService) DeleteStatusRule(
 	return &repository.DeleteStatusRuleResponse{}, nil
 }
 
-// UpdateStatus implements repository.Workflows
+// UpdateStatus creates or updates a status that can be used for documents.
 func (s *WorkflowsService) UpdateStatus(
 	ctx context.Context, req *repository.UpdateStatusRequest,
 ) (*repository.UpdateStatusResponse, error) {
@@ -109,7 +110,7 @@ func (s *WorkflowsService) UpdateStatus(
 	return &repository.UpdateStatusResponse{}, nil
 }
 
-// GetStatusRules implements repository.Workflows
+// GetStatusRules returns all status rules.
 func (s *WorkflowsService) GetStatusRules(
 	ctx context.Context, req *repository.GetStatusRulesRequest,
 ) (*repository.GetStatusRulesResponse, error) {
@@ -137,7 +138,7 @@ func (s *WorkflowsService) GetStatusRules(
 	}, nil
 }
 
-// GetStatuses implements repository.Workflows
+// GetStatuses lists all enabled statuses.
 func (s *WorkflowsService) GetStatuses(
 	ctx context.Context, req *repository.GetStatusesRequest,
 ) (*repository.GetStatusesResponse, error) {

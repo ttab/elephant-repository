@@ -36,7 +36,7 @@ service Schemas {
 service Workflows {
   // UpdateStatus creates or updates a status that can be used for documents.
   rpc UpdateStatus(UpdateStatusRequest) returns (UpdateStatusResponse);
-  // GetStatuses lists all enabled statuses
+  // GetStatuses lists all enabled statuses.
   rpc GetStatuses(GetStatusesRequest) returns (GetStatusesResponse);
   // CreateStatusRule creates or updates a status rule that should be applied
   // when setting statuses.

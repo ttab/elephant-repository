@@ -3267,7 +3267,7 @@ type Workflows interface {
 	// UpdateStatus creates or updates a status that can be used for documents.
 	UpdateStatus(context.Context, *UpdateStatusRequest) (*UpdateStatusResponse, error)
 
-	// GetStatuses lists all enabled statuses
+	// GetStatuses lists all enabled statuses.
 	GetStatuses(context.Context, *GetStatusesRequest) (*GetStatusesResponse, error)
 
 	// CreateStatusRule creates or updates a status rule that should be applied

@@ -1193,7 +1193,7 @@
     },
     "/twirp/elephant.repository.Workflows/GetStatuses": {
       "post": {
-        "description": "GetStatuses lists all enabled statuses",
+        "description": "GetStatuses lists all enabled statuses.",
         "requestBody": {
           "content": {
             "application/json": {
