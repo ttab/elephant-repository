@@ -18,15 +18,26 @@ type DocumentValidator interface {
 	ValidateDocument(document *doc.Document) []revisor.ValidationResult
 }
 
+type WorkflowProvider interface {
+	HasStatus(name string) bool
+	EvaluateRules(input StatusRuleInput) []StatusRuleViolation
+}
+
 type DocumentsService struct {
 	store     DocStore
 	validator DocumentValidator
+	workflows WorkflowProvider
 }
 
-func NewDocumentsService(store DocStore, validator DocumentValidator) *DocumentsService {
+func NewDocumentsService(
+	store DocStore,
+	validator DocumentValidator,
+	workflows WorkflowProvider,
+) *DocumentsService {
 	return &DocumentsService{
 		store:     store,
 		validator: validator,
+		workflows: workflows,
 	}
 }
 
@@ -413,6 +424,12 @@ func (a *DocumentsService) Update(
 				fmt.Sprintf("status.%d.version", i),
 				"required when no document is included")
 		}
+
+		if !a.workflows.HasStatus(s.Name) {
+			return nil, twirp.InvalidArgumentError(
+				fmt.Sprintf("status.%d.name", i),
+				fmt.Sprintf("unknown status %q", s.Name))
+		}
 	}
 
 	for i, e := range req.Acl {
@@ -523,7 +540,7 @@ func (a *DocumentsService) Update(
 		})
 	}
 
-	res, err := a.store.Update(ctx, up)
+	res, err := a.store.Update(ctx, a.workflows, up)
 
 	// TODO: generic docstore-to-twirp error translation is needed
 	switch {

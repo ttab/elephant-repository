@@ -1,7 +1,9 @@
 package repository_test
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/ttab/elephant/internal/test"
@@ -127,6 +129,38 @@ func TestIntegrationStatuses(t *testing.T) {
 	logger := logrus.New()
 	tc := testingAPIServer(t, logger, false)
 
+	workflowClient := tc.WorkflowsClient(t,
+		test.StandardClaims(t, "workflow_admin"))
+
+	_, err := workflowClient.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
+		Name: "usable",
+	})
+	test.Must(t, err, "create usable status")
+
+	_, err = workflowClient.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
+		Name: "done",
+	})
+	test.Must(t, err, "create done status")
+
+	t0 := time.Now()
+	workflowDeadline := time.After(1 * time.Second)
+
+	// Wait until the workflow provider notices the change.
+	for {
+		if tc.WorkflowProvider.HasStatus("done") {
+			t.Logf("had to wait %v for workflow upate",
+				time.Since(t0))
+
+			break
+		}
+
+		select {
+		case <-workflowDeadline:
+			t.Fatal("workflow didn't get updated in time")
+		case <-time.After(1 * time.Millisecond):
+		}
+	}
+
 	client := tc.DocumentsClient(t,
 		test.StandardClaims(t, "doc_read doc_write doc_delete"))
 
@@ -137,7 +171,7 @@ func TestIntegrationStatuses(t *testing.T) {
 
 	doc := baseDocument(docUUID, docURI)
 
-	_, err := client.Update(ctx, &rpc.UpdateRequest{
+	_, err = client.Update(ctx, &rpc.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 		Status: []*rpc.StatusUpdate{
@@ -173,6 +207,14 @@ func TestIntegrationStatuses(t *testing.T) {
 	})
 	test.Must(t, err, "fetch the currently published version")
 
+	_, err = client.Update(ctx, &rpc.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*rpc.StatusUpdate{
+			{Name: "whatchacallit", Version: res3.Version},
+		},
+	})
+	test.MustNot(t, err, "should fail to use unknown status")
+
 	test.EqualMessage(t,
 		&rpc.GetDocumentResponse{
 			Version:  1,
@@ -187,6 +229,224 @@ func TestIntegrationStatuses(t *testing.T) {
 		},
 	})
 	test.Must(t, err, "set version 3 to usable")
+}
+
+func TestIntegrationStatusRules(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	ctx := test.Context(t)
+	logger := logrus.New()
+	tc := testingAPIServer(t, logger, false)
+
+	workflowClient := tc.WorkflowsClient(t,
+		test.StandardClaims(t, "workflow_admin"))
+
+	const (
+		approvalName       = "must-be-approved"
+		requirePublishName = "require-publish-scope"
+		requireLegalName   = "require-legal-approval"
+	)
+
+	_, err := workflowClient.CreateStatusRule(ctx, &rpc.CreateStatusRuleRequest{
+		Rule: &rpc.StatusRule{
+			Name:        approvalName,
+			Description: "Articles must be approved before they're published",
+			Expression:  `Heads.approved.Version == Status.Version`,
+			AppliesTo:   []string{"usable"},
+			ForTypes:    []string{"core/article"},
+		},
+	})
+	test.Must(t, err, "create approval rule")
+
+	_, err = workflowClient.CreateStatusRule(ctx, &rpc.CreateStatusRuleRequest{
+		Rule: &rpc.StatusRule{
+			Name:        requireLegalName,
+			Description: "Require legal signoff if requested",
+			Expression: `
+Heads.approved.Meta.legal_approval != "required"
+or Heads.approved_legal.Version == Status.Version`,
+			AppliesTo: []string{"usable"},
+			ForTypes:  []string{"core/article"},
+		},
+	})
+	test.Must(t, err, "create legal approval rule")
+
+	_, err = workflowClient.CreateStatusRule(ctx, &rpc.CreateStatusRuleRequest{
+		Rule: &rpc.StatusRule{
+			Name:        "require-publish-scope",
+			Description: "publish scope is required for setting usable",
+			Expression:  `User.HasScope("publish")`,
+			AccessRule:  true,
+			AppliesTo:   []string{"usable"},
+			ForTypes:    []string{"core/article"},
+		},
+	})
+	test.Must(t, err, "create publish permission rule")
+
+	_, err = workflowClient.CreateStatusRule(ctx, &rpc.CreateStatusRuleRequest{
+		Rule: &rpc.StatusRule{
+			Name:        "require-legal-scope",
+			Description: "legal scope is required for setting approved_legal",
+			Expression:  `User.HasScope("legal")`,
+			AccessRule:  true,
+			AppliesTo:   []string{"approved_legal"},
+			ForTypes:    []string{"core/article"},
+		},
+	})
+	test.Must(t, err, "create publish permission rule")
+
+	_, err = workflowClient.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
+		Name: "approved_legal",
+	})
+	test.Must(t, err, "create usable status")
+
+	_, err = workflowClient.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
+		Name: "usable",
+	})
+	test.Must(t, err, "create usable status")
+
+	_, err = workflowClient.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
+		Name: "approved",
+	})
+	test.Must(t, err, "create approved status")
+
+	t0 := time.Now()
+	workflowDeadline := time.After(1 * time.Second)
+
+	// Wait until the workflow provider notices the change.
+	for {
+		if tc.WorkflowProvider.HasStatus("approved") {
+			t.Logf("had to wait %v for workflow upate",
+				time.Since(t0))
+
+			break
+		}
+
+		select {
+		case <-workflowDeadline:
+			t.Fatal("workflow didn't get updated in time")
+		case <-time.After(1 * time.Millisecond):
+		}
+	}
+
+	client := tc.DocumentsClient(t,
+		test.StandardClaims(t, "doc_read doc_write doc_delete"))
+
+	editorClient := tc.DocumentsClient(t,
+		test.StandardClaims(t, "doc_read doc_write doc_delete publish"))
+
+	const (
+		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI  = "article://test/123"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	createdRes, err := client.Update(ctx, &rpc.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.Must(t, err, "create article")
+
+	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*rpc.StatusUpdate{
+			{Name: "usable", Version: createdRes.Version},
+		},
+	})
+	test.MustNot(t, err, "don't publish document without approval")
+
+	if !strings.Contains(err.Error(), approvalName) {
+		t.Fatalf("error message should mention %q, got: %s",
+			approvalName, err.Error())
+	}
+
+	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*rpc.StatusUpdate{
+			{Name: "approved", Version: createdRes.Version},
+		},
+	})
+	test.Must(t, err, "approve document")
+
+	_, err = client.Update(ctx, &rpc.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*rpc.StatusUpdate{
+			{Name: "usable", Version: createdRes.Version},
+		},
+	})
+	test.MustNot(t, err, "don't allow publish without the correct scope")
+
+	if !strings.Contains(err.Error(), requirePublishName) {
+		t.Fatalf("error message should mention %q, got: %s",
+			requirePublishName, err.Error())
+	}
+
+	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*rpc.StatusUpdate{
+			{Name: "usable", Version: createdRes.Version},
+		},
+	})
+	test.Must(t, err, "publish the document")
+
+	docV2 := test.CloneMessage(doc)
+
+	docV2.Content = append(docV2.Content, &rpc.Block{
+		Type: "core/paragraph",
+		Data: map[string]string{
+			"text": "Some sensitive stuff",
+		},
+	})
+
+	updatedRes, err := client.Update(ctx, &rpc.UpdateRequest{
+		Uuid:     docUUID,
+		Document: docV2,
+		Status: []*rpc.StatusUpdate{
+			{
+				Name: "approved",
+				Meta: map[string]string{
+					"legal_approval": "required",
+				},
+			},
+		},
+	})
+	test.Must(t, err, "update article")
+
+	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*rpc.StatusUpdate{
+			{Name: "usable", Version: updatedRes.Version},
+		},
+	})
+	test.MustNot(t, err,
+		"should not publish the second version without legal approval")
+
+	if !strings.Contains(err.Error(), requireLegalName) {
+		t.Fatalf("error message should mention %q, got: %s",
+			requireLegalName, err.Error())
+	}
+
+	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*rpc.StatusUpdate{
+			{Name: "approved_legal", Version: updatedRes.Version},
+		},
+	})
+	test.Must(t, err, "set the legal approval status")
+
+	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*rpc.StatusUpdate{
+			{Name: "usable", Version: updatedRes.Version},
+		},
+	})
+	test.Must(t, err,
+		"should publish the second version now that legal has approved")
 }
 
 func TestIntegrationACL(t *testing.T) {

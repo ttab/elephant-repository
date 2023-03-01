@@ -145,6 +145,15 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 	return err
 }
 
+const deleteStatusRule = `-- name: DeleteStatusRule :exec
+DELETE FROM status_rule WHERE name = $1
+`
+
+func (q *Queries) DeleteStatusRule(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, deleteStatusRule, name)
+	return err
+}
+
 const dropACL = `-- name: DropACL :exec
 DELETE FROM acl WHERE uuid = $1 AND uri = $2
 `
@@ -207,6 +216,32 @@ func (q *Queries) GetActiveSchemas(ctx context.Context) ([]DocumentSchema, error
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getActiveStatuses = `-- name: GetActiveStatuses :many
+SELECT name
+FROM status
+WHERE disabled = false
+`
+
+func (q *Queries) GetActiveStatuses(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, getActiveStatuses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -509,6 +544,40 @@ func (q *Queries) GetFullDocumentHeads(ctx context.Context, uuid uuid.UUID) ([]D
 	return items, nil
 }
 
+const getFullVersion = `-- name: GetFullVersion :one
+SELECT created, creator_uri, meta, document_data, archived, signature
+FROM document_version
+WHERE uuid = $1 AND version = $2
+`
+
+type GetFullVersionParams struct {
+	Uuid    uuid.UUID
+	Version int64
+}
+
+type GetFullVersionRow struct {
+	Created      pgtype.Timestamptz
+	CreatorUri   string
+	Meta         []byte
+	DocumentData []byte
+	Archived     bool
+	Signature    pgtype.Text
+}
+
+func (q *Queries) GetFullVersion(ctx context.Context, arg GetFullVersionParams) (GetFullVersionRow, error) {
+	row := q.db.QueryRow(ctx, getFullVersion, arg.Uuid, arg.Version)
+	var i GetFullVersionRow
+	err := row.Scan(
+		&i.Created,
+		&i.CreatorUri,
+		&i.Meta,
+		&i.DocumentData,
+		&i.Archived,
+		&i.Signature,
+	)
+	return i, err
+}
+
 const getSchema = `-- name: GetSchema :one
 SELECT s.name, s.version, s.spec
 FROM document_schema AS s
@@ -541,6 +610,38 @@ func (q *Queries) GetSigningKeys(ctx context.Context) ([]SigningKey, error) {
 	for rows.Next() {
 		var i SigningKey
 		if err := rows.Scan(&i.Kid, &i.Spec); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getStatusRules = `-- name: GetStatusRules :many
+SELECT name, description, access_rule, applies_to, for_types, expression
+FROM status_rule
+`
+
+func (q *Queries) GetStatusRules(ctx context.Context) ([]StatusRule, error) {
+	rows, err := q.db.Query(ctx, getStatusRules)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StatusRule
+	for rows.Next() {
+		var i StatusRule
+		if err := rows.Scan(
+			&i.Name,
+			&i.Description,
+			&i.AccessRule,
+			&i.AppliesTo,
+			&i.ForTypes,
+			&i.Expression,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -846,5 +947,54 @@ type SetDocumentVersionAsArchivedParams struct {
 
 func (q *Queries) SetDocumentVersionAsArchived(ctx context.Context, arg SetDocumentVersionAsArchivedParams) error {
 	_, err := q.db.Exec(ctx, setDocumentVersionAsArchived, arg.Signature, arg.Uuid, arg.Version)
+	return err
+}
+
+const updateStatus = `-- name: UpdateStatus :exec
+INSERT INTO status(name, disabled)
+VALUES($1, $2)
+ON CONFLICT(name) DO UPDATE SET
+   disabled = $2
+`
+
+type UpdateStatusParams struct {
+	Name     string
+	Disabled bool
+}
+
+func (q *Queries) UpdateStatus(ctx context.Context, arg UpdateStatusParams) error {
+	_, err := q.db.Exec(ctx, updateStatus, arg.Name, arg.Disabled)
+	return err
+}
+
+const updateStatusRule = `-- name: UpdateStatusRule :exec
+INSERT INTO status_rule(
+       name, description, access_rule, applies_to, for_types, expression
+) VALUES(
+       $1, $2, $3, $4, $5, $6
+) ON CONFLICT(name)
+  DO UPDATE SET
+     description = $2, access_rule = $3,
+     applies_to = $4, for_types = $5, expression = $6
+`
+
+type UpdateStatusRuleParams struct {
+	Name        string
+	Description string
+	AccessRule  bool
+	AppliesTo   pgtype.Array[string]
+	ForTypes    pgtype.Array[string]
+	Expression  string
+}
+
+func (q *Queries) UpdateStatusRule(ctx context.Context, arg UpdateStatusRuleParams) error {
+	_, err := q.db.Exec(ctx, updateStatusRule,
+		arg.Name,
+		arg.Description,
+		arg.AccessRule,
+		arg.AppliesTo,
+		arg.ForTypes,
+		arg.Expression,
+	)
 	return err
 }

@@ -225,6 +225,20 @@ create table active_schemas(
                document_schema(name, version)
 );
 
+create table status(
+       name text primary key,
+       disabled bool not null
+);
+
+create table status_rule(
+       name text primary key,
+       description text not null,
+       access_rule bool not null,
+       applies_to text[] not null,
+       for_types text[] not null,
+       expression text not null
+);
+
 create publication eventlog
 for table document, status_heads, delete_record, acl;
 
@@ -238,6 +252,8 @@ drop function delete_document(
 drop function create_status(
      uuid, varchar(32), bigint, bigint, timestamptz, text, jsonb);
 drop table signing_keys;
+drop table status;
+drop table status_rule;
 drop table active_schemas;
 drop table document_schema;
 drop index document_link_rel_idx;

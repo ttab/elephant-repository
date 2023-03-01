@@ -212,6 +212,8 @@ func ingestAction(c *cli.Context) error {
 	blocklistPath := filepath.Join(stateDir, "blocklist.txt")
 	cacheDir := filepath.Join(stateDir, "cache")
 
+	logger := logrus.New()
+
 	db, err := ingest.NewBadgerStore(stateDB)
 	if err != nil {
 		return fmt.Errorf("failed to create badger store: %w", err)
@@ -342,11 +344,19 @@ func ingestAction(c *cli.Context) error {
 	// schema. The ingester should be shifted to using the API, but before
 	// then we might want to add a cli flag for selecting a local schema.
 	validator, err := revisor.NewValidator(core)
+	if err != nil {
+		return fmt.Errorf("failed to create validator: %w", err)
+	}
 
-	docService := repository.NewDocumentsService(store, validator)
+	workflows, err := repository.NewWorkflows(c.Context, logger, store)
+	if err != nil {
+		return fmt.Errorf("failed to create workflows: %w", err)
+	}
+
+	docService := repository.NewDocumentsService(store, validator, workflows)
 
 	opts := ingest.Options{
-		Logger:          logrus.New(),
+		Logger:          logger,
 		DefaultLanguage: lang,
 		Identity:        db,
 		LogPos:          db,

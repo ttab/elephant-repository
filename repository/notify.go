@@ -12,8 +12,9 @@ import (
 type NotifyChannel string
 
 const (
-	NotifySchemasUpdated NotifyChannel = "schemas"
-	NotifyArchived       NotifyChannel = "archived"
+	NotifySchemasUpdated   NotifyChannel = "schemas"
+	NotifyArchived         NotifyChannel = "archived"
+	NotifyWorkflowsUpdated NotifyChannel = "workflows"
 )
 
 type ArchiveEventType int
@@ -43,6 +44,18 @@ type SchemaEvent struct {
 	Name string          `json:"name"`
 }
 
+type WorkflowEventType int
+
+const (
+	WorkflowEventTypeStatusChange WorkflowEventType = iota
+	WorkflowEventTypeStatusRuleChange
+)
+
+type WorkflowEvent struct {
+	Type WorkflowEventType `json:"type"`
+	Name string            `json:"name"`
+}
+
 func notifyArchived(
 	ctx context.Context, logger *logrus.Logger, q *postgres.Queries,
 	payload ArchivedEvent,
@@ -55,6 +68,13 @@ func notifySchemaUpdated(
 	payload SchemaEvent,
 ) {
 	pgNotify(ctx, logger, q, NotifySchemasUpdated, payload)
+}
+
+func notifyWorkflowUpdated(
+	ctx context.Context, logger *logrus.Logger, q *postgres.Queries,
+	payload WorkflowEvent,
+) {
+	pgNotify(ctx, logger, q, NotifyWorkflowsUpdated, payload)
 }
 
 func pgNotify[T any](

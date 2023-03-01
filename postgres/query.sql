@@ -49,6 +49,11 @@ SELECT created, creator_uri, meta, archived
 FROM document_version
 WHERE uuid = @UUID AND version = @version;
 
+-- name: GetFullVersion :one
+SELECT created, creator_uri, meta, document_data, archived, signature
+FROM document_version
+WHERE uuid = @UUID AND version = @version;
+
 -- name: GetDocumentInfo :one
 SELECT
         uuid, uri, created, creator_uri, updated, updater_uri, current_version,
@@ -218,3 +223,31 @@ SELECT s.name, s.version, s.spec
 FROM active_schemas AS a
      INNER JOIN document_schema AS s
            ON s.name = a.name AND s.version = a.version;
+
+-- name: GetActiveStatuses :many
+SELECT name
+FROM status
+WHERE disabled = false;
+
+-- name: UpdateStatus :exec
+INSERT INTO status(name, disabled)
+VALUES(@name, @disabled)
+ON CONFLICT(name) DO UPDATE SET
+   disabled = @disabled;
+
+-- name: GetStatusRules :many
+SELECT name, description, access_rule, applies_to, for_types, expression
+FROM status_rule;
+
+-- name: UpdateStatusRule :exec
+INSERT INTO status_rule(
+       name, description, access_rule, applies_to, for_types, expression
+) VALUES(
+       @name, @description, @access_rule, @applies_to, @for_types, @expression
+) ON CONFLICT(name)
+  DO UPDATE SET
+     description = @description, access_rule = @access_rule,
+     applies_to = @applies_to, for_types = @for_types, expression = @expression;
+
+-- name: DeleteStatusRule :exec
+DELETE FROM status_rule WHERE name = $1;

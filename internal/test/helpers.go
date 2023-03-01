@@ -33,7 +33,8 @@ func MustNot(t TestingT, err error, format string, a ...any) {
 	}
 
 	if testing.Verbose() {
-		t.Logf("success: "+format, a...)
+		msg := fmt.Sprintf(format, a...)
+		t.Logf("success: %s: error message: %v", msg, err)
 	}
 }
 

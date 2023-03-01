@@ -12,10 +12,10 @@ import (
 )
 
 type SchemasService struct {
-	store DocStore
+	store SchemaStore
 }
 
-func NewSchemasService(store DocStore) *SchemasService {
+func NewSchemasService(store SchemaStore) *SchemasService {
 	return &SchemasService{
 		store: store,
 	}
@@ -28,17 +28,6 @@ var _ repository.Schemas = &SchemasService{}
 func (a *SchemasService) GetAllActive(
 	ctx context.Context, req *repository.GetAllActiveSchemasRequest,
 ) (*repository.GetAllActiveSchemasResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("schema_admin") {
-		return nil, twirp.PermissionDenied.Error(
-			"no administrative schema permission")
-	}
-
 	schemas, err := a.store.GetActiveSchemas(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -69,15 +58,8 @@ func (a *SchemasService) GetAllActive(
 func (a *SchemasService) Get(
 	ctx context.Context, req *repository.GetSchemaRequest,
 ) (*repository.GetSchemaResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("schema_admin") {
-		return nil, twirp.PermissionDenied.Error(
-			"no administrative schema permission")
+	if req.Name == "" {
+		return nil, twirp.RequiredArgumentError("name")
 	}
 
 	schema, err := a.store.GetSchema(ctx, req.Name, req.Version)
@@ -103,17 +85,6 @@ func (a *SchemasService) Get(
 func (a *SchemasService) Register(
 	ctx context.Context, req *repository.RegisterSchemaRequest,
 ) (*repository.RegisterSchemaResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("schema_admin") {
-		return nil, twirp.PermissionDenied.Error(
-			"no administrative schema permission")
-	}
-
 	if req.Schema == nil {
 		return nil, twirp.RequiredArgumentError("schema")
 	}
@@ -160,17 +131,6 @@ func (a *SchemasService) Register(
 func (a *SchemasService) SetActive(
 	ctx context.Context, req *repository.SetActiveSchemaRequest,
 ) (*repository.SetActiveSchemaResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("schema_admin") {
-		return nil, twirp.PermissionDenied.Error(
-			"no administrative schema permission")
-	}
-
 	if req.Name == "" {
 		return nil, twirp.RequiredArgumentError("name")
 	}

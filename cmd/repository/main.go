@@ -139,8 +139,14 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to create validator: %w", err)
 	}
 
-	docService := repository.NewDocumentsService(store, validator)
+	workflows, err := repository.NewWorkflows(c.Context, logger, store)
+	if err != nil {
+		return fmt.Errorf("failed to create workflows: %w", err)
+	}
+
+	docService := repository.NewDocumentsService(store, validator, workflows)
 	schemaService := repository.NewSchemasService(store)
+	workflowService := repository.NewWorkflowsService(store)
 
 	logger.Debug("starting API server")
 
@@ -149,6 +155,7 @@ func runServer(c *cli.Context) error {
 	err = repository.SetUpRouter(router,
 		repository.WithDocumentsAPI(logger, signingKey, docService),
 		repository.WithSchemasAPI(logger, signingKey, schemaService),
+		repository.WithWorkflowsAPI(logger, signingKey, workflowService),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to set up router: %w", err)

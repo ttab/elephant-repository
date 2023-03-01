@@ -17,10 +17,13 @@ import (
 )
 
 type TestContext struct {
-	SigningKey *ecdsa.PrivateKey
-	Server     *httptest.Server
-	Documents  rpc.Documents
-	Env        test.Environment
+	SigningKey       *ecdsa.PrivateKey
+	Server           *httptest.Server
+	WorkflowProvider repository.WorkflowProvider
+	Documents        rpc.Documents
+	Schemas          rpc.Schemas
+	Workflows        rpc.Workflows
+	Env              test.Environment
 }
 
 func (tc *TestContext) DocumentsClient( //nolint:ireturn
@@ -41,6 +44,46 @@ func (tc *TestContext) DocumentsClient( //nolint:ireturn
 			}}))
 
 	return docClient
+}
+
+func (tc *TestContext) WorkflowsClient( //nolint:ireturn
+	t *testing.T, claims repository.JWTClaims,
+) rpc.Workflows {
+	t.Helper()
+
+	token, err := test.AccessKey(tc.SigningKey, claims)
+	test.Must(t, err, "create access key")
+
+	workflowsClient := rpc.NewWorkflowsProtobufClient(
+		tc.Server.URL, tc.Server.Client(),
+		twirp.WithClientHooks(&twirp.ClientHooks{
+			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
+				r.Header.Set("Authorization", "Bearer "+token)
+
+				return ctx, nil
+			}}))
+
+	return workflowsClient
+}
+
+func (tc *TestContext) SchemasClient( //nolint:ireturn
+	t *testing.T, claims repository.JWTClaims,
+) rpc.Schemas {
+	t.Helper()
+
+	token, err := test.AccessKey(tc.SigningKey, claims)
+	test.Must(t, err, "create access key")
+
+	schemasClient := rpc.NewSchemasProtobufClient(
+		tc.Server.URL, tc.Server.Client(),
+		twirp.WithClientHooks(&twirp.ClientHooks{
+			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
+				r.Header.Set("Authorization", "Bearer "+token)
+
+				return ctx, nil
+			}}))
+
+	return schemasClient
 }
 
 func testingAPIServer(
@@ -80,14 +123,22 @@ func testingAPIServer(
 		ctx, logger, store)
 	test.Must(t, err, "create validator")
 
-	documentServer := repository.NewDocumentsService(store, validator)
+	workflows, err := repository.NewWorkflows(ctx, logger, store)
+	test.Must(t, err, "create workflows")
+
+	docService := repository.NewDocumentsService(store, validator, workflows)
+	schemaService := repository.NewSchemasService(store)
+	workflowService := repository.NewWorkflowsService(store)
+
 	router := httprouter.New()
 
 	jwtKey, err := test.NewSigningKey()
 	test.Must(t, err, "create signing key")
 
 	err = repository.SetUpRouter(router,
-		repository.WithDocumentsAPI(logger, jwtKey, documentServer))
+		repository.WithDocumentsAPI(logger, jwtKey, docService),
+		repository.WithSchemasAPI(logger, jwtKey, schemaService),
+		repository.WithWorkflowsAPI(logger, jwtKey, workflowService))
 	test.Must(t, err, "set up router")
 
 	server := httptest.NewServer(router)
@@ -95,9 +146,12 @@ func testingAPIServer(
 	t.Cleanup(server.Close)
 
 	return TestContext{
-		SigningKey: jwtKey,
-		Server:     server,
-		Documents:  documentServer,
-		Env:        env,
+		SigningKey:       jwtKey,
+		Server:           server,
+		Documents:        docService,
+		Workflows:        workflowService,
+		Schemas:          schemaService,
+		WorkflowProvider: workflows,
+		Env:              env,
 	}
 }

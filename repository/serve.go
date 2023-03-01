@@ -76,10 +76,12 @@ func WithSchemasAPI(
 	jwtKey *ecdsa.PrivateKey, service repository.Schemas,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
+		hooks := defaultAPIHooks("schema_admin")
+
 		api := repository.NewSchemasServer(
 			service,
 			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(defaultAPIHooks()),
+			twirp.WithServerHooks(hooks),
 		)
 
 		registerAPI(router, jwtKey, api)
@@ -88,16 +90,40 @@ func WithSchemasAPI(
 	}
 }
 
-func defaultAPIHooks() *twirp.ServerHooks {
+func WithWorkflowsAPI(
+	logger *logrus.Logger,
+	jwtKey *ecdsa.PrivateKey, service repository.Workflows,
+) RouterOption {
+	return func(router *httprouter.Router) error {
+		hooks := defaultAPIHooks("workflow_admin")
+
+		api := repository.NewWorkflowsServer(
+			service,
+			twirp.WithServerJSONSkipDefaults(true),
+			twirp.WithServerHooks(hooks),
+		)
+
+		registerAPI(router, jwtKey, api)
+
+		return nil
+	}
+}
+
+func defaultAPIHooks(scope string) *twirp.ServerHooks {
 	return &twirp.ServerHooks{
 		RequestReceived: func(
 			ctx context.Context,
 		) (context.Context, error) {
 			// Require auth for all methods
-			_, ok := GetAuthInfo(ctx)
+			auth, ok := GetAuthInfo(ctx)
 			if !ok {
 				return ctx, twirp.Unauthenticated.Error(
 					"no anonymous access allowed")
+			}
+
+			if scope != "" && !auth.Claims.HasScope(scope) {
+				return nil, twirp.PermissionDenied.Errorf(
+					"the scope %q is required", scope)
 			}
 
 			return ctx, nil
@@ -167,7 +193,7 @@ func documentAPI(
 	api := repository.NewDocumentsServer(
 		server,
 		twirp.WithServerJSONSkipDefaults(true),
-		twirp.WithServerHooks(defaultAPIHooks()),
+		twirp.WithServerHooks(defaultAPIHooks("")),
 	)
 
 	registerAPI(router, jwtKey, api)

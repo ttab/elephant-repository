@@ -33,6 +33,67 @@ service Schemas {
   rpc GetAllActive(GetAllActiveSchemasRequest) returns (GetAllActiveSchemasResponse);
 }
 
+service Workflows {
+  // UpdateStatus creates or updates a status that can be used for documents.
+  rpc UpdateStatus(UpdateStatusRequest) returns (UpdateStatusResponse);
+  // GetStatuses lists all enabled statuses
+  rpc GetStatuses(GetStatusesRequest) returns (GetStatusesResponse);
+  // CreateStatusRule creates or updates a status rule that should be applied
+  // when setting statuses.
+  rpc CreateStatusRule(CreateStatusRuleRequest) returns (CreateStatusRuleResponse);
+  // DeleteStatusRule removes a status rule.
+  rpc DeleteStatusRule(DeleteStatusRuleRequest) returns (DeleteStatusRuleResponse);
+  // GetStatusRules returns all status rules.
+  rpc GetStatusRules(GetStatusRulesRequest) returns (GetStatusRulesResponse);
+}
+
+message GetStatusRulesRequest {}
+
+message GetStatusRulesResponse {
+  repeated StatusRule rules = 1;
+}
+
+message GetStatusesRequest {}
+
+message WorkflowStatus {
+  string name = 1;
+}
+
+message GetStatusesResponse {
+  repeated WorkflowStatus statuses = 1;
+}
+
+message UpdateStatusRequest {
+  // Name of the status.
+  string name = 1;
+  // Disabled disables the status so that it cannot be used when setting new
+  // statuses.
+  bool disabled = 2;
+}
+
+message UpdateStatusResponse {}
+
+message CreateStatusRuleRequest {
+  StatusRule rule = 1;
+}
+
+message StatusRule {
+  string name = 1;
+  string description = 2;
+  bool access_rule = 3;
+  repeated string applies_to = 4;
+  repeated string for_types = 5;
+  string expression = 6;
+}
+
+message CreateStatusRuleResponse {}
+
+message DeleteStatusRuleRequest {
+  string name = 1;
+}
+
+message DeleteStatusRuleResponse {}
+
 message GetDocumentRequest {
   // UUID of the document to get.
   string uuid = 1;

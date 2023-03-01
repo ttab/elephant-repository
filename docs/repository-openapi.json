@@ -96,6 +96,17 @@
         },
         "type": "object"
       },
+      "elephant.repository.CreateStatusRuleRequest": {
+        "properties": {
+          "rule": {
+            "$ref": "#/components/schemas/elephant.repository.StatusRule"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.CreateStatusRuleResponse": {
+        "type": "object"
+      },
       "elephant.repository.DeleteDocumentRequest": {
         "properties": {
           "if_match": {
@@ -117,6 +128,17 @@
         "type": "object"
       },
       "elephant.repository.DeleteDocumentResponse": {
+        "type": "object"
+      },
+      "elephant.repository.DeleteStatusRuleRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.DeleteStatusRuleResponse": {
         "type": "object"
       },
       "elephant.repository.Document": {
@@ -365,6 +387,34 @@
         },
         "type": "object"
       },
+      "elephant.repository.GetStatusRulesRequest": {
+        "type": "object"
+      },
+      "elephant.repository.GetStatusRulesResponse": {
+        "properties": {
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/elephant.repository.StatusRule"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.GetStatusesRequest": {
+        "type": "object"
+      },
+      "elephant.repository.GetStatusesResponse": {
+        "properties": {
+          "statuses": {
+            "items": {
+              "$ref": "#/components/schemas/elephant.repository.WorkflowStatus"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "elephant.repository.ImportDirective": {
         "description": "ImportDirective can be used to preserve timestamps and authorship information from originating systems.",
         "properties": {
@@ -454,6 +504,35 @@
         },
         "type": "object"
       },
+      "elephant.repository.StatusRule": {
+        "properties": {
+          "access_rule": {
+            "type": "boolean"
+          },
+          "applies_to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "expression": {
+            "type": "string"
+          },
+          "for_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "elephant.repository.StatusUpdate": {
         "properties": {
           "if_match": {
@@ -498,7 +577,7 @@
         "type": "object"
       },
       "elephant.repository.UpdateRequest": {
-        "description": "UpdateRequest creates a new document version and/or sets statuses for a document. The update is transactional will fail or succed as a whole.\n If the document fails validation an \"invalid_argument\" error will be returned with the number of errors as meta \"err_count\" and the indiviual errors as \"0\", \"1\", \"2\"... Use the Validate method to get th errors as structured data.",
+        "description": "UpdateRequest creates a new document version and/or sets statuses and ACLs for a document. The update is transactional will fail or succed as a whole.\n If the document fails validation an \"invalid_argument\" error will be returned with the number of errors as meta \"err_count\" and the individual errors as \"0\", \"1\", \"2\"... Use the Validate method to get th errors as structured data.",
         "properties": {
           "acl": {
             "description": "ACL is an ACL list controlling access to the document.",
@@ -547,6 +626,22 @@
         },
         "type": "object"
       },
+      "elephant.repository.UpdateStatusRequest": {
+        "properties": {
+          "disabled": {
+            "description": "Disabled disables the status so that it cannot be used when setting new statuses.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Name of the status.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.UpdateStatusResponse": {
+        "type": "object"
+      },
       "elephant.repository.ValidateRequest": {
         "properties": {
           "document": {
@@ -575,6 +670,14 @@
             "type": "array"
           },
           "error": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.WorkflowStatus": {
+        "properties": {
+          "name": {
             "type": "string"
           }
         },
@@ -973,6 +1076,196 @@
           "Schemas"
         ]
       }
+    },
+    "/twirp/elephant.repository.Workflows/CreateStatusRule": {
+      "post": {
+        "description": "CreateStatusRule creates or updates a status rule that should be applied when setting statuses.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.CreateStatusRuleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.CreateStatusRuleResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "CreateStatusRule",
+        "tags": [
+          "Workflows"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Workflows/DeleteStatusRule": {
+      "post": {
+        "description": "DeleteStatusRule removes a status rule.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.DeleteStatusRuleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.DeleteStatusRuleResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "DeleteStatusRule",
+        "tags": [
+          "Workflows"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Workflows/GetStatusRules": {
+      "post": {
+        "description": "GetStatusRules returns all status rules.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.GetStatusRulesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.GetStatusRulesResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "GetStatusRules",
+        "tags": [
+          "Workflows"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Workflows/GetStatuses": {
+      "post": {
+        "description": "GetStatuses lists all enabled statuses",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.GetStatusesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.GetStatusesResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "GetStatuses",
+        "tags": [
+          "Workflows"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Workflows/UpdateStatus": {
+      "post": {
+        "description": "UpdateStatus creates or updates a status that can be used for documents.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.UpdateStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.UpdateStatusResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "UpdateStatus",
+        "tags": [
+          "Workflows"
+        ]
+      }
     }
   },
   "tags": [
@@ -981,6 +1274,9 @@
     },
     {
       "name": "Schemas"
+    },
+    {
+      "name": "Workflows"
     }
   ]
 }

@@ -26,12 +26,17 @@ type DocStore interface {
 		before int64, count int,
 	) ([]DocumentUpdate, error)
 	Update(
-		ctx context.Context, update UpdateRequest,
+		ctx context.Context,
+		workflows WorkflowProvider,
+		update UpdateRequest,
 	) (*DocumentUpdate, error)
 	Delete(ctx context.Context, req DeleteRequest) error
 	CheckPermission(
 		ctx context.Context, req CheckPermissionRequest,
 	) (CheckPermissionResult, error)
+}
+
+type SchemaStore interface {
 	RegisterSchema(
 		ctx context.Context, req RegisterSchemaRequest,
 	) error
@@ -45,6 +50,39 @@ type DocStore interface {
 		ctx context.Context, name, version string,
 	) (*Schema, error)
 	GetActiveSchemas(ctx context.Context) ([]*Schema, error)
+}
+
+type WorkflowStore interface {
+	UpdateStatus(
+		ctx context.Context, req UpdateStatusRequest,
+	) error
+	GetStatuses(ctx context.Context) ([]DocumentStatus, error)
+	UpdateStatusRule(
+		ctx context.Context, rule StatusRule,
+	) error
+	DeleteStatusRule(
+		ctx context.Context, name string,
+	) error
+	GetStatusRules(ctx context.Context) ([]StatusRule, error)
+}
+
+type DocumentStatus struct {
+	Name     string
+	Disabled bool
+}
+
+type StatusRule struct {
+	Name        string
+	Description string
+	AccessRule  bool
+	AppliesTo   []string
+	ForTypes    []string
+	Expression  string
+}
+
+type UpdateStatusRequest struct {
+	Name     string
+	Disabled bool
 }
 
 type Schema struct {
@@ -156,7 +194,7 @@ const (
 	ErrCodeDeleteLock       DocStoreErrorCode = "delete-lock"
 	ErrCodeBadRequest       DocStoreErrorCode = "bad-request"
 	ErrCodeExists           DocStoreErrorCode = "exists"
-	ErrCodePermissionDenied DocStoreErrorCode = "premission-denied"
+	ErrCodePermissionDenied DocStoreErrorCode = "permission-denied"
 )
 
 type DocStoreError struct {

@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antonmedv/expr"
-	"github.com/antonmedv/expr/vm"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -20,7 +18,6 @@ import (
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
 	"github.com/ttab/elephant/revisor"
-	"golang.org/x/exp/slices"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -31,20 +28,23 @@ const (
 )
 
 type PGDocStore struct {
-	logger   *logrus.Logger
-	pool     *pgxpool.Pool
-	reader   *postgres.Queries
-	archived *FanOut[ArchivedEvent]
-	schemas  *FanOut[SchemaEvent]
+	logger *logrus.Logger
+	pool   *pgxpool.Pool
+	reader *postgres.Queries
+
+	archived  *FanOut[ArchivedEvent]
+	schemas   *FanOut[SchemaEvent]
+	workflows *FanOut[WorkflowEvent]
 }
 
 func NewPGDocStore(logger *logrus.Logger, pool *pgxpool.Pool) (*PGDocStore, error) {
 	return &PGDocStore{
-		logger:   logger,
-		pool:     pool,
-		reader:   postgres.New(pool),
-		archived: NewFanOut[ArchivedEvent](),
-		schemas:  NewFanOut[SchemaEvent](),
+		logger:    logger,
+		pool:      pool,
+		reader:    postgres.New(pool),
+		archived:  NewFanOut[ArchivedEvent](),
+		schemas:   NewFanOut[SchemaEvent](),
+		workflows: NewFanOut[WorkflowEvent](),
 	}, nil
 }
 
@@ -77,6 +77,20 @@ func (s *PGDocStore) OnSchemaUpdate(
 	})
 }
 
+// OnWorkflowUpdate notifies the channel ch of all workflow updates.
+// Subscription is automatically cancelled once the context is cancelled.
+//
+// Note that we don't provide any delivery guarantees for these events.
+// non-blocking send is used on ch, so if it's unbuffered events will be
+// discarded if the receiver is busy.
+func (s *PGDocStore) OnWorkflowUpdate(
+	ctx context.Context, ch chan WorkflowEvent,
+) {
+	go s.workflows.Listen(ctx, ch, func(_ WorkflowEvent) bool {
+		return true
+	})
+}
+
 // RunListener opens a connection to the database and subscribes to all store
 // notifications.
 func (s *PGDocStore) RunListener(ctx context.Context) {
@@ -101,7 +115,11 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 
 	defer conn.Release()
 
-	notifications := []NotifyChannel{NotifyArchived, NotifySchemasUpdated}
+	notifications := []NotifyChannel{
+		NotifyArchived,
+		NotifySchemasUpdated,
+		NotifyWorkflowsUpdated,
+	}
 
 	for _, channel := range notifications {
 		ident := pgx.Identifier{string(channel)}
@@ -159,6 +177,16 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 				}
 
 				s.archived.Notify(e)
+			case NotifyWorkflowsUpdated:
+				var e WorkflowEvent
+
+				err := json.Unmarshal(
+					[]byte(notification.Payload), &e)
+				if err != nil {
+					break
+				}
+
+				s.workflows.Notify(e)
 			}
 		}
 	})
@@ -385,7 +413,34 @@ func (s *PGDocStore) GetDocumentMeta(
 		Deleting:       info.Deleting,
 	}
 
-	heads, err := s.reader.GetFullDocumentHeads(ctx, uuid)
+	heads, err := s.getFullDocumentHeads(ctx, s.reader, uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	meta.Statuses = heads
+
+	acl, err := s.reader.GetDocumentACL(ctx, uuid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch document ACL: %w", err)
+	}
+
+	for _, a := range acl {
+		meta.ACL = append(meta.ACL, ACLEntry{
+			URI:         a.Uri,
+			Permissions: a.Permissions.Elements,
+		})
+	}
+
+	return &meta, nil
+}
+
+func (s *PGDocStore) getFullDocumentHeads(
+	ctx context.Context, q *postgres.Queries, docUUID uuid.UUID,
+) (map[string]Status, error) {
+	statuses := make(map[string]Status)
+
+	heads, err := q.GetFullDocumentHeads(ctx, docUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch document heads: %w", err)
 	}
@@ -407,22 +462,10 @@ func (s *PGDocStore) GetDocumentMeta(
 			}
 		}
 
-		meta.Statuses[head.Name] = status
+		statuses[head.Name] = status
 	}
 
-	acl, err := s.reader.GetDocumentACL(ctx, uuid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch document ACL: %w", err)
-	}
-
-	for _, a := range acl {
-		meta.ACL = append(meta.ACL, ACLEntry{
-			URI:         a.Uri,
-			Permissions: a.Permissions.Elements,
-		})
-	}
-
-	return &meta, nil
+	return statuses, nil
 }
 
 // CheckPermission implements DocStore.
@@ -463,7 +506,9 @@ func pgStringArray(v []string) pgtype.Array[string] {
 }
 
 // Update implements DocStore.
-func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*DocumentUpdate, error) {
+func (s *PGDocStore) Update(
+	ctx context.Context, workflows WorkflowProvider, update UpdateRequest,
+) (*DocumentUpdate, error) {
 	var docJSON, metaJSON []byte
 
 	// Do serialisation work before we start a transaction. That way we
@@ -548,43 +593,19 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 		}
 	}
 
-	statusHeads := make(map[string]*Status)
+	statusHeads := make(map[string]Status)
 
 	if len(update.Status) > 0 {
-		heads, err := q.GetFullDocumentHeads(ctx, update.UUID)
+		heads, err := s.getFullDocumentHeads(ctx, s.reader, update.UUID)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to get current document status heads: %w", err)
+			return nil, err
 		}
 
-		// TODO: This probably duplicates work already done elsewhere.
-		for _, head := range heads {
-			stat := Status{
-				ID:      head.ID,
-				Version: head.Version,
-				Creator: head.CreatorUri,
-				Created: head.Created.Time,
-			}
-
-			if head.Meta != nil {
-				err := json.Unmarshal(head.Meta, &stat.Meta)
-				if err != nil {
-					return nil, fmt.Errorf(
-						"failed to unmarshal meta for head %q: %w",
-						head.Name, err)
-				}
-			}
-
-			statusHeads[head.Name] = &stat
-		}
+		statusHeads = heads
 	}
 
 	for i, stat := range update.Status {
-		statusID := int64(1)
-
-		if statusHeads[stat.Name] != nil {
-			statusID = statusHeads[stat.Name].ID + 1
-		}
+		statusID := statusHeads[stat.Name].ID + 1
 
 		status := Status{
 			ID:      statusID,
@@ -598,54 +619,31 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 			status.Version = up.Version
 		}
 
-		// TODO: We cannot check applicability based on document type
-		// here, as type is a property of the version of the
-		// document. This is another indicator that type belongs on the
-		// document level, and should be treated as immutable.
-		rules := applicableStatusRules(stat.Name)
+		input, err := s.buildStatusRuleInput(
+			ctx, q, update.UUID, stat.Name, status, up,
+			update.Document, update.Meta, statusHeads,
+		)
+		if err != nil {
+			return nil, err
+		}
 
-		if len(rules) > 0 {
-			input := StatusRuleInput{
-				Name:   stat.Name,
-				Status: status,
-				Update: up,
-				Heads:  statusHeads,
+		violations := workflows.EvaluateRules(input)
+
+		for _, v := range violations {
+			if v.AccessViolation {
+				return nil, DocStoreErrorf(
+					ErrCodePermissionDenied,
+					"status rule violation %q: %s",
+					v.Name,
+					v.Description)
 			}
+		}
 
-			auth, ok := GetAuthInfo(ctx)
-			if ok {
-				input.User = auth.Claims
-			}
-
-			if update.Document != nil && status.Version == up.Version {
-				input.Document = *update.Document
-			} else if update.Document == nil {
-				d, err := s.loadDocument(
-					ctx, q, update.UUID, status.Version)
-				if err != nil {
-					return nil, fmt.Errorf(
-						"failed to retrieve document for rule evaluation: %w", err)
-				}
-
-				input.Document = *d
-			}
-
-			violations := evaluateStatusRules(input, rules)
-
-			for _, v := range violations {
-				if v.AccessViolation {
-					return nil, DocStoreErrorf(
-						ErrCodePermissionDenied,
-						v.Description)
-				}
-			}
-
-			if len(violations) > 0 {
-				return nil, DocStoreErrorf(ErrCodeBadRequest,
-					"status rule violation: %w", StatusRuleError{
-						Violations: violations,
-					})
-			}
+		if len(violations) > 0 {
+			return nil, DocStoreErrorf(ErrCodeBadRequest,
+				"status rule violation: %w", StatusRuleError{
+					Violations: violations,
+				})
 		}
 
 		err = q.CreateStatus(ctx, postgres.CreateStatusParams{
@@ -687,22 +685,57 @@ func (s *PGDocStore) Update(ctx context.Context, update UpdateRequest) (*Documen
 	return &up, nil
 }
 
+func (s *PGDocStore) buildStatusRuleInput(
+	ctx context.Context, q *postgres.Queries,
+	uuid uuid.UUID, name string, status Status, up DocumentUpdate,
+	d *doc.Document, versionMeta doc.DataMap, statusHeads map[string]Status,
+) (StatusRuleInput, error) {
+	input := StatusRuleInput{
+		Name:   name,
+		Status: status,
+		Update: up,
+		Heads:  statusHeads,
+	}
+
+	auth, ok := GetAuthInfo(ctx)
+	if ok {
+		input.User = auth.Claims
+	}
+
+	if d != nil && status.Version == up.Version {
+		input.Document = *d
+		input.VersionMeta = versionMeta
+	} else if d == nil {
+		d, meta, err := s.loadDocument(
+			ctx, q, uuid, status.Version)
+		if err != nil {
+			return StatusRuleInput{}, fmt.Errorf(
+				"failed to retrieve document for rule evaluation: %w", err)
+		}
+
+		input.VersionMeta = meta
+		input.Document = *d
+	}
+
+	return input, nil
+}
+
 func (s *PGDocStore) loadDocument(
 	ctx context.Context, q *postgres.Queries,
 	uuid uuid.UUID, version int64,
-) (*doc.Document, error) {
-	docData, err := q.GetDocumentVersionData(ctx,
-		postgres.GetDocumentVersionDataParams{
+) (*doc.Document, doc.DataMap, error) {
+	docV, err := q.GetFullVersion(ctx,
+		postgres.GetFullVersionParams{
 			Uuid:    uuid,
 			Version: version,
 		})
 	if err != nil {
-		return nil, fmt.Errorf("failed to load document data: %w", err)
+		return nil, nil, fmt.Errorf("failed to load document data: %w", err)
 	}
 
-	if docData == nil {
+	if docV.DocumentData == nil {
 		// TODO: take pruned document versions into account
-		return nil, errors.New(
+		return nil, nil, errors.New(
 			"no support for retrieving archived versions yet")
 	}
 
@@ -712,38 +745,137 @@ func (s *PGDocStore) loadDocument(
 
 	var d doc.Document
 
-	err = json.Unmarshal(docData, &d)
+	err = json.Unmarshal(docV.DocumentData, &d)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"failed to parse stored document: %w", err)
 	}
 
-	return &d, nil
+	meta := make(doc.DataMap)
+
+	if docV.Meta != nil {
+		err = json.Unmarshal(docV.Meta, &meta)
+		if err != nil {
+			return nil, nil, fmt.Errorf(
+				"failed to parse stored document version meta: %w", err)
+		}
+	}
+
+	return &d, meta, nil
 }
 
-type StatusRuleInput struct {
-	Name     string
-	Status   Status
-	Update   DocumentUpdate
-	Document doc.Document
-	Heads    map[string]*Status
-	User     JWTClaims
+func (s *PGDocStore) UpdateStatus(
+	ctx context.Context, req UpdateStatusRequest,
+) error {
+	return s.withTX(ctx, "status update", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.UpdateStatus(ctx, postgres.UpdateStatusParams{
+			Name:     req.Name,
+			Disabled: req.Disabled,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to update status: %w", err)
+		}
+
+		notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+			Type: WorkflowEventTypeStatusChange,
+			Name: req.Name,
+		})
+
+		return nil
+	})
 }
 
-type StatusRuleViolation struct {
-	Name            string
-	Description     string
-	Error           string
-	AccessViolation bool
+func (s *PGDocStore) GetStatuses(ctx context.Context) ([]DocumentStatus, error) {
+	res, err := s.reader.GetActiveStatuses(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active statuses: %w", err)
+	}
+
+	var list []DocumentStatus
+
+	for i := range res {
+		list = append(list, DocumentStatus{
+			Name: res[i],
+		})
+	}
+
+	return list, nil
 }
 
-type hardCodedRule struct {
-	AppliesTo   []string
-	Types       []string
-	Name        string
-	Description string
-	AccessRule  bool
-	Exp         *vm.Program
+func (s *PGDocStore) UpdateStatusRule(
+	ctx context.Context, rule StatusRule,
+) error {
+	if len(rule.AppliesTo) == 0 {
+		return DocStoreErrorf(ErrCodeBadRequest,
+			"applies_to cannot be empty")
+	}
+
+	if len(rule.ForTypes) == 0 {
+		return DocStoreErrorf(ErrCodeBadRequest,
+			"for_types cannot be empty")
+	}
+
+	return s.withTX(ctx, "update status rule", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.UpdateStatusRule(ctx, postgres.UpdateStatusRuleParams{
+			Name:        rule.Name,
+			Description: rule.Description,
+			AccessRule:  rule.AccessRule,
+			AppliesTo:   pgStringArray(rule.AppliesTo),
+			ForTypes:    pgStringArray(rule.ForTypes),
+			Expression:  rule.Expression,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to update status rule: %w", err)
+		}
+
+		notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+			Type: WorkflowEventTypeStatusRuleChange,
+			Name: rule.Name,
+		})
+
+		return nil
+	})
+}
+
+func (s *PGDocStore) DeleteStatusRule(
+	ctx context.Context, name string,
+) error {
+	return s.withTX(ctx, "delete status rule", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.DeleteStatusRule(ctx, name)
+		if err != nil {
+			return fmt.Errorf("failed to delete status rule: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (s *PGDocStore) GetStatusRules(ctx context.Context) ([]StatusRule, error) {
+	res, err := s.reader.GetStatusRules(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch status rules: %w", err)
+	}
+
+	var list []StatusRule
+
+	for _, row := range res {
+		list = append(list, StatusRule{
+			Name:        row.Name,
+			Description: row.Description,
+			AccessRule:  row.AccessRule,
+			AppliesTo:   row.AppliesTo.Elements,
+			ForTypes:    row.ForTypes.Elements,
+			Expression:  row.Expression,
+		})
+	}
+
+	return list, nil
 }
 
 type StatusRuleError struct {
@@ -759,117 +891,6 @@ func (err StatusRuleError) Error() string {
 
 	return fmt.Sprintf("violates the following status rules: %s",
 		strings.Join(rules, ", "))
-}
-
-// HACK: obviously this shouldn't be hard-coded.
-var hardRules = []hardCodedRule{
-	{
-		AppliesTo: []string{"usable"},
-		Types:     []string{"core/article"},
-		Name:      "must-be-approved",
-		Exp: mustCompileStatusRule(`
-Heads?.approved != nil and Heads.approved.Version == Status.Version`),
-	},
-	{
-		AppliesTo: []string{"usable"},
-		Types:     []string{"core/article"},
-		Name:      "republish-reason",
-		Exp: mustCompileStatusRule(`
-Status.ID == 1 or Status.Meta?.reason in ["fix", "correction", "development"]`),
-	},
-	{
-		AppliesTo: []string{"usable", "approved"},
-		Types:     []string{"core/article"},
-		Name:      "require-paragraphs",
-		Exp: mustCompileStatusRule(`
-any(Document.Content, {.Type == "core/paragraph"})`),
-	},
-	{
-		AppliesTo: []string{"usable", "approved"},
-		Types:     []string{"core/article"},
-		Name:      "start-with-heading",
-		Exp: mustCompileStatusRule(`
-len(Document.Content) > 0
-  and Document.Content[0].Type == "core/heading-1"`),
-	},
-	{
-		AppliesTo: []string{"usable"},
-		Types: []string{
-			"core/place", "core/person",
-			"core/organisation", "core/category",
-		},
-		Name:       "must-be-concept-admin",
-		AccessRule: true,
-		Exp: mustCompileStatusRule(`
-User.HasScope("concept-admin")`),
-	},
-	{
-		AppliesTo:   []string{"usable"},
-		Types:       []string{"core/article"},
-		Name:        "must-be-allowed-to-publish",
-		Description: "Publishing content requires the scope 'publish'",
-		AccessRule:  true,
-		Exp: mustCompileStatusRule(`
-User.HasScope("publish")`),
-	},
-}
-
-func applicableStatusRules(status string) []hardCodedRule {
-	var rules []hardCodedRule
-
-	for i := range hardRules {
-		if !slices.Contains(hardRules[i].AppliesTo, status) {
-			continue
-		}
-
-		rules = append(rules, hardRules[i])
-	}
-
-	return rules
-}
-
-// TODO: this doesn't belong in the PGDocStore layer, move on up!
-func evaluateStatusRules(
-	input StatusRuleInput, rules []hardCodedRule,
-) []StatusRuleViolation {
-	var violations []StatusRuleViolation
-
-	for i := range rules {
-		if !slices.Contains(rules[i].Types, input.Document.Type) {
-			continue
-		}
-
-		res, err := expr.Run(rules[i].Exp, input)
-		valid, ok := res.(bool)
-
-		if err != nil || !ok || !valid {
-			v := StatusRuleViolation{
-				Name:            rules[i].Name,
-				Description:     rules[i].Description,
-				AccessViolation: rules[i].AccessRule,
-			}
-
-			if err != nil {
-				v.Error = err.Error()
-			}
-
-			violations = append(violations, v)
-		}
-	}
-
-	return violations
-}
-
-func mustCompileStatusRule(expression string) *vm.Program {
-	p, err := expr.Compile(expression,
-		expr.Env(StatusRuleInput{}),
-		expr.AsBool(),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	return p
 }
 
 // RegisterSchema implements DocStore.

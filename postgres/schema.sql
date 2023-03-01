@@ -334,6 +334,18 @@ CREATE TABLE public.signing_keys (
 ALTER TABLE public.signing_keys OWNER TO repository;
 
 --
+-- Name: status; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.status (
+    name text NOT NULL,
+    disabled boolean NOT NULL
+);
+
+
+ALTER TABLE public.status OWNER TO repository;
+
+--
 -- Name: status_heads; Type: TABLE; Schema: public; Owner: repository
 --
 
@@ -347,6 +359,22 @@ CREATE TABLE public.status_heads (
 
 
 ALTER TABLE public.status_heads OWNER TO repository;
+
+--
+-- Name: status_rule; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.status_rule (
+    name text NOT NULL,
+    description text NOT NULL,
+    access_rule boolean NOT NULL,
+    applies_to text[] NOT NULL,
+    for_types text[] NOT NULL,
+    expression text NOT NULL
+);
+
+
+ALTER TABLE public.status_rule OWNER TO repository;
 
 --
 -- Name: acl_audit acl_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
@@ -442,6 +470,22 @@ ALTER TABLE ONLY public.signing_keys
 
 ALTER TABLE ONLY public.status_heads
     ADD CONSTRAINT status_heads_pkey PRIMARY KEY (uuid, name);
+
+
+--
+-- Name: status status_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.status
+    ADD CONSTRAINT status_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: status_rule status_rule_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.status_rule
+    ADD CONSTRAINT status_rule_pkey PRIMARY KEY (name);
 
 
 --

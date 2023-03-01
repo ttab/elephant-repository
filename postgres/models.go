@@ -100,10 +100,24 @@ type SigningKey struct {
 	Spec []byte
 }
 
+type Status struct {
+	Name     string
+	Disabled bool
+}
+
 type StatusHead struct {
 	Uuid       uuid.UUID
 	Name       string
 	CurrentID  int64
 	Updated    pgtype.Timestamptz
 	UpdaterUri string
+}
+
+type StatusRule struct {
+	Name        string
+	Description string
+	AccessRule  bool
+	AppliesTo   pgtype.Array[string]
+	ForTypes    pgtype.Array[string]
+	Expression  string
 }
