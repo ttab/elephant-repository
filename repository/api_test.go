@@ -287,18 +287,6 @@ or Heads.approved_legal.Version == Status.Version`,
 	})
 	test.Must(t, err, "create publish permission rule")
 
-	_, err = workflowClient.CreateStatusRule(ctx, &rpc.CreateStatusRuleRequest{
-		Rule: &rpc.StatusRule{
-			Name:        "require-legal-scope",
-			Description: "legal scope is required for setting approved_legal",
-			Expression:  `User.HasScope("legal")`,
-			AccessRule:  true,
-			AppliesTo:   []string{"approved_legal"},
-			ForTypes:    []string{"core/article"},
-		},
-	})
-	test.Must(t, err, "create publish permission rule")
-
 	_, err = workflowClient.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
 		Name: "approved_legal",
 	})
