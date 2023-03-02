@@ -65,7 +65,7 @@ func runServer(c *cli.Context) error {
 
 	err := level.UnmarshalText([]byte(logLevel))
 	if err != nil {
-		level = slog.LevelError
+		level = slog.LevelWarn
 
 		logger.Error("invalid log level", err,
 			internal.LogKeyLogLevel, logLevel)
