@@ -10,20 +10,28 @@ TODO: UI is in a broken state at the moment, prioritised getting Postgres store 
 
 ## Preparing the environment
 
-Follow [the instructions](#the-database) to get the database up and running. Then start minio as well, and log into http://localhost:9001/ using minioadmin/minioadmin. Go to "Access Keys" and create an access key for use in the ".env" file.
+Follow [the instructions](#the-database) to get the database up and running.
 
-Create a ".env" file containing the following values:
+Then create a ".env" file containing the following values:
 
 ```
 S3_ENDPOINT=http://localhost:9000/
-S3_ACCESS_KEY_ID=[your access key]
-S3_ACCESS_KEY_SECRET=[your access key secret]
+S3_ACCESS_KEY_ID=minioadmin
+S3_ACCESS_KEY_SECRET=minioadmin
 JWT_SIGNING_KEY='MIGkAgEBBDAgdjcifmVXiJoQh7IbTnsCS81CxYHQ1r6ftXE6ykJDz1SoQJEB6LppaCLpNBJhGNugBwYFK4EEACKhZANiAAS4LqvuFUwFXUNpCPTtgeMy61hE-Pdm57OVzTaVKUz7GzzPKNoGbcTllPGDg7nzXIga9ObRNs8ytSLQMOWIO8xJW35Xko4kwPR_CVsTS5oMaoYnBCOZYEO2NXND7gU7GoM'
 ```
 
 I load this environment file using `export $(cat .env | xargs)`.
 
-The server will generate and log a JWT signing key if it's missing from the environment.
+The server will generate and a JWT signing key (and log a warning) if it's missing from the environment.
+
+## Running the repository server
+
+The repository server runs the API, archiver, and replicator. If your environment has been set up correctly (env vars, postgres, and minio) you should be able to run it like this:
+
+``` shell
+go run ./cmd/repository run
+```
 
 ## Running ingester
 
@@ -36,7 +44,6 @@ go run ./cmd/docformat ingest --state-dir ../localstate/docformat.data
 
 Pass in `--start-pos=-5000` to start from the last 5000 events, or an exact event number to start after.
 
-Pass in `--ui` to start a web UI on ":1080", pass in f.ex. `--addr 1026.30.32:8080` if you want to start the listener on a different port or interface.
 
 ### Running ingester against production
 
@@ -48,14 +55,6 @@ Use the imidToken cookie instead, and set
 ```
 
 Make sure to use a different state dir for the environment.
-
-## Running the repository server
-
-The repository server runs the API, archiver, and replicator. If your environment has been set up correctly (env vars, postgres, and minio) you should be able to run it like this:
-
-``` shell
-go run ./cmd/repository run
-```
 
 ## Calling the API
 

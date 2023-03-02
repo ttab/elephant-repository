@@ -52,7 +52,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	test.Equal(t, 1, res.Version, "expected this to be the first version")
 
-	doc2 := baseDocument(docUUID, docURI)
+	doc2 := test.CloneMessage(doc)
 
 	doc2.Content = append(doc2.Content, &rpc.Block{
 		Type: "core/heading-1",
