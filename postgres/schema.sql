@@ -81,39 +81,6 @@ $$;
 ALTER FUNCTION public.create_version(uuid uuid, version bigint, created timestamp with time zone, creator_uri text, meta jsonb, document_data jsonb) OWNER TO repository;
 
 --
--- Name: create_version(uuid, text, bigint, bytea, text, text, text, timestamp with time zone, text, jsonb, jsonb); Type: FUNCTION; Schema: public; Owner: repository
---
-
-CREATE FUNCTION public.create_version(uuid uuid, uri text, version bigint, hash bytea, title text, type text, language text, created timestamp with time zone, creator_uri text, meta jsonb, document_data jsonb) RETURNS void
-    LANGUAGE sql
-    AS $$
-   insert into document(
-               uuid, uri, created, creator_uri,
-               updated, updater_uri, current_version
-          )
-          values(
-               uuid, uri, created, creator_uri,
-               created, creator_uri, version
-          )
-          on conflict (uuid) do update
-             set updated = create_version.created,
-                 updater_uri = create_version.creator_uri,
-                 current_version = version;
-
-   insert into document_version(
-               uuid, uri, version, hash, title, type, language,
-               created, creator_uri, meta, document_data, archived
-          )
-          values(
-               uuid, uri, version, hash, document_data->>'title', type, language,
-               created, creator_uri, meta, document_data, false
-          );
-$$;
-
-
-ALTER FUNCTION public.create_version(uuid uuid, uri text, version bigint, hash bytea, title text, type text, language text, created timestamp with time zone, creator_uri text, meta jsonb, document_data jsonb) OWNER TO repository;
-
---
 -- Name: delete_document(uuid, text, bigint); Type: FUNCTION; Schema: public; Owner: repository
 --
 
@@ -339,7 +306,7 @@ ALTER TABLE public.signing_keys OWNER TO repository;
 
 CREATE TABLE public.status (
     name text NOT NULL,
-    disabled boolean NOT NULL
+    disabled boolean DEFAULT false NOT NULL
 );
 
 
