@@ -14,6 +14,7 @@ type BackendConfig struct {
 	S3KeySecret   string
 	S3Insecure    bool
 	NoArchiver    bool
+	ArchiverCount int
 	NoReplicator  bool
 	JWTSigningKey string
 }
@@ -23,6 +24,7 @@ func BackendConfigFromContext(c *cli.Context) BackendConfig {
 		DB:            c.String("db"),
 		ArchiveBucket: c.String("archive-bucket"),
 		NoArchiver:    c.Bool("no-archiver"),
+		ArchiverCount: c.Int("archiver-count"),
 		NoReplicator:  c.Bool("no-replicator"),
 		JWTSigningKey: c.String("jwt-signing-key"),
 		S3Options: repository.S3Options{
@@ -67,6 +69,11 @@ func BackendFlags() []cli.Flag {
 		&cli.BoolFlag{
 			Name:  "no-archiver",
 			Usage: "Disable the archiver",
+		},
+		&cli.IntFlag{
+			Name:  "archiver-count",
+			Usage: "Number of archivers to run",
+			Value: 16,
 		},
 		&cli.BoolFlag{
 			Name:  "no-replicator",

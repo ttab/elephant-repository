@@ -103,7 +103,7 @@ message GetDocumentRequest {
   // status update. Can be used instead of specifying a version.
   string status = 3;
   // Lock will lock the document for updates. This only affects the creation of
-  // new versions of the document statuses can still be updated.
+  // new versions of the document, statuses can still be updated.
   bool lock = 4;
 }
 

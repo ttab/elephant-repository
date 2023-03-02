@@ -7,7 +7,11 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
+	_ "expvar" // Register the expvar handlers
 	"fmt"
+	"net/http"
+	_ "net/http/pprof" // Register the pprof handlers
 	"os"
 	"time"
 
@@ -30,6 +34,10 @@ func main() {
 			&cli.StringFlag{
 				Name:  "addr",
 				Value: ":1080",
+			},
+			&cli.StringFlag{
+				Name:  "profile-addr",
+				Value: ":1081",
 			},
 			&cli.StringFlag{
 				Name:    "log-level",
@@ -55,10 +63,11 @@ func main() {
 
 func runServer(c *cli.Context) error {
 	var (
-		addr     = c.String("addr")
-		logLevel = c.String("log-level")
-		conf     = cmd.BackendConfigFromContext(c)
-		logger   = slog.New(slog.NewJSONHandler(os.Stdout))
+		addr        = c.String("addr")
+		profileAddr = c.String("profile-addr")
+		logLevel    = c.String("log-level")
+		conf        = cmd.BackendConfigFromContext(c)
+		logger      = slog.New(slog.NewJSONHandler(os.Stdout))
 	)
 
 	var level slog.Level
@@ -141,12 +150,14 @@ func runServer(c *cli.Context) error {
 	}
 
 	if !conf.NoArchiver {
-		group.Go(func() error {
-			log := logger.With(internal.LogKeyComponent, "archiver")
+		log := logger.With(internal.LogKeyComponent, "archiver")
 
-			return startArchiver(c.Context, gCtx,
-				log, conf, dbpool)
-		})
+		for i := 0; i < conf.ArchiverCount; i++ {
+			group.Go(func() error {
+				return startArchiver(c.Context, gCtx,
+					log, conf, dbpool)
+			})
+		}
 	}
 
 	err = group.Wait()
@@ -170,6 +181,25 @@ func runServer(c *cli.Context) error {
 	workflowService := repository.NewWorkflowsService(store)
 
 	logger.Debug("starting API server")
+
+	go func() {
+		profileServer := http.Server{
+			Addr:    profileAddr,
+			Handler: http.DefaultServeMux,
+		}
+
+		go func() {
+			<-c.Context.Done()
+			profileServer.Close()
+		}()
+
+		err := profileServer.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			logger.Debug("profile server closed")
+		} else if err != nil {
+			logger.Error("failed to start profile server", err)
+		}
+	}()
 
 	router := httprouter.New()
 

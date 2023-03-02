@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/jellydator/ttlcache/v3"
 )
 
 type JWTClaims struct {
@@ -58,6 +60,10 @@ type AuthInfo struct {
 
 var ErrNoAuthorization = errors.New("no authorization provided")
 
+// TODO: this global state is obviously bad. The auth method and any caches
+// should be instantiated at application instantiation.
+var cache = ttlcache.New[string, AuthInfo]()
+
 func AuthInfoFromHeader(key *ecdsa.PublicKey, authorization string) (*AuthInfo, error) {
 	if authorization == "" {
 		return nil, ErrNoAuthorization
@@ -68,6 +74,13 @@ func AuthInfoFromHeader(key *ecdsa.PublicKey, authorization string) (*AuthInfo, 
 	tokenType = strings.ToLower(tokenType)
 	if tokenType != "bearer" {
 		return nil, errors.New("only bearer tokens are supported")
+	}
+
+	item := cache.Get(token)
+	if item != nil && !item.IsExpired() {
+		value := item.Value()
+
+		return &value, nil
 	}
 
 	var claims JWTClaims
@@ -85,9 +98,13 @@ func AuthInfoFromHeader(key *ecdsa.PublicKey, authorization string) (*AuthInfo, 
 		return nil, fmt.Errorf("invalid issuer %q", claims.Issuer)
 	}
 
-	return &AuthInfo{
+	auth := AuthInfo{
 		Claims: claims,
-	}, nil
+	}
+
+	cache.Set(token, auth, time.Until(auth.Claims.ExpiresAt.Time))
+
+	return &auth, nil
 }
 
 func SetAuthInfo(ctx context.Context, info *AuthInfo) context.Context {

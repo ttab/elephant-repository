@@ -16,6 +16,7 @@ require (
 	github.com/jackc/pgx/v5 v5.3.0
 	github.com/jackc/tern v1.13.0
 	github.com/jackc/tern/v2 v2.0.0
+	github.com/jellydator/ttlcache/v3 v3.0.1
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/kyleconroy/sqlc v1.16.1-0.20230119081828-f1eef01c0f50
 	github.com/navigacontentlab/navigadoc v0.1.2

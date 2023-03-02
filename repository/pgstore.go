@@ -307,7 +307,7 @@ func (s *PGDocStore) GetDocument(
 		return nil, fmt.Errorf("failed to fetch document data: %w", err)
 	}
 
-	// TODO: check for nil data after archiving has been implemented.
+	// TODO: check for nil data after pruning has been implemented.
 
 	var d doc.Document
 
