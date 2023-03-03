@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
@@ -102,7 +103,10 @@ func testingAPIServer(
 		go dbpool.Close()
 	})
 
-	store, err := repository.NewPGDocStore(logger, dbpool)
+	store, err := repository.NewPGDocStore(logger, dbpool,
+		repository.PGDocStoreOptions{
+			DeleteTimeout: 1 * time.Second,
+		})
 	test.Must(t, err, "create doc store")
 
 	go store.RunListener(ctx)
@@ -117,6 +121,8 @@ func testingAPIServer(
 
 		err = archiver.Run(ctx)
 		test.Must(t, err, "run archiver")
+
+		t.Cleanup(archiver.Stop)
 	}
 
 	validator, err := repository.NewValidator(

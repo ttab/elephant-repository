@@ -84,8 +84,15 @@ func (a *DocumentsService) Delete(
 		Meta:    req.Meta,
 		IfMatch: req.IfMatch,
 	})
-	// TODO: Check for delete in progress
-	if err != nil {
+
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
+		return nil, twirp.FailedPrecondition.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
+		// Treating a delete call as a success if the delete already is
+		// in progress.
+		return &repository.DeleteDocumentResponse{}, nil
+	case err != nil:
 		return nil, twirp.InternalErrorf(
 			"failed to delete document from data store: %w", err)
 	}
@@ -542,7 +549,6 @@ func (a *DocumentsService) Update(
 
 	res, err := a.store.Update(ctx, a.workflows, up)
 
-	// TODO: generic docstore-to-twirp error translation is needed
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeOptimisticLock):
 		return nil, twirp.FailedPrecondition.Error(err.Error())

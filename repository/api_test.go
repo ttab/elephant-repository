@@ -7,6 +7,7 @@ import (
 
 	"github.com/ttab/elephant/internal/test"
 	rpc "github.com/ttab/elephant/rpc/repository"
+	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
 )
 
@@ -28,8 +29,6 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
-	// TODO: We don't drain the archiver before finishing tests, so
-	// sometimes an archiver related error will be logged out of band.
 	tc := testingAPIServer(t, logger, true)
 
 	client := tc.DocumentsClient(t,
@@ -101,10 +100,14 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	test.EqualMessage(t, doc, firstVersion.Document,
 		"expected the first document to be returned")
 
+	t0 := time.Now()
+
 	_, err = client.Delete(ctx, &rpc.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
 	test.Must(t, err, "delete the document")
+
+	t.Logf("waited %v for delete", time.Since(t0))
 
 	_, err = client.Get(ctx, &rpc.GetDocumentRequest{
 		Uuid: docUUID,
@@ -116,6 +119,43 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		Version: 1,
 	})
 	test.MustNot(t, err, "expected get of old version to fail after delete")
+}
+
+func TestIntegrationDeleteTimeout(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, false)
+
+	client := tc.DocumentsClient(t,
+		test.StandardClaims(t, "doc_read doc_write doc_delete"))
+
+	ctx := test.Context(t)
+
+	const (
+		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI  = "article://test/123"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	_, err := client.Update(ctx, &rpc.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.Must(t, err, "create article")
+
+	_, err = client.Delete(ctx, &rpc.DeleteDocumentRequest{
+		Uuid: docUUID,
+	})
+	test.MustNot(t, err, "expected the delete to time out")
+
+	test.IsTwirpError(t, err, twirp.FailedPrecondition)
 }
 
 func TestIntegrationStatuses(t *testing.T) {
@@ -214,6 +254,8 @@ func TestIntegrationStatuses(t *testing.T) {
 		},
 	})
 	test.MustNot(t, err, "should fail to use unknown status")
+
+	test.IsTwirpError(t, err, twirp.InvalidArgument)
 
 	test.EqualMessage(t,
 		&rpc.GetDocumentResponse{
@@ -348,6 +390,8 @@ or Heads.approved_legal.Version == Status.Version`,
 	})
 	test.MustNot(t, err, "don't publish document without approval")
 
+	test.IsTwirpError(t, err, twirp.InvalidArgument)
+
 	if !strings.Contains(err.Error(), approvalName) {
 		t.Fatalf("error message should mention %q, got: %s",
 			approvalName, err.Error())
@@ -368,6 +412,8 @@ or Heads.approved_legal.Version == Status.Version`,
 		},
 	})
 	test.MustNot(t, err, "don't allow publish without the correct scope")
+
+	test.IsTwirpError(t, err, twirp.PermissionDenied)
 
 	if !strings.Contains(err.Error(), requirePublishName) {
 		t.Fatalf("error message should mention %q, got: %s",

@@ -103,6 +103,9 @@ type Archiver struct {
 	pool               *pgxpool.Pool
 	signingKeys        SigningKeySet
 	signingKeysChecked time.Time
+
+	cancel  func()
+	stopped chan struct{}
 }
 
 func NewArchiver(opts ArchiverOptions) *Archiver {
@@ -120,17 +123,31 @@ func (a *Archiver) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to ensure signing keys: %w", err)
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+
+	a.cancel = cancel
+	a.stopped = make(chan struct{})
+
 	go a.run(ctx)
 
 	return nil
 }
 
+func (a *Archiver) Stop() {
+	a.cancel()
+	<-a.stopped
+}
+
 func (a *Archiver) run(ctx context.Context) {
 	const restartWaitSeconds = 10
 
+	defer close(a.stopped)
+
 	for {
 		err := a.loop(ctx)
-		if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		} else if err != nil {
 			a.logger.ErrorCtx(
 				ctx, "archiver error, restarting", err,
 				slog.Duration(internal.LogKeyDelay, restartWaitSeconds),
@@ -146,9 +163,29 @@ func (a *Archiver) run(ctx context.Context) {
 }
 
 func (a *Archiver) loop(ctx context.Context) error {
-	for {
-		wait := 1 * time.Second
+	wait := make(map[string]time.Time)
 
+	runWithDelay := func(
+		name string, d time.Duration, fn func(ctx context.Context) (bool, error),
+	) error {
+		if time.Now().Before(wait[name]) {
+			return nil
+		}
+
+		ok, err := fn(ctx)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to %s: %w", name, err)
+		}
+
+		if !ok {
+			wait[name] = time.Now().Add(d)
+		}
+
+		return nil
+	}
+
+	for {
 		if time.Since(a.signingKeysChecked) > 24*time.Hour {
 			err := a.ensureSigningKeys(ctx)
 			if err != nil {
@@ -157,28 +194,31 @@ func (a *Archiver) loop(ctx context.Context) error {
 			}
 		}
 
-		err := a.archiveDocumentVersions(ctx)
+		err := runWithDelay(
+			"archive document versions", 500*time.Millisecond,
+			a.archiveDocumentVersions)
 		if err != nil {
-			return fmt.Errorf(
-				"failed to archive document versions: %w", err)
+			return err
 		}
 
-		err = a.archiveDocumentStatuses(ctx)
+		err = runWithDelay(
+			"archive document statuses", 500*time.Millisecond,
+			a.archiveDocumentStatuses)
 		if err != nil {
-			return fmt.Errorf(
-				"failed to archive document statuses: %w", err)
+			return err
+		}
+
+		err = runWithDelay(
+			"process document deletes", 500*time.Millisecond,
+			a.processDeletes)
+		if err != nil {
+			return err
 		}
 
 		// TODO: Archive ACLs
 
-		err = a.processDeletes(ctx)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to process document deletes: %w", err)
-		}
-
 		select {
-		case <-time.After(wait):
+		case <-time.After(10 * time.Millisecond):
 		case <-ctx.Done():
 			return nil
 		}
@@ -187,10 +227,10 @@ func (a *Archiver) loop(ctx context.Context) error {
 
 func (a *Archiver) processDeletes(
 	ctx context.Context,
-) error {
+) (bool, error) {
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	defer internal.SafeRollback(ctx, a.logger, tx,
@@ -200,9 +240,9 @@ func (a *Archiver) processDeletes(
 
 	deleteOrder, err := q.GetDocumentForDeletion(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		return false, nil
 	} else if err != nil {
-		return fmt.Errorf("failed to get pending deletions: %w", err)
+		return false, fmt.Errorf("failed to get pending deletions: %w", err)
 	}
 
 	prefix := fmt.Sprintf("documents/%s/", deleteOrder.Uuid)
@@ -254,25 +294,25 @@ func (a *Archiver) processDeletes(
 
 	err = group.Wait()
 	if err != nil {
-		return fmt.Errorf("failed to move all document objects: %w", err)
+		return false, fmt.Errorf("failed to move all document objects: %w", err)
 	}
 
 	count, err := q.FinaliseDelete(ctx, deleteOrder.Uuid)
 	if err != nil {
-		return fmt.Errorf("failed to finalise delete: %w", err)
+		return false, fmt.Errorf("failed to finalise delete: %w", err)
 	}
 
 	if count != 1 {
-		return errors.New(
+		return false, errors.New(
 			"no match for document delete, database might be inconsisten")
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return false, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return nil
+	return true, nil
 }
 
 func (a *Archiver) moveDeletedObject(
@@ -314,10 +354,10 @@ type ArchivedDocumentVersion struct {
 
 func (a *Archiver) archiveDocumentVersions(
 	ctx context.Context,
-) error {
+) (bool, error) {
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	defer internal.SafeRollback(ctx, a.logger, tx,
@@ -327,9 +367,9 @@ func (a *Archiver) archiveDocumentVersions(
 
 	unarchived, err := q.GetDocumentVersionForArchiving(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		return false, nil
 	} else if err != nil {
-		return fmt.Errorf(
+		return false, fmt.Errorf(
 			"failed to get unarchived version from the database: %w",
 			err)
 	}
@@ -346,7 +386,7 @@ func (a *Archiver) archiveDocumentVersions(
 
 	objectBody, err := json.Marshal(&dv)
 	if err != nil {
-		return fmt.Errorf(
+		return false, fmt.Errorf(
 			"failed to marshal archive data to JSON: %w", err)
 	}
 
@@ -354,13 +394,13 @@ func (a *Archiver) archiveDocumentVersions(
 
 	signingKey := a.signingKeys.CurrentKey(time.Now())
 	if signingKey == nil {
-		return fmt.Errorf(
+		return false, fmt.Errorf(
 			"no signing keys have been configured: %w", err)
 	}
 
 	signature, err := NewArchiveSignature(signingKey, checksum)
 	if err != nil {
-		return fmt.Errorf("failed to sign archive data: %w", err)
+		return false, fmt.Errorf("failed to sign archive data: %w", err)
 	}
 
 	key := fmt.Sprintf("documents/%s/versions/%d.json", dv.UUID, dv.Version)
@@ -371,7 +411,7 @@ func (a *Archiver) archiveDocumentVersions(
 		Signature: signature.String(),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to update archived status in db: %w",
+		return false, fmt.Errorf("failed to update archived status in db: %w",
 			err)
 	}
 
@@ -390,7 +430,7 @@ func (a *Archiver) archiveDocumentVersions(
 		},
 	})
 	if err != nil {
-		return fmt.Errorf(
+		return false, fmt.Errorf(
 			"failed to store archive object: %w", err)
 	}
 
@@ -414,10 +454,10 @@ func (a *Archiver) archiveDocumentVersions(
 				internal.LogKeyObjectKey, key)
 		}
 
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return false, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return nil
+	return true, nil
 }
 
 type ArchivedDocumentStatus struct {
@@ -434,10 +474,10 @@ type ArchivedDocumentStatus struct {
 
 func (a *Archiver) archiveDocumentStatuses(
 	ctx context.Context,
-) error {
+) (bool, error) {
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	defer internal.SafeRollback(ctx, a.logger, tx,
@@ -450,9 +490,9 @@ func (a *Archiver) archiveDocumentStatuses(
 	// instead.
 	unarchived, err := q.GetDocumentStatusForArchiving(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		return false, nil
 	} else if err != nil {
-		return fmt.Errorf(
+		return false, fmt.Errorf(
 			"failed to get unarchived version from the database: %w",
 			err)
 	}
@@ -471,7 +511,7 @@ func (a *Archiver) archiveDocumentStatuses(
 
 	objectBody, err := json.Marshal(&ds)
 	if err != nil {
-		return fmt.Errorf(
+		return false, fmt.Errorf(
 			"failed to marshal archive data to JSON: %w", err)
 	}
 
@@ -479,13 +519,13 @@ func (a *Archiver) archiveDocumentStatuses(
 
 	signingKey := a.signingKeys.CurrentKey(time.Now())
 	if signingKey == nil {
-		return fmt.Errorf(
+		return false, fmt.Errorf(
 			"no signing keys have been configured: %w", err)
 	}
 
 	signature, err := NewArchiveSignature(signingKey, checksum)
 	if err != nil {
-		return fmt.Errorf("failed to sign archive data: %w", err)
+		return false, fmt.Errorf("failed to sign archive data: %w", err)
 	}
 
 	key := fmt.Sprintf("documents/%s/statuses/%s/%d.json",
@@ -497,7 +537,7 @@ func (a *Archiver) archiveDocumentStatuses(
 		Signature: signature.String(),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to update archived status in db: %w",
+		return false, fmt.Errorf("failed to update archived status in db: %w",
 			err)
 	}
 
@@ -516,7 +556,7 @@ func (a *Archiver) archiveDocumentStatuses(
 		},
 	})
 	if err != nil {
-		return fmt.Errorf(
+		return false, fmt.Errorf(
 			"failed to store archive object: %w", err)
 	}
 
@@ -541,10 +581,10 @@ func (a *Archiver) archiveDocumentStatuses(
 				internal.LogKeyObjectKey, key)
 		}
 
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return false, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return nil
+	return true, nil
 }
 
 func (a *Archiver) ensureSigningKeys(ctx context.Context) error {

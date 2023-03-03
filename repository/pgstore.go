@@ -27,21 +27,34 @@ const (
 	LockLogicalReplication = elephantCRC + 2
 )
 
+type PGDocStoreOptions struct {
+	DeleteTimeout time.Duration
+}
+
 type PGDocStore struct {
 	logger *slog.Logger
 	pool   *pgxpool.Pool
 	reader *postgres.Queries
+	opts   PGDocStoreOptions
 
 	archived  *FanOut[ArchivedEvent]
 	schemas   *FanOut[SchemaEvent]
 	workflows *FanOut[WorkflowEvent]
 }
 
-func NewPGDocStore(logger *slog.Logger, pool *pgxpool.Pool) (*PGDocStore, error) {
+func NewPGDocStore(
+	logger *slog.Logger, pool *pgxpool.Pool,
+	options PGDocStoreOptions,
+) (*PGDocStore, error) {
+	if options.DeleteTimeout == 0 {
+		options.DeleteTimeout = 5 * time.Second
+	}
+
 	return &PGDocStore{
 		logger:    logger,
 		pool:      pool,
 		reader:    postgres.New(pool),
+		opts:      options,
 		archived:  NewFanOut[ArchivedEvent](),
 		schemas:   NewFanOut[SchemaEvent](),
 		workflows: NewFanOut[WorkflowEvent](),
@@ -233,6 +246,14 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 		return nil
 	}
 
+	timeout := time.After(s.opts.DeleteTimeout)
+
+	archived := make(chan ArchivedEvent)
+
+	go s.archived.Listen(ctx, archived, func(e ArchivedEvent) bool {
+		return e.UUID == req.UUID
+	})
+
 	for {
 		remaining, err := q.GetDocumentUnarchivedCount(ctx, req.UUID)
 		if err != nil {
@@ -245,7 +266,11 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 		}
 
 		select {
+		case <-timeout:
+			return DocStoreErrorf(ErrCodeFailedPrecondition,
+				"timed out while waiting for archiving to complete")
 		case <-time.After(1 * time.Second):
+		case <-archived:
 		case <-ctx.Done():
 			return ctx.Err() //nolint:wrapcheck
 		}

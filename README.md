@@ -280,8 +280,6 @@ TODO: Currently the implementation just logs the events, but the plan is for it 
 
 The repository has an archiving subsystem that records all document changes (versions and statuses) to a S3 compatible store. TODO: We will use this fact to be able to purge document data from old versions in the database.
 
-TODO: The archiver doesn't use any form of concurrency at the moment, so expect it to start lagging behind if the system is put on a write load above 1 op/s.
-
 #### Signing
 
 The repository maintains a set of ECDSA P-384 signing keys that are used to sign
