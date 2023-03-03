@@ -11,7 +11,7 @@ import (
 	_ "expvar" // Register the expvar handlers
 	"fmt"
 	"net/http"
-	_ "net/http/pprof" // Register the pprof handlers
+	_ "net/http/pprof" //nolint:gosec
 	"os"
 	"time"
 
@@ -123,7 +123,8 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	store, err := repository.NewPGDocStore(logger, dbpool)
+	store, err := repository.NewPGDocStore(
+		logger, dbpool, repository.PGDocStoreOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
@@ -184,8 +185,9 @@ func runServer(c *cli.Context) error {
 
 	go func() {
 		profileServer := http.Server{
-			Addr:    profileAddr,
-			Handler: http.DefaultServeMux,
+			Addr:              profileAddr,
+			Handler:           http.DefaultServeMux,
+			ReadHeaderTimeout: 1 * time.Second,
 		}
 
 		go func() {
