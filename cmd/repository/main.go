@@ -153,6 +153,9 @@ func runServer(c *cli.Context) error {
 	if !conf.NoArchiver {
 		log := logger.With(internal.LogKeyComponent, "archiver")
 
+		logger.Debug("starting archiver(s)",
+			internal.LogKeyCount, conf.ArchiverCount)
+
 		for i := 0; i < conf.ArchiverCount; i++ {
 			group.Go(func() error {
 				return startArchiver(c.Context, gCtx,
@@ -226,8 +229,6 @@ func startArchiver(
 	ctx context.Context, setupCtx context.Context, logger *slog.Logger,
 	conf cmd.BackendConfig, dbpool *pgxpool.Pool,
 ) error {
-	logger.Debug("setting up archiver")
-
 	aS3, err := repository.ArchiveS3Client(setupCtx, conf.S3Options)
 	if err != nil {
 		return fmt.Errorf("failed to create S3 client: %w", err)
@@ -239,8 +240,6 @@ func startArchiver(
 		Bucket: conf.ArchiveBucket,
 		DB:     dbpool,
 	})
-
-	logger.Debug("starting archiver")
 
 	err = archiver.Run(ctx)
 	if err != nil {

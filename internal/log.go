@@ -15,4 +15,5 @@ const (
 	LogKeyBucket       = "bucket"
 	LogKeyObjectKey    = "object_key"
 	LogKeyComponent    = "component"
+	LogKeyCount        = "count"
 )
