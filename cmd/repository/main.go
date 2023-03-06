@@ -118,6 +118,7 @@ func runServer(c *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)
 	}
+
 	defer func() {
 		// Don't block for close
 		go dbpool.Close()

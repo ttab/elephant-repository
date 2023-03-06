@@ -230,7 +230,7 @@ func (oc ObjectCache) GetObject(
 
 	header, err := oc.source.GetObject(ctx, uuid, version, o)
 	if err != nil {
-		return nil, err //nolint:wrapcheck
+		return nil, err
 	}
 
 	co := cachedObject{

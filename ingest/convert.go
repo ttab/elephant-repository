@@ -346,7 +346,7 @@ func ConvertBlocks(
 	return out, nil
 }
 
-func selectProcessor( //nolint:ireturn
+func selectProcessor(
 	in doc.Block, proc map[string]BlockProcessor,
 ) (BlockProcessor, error) {
 	keys := []string{

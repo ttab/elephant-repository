@@ -165,6 +165,11 @@ func (a *Archiver) run(ctx context.Context) {
 
 func (a *Archiver) loop(ctx context.Context) error {
 	wait := make(map[string]time.Time)
+
+	// This is fine, pseudorandom is enough, we're not using this for crypto
+	// work.
+	//
+	//nolint:gosec
 	r := mrand.New(mrand.NewSource(time.Now().Unix()))
 
 	runWithDelay := func(

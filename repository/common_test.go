@@ -27,7 +27,7 @@ type TestContext struct {
 	Env              test.Environment
 }
 
-func (tc *TestContext) DocumentsClient( //nolint:ireturn
+func (tc *TestContext) DocumentsClient(
 	t *testing.T, claims repository.JWTClaims,
 ) rpc.Documents {
 	t.Helper()
@@ -47,7 +47,7 @@ func (tc *TestContext) DocumentsClient( //nolint:ireturn
 	return docClient
 }
 
-func (tc *TestContext) WorkflowsClient( //nolint:ireturn
+func (tc *TestContext) WorkflowsClient(
 	t *testing.T, claims repository.JWTClaims,
 ) rpc.Workflows {
 	t.Helper()
@@ -67,7 +67,7 @@ func (tc *TestContext) WorkflowsClient( //nolint:ireturn
 	return workflowsClient
 }
 
-func (tc *TestContext) SchemasClient( //nolint:ireturn
+func (tc *TestContext) SchemasClient(
 	t *testing.T, claims repository.JWTClaims,
 ) rpc.Schemas {
 	t.Helper()

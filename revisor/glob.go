@@ -29,7 +29,7 @@ func CompileGlob(pattern string) (*Glob, error) {
 	}, nil
 }
 
-func compileGlob(pattern string) (glob.Glob, error) { //nolint:ireturn
+func compileGlob(pattern string) (glob.Glob, error) {
 	cg, err := glob.Compile(pattern, '/', '+')
 	if err != nil {
 		return nil, fmt.Errorf("invalid glob pattern: %w", err)
