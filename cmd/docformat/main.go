@@ -376,6 +376,9 @@ func ingestAction(c *cli.Context) error {
 	propFSCache := ingest.NewFSCache(filepath.Join(cacheDir, "properties"))
 	cachedProps := ingest.NewPropertyCache(propFSCache, oc)
 
+	objectFSCache := ingest.NewFSCache(filepath.Join(cacheDir, "oc_objects"))
+	cachedObjectGet := ingest.NewObjectCache(logger, objectFSCache, oc)
+
 	authConf := oauth2.Config{
 		Endpoint: oauth2.Endpoint{
 			TokenURL: repositoryURL + "/token",
@@ -402,7 +405,7 @@ func ingestAction(c *cli.Context) error {
 		LogPos:          db,
 		OCLog:           oc,
 		GetDocument:     cachedGet,
-		Objects:         oc,
+		Objects:         cachedObjectGet,
 		OCProps:         cachedProps,
 		API:             repoClient,
 		Blocklist:       blocklist,

@@ -346,6 +346,11 @@ func (in *Ingester) backfillIngest(
 
 	fillFrom := current.CurrentVersion + 1
 
+	// Don't backfill for non-articles
+	if evt.Content.ContentType != "Article" {
+		fillFrom = evt.Content.Version
+	}
+
 	for v := fillFrom; v <= evt.Content.Version; v++ {
 		evtCopy := evt
 
@@ -491,7 +496,7 @@ func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 		Status: status,
 		Acl:    acl,
 		ImportDirective: &rpc.ImportDirective{
-			OriginallyCreated: evt.Created.Format(time.RFC3339),
+			OriginallyCreated: cd.Timestamp.Format(time.RFC3339),
 			OriginalCreator:   cd.Creator,
 		},
 	})

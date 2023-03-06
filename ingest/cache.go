@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/exp/slog"
 )
 
 type DocumentCache interface {
@@ -174,4 +177,82 @@ func (pc *PropertyCache) GetProperties(
 	}
 
 	return res, nil
+}
+
+func NewObjectCache(
+	logger *slog.Logger, fc *FSCache, source *OCClient,
+) *ObjectCache {
+	return &ObjectCache{
+		logger: logger,
+		fc:     fc,
+		source: source,
+	}
+}
+
+type ObjectCache struct {
+	logger *slog.Logger
+	fc     *FSCache
+	source *OCClient
+}
+
+type cachedObject struct {
+	Header http.Header
+	Data   json.RawMessage
+}
+
+func (oc ObjectCache) GetObject(
+	ctx context.Context, uuid string, version int, o any,
+) (http.Header, error) {
+	ref := VersionReference{
+		UUID:    uuid,
+		Version: version,
+	}
+
+	cached, err := oc.fc.FetchDocument(ref, "")
+	if err == nil {
+		var co cachedObject
+
+		err = json.Unmarshal(cached, &co)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode cache entry: %w", err)
+		}
+
+		err = json.Unmarshal(co.Data, o)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode cached object: %w", err)
+		}
+
+		return co.Header, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf(
+			"failed to fetch properties from cache: %w", err)
+	}
+
+	header, err := oc.source.GetObject(ctx, uuid, version, o)
+	if err != nil {
+		return nil, err //nolint:wrapcheck
+	}
+
+	co := cachedObject{
+		Header: header,
+	}
+
+	data, err := json.MarshalIndent(o, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal object for caching: %w", err)
+	}
+
+	co.Data = data
+
+	cacheEntry, err := json.MarshalIndent(co, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal cache entry: %w", err)
+	}
+
+	err = oc.fc.StoreDocument(ref, "", cacheEntry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to cache result: %w", err)
+	}
+
+	return header, nil
 }
