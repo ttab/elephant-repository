@@ -236,7 +236,7 @@ func loadSchemaAction(c *cli.Context) error {
 			Schema: &repository.Schema{
 				Name:    name,
 				Version: version,
-				Spec:    data,
+				Spec:    string(data),
 			},
 			Activate: activate,
 		})
