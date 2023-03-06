@@ -56,7 +56,7 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
+		slog.Error("failed to run server", err)
 		os.Exit(1)
 	}
 }
@@ -83,6 +83,8 @@ func runServer(c *cli.Context) error {
 	logger = slog.New(slog.HandlerOptions{
 		Level: &level,
 	}.NewJSONHandler(os.Stdout))
+
+	slog.SetDefault(logger)
 
 	var signingKey *ecdsa.PrivateKey
 
@@ -116,7 +118,10 @@ func runServer(c *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)
 	}
-	defer dbpool.Close()
+	defer func() {
+		// Don't block for close
+		go dbpool.Close()
+	}()
 
 	err = dbpool.Ping(c.Context)
 	if err != nil {
