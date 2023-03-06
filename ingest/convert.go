@@ -160,6 +160,7 @@ func ContentBlockProcessors() map[string]BlockProcessor {
 		"blockquote":          convertTextBlock("core/blockquote"),
 		"x-im/table":          retypeBlock("core/table"),
 		"x-im/socialembed":    BlockProcessorFunc(convertSocialembed),
+		"x-im/youtube":        BlockProcessorFunc(convertYoutube),
 		"x-im/unordered-list": BlockProcessorFunc(convertList),
 		"x-im/ordered-list":   BlockProcessorFunc(convertList),
 		"x-tt/visual":         BlockProcessorFunc(convertTTVisual),
@@ -605,6 +606,28 @@ func mediaTopicIdentity(id string) (string, string) {
 		[]byte(topicURI)).String()
 
 	return hashedUUID, topicURI
+}
+
+func convertYoutube(in doc.Block) (doc.Block, error) {
+	out := in
+
+	out.Type = "core/youtube"
+
+	links := make([]doc.Block, len(in.Links))
+
+	for i := range in.Links {
+		l := in.Links[i]
+
+		if l.Rel == "alternate" && l.Type == "text/html" {
+			l.Data = nil
+		}
+
+		links[i] = l
+	}
+
+	out.Links = links
+
+	return out, nil
 }
 
 func convertSocialembed(in doc.Block) (doc.Block, error) {

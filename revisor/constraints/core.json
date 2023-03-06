@@ -234,6 +234,35 @@
           ]
         },
         {
+          "declares": {"type":"core/youtube"},
+          "attributes": {
+            "uri": {"glob":["https://www.youtube.com/**"]},
+            "url": {"glob":["https://www.youtube.com/**"]}
+          },
+          "data": {
+            "start": {"format":"int"}
+          },
+          "links": [
+            {
+              "declares": {"rel":"alternate", "type": "text/html"},
+              "attributes": {
+                "url": {"glob":["https://www.youtube.com/**"]},
+                "title": {}
+              }
+            },
+            {
+              "declares": {"rel":"alternate", "type":"image/jpg"},
+              "attributes": {
+                "url":{}
+              },
+              "data": {
+                "height": {"format":"int"},
+                "width": {"format":"int"}
+              }
+            }
+          ]
+        },
+        {
           "declares": {"type":"core/blockquote"},
           "data": {
             "text":{
