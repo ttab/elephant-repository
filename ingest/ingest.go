@@ -652,6 +652,9 @@ func unitReference(link navigadoc.Block) (string, bool) {
 func (in *Ingester) checkStatus(
 	_ context.Context, status string, metaBlocks []doc.Block,
 ) []*rpc.StatusUpdate {
+	status = strings.TrimPrefix(status, "imext:")
+	status = strings.TrimPrefix(status, "stat:")
+
 	if status == "draft" {
 		return nil
 	}
