@@ -396,5 +396,5 @@ message GetAllActiveSchemasResponse {
 message Schema {
   string name = 1;
   string version = 2;
-  bytes spec = 3;
+  string spec = 3;
 }

@@ -47,7 +47,7 @@ func (a *SchemasService) GetAllActive(
 		res.Schemas = append(res.Schemas, &repository.Schema{
 			Name:    schemas[i].Name,
 			Version: schemas[i].Version,
-			Spec:    data,
+			Spec:    string(data),
 		})
 	}
 
@@ -105,7 +105,7 @@ func (a *SchemasService) Register(
 
 	var spec revisor.ConstraintSet
 
-	err := json.Unmarshal(req.Schema.Spec, &spec)
+	err := json.Unmarshal([]byte(req.Schema.Spec), &spec)
 	if err != nil {
 		return nil, twirp.InvalidArgument.Errorf(
 			"invalid schema: %w", err)
