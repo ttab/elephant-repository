@@ -150,6 +150,7 @@ func ContentBlockProcessors() map[string]BlockProcessor {
 		"x-im/paragraph":      convertTextBlock("core/paragraph"),
 		"preamble":            convertTextBlock("core/preamble"),
 		"pagedateline":        convertTextBlock("tt/dateline"),
+		"dateline":            convertTextBlock("tt/dateline"),
 		"x-im/htmlembed":      convertTextBlock("core/htmlembed"),
 		"x-im/header":         convertTextBlock("core/heading-1"),
 		"subheadline":         convertTextBlock("core/heading-2"),
