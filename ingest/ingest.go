@@ -176,6 +176,18 @@ func (in *Ingester) iteration(ctx context.Context, pos int) (int, error) {
 	return pos, nil
 }
 
+func skipOlder(maxAge time.Duration) includeCheckerFunc {
+	cutOff := time.Now().Add(-maxAge)
+
+	return func(ctx context.Context, evt OCLogEvent) (bool, OCEventType, error) {
+		if evt.Created.Before(cutOff) {
+			return false, "", nil
+		}
+
+		return true, evt.EventType, nil
+	}
+}
+
 func (in *Ingester) shouldArticleBeImported(
 	ctx context.Context, evt OCLogEvent,
 ) (bool, OCEventType, error) {
@@ -221,10 +233,10 @@ func (in *Ingester) handleEvent(ctx context.Context, evt OCLogEvent) error {
 
 	include := map[string]includeCheckerFunc{
 		"Article":    in.shouldArticleBeImported,
-		"Assignment": nil,
-		"Planning":   nil,
+		"Assignment": skipOlder(183 * 24 * time.Hour),
+		"Planning":   skipOlder(183 * 24 * time.Hour),
 		"Concept":    nil,
-		"Event":      nil,
+		"Event":      skipOlder(183 * 24 * time.Hour),
 	}
 
 	fn, known := include[evt.Content.ContentType]
