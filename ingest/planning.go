@@ -203,6 +203,7 @@ func assignmentImport(
 	}
 
 	out.Document = d
+	out.Timestamp = evt.Created
 
 	return &out, nil
 }

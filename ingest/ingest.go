@@ -136,7 +136,7 @@ func (in *Ingester) Start(ctx context.Context, tail bool) error {
 }
 
 func (in *Ingester) iteration(ctx context.Context, pos int) (int, error) {
-	log, err := in.opt.OCLog.GetEventLog(ctx, pos)
+	log, err := in.opt.OCLog.GetContentLog(ctx, pos)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read content log: %w", err)
 	}
@@ -322,6 +322,7 @@ type ConvertedDoc struct {
 	Creator      string
 	Units        []string
 	Status       string
+	Timestamp    time.Time
 }
 
 type converterFunc func(ctx context.Context, evt OCLogEvent) (*ConvertedDoc, error)
@@ -582,6 +583,12 @@ func (in *Ingester) ccaImport(ctx context.Context, evt OCLogEvent) (*ConvertedDo
 
 	out.Document = doc
 	out.Status = nDoc.Status
+
+	out.Timestamp = evt.Created
+
+	if nDoc.Modified != nil {
+		out.Timestamp = *nDoc.Modified
+	}
 
 	for _, link := range docRes.Document.Links {
 		switch link.Rel {
