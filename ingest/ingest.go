@@ -657,9 +657,10 @@ func (in *Ingester) checkStatus(
 }
 
 var slugPatterns = map[string]*regexp.Regexp{
-	"development": regexp.MustCompile(`UV\d*$`),
-	"fix":         regexp.MustCompile(`KORR\d*$`),
-	"correction":  regexp.MustCompile(`RÄ\d*$`),
+	"development":    regexp.MustCompile(`UV\d*$`),
+	"fix":            regexp.MustCompile(`KORR\d*$`),
+	"correction":     regexp.MustCompile(`RÄ\d*$`),
+	"retransmission": regexp.MustCompile(`OMS\d*$`),
 }
 
 func populateSlugMeta(meta doc.DataMap, blocks []doc.Block) doc.DataMap {
