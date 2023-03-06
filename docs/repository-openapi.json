@@ -293,7 +293,7 @@
       "elephant.repository.GetDocumentRequest": {
         "properties": {
           "lock": {
-            "description": "Lock will lock the document for updates. This only affects the creation of new versions of the document statuses can still be updated.",
+            "description": "Lock will lock the document for updates. This only affects the creation of new versions of the document, statuses can still be updated.",
             "type": "boolean"
           },
           "status": {
