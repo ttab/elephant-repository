@@ -18,9 +18,13 @@ if [[ $status -ne 0 ]]; then
        -v "${pgdata}":/var/lib/postgresql/data \
        -p 5432:5432 \
        postgres \
-       -c wal_level=logical
+       -c wal_level=logical \
+       -c log_lock_waits=on
+
+    sleep 5
 elif [[ $containerStatus == "exited" ]]; then
-     docker start repository-postgres
+    docker start repository-postgres
+    sleep 3
 fi
 
 ip=$(docker inspect repository-postgres | jq -r '.[0].NetworkSettings.IPAddress')
