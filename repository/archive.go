@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	mrand "math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -164,11 +165,13 @@ func (a *Archiver) run(ctx context.Context) {
 
 func (a *Archiver) loop(ctx context.Context) error {
 	wait := make(map[string]time.Time)
+	r := mrand.New(mrand.NewSource(time.Now().Unix()))
 
 	runWithDelay := func(
-		name string, d time.Duration, fn func(ctx context.Context) (bool, error),
+		name string, now time.Time, d time.Duration,
+		fn func(ctx context.Context) (bool, error),
 	) error {
-		if time.Now().Before(wait[name]) {
+		if now.Before(wait[name]) {
 			return nil
 		}
 
@@ -179,6 +182,9 @@ func (a *Archiver) loop(ctx context.Context) error {
 		}
 
 		if !ok {
+			n := d / 2
+			d = n + (time.Duration(r.Int()) % n)
+
 			wait[name] = time.Now().Add(d)
 		}
 
@@ -194,22 +200,24 @@ func (a *Archiver) loop(ctx context.Context) error {
 			}
 		}
 
+		now := time.Now()
+
 		err := runWithDelay(
-			"archive document versions", 500*time.Millisecond,
+			"archive document versions", now, 500*time.Millisecond,
 			a.archiveDocumentVersions)
 		if err != nil {
 			return err
 		}
 
 		err = runWithDelay(
-			"archive document statuses", 500*time.Millisecond,
+			"archive document statuses", now, 500*time.Millisecond,
 			a.archiveDocumentStatuses)
 		if err != nil {
 			return err
 		}
 
 		err = runWithDelay(
-			"process document deletes", 500*time.Millisecond,
+			"process document deletes", now, 500*time.Millisecond,
 			a.processDeletes)
 		if err != nil {
 			return err
@@ -217,8 +225,16 @@ func (a *Archiver) loop(ctx context.Context) error {
 
 		// TODO: Archive ACLs
 
+		next := now.Add(1 * time.Second)
+
+		for _, t := range wait {
+			if t.Before(next) {
+				next = t
+			}
+		}
+
 		select {
-		case <-time.After(10 * time.Millisecond):
+		case <-time.After(time.Until(next)):
 		case <-ctx.Done():
 			return nil
 		}

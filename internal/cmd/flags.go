@@ -73,7 +73,7 @@ func BackendFlags() []cli.Flag {
 		&cli.IntFlag{
 			Name:  "archiver-count",
 			Usage: "Number of archivers to run",
-			Value: 16,
+			Value: 1,
 		},
 		&cli.BoolFlag{
 			Name:  "no-replicator",
