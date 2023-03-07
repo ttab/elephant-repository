@@ -278,6 +278,20 @@ CREATE TABLE public.document_version (
 ALTER TABLE public.document_version OWNER TO repository;
 
 --
+-- Name: report; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.report (
+    name text NOT NULL,
+    enabled boolean NOT NULL,
+    next_execution timestamp with time zone NOT NULL,
+    spec jsonb NOT NULL
+);
+
+
+ALTER TABLE public.report OWNER TO repository;
+
+--
 -- Name: schema_version; Type: TABLE; Schema: public; Owner: repository
 --
 
@@ -421,6 +435,14 @@ ALTER TABLE ONLY public.document
 
 ALTER TABLE ONLY public.document_version
     ADD CONSTRAINT document_version_pkey PRIMARY KEY (uuid, version);
+
+
+--
+-- Name: report report_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.report
+    ADD CONSTRAINT report_pkey PRIMARY KEY (name);
 
 
 --

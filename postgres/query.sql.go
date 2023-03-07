@@ -505,6 +505,26 @@ func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context) (GetDocume
 	return i, err
 }
 
+const getDueReport = `-- name: GetDueReport :one
+SELECT name, enabled, next_execution, spec
+FROM report
+WHERE enabled AND next_execution < $1
+FOR UPDATE SKIP LOCKED
+LIMIT 1
+`
+
+func (q *Queries) GetDueReport(ctx context.Context, time pgtype.Timestamptz) (Report, error) {
+	row := q.db.QueryRow(ctx, getDueReport, time)
+	var i Report
+	err := row.Scan(
+		&i.Name,
+		&i.Enabled,
+		&i.NextExecution,
+		&i.Spec,
+	)
+	return i, err
+}
+
 const getFullDocumentHeads = `-- name: GetFullDocumentHeads :many
 SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
        s.archived, s.signature
@@ -574,6 +594,37 @@ func (q *Queries) GetFullVersion(ctx context.Context, arg GetFullVersionParams) 
 		&i.DocumentData,
 		&i.Archived,
 		&i.Signature,
+	)
+	return i, err
+}
+
+const getNextReportDueTime = `-- name: GetNextReportDueTime :one
+SELECT MIN(next_execution)
+FROM report
+WHERE enabled
+`
+
+func (q *Queries) GetNextReportDueTime(ctx context.Context) (interface{}, error) {
+	row := q.db.QueryRow(ctx, getNextReportDueTime)
+	var min interface{}
+	err := row.Scan(&min)
+	return min, err
+}
+
+const getReport = `-- name: GetReport :one
+SELECT name, enabled, next_execution, spec
+FROM report
+WHERE name = $1
+`
+
+func (q *Queries) GetReport(ctx context.Context, name string) (Report, error) {
+	row := q.db.QueryRow(ctx, getReport, name)
+	var i Report
+	err := row.Scan(
+		&i.Name,
+		&i.Enabled,
+		&i.NextExecution,
+		&i.Spec,
 	)
 	return i, err
 }
@@ -947,6 +998,34 @@ type SetDocumentVersionAsArchivedParams struct {
 
 func (q *Queries) SetDocumentVersionAsArchived(ctx context.Context, arg SetDocumentVersionAsArchivedParams) error {
 	_, err := q.db.Exec(ctx, setDocumentVersionAsArchived, arg.Signature, arg.Uuid, arg.Version)
+	return err
+}
+
+const updateReport = `-- name: UpdateReport :exec
+INSERT INTO report(
+       name, enabled, next_execution, spec
+) VALUES (
+       $1, $2, $3, $4
+) ON CONFLICT (name) DO UPDATE SET
+  enabled = $2,
+  next_execution = $3,
+  spec = $4
+`
+
+type UpdateReportParams struct {
+	Name          string
+	Enabled       bool
+	NextExecution pgtype.Timestamptz
+	Spec          []byte
+}
+
+func (q *Queries) UpdateReport(ctx context.Context, arg UpdateReportParams) error {
+	_, err := q.db.Exec(ctx, updateReport,
+		arg.Name,
+		arg.Enabled,
+		arg.NextExecution,
+		arg.Spec,
+	)
 	return err
 }
 

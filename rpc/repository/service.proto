@@ -47,6 +47,65 @@ service Workflows {
   rpc GetStatusRules(GetStatusRulesRequest) returns (GetStatusRulesResponse);
 }
 
+service Reports {
+  // Update or create a report.
+  rpc Update(UpdateReportRequest) returns (UpdateReportResponse);
+  // Get a report.
+  rpc Get(GetReportRequest) returns (GetReportResponse);
+  // Test a report. This will run the report and return the results instead of
+  // sending it to any outputs.
+  rpc Test(TestReportRequest) returns (TestReportResponse);
+}
+
+message TestReportRequest {
+  string name = 1;
+}
+
+message TestReportResponse {
+  repeated string tables = 1;
+  bytes spreadsheet = 2;
+}
+
+message GetReportRequest {
+  string name = 1;
+}
+
+message GetReportResponse {
+  Report report = 1;
+  bool enabled = 2;
+  string next_execution = 3;
+}
+
+message UpdateReportRequest {
+  Report report = 1;
+  bool enabled = 2;
+}
+
+message Report {
+  string name = 1;
+  string title = 2;
+  bool generate_sheet = 3;
+  string cron_expression = 4;
+  repeated string slack_channels = 5;
+  repeated ReportQuery queries = 6;
+}
+
+message ReportQuery {
+  string name = 1;
+  repeated int32 summarise = 2;
+  string sql = 3;
+  repeated ReportValue value_processing = 4;
+}
+
+message ReportValue {
+  string column = 1;
+  repeated string processors = 2;
+}
+
+message UpdateReportResponse {
+  string next_execution = 1;
+}
+
 message GetStatusRulesRequest {}
 
 message GetStatusRulesResponse {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/adhocore/gronx"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -1116,6 +1117,73 @@ func (s *PGDocStore) GetSchema(
 		Version:       schema.Version,
 		Specification: spec,
 	}, nil
+}
+
+type StoredReport struct {
+	Report        Report
+	Enabled       bool
+	NextExecution time.Time
+}
+
+func (s *PGDocStore) GetReport(
+	ctx context.Context, name string,
+) (*StoredReport, error) {
+	report, err := s.reader.GetReport(ctx, name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, DocStoreErrorf(
+			ErrCodeNotFound, "no report with that name")
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to read from database: %w", err)
+	}
+
+	res := StoredReport{
+		Enabled:       report.Enabled,
+		NextExecution: report.NextExecution.Time,
+	}
+
+	err = json.Unmarshal(report.Spec, &res.Report)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal stored report: %w", err)
+	}
+
+	return &res, nil
+}
+
+func (s *PGDocStore) UpdateReport(
+	ctx context.Context, report Report, enabled bool,
+) (time.Time, error) {
+	nextExec, err := gronx.NextTick(report.CronExpression, false)
+	if err != nil {
+		return time.Time{}, fmt.Errorf(
+			"failed to calculate next execution time: %w", err)
+	}
+
+	spec, err := json.Marshal(report)
+	if err != nil {
+		return time.Time{}, fmt.Errorf(
+			"failed to marshal report spec for storage: %w", err)
+	}
+
+	err = s.withTX(ctx, "update report", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.UpdateReport(ctx, postgres.UpdateReportParams{
+			Name:          report.Name,
+			Enabled:       enabled,
+			NextExecution: internal.PGTime(nextExec),
+			Spec:          spec,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to save to database: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return nextExec, nil
 }
 
 func isConstraintError(err error, constraint string) bool {

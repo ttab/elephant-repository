@@ -230,6 +230,13 @@ create table status(
        disabled bool not null default false
 );
 
+create table report(
+       name text primary key,
+       enabled boolean not null,
+       next_execution timestamptz not null,
+       spec jsonb not null
+);
+
 insert into status(name)
        VALUES ('done'), ('approved'), ('usable');
 
@@ -251,6 +258,7 @@ for table document, status_heads, delete_record, acl;
 
 ---- create above / drop below ----
 
+drop table report;
 drop publication eventlog;
 drop function create_version(
      uuid, bigint, timestamptz, text, jsonb, jsonb);

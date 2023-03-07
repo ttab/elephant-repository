@@ -106,6 +106,25 @@ func WithWorkflowsAPI(
 	}
 }
 
+func WithReportsAPI(
+	logger *slog.Logger,
+	jwtKey *ecdsa.PrivateKey, service repository.Reports,
+) RouterOption {
+	return func(router *httprouter.Router) error {
+		hooks := defaultAPIHooks("report_admin")
+
+		api := repository.NewReportsServer(
+			service,
+			twirp.WithServerJSONSkipDefaults(true),
+			twirp.WithServerHooks(hooks),
+		)
+
+		registerAPI(router, jwtKey, api)
+
+		return nil
+	}
+}
+
 func defaultAPIHooks(scope string) *twirp.ServerHooks {
 	return &twirp.ServerHooks{
 		RequestReceived: func(

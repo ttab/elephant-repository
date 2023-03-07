@@ -66,6 +66,15 @@ type WorkflowStore interface {
 	GetStatusRules(ctx context.Context) ([]StatusRule, error)
 }
 
+type ReportStore interface {
+	UpdateReport(
+		ctx context.Context, report Report, enabled bool,
+	) (time.Time, error)
+	GetReport(
+		ctx context.Context, name string,
+	) (*StoredReport, error)
+}
+
 type DocumentStatus struct {
 	Name     string
 	Disabled bool
@@ -185,6 +194,8 @@ type StatusUpdate struct {
 	Meta    doc.DataMap
 }
 
+// DocStoreErrorCode TODO: Rename to StoreErrorCode and consistently rename all
+// dependent types and methods.
 type DocStoreErrorCode string
 
 const (

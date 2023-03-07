@@ -67,6 +67,26 @@ func (tc *TestContext) WorkflowsClient(
 	return workflowsClient
 }
 
+func (tc *TestContext) ReportsClient(
+	t *testing.T, claims repository.JWTClaims,
+) rpc.Reports {
+	t.Helper()
+
+	token, err := test.AccessKey(tc.SigningKey, claims)
+	test.Must(t, err, "create access key")
+
+	reportsClient := rpc.NewReportsProtobufClient(
+		tc.Server.URL, tc.Server.Client(),
+		twirp.WithClientHooks(&twirp.ClientHooks{
+			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
+				r.Header.Set("Authorization", "Bearer "+token)
+
+				return ctx, nil
+			}}))
+
+	return reportsClient
+}
+
 func (tc *TestContext) SchemasClient(
 	t *testing.T, claims repository.JWTClaims,
 ) rpc.Schemas {
@@ -135,6 +155,7 @@ func testingAPIServer(
 	docService := repository.NewDocumentsService(store, validator, workflows)
 	schemaService := repository.NewSchemasService(store)
 	workflowService := repository.NewWorkflowsService(store)
+	reportsService := repository.NewReportsService(logger, store, dbpool)
 
 	router := httprouter.New()
 
@@ -144,7 +165,9 @@ func testingAPIServer(
 	err = repository.SetUpRouter(router,
 		repository.WithDocumentsAPI(logger, jwtKey, docService),
 		repository.WithSchemasAPI(logger, jwtKey, schemaService),
-		repository.WithWorkflowsAPI(logger, jwtKey, workflowService))
+		repository.WithWorkflowsAPI(logger, jwtKey, workflowService),
+		repository.WithReportsAPI(logger, jwtKey, reportsService),
+	)
 	test.Must(t, err, "set up router")
 
 	server := httptest.NewServer(router)

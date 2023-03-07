@@ -91,6 +91,13 @@ type DocumentVersion struct {
 	Signature    pgtype.Text
 }
 
+type Report struct {
+	Name          string
+	Enabled       bool
+	NextExecution pgtype.Timestamptz
+	Spec          []byte
+}
+
 type SchemaVersion struct {
 	Version int32
 }

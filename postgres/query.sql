@@ -251,3 +251,30 @@ INSERT INTO status_rule(
 
 -- name: DeleteStatusRule :exec
 DELETE FROM status_rule WHERE name = $1;
+
+-- name: UpdateReport :exec
+INSERT INTO report(
+       name, enabled, next_execution, spec
+) VALUES (
+       @name, @enabled, @next_execution, @spec
+) ON CONFLICT (name) DO UPDATE SET
+  enabled = @enabled,
+  next_execution = @next_execution,
+  spec = @spec;
+
+-- name: GetReport :one
+SELECT name, enabled, next_execution, spec
+FROM report
+WHERE name = $1;
+
+-- name: GetDueReport :one
+SELECT name, enabled, next_execution, spec
+FROM report
+WHERE enabled AND next_execution < @time
+FOR UPDATE SKIP LOCKED
+LIMIT 1;
+
+-- name: GetNextReportDueTime :one
+SELECT MIN(next_execution)
+FROM report
+WHERE enabled;
