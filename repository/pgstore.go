@@ -606,6 +606,12 @@ func (s *PGDocStore) Update(
 	if update.Document != nil {
 		up.Version++
 
+		if info.Info.Type != "" && info.Info.Type != update.Document.Type {
+			return nil, DocStoreErrorf(ErrCodeBadRequest,
+				"cannot change the document type from %q",
+				info.Info.Type)
+		}
+
 		err = q.CreateVersion(ctx, postgres.CreateVersionParams{
 			Uuid:         update.UUID,
 			Version:      up.Version,

@@ -68,9 +68,20 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	test.Equal(t, 2, res.Version, "expected this to be the second version")
 
-	doc3 := test.CloneMessage(doc2)
+	docTypeShift := rpc.Document{
+		Type: "core/place",
+		Uri:  doc2.Uri,
+	}
 
-	doc3.Content = append(doc3.Content, &rpc.Block{
+	_, err = client.Update(ctx, &rpc.UpdateRequest{
+		Uuid:     docUUID,
+		Document: &docTypeShift,
+	})
+	test.MustNot(t, err, "expected type change to be disallowed")
+
+	docBadBlock := test.CloneMessage(doc2)
+
+	docBadBlock.Content = append(docBadBlock.Content, &rpc.Block{
 		Type: "something/made-up",
 		Data: map[string]string{
 			"text": "Dunno what this is",
@@ -79,7 +90,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	_, err = client.Update(ctx, &rpc.UpdateRequest{
 		Uuid:     docUUID,
-		Document: doc3,
+		Document: docBadBlock,
 	})
 	test.MustNot(t, err, "expected unknown content block to fail validation")
 
