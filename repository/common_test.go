@@ -123,6 +123,14 @@ func testingAPIServer(
 		go dbpool.Close()
 	})
 
+	reportingPool, err := pgxpool.New(ctx, env.ReportingURI)
+	test.Must(t, err, "create reporting connection pool")
+
+	t.Cleanup(func() {
+		// We don't want to block cleanup waiting for pool.
+		go reportingPool.Close()
+	})
+
 	store, err := repository.NewPGDocStore(logger, dbpool,
 		repository.PGDocStoreOptions{
 			DeleteTimeout: 1 * time.Second,
@@ -155,7 +163,7 @@ func testingAPIServer(
 	docService := repository.NewDocumentsService(store, validator, workflows)
 	schemaService := repository.NewSchemasService(store)
 	workflowService := repository.NewWorkflowsService(store)
-	reportsService := repository.NewReportsService(logger, store, dbpool)
+	reportsService := repository.NewReportsService(logger, store, reportingPool)
 
 	router := httprouter.New()
 

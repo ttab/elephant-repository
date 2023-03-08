@@ -26,10 +26,11 @@ var (
 )
 
 type Environment struct {
-	S3          *s3.Client
-	Bucket      string
-	PostgresURI string
-	Migrator    *migrate.Migrator
+	S3           *s3.Client
+	Bucket       string
+	PostgresURI  string
+	ReportingURI string
+	Migrator     *migrate.Migrator
 }
 
 type T interface {
@@ -63,7 +64,7 @@ func SetUpBackingServices(t T, skipMigrations bool) Environment {
 	}
 
 	adminConn, err := pgx.Connect(ctx,
-		bs.getPostgresURI("elephant"))
+		bs.getPostgresURI("elephant", "elephant"))
 	if err != nil {
 		t.Fatalf("failed to get postgres admin connection: %v", err)
 	}
@@ -76,7 +77,7 @@ func SetUpBackingServices(t T, skipMigrations bool) Environment {
 		"CREATE ROLE %s WITH LOGIN PASSWORD '%s'",
 		ident, t.Name()))
 	if err != nil {
-		t.Fatalf("failed to create user: %w", err)
+		t.Fatalf("failed to create user: %v", err)
 	}
 
 	_, err = adminConn.Exec(ctx,
@@ -85,10 +86,33 @@ func SetUpBackingServices(t T, skipMigrations bool) Environment {
 		t.Fatalf("failed to create database: %v", err)
 	}
 
+	reportingRole := pgx.Identifier{t.Name() + "Reporting"}.Sanitize()
+	reportingUser := pgx.Identifier{t.Name() + "ReportingUser"}.Sanitize()
+
+	_, err = adminConn.Exec(ctx, fmt.Sprintf(
+		"CREATE ROLE %s",
+		reportingRole))
+	if err != nil {
+		t.Fatalf("failed to create reporting role: %v", err)
+	}
+
+	_, err = adminConn.Exec(ctx, fmt.Sprintf(
+		`
+CREATE ROLE %[1]s
+WITH LOGIN PASSWORD '%[2]s'
+IN ROLE %[3]s`,
+		reportingUser, t.Name()+"ReportingUser", reportingRole))
+	if err != nil {
+		t.Fatalf("failed to create reporting user: %v", err)
+	}
+
 	env := Environment{
 		S3:          s3Client,
 		Bucket:      bucket,
-		PostgresURI: bs.getPostgresURI(t.Name()),
+		PostgresURI: bs.getPostgresURI(t.Name(), t.Name()),
+		ReportingURI: bs.getPostgresURI(
+			t.Name()+"ReportingUser", t.Name(),
+		),
 	}
 
 	conn, err := pgx.Connect(ctx, env.PostgresURI)
@@ -112,6 +136,18 @@ func SetUpBackingServices(t T, skipMigrations bool) Environment {
 		err = m.Migrate(ctx)
 		if err != nil {
 			t.Fatalf("failed to migrate to current DB schema: %v", err)
+		}
+
+		_, err = conn.Exec(ctx, fmt.Sprintf(`
+GRANT SELECT
+ON TABLE
+   document, delete_record, document_version,
+   document_status, status_heads, status, status_rule,
+   acl, acl_audit
+TO %s`,
+			reportingRole))
+		if err != nil {
+			t.Fatalf("failed to grant reporting role permissions: %v", err)
 		}
 	}
 
@@ -240,10 +276,10 @@ func (bs *BackingServices) getS3Client() (*s3.Client, error) {
 	return client, nil
 }
 
-func (bs *BackingServices) getPostgresURI(user string) string {
+func (bs *BackingServices) getPostgresURI(user, database string) string {
 	return fmt.Sprintf(
-		"postgres://%[1]s:%[1]s@localhost:%[2]s/%[1]s",
-		user, bs.postgres.GetPort("5432/tcp"))
+		"postgres://%[1]s:%[1]s@localhost:%[3]s/%[2]s",
+		user, database, bs.postgres.GetPort("5432/tcp"))
 }
 
 func (bs *BackingServices) bootstrapPostgres() error {
@@ -272,7 +308,7 @@ func (bs *BackingServices) bootstrapPostgres() error {
 
 	err = bs.pool.Retry(func() error {
 		conn, err := pgx.Connect(context.Background(),
-			bs.getPostgresURI("elephant"))
+			bs.getPostgresURI("elephant", "elephant"))
 		if err != nil {
 			return fmt.Errorf("failed to create postgres connection: %w", err)
 		}

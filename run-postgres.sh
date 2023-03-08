@@ -31,7 +31,20 @@ ip=$(docker inspect repository-postgres | jq -r '.[0].NetworkSettings.IPAddress'
 url="postgres://repository:pass@${ip}/repository"
 
 echo ${url}
-echo "\nIf this is a fresh install, create a reporting user:"
-echo "CREATE ROLE reportuser WITH LOGIN PASSWORD 'reportuser' IN ROLE reporting;\n"
+cat <<EOF
+
+If this is a fresh install, create a reporting user:
+
+CREATE ROLE reporting;
+
+GRANT SELECT
+ON TABLE
+   document, delete_record, document_version, document_status,
+   status_heads, status, status_rule, acl, acl_audit
+TO reporting;
+
+CREATE ROLE reportuser WITH LOGIN PASSWORD 'reportuser' IN ROLE reporting;
+
+EOF
 
 psql ${url}
