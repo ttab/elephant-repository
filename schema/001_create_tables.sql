@@ -253,11 +253,21 @@ create table status_rule(
        expression text not null
 );
 
+-- Reporting role
+CREATE ROLE reporting;
+
+GRANT SELECT
+ON TABLE
+   document, delete_record, document_version, document_status,
+   status_heads, status, status_rule, acl, acl_audit
+TO reporting;
+
 create publication eventlog
 for table document, status_heads, delete_record, acl;
 
 ---- create above / drop below ----
 
+drop role reporting;
 drop table report;
 drop publication eventlog;
 drop function create_version(

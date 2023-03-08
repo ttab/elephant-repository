@@ -270,11 +270,16 @@ WHERE name = $1;
 -- name: GetDueReport :one
 SELECT name, enabled, next_execution, spec
 FROM report
-WHERE enabled AND next_execution < @time
+WHERE enabled AND next_execution < now()
 FOR UPDATE SKIP LOCKED
 LIMIT 1;
 
+-- name: SetNextReportExecution :exec
+UPDATE report
+SET next_execution = @next_execution
+WHERE name = @name;
+
 -- name: GetNextReportDueTime :one
-SELECT MIN(next_execution)
+SELECT MIN(next_execution)::timestamptz
 FROM report
 WHERE enabled;

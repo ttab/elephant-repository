@@ -508,13 +508,13 @@ func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context) (GetDocume
 const getDueReport = `-- name: GetDueReport :one
 SELECT name, enabled, next_execution, spec
 FROM report
-WHERE enabled AND next_execution < $1
+WHERE enabled AND next_execution < now()
 FOR UPDATE SKIP LOCKED
 LIMIT 1
 `
 
-func (q *Queries) GetDueReport(ctx context.Context, time pgtype.Timestamptz) (Report, error) {
-	row := q.db.QueryRow(ctx, getDueReport, time)
+func (q *Queries) GetDueReport(ctx context.Context) (Report, error) {
+	row := q.db.QueryRow(ctx, getDueReport)
 	var i Report
 	err := row.Scan(
 		&i.Name,
@@ -599,16 +599,16 @@ func (q *Queries) GetFullVersion(ctx context.Context, arg GetFullVersionParams) 
 }
 
 const getNextReportDueTime = `-- name: GetNextReportDueTime :one
-SELECT MIN(next_execution)
+SELECT MIN(next_execution)::timestamptz
 FROM report
 WHERE enabled
 `
 
-func (q *Queries) GetNextReportDueTime(ctx context.Context) (interface{}, error) {
+func (q *Queries) GetNextReportDueTime(ctx context.Context) (pgtype.Timestamptz, error) {
 	row := q.db.QueryRow(ctx, getNextReportDueTime)
-	var min interface{}
-	err := row.Scan(&min)
-	return min, err
+	var column_1 pgtype.Timestamptz
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const getReport = `-- name: GetReport :one
@@ -998,6 +998,22 @@ type SetDocumentVersionAsArchivedParams struct {
 
 func (q *Queries) SetDocumentVersionAsArchived(ctx context.Context, arg SetDocumentVersionAsArchivedParams) error {
 	_, err := q.db.Exec(ctx, setDocumentVersionAsArchived, arg.Signature, arg.Uuid, arg.Version)
+	return err
+}
+
+const setNextReportExecution = `-- name: SetNextReportExecution :exec
+UPDATE report
+SET next_execution = $1
+WHERE name = $2
+`
+
+type SetNextReportExecutionParams struct {
+	NextExecution pgtype.Timestamptz
+	Name          string
+}
+
+func (q *Queries) SetNextReportExecution(ctx context.Context, arg SetNextReportExecutionParams) error {
+	_, err := q.db.Exec(ctx, setNextReportExecution, arg.NextExecution, arg.Name)
 	return err
 }
 

@@ -97,21 +97,21 @@ GROUP BY v.type`,
 		Report:        &reportSpec,
 	}, retrieved, "get the correct definition back")
 
-	testRes, err := client.Test(ctx, &repository.TestReportRequest{
+	runRes, err := client.Run(ctx, &repository.RunReportRequest{
 		Name: reportSpec.Name,
 	})
 	test.Must(t, err, "make test run of report")
 
-	test.Equal(t, 1, len(testRes.Tables), "get one report table back")
+	test.Equal(t, 1, len(runRes.Tables), "get one report table back")
 
 	pattern := regexp.MustCompile("core/article.* 1 ")
 
-	if !pattern.MatchString(testRes.Tables[0]) {
+	if !pattern.MatchString(runRes.Tables[0]) {
 		t.Fatalf("the table didn't match the expression %q:\n%s",
-			pattern, testRes.Tables[0])
+			pattern, runRes.Tables[0])
 	}
 
-	if len(testRes.Spreadsheet) == 0 {
+	if len(runRes.Spreadsheet) == 0 {
 		t.Fatalf("no spreadsheet data was returned: %v", err)
 	}
 }

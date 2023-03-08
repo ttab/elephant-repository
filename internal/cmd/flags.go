@@ -8,6 +8,7 @@ import (
 type BackendConfig struct {
 	repository.S3Options
 	DB            string
+	ReportingDB   string
 	ArchiveBucket string
 	S3Endpoint    string
 	S3KeyID       string
@@ -16,14 +17,17 @@ type BackendConfig struct {
 	NoArchiver    bool
 	ArchiverCount int
 	NoReplicator  bool
+	NoReporter    bool
 	JWTSigningKey string
 }
 
 func BackendConfigFromContext(c *cli.Context) BackendConfig {
 	return BackendConfig{
 		DB:            c.String("db"),
+		ReportingDB:   c.String("reporting-db"),
 		ArchiveBucket: c.String("archive-bucket"),
 		NoArchiver:    c.Bool("no-archiver"),
+		NoReporter:    c.Bool("no-reporter"),
 		ArchiverCount: c.Int("archiver-count"),
 		NoReplicator:  c.Bool("no-replicator"),
 		JWTSigningKey: c.String("jwt-signing-key"),
@@ -41,6 +45,10 @@ func BackendFlags() []cli.Flag {
 		&cli.StringFlag{
 			Name:  "db",
 			Value: "postgres://repository:pass@localhost/repository",
+		},
+		&cli.StringFlag{
+			Name:  "reporting-db",
+			Value: "postgres://reportuser:reportuser@localhost/repository",
 		},
 		&cli.StringFlag{
 			Name:    "archive-bucket",
@@ -69,6 +77,10 @@ func BackendFlags() []cli.Flag {
 		&cli.BoolFlag{
 			Name:  "no-archiver",
 			Usage: "Disable the archiver",
+		},
+		&cli.BoolFlag{
+			Name:  "no-reporter",
+			Usage: "Disable the reporter",
 		},
 		&cli.IntFlag{
 			Name:  "archiver-count",

@@ -52,16 +52,16 @@ service Reports {
   rpc Update(UpdateReportRequest) returns (UpdateReportResponse);
   // Get a report.
   rpc Get(GetReportRequest) returns (GetReportResponse);
-  // Test a report. This will run the report and return the results instead of
+  // Run a report. This will run the report and return the results instead of
   // sending it to any outputs.
-  rpc Test(TestReportRequest) returns (TestReportResponse);
+  rpc Run(RunReportRequest) returns (RunReportResponse);
 }
 
-message TestReportRequest {
+message RunReportRequest {
   string name = 1;
 }
 
-message TestReportResponse {
+message RunReportResponse {
   repeated string tables = 1;
   bytes spreadsheet = 2;
 }

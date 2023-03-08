@@ -67,24 +67,9 @@ func runServer(c *cli.Context) error {
 		profileAddr = c.String("profile-addr")
 		logLevel    = c.String("log-level")
 		conf        = cmd.BackendConfigFromContext(c)
-		logger      = slog.New(slog.NewJSONHandler(os.Stdout))
 	)
 
-	var level slog.Level
-
-	err := level.UnmarshalText([]byte(logLevel))
-	if err != nil {
-		level = slog.LevelWarn
-
-		logger.Error("invalid log level", err,
-			internal.LogKeyLogLevel, logLevel)
-	}
-
-	logger = slog.New(slog.HandlerOptions{
-		Level: &level,
-	}.NewJSONHandler(os.Stdout))
-
-	slog.SetDefault(logger)
+	logger := internal.SetUpLogger(logLevel, os.Stdout)
 
 	var signingKey *ecdsa.PrivateKey
 
@@ -137,6 +122,23 @@ func runServer(c *cli.Context) error {
 
 	go store.RunListener(c.Context)
 
+	reportDB, err := pgxpool.New(c.Context, conf.ReportingDB)
+	if err != nil {
+		return fmt.Errorf(
+			"unable to create reporting connection pool: %w", err)
+	}
+
+	defer func() {
+		// Don't block for close
+		go reportDB.Close()
+	}()
+
+	err = reportDB.Ping(c.Context)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to connect to reporting database: %w", err)
+	}
+
 	setupCtx, cancel := context.WithTimeout(c.Context, 10*time.Second)
 	defer cancel()
 
@@ -154,6 +156,25 @@ func runServer(c *cli.Context) error {
 
 			return nil
 		})
+	}
+
+	if !conf.NoReporter {
+		rS3, err := repository.ArchiveS3Client(setupCtx, conf.S3Options)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to create S3 client for reporter: %w", err)
+		}
+
+		reporter := repository.NewReportRunner(repository.ReportRunnerOptions{
+			Logger: logger,
+			S3:     rS3,
+			// TODO: separate bucket.
+			Bucket:        conf.ArchiveBucket,
+			ReportQueryer: reportDB,
+			DB:            dbpool,
+		})
+
+		reporter.Run(c.Context)
 	}
 
 	if !conf.NoArchiver {
@@ -189,6 +210,7 @@ func runServer(c *cli.Context) error {
 	docService := repository.NewDocumentsService(store, validator, workflows)
 	schemaService := repository.NewSchemasService(store)
 	workflowService := repository.NewWorkflowsService(store)
+	reportsService := repository.NewReportsService(logger, store, reportDB)
 
 	logger.Debug("starting API server")
 
@@ -218,6 +240,7 @@ func runServer(c *cli.Context) error {
 		repository.WithDocumentsAPI(logger, signingKey, docService),
 		repository.WithSchemasAPI(logger, signingKey, schemaService),
 		repository.WithWorkflowsAPI(logger, signingKey, workflowService),
+		repository.WithReportsAPI(logger, signingKey, reportsService),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to set up router: %w", err)

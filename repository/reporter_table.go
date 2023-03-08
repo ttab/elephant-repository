@@ -56,6 +56,10 @@ func (tr *TableReporter) AddRow(values []any) error {
 	}
 
 	for i, n := range tr.summarise {
+		if n >= len(values) {
+			return fmt.Errorf("summarise column %d out of bounds", n)
+		}
+
 		tr.sums[i].Add(values[n])
 	}
 

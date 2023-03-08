@@ -34,6 +34,11 @@ var _ repository.Reports = &ReportsService{}
 func (s *ReportsService) Update(
 	ctx context.Context, req *repository.UpdateReportRequest,
 ) (*repository.UpdateReportResponse, error) {
+	err := requireAnyScope(ctx, "report_admin")
+	if err != nil {
+		return nil, err
+	}
+
 	if req.Report == nil {
 		return nil, twirp.RequiredArgumentError("report")
 	}
@@ -71,7 +76,7 @@ func (s *ReportsService) Update(
 		}
 	}
 
-	_, err := gronx.NextTick(req.Report.CronExpression, false)
+	_, err = gronx.NextTick(req.Report.CronExpression, false)
 	if err != nil {
 		return nil, twirp.InvalidArgumentError(
 			"report.cron_expression", err.Error())
@@ -103,6 +108,11 @@ func (s *ReportsService) Update(
 func (s *ReportsService) Get(
 	ctx context.Context, req *repository.GetReportRequest,
 ) (*repository.GetReportResponse, error) {
+	err := requireAnyScope(ctx, "report_admin")
+	if err != nil {
+		return nil, err
+	}
+
 	if req.Name == "" {
 		return nil, twirp.RequiredArgumentError("name")
 	}
@@ -181,9 +191,14 @@ func ReportFromRPC(r *repository.Report) (Report, error) {
 
 // Test a report. This will run the report and return the results instead of
 // sending it to any outputs.
-func (s *ReportsService) Test(
-	ctx context.Context, req *repository.TestReportRequest,
-) (*repository.TestReportResponse, error) {
+func (s *ReportsService) Run(
+	ctx context.Context, req *repository.RunReportRequest,
+) (*repository.RunReportResponse, error) {
+	err := requireAnyScope(ctx, "report_admin", "report_run")
+	if err != nil {
+		return nil, err
+	}
+
 	if req.Name == "" {
 		return nil, twirp.RequiredArgumentError("name")
 	}
@@ -202,9 +217,12 @@ func (s *ReportsService) Test(
 			"failed to generate report: %w", err)
 	}
 
-	response := repository.TestReportResponse{
-		Tables:      report.Tables,
-		Spreadsheet: report.Spreadsheet.Bytes(),
+	response := repository.RunReportResponse{
+		Tables: report.Tables,
+	}
+
+	if report.Spreadsheet != nil {
+		response.Spreadsheet = report.Spreadsheet.Bytes()
 	}
 
 	return &response, nil

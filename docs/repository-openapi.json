@@ -530,6 +530,28 @@
         },
         "type": "object"
       },
+      "elephant.repository.RunReportRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.RunReportResponse": {
+        "properties": {
+          "spreadsheet": {
+            "type": "string"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "elephant.repository.Schema": {
         "properties": {
           "name": {
@@ -641,28 +663,6 @@
           "version": {
             "description": "Version to set the status for. Set to -1 to signal that the status no longer is valid for the document. Optional if part of a document update request as it then will default to the version being written.",
             "type": "integer"
-          }
-        },
-        "type": "object"
-      },
-      "elephant.repository.TestReportRequest": {
-        "properties": {
-          "name": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "elephant.repository.TestReportResponse": {
-        "properties": {
-          "spreadsheet": {
-            "type": "string"
-          },
-          "tables": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
           }
         },
         "type": "object"
@@ -1092,14 +1092,14 @@
         ]
       }
     },
-    "/twirp/elephant.repository.Reports/Test": {
+    "/twirp/elephant.repository.Reports/Run": {
       "post": {
-        "description": "Test a report. This will run the report and return the results instead of sending it to any outputs.",
+        "description": "Run a report. This will run the report and return the results instead of sending it to any outputs.",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/elephant.repository.TestReportRequest"
+                "$ref": "#/components/schemas/elephant.repository.RunReportRequest"
               }
             }
           }
@@ -1109,7 +1109,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/elephant.repository.TestReportResponse"
+                  "$ref": "#/components/schemas/elephant.repository.RunReportResponse"
                 }
               }
             },
@@ -1124,7 +1124,7 @@
             "bearer": []
           }
         ],
-        "summary": "Test",
+        "summary": "Run",
         "tags": [
           "Reports"
         ]

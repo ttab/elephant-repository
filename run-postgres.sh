@@ -31,5 +31,7 @@ ip=$(docker inspect repository-postgres | jq -r '.[0].NetworkSettings.IPAddress'
 url="postgres://repository:pass@${ip}/repository"
 
 echo ${url}
+echo "\nIf this is a fresh install, create a reporting user:"
+echo "CREATE ROLE reportuser WITH LOGIN PASSWORD 'reportuser' IN ROLE reporting;\n"
 
 psql ${url}

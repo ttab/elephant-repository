@@ -111,7 +111,7 @@ func WithReportsAPI(
 	jwtKey *ecdsa.PrivateKey, service repository.Reports,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		hooks := defaultAPIHooks("report_admin")
+		hooks := defaultAPIHooks("")
 
 		api := repository.NewReportsServer(
 			service,
@@ -145,6 +145,22 @@ func defaultAPIHooks(scope string) *twirp.ServerHooks {
 			return ctx, nil
 		},
 	}
+}
+
+func requireAnyScope(ctx context.Context, scopes ...string) error {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return twirp.Unauthenticated.Error(
+			"no anonymous access allowed")
+	}
+
+	if !auth.Claims.HasAnyScope(scopes...) {
+		return twirp.PermissionDenied.Errorf(
+			"one of the the scopes %s is required",
+			strings.Join(scopes, ", "))
+	}
+
+	return nil
 }
 
 type apiServerForRouter interface {
