@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/ttab/elephant/internal/test"
-	rpc "github.com/ttab/elephant/rpc/repository"
+	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
 )
 
-func baseDocument(uuid, uri string) *rpc.Document {
-	return &rpc.Document{
+func baseDocument(uuid, uri string) *repository.Document {
+	return &repository.Document{
 		Uuid:  uuid,
 		Title: "A bare-bones article",
 		Type:  "core/article",
@@ -43,7 +43,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	doc := baseDocument(docUUID, docURI)
 
-	res, err := client.Update(ctx, &rpc.UpdateRequest{
+	res, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 	})
@@ -53,14 +53,14 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	doc2 := test.CloneMessage(doc)
 
-	doc2.Content = append(doc2.Content, &rpc.Block{
+	doc2.Content = append(doc2.Content, &repository.Block{
 		Type: "core/heading-1",
 		Data: map[string]string{
 			"text": "The headline of the year",
 		},
 	})
 
-	res, err = client.Update(ctx, &rpc.UpdateRequest{
+	res, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc2,
 	})
@@ -68,12 +68,12 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	test.Equal(t, 2, res.Version, "expected this to be the second version")
 
-	docTypeShift := rpc.Document{
+	docTypeShift := repository.Document{
 		Type: "core/place",
 		Uri:  doc2.Uri,
 	}
 
-	_, err = client.Update(ctx, &rpc.UpdateRequest{
+	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: &docTypeShift,
 	})
@@ -81,20 +81,20 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	docBadBlock := test.CloneMessage(doc2)
 
-	docBadBlock.Content = append(docBadBlock.Content, &rpc.Block{
+	docBadBlock.Content = append(docBadBlock.Content, &repository.Block{
 		Type: "something/made-up",
 		Data: map[string]string{
 			"text": "Dunno what this is",
 		},
 	})
 
-	_, err = client.Update(ctx, &rpc.UpdateRequest{
+	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: docBadBlock,
 	})
 	test.MustNot(t, err, "expected unknown content block to fail validation")
 
-	currentVersion, err := client.Get(ctx, &rpc.GetDocumentRequest{
+	currentVersion, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docUUID,
 	})
 	test.Must(t, err, "get the document")
@@ -102,7 +102,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	test.EqualMessage(t, doc2, currentVersion.Document,
 		"expected the last document to be returned")
 
-	firstVersion, err := client.Get(ctx, &rpc.GetDocumentRequest{
+	firstVersion, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:    docUUID,
 		Version: 1,
 	})
@@ -113,19 +113,19 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	t0 := time.Now()
 
-	_, err = client.Delete(ctx, &rpc.DeleteDocumentRequest{
+	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
 	test.Must(t, err, "delete the document")
 
 	t.Logf("waited %v for delete", time.Since(t0))
 
-	_, err = client.Get(ctx, &rpc.GetDocumentRequest{
+	_, err = client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docUUID,
 	})
 	test.MustNot(t, err, "expected get to fail after delete")
 
-	_, err = client.Get(ctx, &rpc.GetDocumentRequest{
+	_, err = client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:    docUUID,
 		Version: 1,
 	})
@@ -155,13 +155,13 @@ func TestIntegrationDeleteTimeout(t *testing.T) {
 
 	doc := baseDocument(docUUID, docURI)
 
-	_, err := client.Update(ctx, &rpc.UpdateRequest{
+	_, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 	})
 	test.Must(t, err, "create article")
 
-	_, err = client.Delete(ctx, &rpc.DeleteDocumentRequest{
+	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
 	test.MustNot(t, err, "expected the delete to time out")
@@ -183,12 +183,12 @@ func TestIntegrationStatuses(t *testing.T) {
 	workflowClient := tc.WorkflowsClient(t,
 		test.StandardClaims(t, "workflow_admin"))
 
-	_, err := workflowClient.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
+	_, err := workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
 		Name: "usable",
 	})
 	test.Must(t, err, "create usable status")
 
-	_, err = workflowClient.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
+	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
 		Name: "done",
 	})
 	test.Must(t, err, "create done status")
@@ -222,10 +222,10 @@ func TestIntegrationStatuses(t *testing.T) {
 
 	doc := baseDocument(docUUID, docURI)
 
-	_, err = client.Update(ctx, &rpc.UpdateRequest{
+	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{Name: "usable"},
 		},
 	})
@@ -234,7 +234,7 @@ func TestIntegrationStatuses(t *testing.T) {
 	doc2 := test.CloneMessage(doc)
 	doc2.Title = "Drafty McDraftface"
 
-	_, err = client.Update(ctx, &rpc.UpdateRequest{
+	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc2,
 	})
@@ -243,24 +243,24 @@ func TestIntegrationStatuses(t *testing.T) {
 	doc3 := test.CloneMessage(doc2)
 	doc3.Title = "More appropriate title"
 
-	res3, err := client.Update(ctx, &rpc.UpdateRequest{
+	res3, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc3,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{Name: "done"},
 		},
 	})
 	test.Must(t, err, "update article with 'done' status")
 
-	currentUsable, err := client.Get(ctx, &rpc.GetDocumentRequest{
+	currentUsable, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:   docUUID,
 		Status: "usable",
 	})
 	test.Must(t, err, "fetch the currently published version")
 
-	_, err = client.Update(ctx, &rpc.UpdateRequest{
+	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{Name: "whatchacallit", Version: res3.Version},
 		},
 	})
@@ -269,15 +269,15 @@ func TestIntegrationStatuses(t *testing.T) {
 	test.IsTwirpError(t, err, twirp.InvalidArgument)
 
 	test.EqualMessage(t,
-		&rpc.GetDocumentResponse{
+		&repository.GetDocumentResponse{
 			Version:  1,
 			Document: doc,
 		}, currentUsable,
 		"expected the currently publised version to be unchanged")
 
-	_, err = client.Update(ctx, &rpc.UpdateRequest{
+	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{Name: "usable", Version: res3.Version},
 		},
 	})
@@ -304,8 +304,8 @@ func TestIntegrationStatusRules(t *testing.T) {
 		requireLegalName   = "require-legal-approval"
 	)
 
-	_, err := workflowClient.CreateStatusRule(ctx, &rpc.CreateStatusRuleRequest{
-		Rule: &rpc.StatusRule{
+	_, err := workflowClient.CreateStatusRule(ctx, &repository.CreateStatusRuleRequest{
+		Rule: &repository.StatusRule{
 			Name:        approvalName,
 			Description: "Articles must be approved before they're published",
 			Expression:  `Heads.approved.Version == Status.Version`,
@@ -315,8 +315,8 @@ func TestIntegrationStatusRules(t *testing.T) {
 	})
 	test.Must(t, err, "create approval rule")
 
-	_, err = workflowClient.CreateStatusRule(ctx, &rpc.CreateStatusRuleRequest{
-		Rule: &rpc.StatusRule{
+	_, err = workflowClient.CreateStatusRule(ctx, &repository.CreateStatusRuleRequest{
+		Rule: &repository.StatusRule{
 			Name:        requireLegalName,
 			Description: "Require legal signoff if requested",
 			Expression: `
@@ -328,8 +328,8 @@ or Heads.approved_legal.Version == Status.Version`,
 	})
 	test.Must(t, err, "create legal approval rule")
 
-	_, err = workflowClient.CreateStatusRule(ctx, &rpc.CreateStatusRuleRequest{
-		Rule: &rpc.StatusRule{
+	_, err = workflowClient.CreateStatusRule(ctx, &repository.CreateStatusRuleRequest{
+		Rule: &repository.StatusRule{
 			Name:        "require-publish-scope",
 			Description: "publish scope is required for setting usable",
 			Expression:  `User.HasScope("publish")`,
@@ -340,17 +340,17 @@ or Heads.approved_legal.Version == Status.Version`,
 	})
 	test.Must(t, err, "create publish permission rule")
 
-	_, err = workflowClient.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
+	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
 		Name: "approved_legal",
 	})
 	test.Must(t, err, "create usable status")
 
-	_, err = workflowClient.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
+	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
 		Name: "usable",
 	})
 	test.Must(t, err, "create usable status")
 
-	_, err = workflowClient.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
+	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
 		Name: "approved",
 	})
 	test.Must(t, err, "create approved status")
@@ -387,15 +387,15 @@ or Heads.approved_legal.Version == Status.Version`,
 
 	doc := baseDocument(docUUID, docURI)
 
-	createdRes, err := client.Update(ctx, &rpc.UpdateRequest{
+	createdRes, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 	})
 	test.Must(t, err, "create article")
 
-	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+	_, err = editorClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{Name: "usable", Version: createdRes.Version},
 		},
 	})
@@ -408,17 +408,17 @@ or Heads.approved_legal.Version == Status.Version`,
 			approvalName, err.Error())
 	}
 
-	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+	_, err = editorClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{Name: "approved", Version: createdRes.Version},
 		},
 	})
 	test.Must(t, err, "approve document")
 
-	_, err = client.Update(ctx, &rpc.UpdateRequest{
+	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{Name: "usable", Version: createdRes.Version},
 		},
 	})
@@ -431,9 +431,9 @@ or Heads.approved_legal.Version == Status.Version`,
 			requirePublishName, err.Error())
 	}
 
-	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+	_, err = editorClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{Name: "usable", Version: createdRes.Version},
 		},
 	})
@@ -441,17 +441,17 @@ or Heads.approved_legal.Version == Status.Version`,
 
 	docV2 := test.CloneMessage(doc)
 
-	docV2.Content = append(docV2.Content, &rpc.Block{
+	docV2.Content = append(docV2.Content, &repository.Block{
 		Type: "core/paragraph",
 		Data: map[string]string{
 			"text": "Some sensitive stuff",
 		},
 	})
 
-	updatedRes, err := client.Update(ctx, &rpc.UpdateRequest{
+	updatedRes, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: docV2,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{
 				Name: "approved",
 				Meta: map[string]string{
@@ -462,9 +462,9 @@ or Heads.approved_legal.Version == Status.Version`,
 	})
 	test.Must(t, err, "update article")
 
-	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+	_, err = editorClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{Name: "usable", Version: updatedRes.Version},
 		},
 	})
@@ -476,17 +476,17 @@ or Heads.approved_legal.Version == Status.Version`,
 			requireLegalName, err.Error())
 	}
 
-	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+	_, err = editorClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{Name: "approved_legal", Version: updatedRes.Version},
 		},
 	})
 	test.Must(t, err, "set the legal approval status")
 
-	_, err = editorClient.Update(ctx, &rpc.UpdateRequest{
+	_, err = editorClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
-		Status: []*rpc.StatusUpdate{
+		Status: []*repository.StatusUpdate{
 			{Name: "usable", Version: updatedRes.Version},
 		},
 	})
@@ -525,7 +525,7 @@ func TestIntegrationACL(t *testing.T) {
 
 	doc := baseDocument(docUUID, docURI)
 
-	_, err := client.Update(ctx, &rpc.UpdateRequest{
+	_, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 	})
@@ -533,10 +533,10 @@ func TestIntegrationACL(t *testing.T) {
 
 	doc2 := baseDocument(doc2UUID, doc2URI)
 
-	_, err = client.Update(ctx, &rpc.UpdateRequest{
+	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     doc2UUID,
 		Document: doc2,
-		Acl: []*rpc.ACLEntry{
+		Acl: []*repository.ACLEntry{
 			{
 				Uri:         "user://test/other-user",
 				Permissions: []string{"r"},
@@ -545,28 +545,28 @@ func TestIntegrationACL(t *testing.T) {
 	})
 	test.Must(t, err, "create second article")
 
-	_, err = otherClient.Get(ctx, &rpc.GetDocumentRequest{
+	_, err = otherClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docUUID,
 	})
 	test.MustNot(t, err, "didn't expect the other user to have read access")
 
-	_, err = otherClient.Get(ctx, &rpc.GetDocumentRequest{
+	_, err = otherClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: doc2UUID,
 	})
 	test.Must(t, err, "expected the other user to have access to document two")
 
 	doc2.Title = "A better title, clearly"
 
-	_, err = otherClient.Update(ctx, &rpc.UpdateRequest{
+	_, err = otherClient.Update(ctx, &repository.UpdateRequest{
 		Uuid:     doc2UUID,
 		Document: doc2,
 	})
 	test.MustNot(t, err,
 		"didn't expect the other user to have write acces to document two")
 
-	_, err = client.Update(ctx, &rpc.UpdateRequest{
+	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
-		Acl: []*rpc.ACLEntry{
+		Acl: []*repository.ACLEntry{
 			{
 				Uri:         "unit://some/group",
 				Permissions: []string{"r", "w"},
@@ -575,14 +575,14 @@ func TestIntegrationACL(t *testing.T) {
 	})
 	test.Must(t, err, "update ACL for document one")
 
-	_, err = otherClient.Get(ctx, &rpc.GetDocumentRequest{
+	_, err = otherClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docUUID,
 	})
 	test.Must(t, err, "expected other user to be able to read document one after ACL update")
 
 	doc.Title = "The first doc is the best doc"
 
-	_, err = otherClient.Update(ctx, &rpc.UpdateRequest{
+	_, err = otherClient.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 	})
