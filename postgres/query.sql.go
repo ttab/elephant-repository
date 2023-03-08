@@ -309,13 +309,14 @@ func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDel
 }
 
 const getDocumentForUpdate = `-- name: GetDocumentForUpdate :one
-SELECT uri, current_version, deleting FROM document
+SELECT uri, type, current_version, deleting FROM document
 WHERE uuid = $1
 FOR UPDATE
 `
 
 type GetDocumentForUpdateRow struct {
 	Uri            string
+	Type           string
 	CurrentVersion int64
 	Deleting       bool
 }
@@ -323,7 +324,12 @@ type GetDocumentForUpdateRow struct {
 func (q *Queries) GetDocumentForUpdate(ctx context.Context, uuid uuid.UUID) (GetDocumentForUpdateRow, error) {
 	row := q.db.QueryRow(ctx, getDocumentForUpdate, uuid)
 	var i GetDocumentForUpdateRow
-	err := row.Scan(&i.Uri, &i.CurrentVersion, &i.Deleting)
+	err := row.Scan(
+		&i.Uri,
+		&i.Type,
+		&i.CurrentVersion,
+		&i.Deleting,
+	)
 	return i, err
 }
 
@@ -366,9 +372,20 @@ FROM document
 WHERE uuid = $1
 `
 
-func (q *Queries) GetDocumentInfo(ctx context.Context, uuid uuid.UUID) (Document, error) {
+type GetDocumentInfoRow struct {
+	Uuid           uuid.UUID
+	Uri            string
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Updated        pgtype.Timestamptz
+	UpdaterUri     string
+	CurrentVersion int64
+	Deleting       bool
+}
+
+func (q *Queries) GetDocumentInfo(ctx context.Context, uuid uuid.UUID) (GetDocumentInfoRow, error) {
 	row := q.db.QueryRow(ctx, getDocumentInfo, uuid)
-	var i Document
+	var i GetDocumentInfoRow
 	err := row.Scan(
 		&i.Uuid,
 		&i.Uri,
@@ -894,15 +911,16 @@ func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEnt
 
 const insertDeleteRecord = `-- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
-       uuid, uri, version, created, creator_uri, meta
+       uuid, uri, type, version, created, creator_uri, meta
 ) VALUES(
-       $1, $2, $3, $4, $5, $6
+       $1, $2, $3, $4, $5, $6, $7
 ) RETURNING id
 `
 
 type InsertDeleteRecordParams struct {
 	Uuid       uuid.UUID
 	Uri        string
+	Type       string
 	Version    int64
 	Created    pgtype.Timestamptz
 	CreatorUri string
@@ -913,6 +931,7 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 	row := q.db.QueryRow(ctx, insertDeleteRecord,
 		arg.Uuid,
 		arg.Uri,
+		arg.Type,
 		arg.Version,
 		arg.Created,
 		arg.CreatorUri,

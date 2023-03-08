@@ -37,6 +37,7 @@ type DeleteRecord struct {
 	Created    pgtype.Timestamptz
 	CreatorUri string
 	Meta       []byte
+	Type       string
 }
 
 type Document struct {
@@ -48,6 +49,7 @@ type Document struct {
 	UpdaterUri     string
 	CurrentVersion int64
 	Deleting       bool
+	Type           string
 }
 
 type DocumentLink struct {
@@ -78,11 +80,7 @@ type DocumentStatus struct {
 
 type DocumentVersion struct {
 	Uuid         uuid.UUID
-	Uri          string
 	Version      int64
-	Title        pgtype.Text
-	Type         string
-	Language     pgtype.Text
 	Created      pgtype.Timestamptz
 	CreatorUri   string
 	Meta         []byte

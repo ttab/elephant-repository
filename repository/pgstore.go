@@ -281,6 +281,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 		postgres.InsertDeleteRecordParams{
 			Uuid:       req.UUID,
 			Uri:        info.Info.Uri,
+			Type:       info.Info.Type,
 			Version:    info.Info.CurrentVersion,
 			Created:    internal.PGTime(req.Updated),
 			CreatorUri: req.Updater,

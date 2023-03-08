@@ -3,6 +3,7 @@
 create table document(
        uuid uuid primary key,
        uri text unique not null,
+       type text not null,
        created timestamptz not null,
        creator_uri text not null,
        updated timestamptz not null,
@@ -10,6 +11,8 @@ create table document(
        current_version bigint not null,
        deleting bool not null default false
 );
+
+ALTER TABLE document REPLICA IDENTITY FULL;
 
 CREATE INDEX document_deleting
 ON document (created)
@@ -19,6 +22,7 @@ create table delete_record(
        id bigint generated always as identity primary key,
        uuid uuid not null,
        uri text not null,
+       type text not null,
        version bigint not null,
        created timestamptz not null,
        creator_uri text not null,
@@ -39,10 +43,10 @@ as $$
    delete from document where uuid = delete_document.uuid;
 
    insert into document(
-          uuid, uri, created, creator_uri, updated, updater_uri,
+          uuid, uri, type, created, creator_uri, updated, updater_uri,
           current_version, deleting
    ) values (
-     uuid, uri, now(), '', now(), '', record_id, true
+     uuid, uri, '', now(), '', now(), '', record_id, true
    );
 $$;
 
@@ -66,11 +70,7 @@ create index document_link_rel_idx on document_link(rel, to_document);
 
 create table document_version(
        uuid uuid not null,
-       uri text not null,
        version bigint not null,
-       title text,
-       type text not null,
-       language text,
        created timestamptz not null,
        creator_uri text not null,
        meta jsonb default null,
@@ -99,27 +99,26 @@ returns void
 language sql
 as $$
    insert into document(
-               uuid, uri, created, creator_uri,
-               updated, updater_uri, current_version
+               uuid, uri, type,
+               created, creator_uri, updated, updater_uri, current_version
           )
           values(
-               uuid, document_data->>'uri', created, creator_uri,
-               created, creator_uri, version
+               uuid, document_data->>'uri', document_data->>'type',
+               created, creator_uri, created, creator_uri, version
           )
           on conflict (uuid) do update
-             set updated = create_version.created,
+             set uri = create_version.document_data->>'uri',
+                 updated = create_version.created,
                  updater_uri = create_version.creator_uri,
                  current_version = version;
 
    insert into document_version(
-               uuid, uri, version, title, type, language,
+               uuid, version,
                created, creator_uri, meta, document_data, archived
           )
           values(
-               uuid, document_data->>'uri', version,
-               document_data->>'title', document_data->>'type',
-               document_data->>'language', created, creator_uri,
-               meta, document_data, false
+               uuid, version,
+               created, creator_uri, meta, document_data, false
           );
 $$;
 
@@ -153,6 +152,8 @@ create table status_heads(
        foreign key(uuid) references document(uuid)
                on delete cascade
 );
+
+ALTER TABLE status_heads REPLICA IDENTITY FULL;
 
 create function create_status
 (

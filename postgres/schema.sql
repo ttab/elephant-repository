@@ -90,10 +90,10 @@ CREATE FUNCTION public.delete_document(uuid uuid, uri text, record_id bigint) RE
    delete from document where uuid = delete_document.uuid;
 
    insert into document(
-          uuid, uri, created, creator_uri, updated, updater_uri,
+          uuid, uri, type, created, creator_uri, updated, updater_uri,
           current_version, deleting
    ) values (
-     uuid, uri, now(), '', now(), '', record_id, true
+     uuid, uri, '', now(), '', now(), '', record_id, true
    );
 $$;
 
@@ -170,7 +170,8 @@ CREATE TABLE public.delete_record (
     version bigint NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
-    meta jsonb
+    meta jsonb,
+    type text NOT NULL
 );
 
 
@@ -202,8 +203,11 @@ CREATE TABLE public.document (
     updated timestamp with time zone NOT NULL,
     updater_uri text NOT NULL,
     current_version bigint NOT NULL,
-    deleting boolean DEFAULT false NOT NULL
+    deleting boolean DEFAULT false NOT NULL,
+    type text NOT NULL
 );
+
+ALTER TABLE ONLY public.document REPLICA IDENTITY FULL;
 
 
 ALTER TABLE public.document OWNER TO repository;
@@ -261,11 +265,7 @@ ALTER TABLE public.document_status OWNER TO repository;
 
 CREATE TABLE public.document_version (
     uuid uuid NOT NULL,
-    uri text NOT NULL,
     version bigint NOT NULL,
-    title text,
-    type text NOT NULL,
-    language text,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
     meta jsonb,
@@ -337,6 +337,8 @@ CREATE TABLE public.status_heads (
     updated timestamp with time zone NOT NULL,
     updater_uri text NOT NULL
 );
+
+ALTER TABLE ONLY public.status_heads REPLICA IDENTITY FULL;
 
 
 ALTER TABLE public.status_heads OWNER TO repository;
@@ -611,6 +613,69 @@ ALTER PUBLICATION eventlog ADD TABLE ONLY public.document;
 --
 
 ALTER PUBLICATION eventlog ADD TABLE ONLY public.status_heads;
+
+
+--
+-- Name: TABLE acl; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.acl TO reporting;
+
+
+--
+-- Name: TABLE acl_audit; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.acl_audit TO reporting;
+
+
+--
+-- Name: TABLE delete_record; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.delete_record TO reporting;
+
+
+--
+-- Name: TABLE document; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document TO reporting;
+
+
+--
+-- Name: TABLE document_status; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document_status TO reporting;
+
+
+--
+-- Name: TABLE document_version; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document_version TO reporting;
+
+
+--
+-- Name: TABLE status; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status TO reporting;
+
+
+--
+-- Name: TABLE status_heads; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status_heads TO reporting;
+
+
+--
+-- Name: TABLE status_rule; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status_rule TO reporting;
 
 
 --

@@ -1,5 +1,5 @@
 -- name: GetDocumentForUpdate :one
-SELECT uri, current_version, deleting FROM document
+SELECT uri, type, current_version, deleting FROM document
 WHERE uuid = $1
 FOR UPDATE;
 
@@ -98,9 +98,9 @@ SELECT delete_document(
 
 -- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
-       uuid, uri, version, created, creator_uri, meta
+       uuid, uri, type, version, created, creator_uri, meta
 ) VALUES(
-       @uuid, @uri, @version, @created, @creator_uri, @meta
+       @uuid, @uri, @type, @version, @created, @creator_uri, @meta
 ) RETURNING id;
 
 -- name: GetDocumentStatusForArchiving :one

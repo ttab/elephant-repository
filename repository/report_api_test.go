@@ -52,11 +52,10 @@ func TestReporting(t *testing.T) {
 			{
 				Name: "Documents",
 				Sql: `
-SELECT v.type, COUNT(*)
-FROM document AS d
-  INNER JOIN document_version AS v
-    ON v.uuid = d.uuid AND v.version = d.current_version
-GROUP BY v.type`,
+SELECT type, COUNT(*)
+FROM document
+WHERE created >= date(now())
+GROUP BY type`,
 			},
 		},
 	}
