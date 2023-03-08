@@ -225,6 +225,7 @@ func (in *Ingester) shouldArticleBeImported(
 var blockMatch = []string{
 	`unknown block type "TT/http://tt.se/spec/person/1.0/,rel=same-as,role="`,
 	`unknown block type "TT/tt/place,rel=same-as,role="`,
+	`unknown block type "TT/tt/subject,rel=same-as,role="`,
 }
 
 func (in *Ingester) handleEvent(ctx context.Context, evt OCLogEvent) error {
