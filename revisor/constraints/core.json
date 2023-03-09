@@ -752,6 +752,13 @@
           "attributes": {
             "url": {}
           }
+        },
+        {
+          "name": "Facebook page for the organisation",
+          "declares": {"rel":"see-also", "type": "x-im/social+facebook"},
+          "attributes": {
+            "url": {}
+          }
         }
       ]
     },

@@ -205,14 +205,15 @@ func LinkBlockProcessors() map[string]BlockProcessor {
 			OldPrefix: "nrp://",
 			NewPrefix: "core://",
 		},
-		"text/html,rel=irel:seeAlso": changeBlockRel("see-also"),
-		"x-organiser/organisation":   retypeBlock("tt/organiser"),
-		"x-participant/person":       retypeBlock("tt/participant"),
-		"tt/subject":                 BlockProcessorFunc(fixMediaTopicLink),
-		"tt/event":                   retypeBlock("tt/event"),
-		"x-tt/replaced":              ErrDropBlock{},
-		"/tt/author,rel=same-as":     BlockProcessorFunc(fixTTAuthorLink),
-		"x-imid/user,rel=same-as":    copyBlock(),
+		"x-im/social+facebook,rel=irel:seeAlso": BlockProcessorFunc(convertSeeAlso),
+		"text/html,rel=irel:seeAlso":            BlockProcessorFunc(convertSeeAlso),
+		"x-organiser/organisation":              retypeBlock("tt/organiser"),
+		"x-participant/person":                  retypeBlock("tt/participant"),
+		"tt/subject":                            BlockProcessorFunc(fixMediaTopicLink),
+		"tt/event":                              retypeBlock("tt/event"),
+		"x-tt/replaced":                         ErrDropBlock{},
+		"/tt/author,rel=same-as":                BlockProcessorFunc(fixTTAuthorLink),
+		"x-imid/user,rel=same-as":               copyBlock(),
 		// Drop Naviga creator/updater links
 		"x-imid/user,rel=creator":             ErrDropBlock{},
 		"x-imid/user,rel=updater":             ErrDropBlock{},
@@ -694,6 +695,22 @@ func replacePrefix(s, prefix, newPrefix string) string {
 	}
 
 	return newPrefix + strings.TrimPrefix(s, prefix)
+}
+
+func convertSeeAlso(in doc.Block) (doc.Block, error) {
+	out := in
+
+	out.Rel = "see-also"
+
+	switch in.Type {
+	case "text/html":
+	case "x-im/social+facebook":
+		out.Type = "core/social+facebook"
+	default:
+		return doc.Block{}, fmt.Errorf("unknown seeAlso type %q", in.Type)
+	}
+
+	return out, nil
 }
 
 func convertArticleSource(in doc.Block) (doc.Block, error) {
