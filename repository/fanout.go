@@ -30,6 +30,7 @@ func (f *FanOut[T]) Listen(ctx context.Context, l chan T, test func(v T) bool) {
 
 func (f *FanOut[T]) Notify(msg T) {
 	f.m.RLock()
+
 	defer f.m.RUnlock()
 
 	for listener, test := range f.listeners {
