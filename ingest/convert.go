@@ -394,14 +394,6 @@ func copyBlock() BlockProcessorFunc {
 	}
 }
 
-func changeBlockRel(relName string) BlockProcessorFunc {
-	return func(in doc.Block) (doc.Block, error) {
-		in.Rel = relName
-
-		return in, nil
-	}
-}
-
 type BlockChain []BlockProcessor
 
 func (bc BlockChain) ProcessBlock(in doc.Block) (doc.Block, error) {

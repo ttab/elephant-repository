@@ -298,7 +298,7 @@ func (pr *PGReplication) handleReplicationMessage(
 				rel.RelationName)
 		}
 
-		rel, oldValues, err := dec.DecodeValues(
+		_, oldValues, err := dec.DecodeValues(
 			logicalMsg.RelationID, logicalMsg.OldTuple)
 		if err != nil {
 			return fmt.Errorf(

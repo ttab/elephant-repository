@@ -262,7 +262,7 @@ func ingestAction(c *cli.Context) error {
 		startPos         = c.Int("start-pos")
 		tail             = c.Bool("tail")
 		loadReplacements = c.Bool("replacements")
-		defaultAclURI    = c.String("default-acl-uri")
+		defaultACLURI    = c.String("default-acl-uri")
 	)
 
 	stateDB := filepath.Join(stateDir, "data", "state.db")
@@ -415,7 +415,7 @@ func ingestAction(c *cli.Context) error {
 		API:             repoClient,
 		Blocklist:       blocklist,
 		Done:            doneChan,
-		DefaultAclURI:   defaultAclURI,
+		DefaultACLURI:   defaultACLURI,
 	}
 
 	ingester, err := ingest.NewIngester(opts)

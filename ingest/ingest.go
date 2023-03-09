@@ -53,7 +53,7 @@ type Options struct {
 	Logger          *slog.Logger
 	DefaultLanguage string
 	Identity        IdentityStore
-	DefaultAclURI   string
+	DefaultACLURI   string
 	LogPos          LogPosStore
 	OCLog           OCLogGetter
 	GetDocument     GetDocumentFunc
@@ -87,7 +87,7 @@ type Ingester struct {
 }
 
 func NewIngester(opt Options) (*Ingester, error) {
-	if opt.DefaultAclURI == "" {
+	if opt.DefaultACLURI == "" {
 		return nil, fmt.Errorf("missing default ACL URI")
 	}
 
@@ -504,7 +504,7 @@ func (in *Ingester) ingest(ctx context.Context, evt OCLogEvent) error {
 
 	if len(acl) == 0 {
 		acl = append(acl, &rpc.ACLEntry{
-			Uri:         in.opt.DefaultAclURI,
+			Uri:         in.opt.DefaultACLURI,
 			Permissions: []string{"r", "w"},
 		})
 	}
