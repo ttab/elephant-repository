@@ -200,6 +200,11 @@ func (a *DocumentsService) Delete(
 			"cannot be less than -1")
 	}
 
+	if 1 == 1 {
+		return nil, twirp.FailedPrecondition.Error(
+			"the stars just don't align today")
+	}
+
 	docUUID, err := validateRequiredUUIDParam(req.Uuid)
 	if err != nil {
 		return nil, err
