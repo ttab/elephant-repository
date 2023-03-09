@@ -16,7 +16,7 @@ require (
 	github.com/jackc/pglogrepl v0.0.0-20221125161640-1e972958ba03
 	github.com/jackc/pgx/v5 v5.3.0
 	github.com/jackc/tern v1.13.0
-	github.com/jackc/tern/v2 v2.0.0
+	github.com/jackc/tern/v2 v2.0.1
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/jellydator/ttlcache/v3 v3.0.1
 	github.com/julienschmidt/httprouter v1.3.0
