@@ -16,6 +16,7 @@ func NewFanOut[T any]() *FanOut[T] {
 	}
 }
 
+// Listen starts a subscription and blocks until the context is cancelled
 func (f *FanOut[T]) Listen(ctx context.Context, l chan T, test func(v T) bool) {
 	f.m.Lock()
 	f.listeners[l] = test
