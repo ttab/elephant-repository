@@ -131,6 +131,10 @@ func main() {
 				Name:  "default-lang",
 				Value: "sv",
 			},
+			&cli.StringFlag{
+				Name:  "default-acl-uri",
+				Value: "core://unit/redaktionen",
+			},
 			&cli.IntFlag{
 				Name: "start-pos",
 			},
@@ -258,6 +262,7 @@ func ingestAction(c *cli.Context) error {
 		startPos         = c.Int("start-pos")
 		tail             = c.Bool("tail")
 		loadReplacements = c.Bool("replacements")
+		defaultAclURI    = c.String("default-acl-uri")
 	)
 
 	stateDB := filepath.Join(stateDir, "data", "state.db")
@@ -410,9 +415,13 @@ func ingestAction(c *cli.Context) error {
 		API:             repoClient,
 		Blocklist:       blocklist,
 		Done:            doneChan,
+		DefaultAclURI:   defaultAclURI,
 	}
 
-	ingester := ingest.NewIngester(opts)
+	ingester, err := ingest.NewIngester(opts)
+	if err != nil {
+		return fmt.Errorf("failed to create ingester: %w", err)
+	}
 
 	ingestCtx, cancel := context.WithCancel(c.Context)
 
