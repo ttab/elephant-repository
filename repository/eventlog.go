@@ -2,12 +2,14 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
+	"github.com/google/uuid"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -22,21 +24,24 @@ import (
 type EventType string
 
 const (
+	TypeEventIgnored    EventType = ""
 	TypeDocumentVersion EventType = "document"
 	TypeNewStatus       EventType = "status"
 	TypeACLUpdate       EventType = "acl"
 	TypeDeleteDocument  EventType = "delete_document"
-	TypeDeleteStatus    EventType = "delete_status"
 )
 
 type Event struct {
-	Type      EventType         `json:"type"`
-	UUID      string            `json:"uuid"`
-	Timestamp time.Time         `json:"timestamp"`
-	Updater   string            `json:"updater"`
-	Version   int               `json:"version"`
-	Status    string            `json:"status"`
-	Meta      map[string]string `json:"meta"`
+	ID        int64      `json:"id"`
+	Event     EventType  `json:"event"`
+	UUID      uuid.UUID  `json:"uuid"`
+	Timestamp time.Time  `json:"timestamp"`
+	Updater   string     `json:"updater"`
+	Type      string     `json:"type,omitempty"`
+	Version   int64      `json:"version,omitempty"`
+	StatusID  int64      `json:"status_id,omitempty"`
+	Status    string     `json:"status,omitempty"`
+	ACL       []ACLEntry `json:"acl,omitempty"`
 }
 
 type PGReplication struct {
@@ -225,6 +230,14 @@ func (pr *PGReplication) replicationLoop(
 	}
 }
 
+const replicaIdentityFull = 'O'
+
+type replMessage struct {
+	Table     string
+	NewValues map[string]interface{}
+	OldValues map[string]interface{}
+}
+
 func (pr *PGReplication) handleReplicationMessage(
 	dec *TupleDecoder,
 	msg pglogrepl.Message,
@@ -232,8 +245,6 @@ func (pr *PGReplication) handleReplicationMessage(
 	switch logicalMsg := msg.(type) {
 	case *pglogrepl.RelationMessage:
 		dec.RegisterRelation(logicalMsg)
-	case *pglogrepl.BeginMessage:
-	case *pglogrepl.CommitMessage:
 	case *pglogrepl.InsertMessage:
 		rel, values, err := dec.DecodeValues(
 			logicalMsg.RelationID, logicalMsg.Tuple)
@@ -242,26 +253,348 @@ func (pr *PGReplication) handleReplicationMessage(
 				"failed to decode values: %w", err)
 		}
 
-		log.Printf("INSERT INTO %s.%s", rel.Namespace, rel.RelationName)
-		spew.Dump(values)
+		if rel.Namespace != "public" {
+			return nil
+		}
+
+		return pr.handleMessage(replMessage{
+			Table:     rel.RelationName,
+			NewValues: values,
+		})
 
 	case *pglogrepl.UpdateMessage:
-		rel, values, err := dec.DecodeValues(
+		rel, ok := dec.GetRelation(logicalMsg.RelationID)
+		if !ok {
+			return fmt.Errorf("got message for unknown relation")
+		}
+
+		switch rel.RelationName {
+		case "document":
+		case "status_heads":
+		default:
+			// Ignore updates for everything else.
+			return nil
+		}
+
+		_, values, err := dec.DecodeValues(
 			logicalMsg.RelationID, logicalMsg.NewTuple)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to decode values: %w", err)
 		}
 
-		log.Printf("UPDATE %s.%s", rel.Namespace, rel.RelationName)
-		spew.Dump(values)
-	case *pglogrepl.DeleteMessage:
-		// ...
-	case *pglogrepl.TruncateMessage:
-	case *pglogrepl.TypeMessage:
-	case *pglogrepl.OriginMessage:
+		if rel.Namespace != "public" {
+			return nil
+		}
+
+		msg := replMessage{
+			Table:     rel.RelationName,
+			NewValues: values,
+		}
+
+		if logicalMsg.OldTupleType != replicaIdentityFull {
+			return fmt.Errorf(
+				"replica identity for the relation %q is not set to full",
+				rel.RelationName)
+		}
+
+		rel, oldValues, err := dec.DecodeValues(
+			logicalMsg.RelationID, logicalMsg.OldTuple)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to decode old values: %w", err)
+		}
+
+		msg.OldValues = oldValues
+
+		return pr.handleMessage(msg)
+
 	default:
-		log.Printf("Unknown message type in pgoutput stream: %T", logicalMsg)
+		return nil
+	}
+
+	return nil
+}
+
+func (pr *PGReplication) handleMessage(msg replMessage) error {
+	enc := json.NewEncoder(os.Stderr)
+	enc.SetIndent("", "  ")
+
+	var evt Event
+
+	switch msg.Table {
+	case "document":
+		e, err := parseDocumentMessage(msg)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to parse document table message: %w", err)
+		}
+
+		evt = e
+	case "status_heads":
+		e, err := parseStatusHeadsMessage(msg)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to parse status_heads table message: %w", err)
+		}
+
+		evt = e
+	case "delete_record":
+	case "acl_audit":
+		e, err := parseACLMessage(msg)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to parse acl_audit table message: %w", err)
+		}
+
+		evt = e
+	default:
+		return nil
+	}
+
+	if evt.Event == TypeEventIgnored {
+		return nil
+	}
+
+	return pr.recordEvent(evt)
+}
+
+func parseACLMessage(msg replMessage) (Event, error) {
+	evt := Event{
+		Event: TypeACLUpdate,
+	}
+
+	docUUID, ok := msg.NewValues["uuid"].([16]uint8)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract uuid")
+	}
+
+	evt.UUID = docUUID
+
+	updated, ok := msg.NewValues["updated"].(time.Time)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract updated time")
+	}
+
+	evt.Timestamp = updated
+
+	updater, ok := msg.NewValues["updater_uri"].(string)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract updater_uri")
+	}
+
+	stateSlice, ok := msg.NewValues["state"].([]interface{})
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract state slice")
+	}
+
+	for i := range stateSlice {
+		aclMap, ok := stateSlice[i].(map[string]interface{})
+		if !ok {
+			return Event{}, fmt.Errorf("failed to extract ACL entry map")
+		}
+
+		aclURI, ok := aclMap["uri"].(string)
+		if !ok {
+			return Event{}, fmt.Errorf("failed to extract ACL uri")
+		}
+
+		permSlice, ok := aclMap["permissions"].([]interface{})
+		if !ok {
+			return Event{}, fmt.Errorf(
+				"failed to extract ACL permission slice")
+		}
+
+		perms := make([]string, len(permSlice))
+
+		for j := range permSlice {
+			p, ok := permSlice[j].(string)
+			if !ok {
+				return Event{}, fmt.Errorf("failed to extract ACL permission")
+			}
+
+			perms[j] = p
+		}
+
+		evt.ACL = append(evt.ACL, ACLEntry{
+			URI:         aclURI,
+			Permissions: perms,
+		})
+	}
+
+	evt.Updater = updater
+
+	return evt, nil
+}
+
+func parseStatusHeadsMessage(msg replMessage) (Event, error) {
+	evt := Event{
+		Event: TypeNewStatus,
+	}
+
+	id, ok := msg.NewValues["current_id"].(int64)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract current id")
+	}
+
+	evt.StatusID = id
+
+	if msg.OldValues == nil {
+		evt.Event = TypeDocumentVersion
+
+		oldID, ok := msg.NewValues["current_id"].(int64)
+		if !ok {
+			return Event{}, fmt.Errorf("failed to extract old id")
+		}
+
+		// New IDs have to be higher, bail, something odd is going on.
+		if id <= oldID {
+			// TODO: log?
+			return Event{}, nil
+		}
+	}
+
+	updated, ok := msg.NewValues["updated"].(time.Time)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract updated time")
+	}
+
+	evt.Timestamp = updated
+
+	updater, ok := msg.NewValues["updater_uri"].(string)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract updater_uri")
+	}
+
+	evt.Updater = updater
+
+	name, ok := msg.NewValues["name"].(string)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract name")
+	}
+
+	evt.Status = name
+
+	docUUID, ok := msg.NewValues["uuid"].([16]uint8)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract uuid")
+	}
+
+	evt.UUID = docUUID
+
+	return evt, nil
+}
+
+func parseDocumentMessage(msg replMessage) (Event, error) {
+	evt := Event{
+		Event: TypeDocumentVersion,
+	}
+
+	deleting, ok := msg.NewValues["deleting"].(bool)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract delete status")
+	}
+
+	if deleting {
+		// Deletes are tracked through delete_record.
+		return Event{}, nil
+	}
+
+	version, ok := msg.NewValues["current_version"].(int64)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract current version")
+	}
+
+	evt.Version = version
+
+	if msg.OldValues == nil {
+		evt.Event = TypeDocumentVersion
+
+		oldVersion, ok := msg.NewValues["current_version"].(int64)
+		if !ok {
+			return Event{}, fmt.Errorf("failed to extract old version")
+		}
+
+		// New versions have to be higher, bail, something odd
+		// is going on.
+		if version <= oldVersion {
+			// TODO: log?
+			return Event{}, nil
+		}
+	}
+
+	updated, ok := msg.NewValues["updated"].(time.Time)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract updated time")
+	}
+
+	evt.Timestamp = updated
+
+	updater, ok := msg.NewValues["updater_uri"].(string)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract updater_uri")
+	}
+
+	evt.Updater = updater
+
+	docType, ok := msg.NewValues["type"].(string)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract updater_uri")
+	}
+
+	evt.Type = docType
+
+	docUUID, ok := msg.NewValues["uuid"].([16]uint8)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract uuid")
+	}
+
+	evt.UUID = docUUID
+
+	return evt, nil
+}
+
+func (pr *PGReplication) recordEvent(evt Event) error {
+	ctx := context.Background()
+
+	tx, err := pr.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+
+	defer internal.SafeRollback(ctx, pr.logger, tx, "eventlog insert")
+
+	row := postgres.InsertIntoEventLogParams{
+		Event:     string(evt.Event),
+		Uuid:      evt.UUID,
+		Timestamp: internal.PGTime(evt.Timestamp),
+		Type:      internal.PGTextOrNull(evt.Type),
+		Version:   internal.PGBigintOrNull(evt.Version),
+		Status:    internal.PGTextOrNull(evt.Status),
+		StatusID:  internal.PGBigintOrNull(evt.StatusID),
+	}
+
+	if evt.ACL != nil {
+		data, err := json.Marshal(evt.ACL)
+		if err != nil {
+			return fmt.Errorf("failed to marshal ACL: %w", err)
+		}
+
+		row.Acl = data
+	}
+
+	q := postgres.New(tx)
+
+	id, err := q.InsertIntoEventLog(ctx, row)
+	if err != nil {
+		return fmt.Errorf("failed to insert eventlog entry: %w", err)
+	}
+
+	notifyEventlog(ctx, pr.logger, q, id)
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
@@ -281,6 +614,12 @@ func NewTupleDecoder() *TupleDecoder {
 
 func (td *TupleDecoder) RegisterRelation(rel *pglogrepl.RelationMessage) {
 	td.relations[rel.RelationID] = rel
+}
+
+func (td *TupleDecoder) GetRelation(id uint32) (*pglogrepl.RelationMessage, bool) {
+	r, ok := td.relations[id]
+
+	return r, ok
 }
 
 func (td *TupleDecoder) DecodeValues(

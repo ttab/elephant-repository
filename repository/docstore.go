@@ -34,6 +34,12 @@ type DocStore interface {
 	CheckPermission(
 		ctx context.Context, req CheckPermissionRequest,
 	) (CheckPermissionResult, error)
+	GetEventlog(
+		ctx context.Context, after int64, limit int32,
+	) ([]Event, error)
+	OnEventlog(
+		ctx context.Context, ch chan int64,
+	)
 }
 
 type SchemaStore interface {
@@ -169,8 +175,8 @@ type DocumentMeta struct {
 }
 
 type ACLEntry struct {
-	URI         string
-	Permissions []string
+	URI         string   `json:"uri"`
+	Permissions []string `json:"permissions"`
 }
 
 type DocumentUpdate struct {

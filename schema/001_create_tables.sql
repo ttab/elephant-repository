@@ -254,12 +254,32 @@ create table status_rule(
        expression text not null
 );
 
+CREATE TABLE eventlog(
+       id bigint generated always as identity primary key,
+       event text not null,
+       uuid uuid not null,
+       timestamp timestamptz not null,
+       type text,
+       version bigint,
+       status text,
+       status_id bigint,
+       acl jsonb
+);
+
+CREATE TABLE eventsink(
+       name text primary key,
+       position bigint not null default 0,
+       configuration jsonb
+);
+
 create publication eventlog
-for table document, status_heads, delete_record, acl;
+for table document, status_heads, delete_record, acl_audit
+with (publish = 'insert, update');
 
 ---- create above / drop below ----
 
-drop role reporting;
+drop table eventlog;
+drop table eventsink;
 drop table report;
 drop publication eventlog;
 drop function create_version(

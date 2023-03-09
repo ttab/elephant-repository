@@ -89,6 +89,24 @@ type DocumentVersion struct {
 	Signature    pgtype.Text
 }
 
+type Eventlog struct {
+	ID        int64
+	Event     string
+	Uuid      uuid.UUID
+	Timestamp pgtype.Timestamptz
+	Type      pgtype.Text
+	Version   pgtype.Int8
+	Status    pgtype.Text
+	StatusID  pgtype.Int8
+	Acl       []byte
+}
+
+type Eventsink struct {
+	Name          string
+	Position      int64
+	Configuration []byte
+}
+
 type Report struct {
 	Name          string
 	Enabled       bool

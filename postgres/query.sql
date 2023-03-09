@@ -283,3 +283,24 @@ WHERE name = @name;
 SELECT MIN(next_execution)::timestamptz
 FROM report
 WHERE enabled;
+
+-- name: InsertIntoEventLog :one
+INSERT INTO eventlog(
+       event, uuid, type, timestamp, version, status, status_id, acl
+) VALUES (
+       @event, @uuid, @type, @timestamp, @version, @status, @status_id, @acl
+) RETURNING id;
+
+-- name: GetEventlog :many
+SELECT id, event, uuid, timestamp, type, version, status, status_id, acl
+FROM eventlog
+WHERE id > @after
+LIMIT sqlc.arg(row_limit);
+
+-- name: ConfigureEventsink :exec
+INSERT INTO eventsink(name, configuration) VALUES(@name, @config)
+ON CONFLICT (name) DO UPDATE SET
+   configuration = @config;
+
+-- name: UpdateEventsinkPosition :exec
+UPDATE eventsink SET position = @position WHERE name = @name;

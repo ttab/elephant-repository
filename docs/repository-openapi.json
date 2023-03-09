@@ -276,6 +276,38 @@
         },
         "type": "object"
       },
+      "elephant.repository.EventlogItem": {
+        "properties": {
+          "acl": {
+            "items": {
+              "$ref": "#/components/schemas/elephant.repository.ACLEntry"
+            },
+            "type": "array"
+          },
+          "event": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "status_id": {
+            "type": "integer"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "elephant.repository.GetAllActiveSchemasRequest": {
         "type": "object"
       },
@@ -318,6 +350,38 @@
           },
           "version": {
             "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.GetEventlogRequest": {
+        "properties": {
+          "after": {
+            "description": "After specifies the event ID after which to start returning events.",
+            "type": "integer"
+          },
+          "batchSize": {
+            "description": "BatchSize is the number of events we want in the response. Defaults to 10.",
+            "type": "integer"
+          },
+          "batchWaitMs": {
+            "description": "BatchWaitMs is the maximum time we wait for a batch to be filled. Defaults to 200.",
+            "type": "integer"
+          },
+          "waitMs": {
+            "description": "Wait is the maximum time to wait for new events. Defaults to 2000.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.GetEventlogResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/elephant.repository.EventlogItem"
+            },
+            "type": "array"
           }
         },
         "type": "object"
@@ -859,6 +923,44 @@
           }
         ],
         "summary": "Delete",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Documents/Eventlog": {
+      "post": {
+        "description": "Eventlog returns document update events, optionally waiting for new events.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.GetEventlogRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.GetEventlogResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Eventlog",
         "tags": [
           "Documents"
         ]

@@ -16,6 +16,7 @@ const (
 	NotifySchemasUpdated   NotifyChannel = "schemas"
 	NotifyArchived         NotifyChannel = "archived"
 	NotifyWorkflowsUpdated NotifyChannel = "workflows"
+	NotifyEventlog         NotifyChannel = "eventlog"
 )
 
 type ArchiveEventType int
@@ -69,6 +70,13 @@ func notifySchemaUpdated(
 	payload SchemaEvent,
 ) {
 	pgNotify(ctx, logger, q, NotifySchemasUpdated, payload)
+}
+
+func notifyEventlog(
+	ctx context.Context, logger *slog.Logger, q *postgres.Queries,
+	id int64,
+) {
+	pgNotify(ctx, logger, q, NotifyEventlog, id)
 }
 
 func notifyWorkflowUpdated(

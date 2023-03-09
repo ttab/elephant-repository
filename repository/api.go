@@ -44,6 +44,142 @@ func NewDocumentsService(
 // Interface guard.
 var _ repository.Documents = &DocumentsService{}
 
+// Eventlog returns document update events, optionally waiting for new events.
+func (a *DocumentsService) Eventlog(
+	ctx context.Context, req *repository.GetEventlogRequest,
+) (*repository.GetEventlogResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("read_eventlog") {
+		return nil, twirp.PermissionDenied.Error(
+			"no eventlog read permission")
+	}
+
+	var (
+		wait      time.Duration
+		waitBatch time.Duration
+	)
+
+	if req.WaitMs == 0 {
+		wait = 2 * time.Second
+	} else {
+		wait = time.Duration(req.WaitMs) * time.Millisecond
+	}
+
+	if req.BatchWaitMs == 0 {
+		waitBatch = 200 * time.Millisecond
+	} else {
+		waitBatch = time.Duration(req.BatchWaitMs) * time.Millisecond
+	}
+
+	limit := req.BatchSize
+	if limit == 0 {
+		limit = 10
+	}
+
+	evts, err := a.store.GetEventlog(ctx, req.After, limit)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to fetch events from store: %w", err)
+	}
+
+	var res repository.GetEventlogResponse
+
+	maxID := req.After
+
+	for i := range evts {
+		if evts[i].ID > maxID {
+			maxID = evts[i].ID
+		}
+
+		res.Items = append(res.Items, eventToRPC(evts[i]))
+	}
+
+	if wait < 0 || len(res.Items) == int(limit) {
+		return &res, nil
+	}
+
+	return a.eventlogWaitLoop(ctx, maxID, limit, wait, waitBatch, &res)
+}
+
+func (a *DocumentsService) eventlogWaitLoop(
+	ctx context.Context, after int64, limit int32,
+	wait time.Duration, waitBatch time.Duration,
+	res *repository.GetEventlogResponse,
+) (*repository.GetEventlogResponse, error) {
+	var batchTimeout <-chan time.Time
+
+	timeout := time.After(wait)
+
+	if len(res.Items) > 0 {
+		batchTimeout = time.After(waitBatch)
+	}
+
+	newEvent := make(chan int64, 1)
+
+	a.store.OnEventlog(ctx, newEvent)
+
+	for {
+		select {
+		case <-batchTimeout:
+			return res, nil
+		case <-timeout:
+			return res, nil
+		case <-ctx.Done():
+			return nil, twirp.Canceled.Error("context cancelled")
+		case <-newEvent:
+		}
+
+		evts, err := a.store.GetEventlog(ctx, after, limit-int32(len(res.Items)))
+		if err != nil {
+			return nil, twirp.InternalErrorf(
+				"failed to fetch events from store: %w", err)
+		}
+
+		for i := range evts {
+			if evts[i].ID > after {
+				after = evts[i].ID
+			}
+
+			res.Items = append(res.Items, eventToRPC(evts[i]))
+		}
+
+		if len(res.Items) == int(limit) {
+			return res, nil
+		}
+
+		if batchTimeout == nil && len(res.Items) > 0 {
+			batchTimeout = time.After(waitBatch)
+		}
+	}
+}
+
+func eventToRPC(evt Event) *repository.EventlogItem {
+	var acl []*repository.ACLEntry
+
+	for _, a := range evt.ACL {
+		acl = append(acl, &repository.ACLEntry{
+			Uri:         a.URI,
+			Permissions: a.Permissions,
+		})
+	}
+
+	return &repository.EventlogItem{
+		Id:        evt.ID,
+		Event:     string(evt.Event),
+		Uuid:      evt.UUID.String(),
+		Timestamp: evt.Timestamp.Format(time.RFC3339),
+		Version:   evt.Version,
+		Status:    evt.Status,
+		StatusId:  evt.StatusID,
+		Acl:       acl,
+	}
+}
+
 // Delete implements repository.Documents.
 func (a *DocumentsService) Delete(
 	ctx context.Context, req *repository.DeleteDocumentRequest,

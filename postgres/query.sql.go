@@ -60,6 +60,22 @@ func (q *Queries) CheckPermission(ctx context.Context, arg CheckPermissionParams
 	return has_access, err
 }
 
+const configureEventsink = `-- name: ConfigureEventsink :exec
+INSERT INTO eventsink(name, configuration) VALUES($1, $2)
+ON CONFLICT (name) DO UPDATE SET
+   configuration = $2
+`
+
+type ConfigureEventsinkParams struct {
+	Name   string
+	Config []byte
+}
+
+func (q *Queries) ConfigureEventsink(ctx context.Context, arg ConfigureEventsinkParams) error {
+	_, err := q.db.Exec(ctx, configureEventsink, arg.Name, arg.Config)
+	return err
+}
+
 const createStatus = `-- name: CreateStatus :exec
 SELECT create_status(
        $1::uuid, $2::varchar(32), $3::bigint, $4::bigint,
@@ -542,6 +558,48 @@ func (q *Queries) GetDueReport(ctx context.Context) (Report, error) {
 	return i, err
 }
 
+const getEventlog = `-- name: GetEventlog :many
+SELECT id, event, uuid, timestamp, type, version, status, status_id, acl
+FROM eventlog
+WHERE id > $1
+LIMIT $2
+`
+
+type GetEventlogParams struct {
+	After    int64
+	RowLimit int32
+}
+
+func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]Eventlog, error) {
+	rows, err := q.db.Query(ctx, getEventlog, arg.After, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Eventlog
+	for rows.Next() {
+		var i Eventlog
+		if err := rows.Scan(
+			&i.ID,
+			&i.Event,
+			&i.Uuid,
+			&i.Timestamp,
+			&i.Type,
+			&i.Version,
+			&i.Status,
+			&i.StatusID,
+			&i.Acl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getFullDocumentHeads = `-- name: GetFullDocumentHeads :many
 SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
        s.archived, s.signature
@@ -942,6 +1000,41 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 	return id, err
 }
 
+const insertIntoEventLog = `-- name: InsertIntoEventLog :one
+INSERT INTO eventlog(
+       event, uuid, type, timestamp, version, status, status_id, acl
+) VALUES (
+       $1, $2, $3, $4, $5, $6, $7, $8
+) RETURNING id
+`
+
+type InsertIntoEventLogParams struct {
+	Event     string
+	Uuid      uuid.UUID
+	Type      pgtype.Text
+	Timestamp pgtype.Timestamptz
+	Version   pgtype.Int8
+	Status    pgtype.Text
+	StatusID  pgtype.Int8
+	Acl       []byte
+}
+
+func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLogParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertIntoEventLog,
+		arg.Event,
+		arg.Uuid,
+		arg.Type,
+		arg.Timestamp,
+		arg.Version,
+		arg.Status,
+		arg.StatusID,
+		arg.Acl,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const insertSigningKey = `-- name: InsertSigningKey :exec
 INSERT INTO signing_keys(kid, spec) VALUES($1, $2)
 `
@@ -1033,6 +1126,20 @@ type SetNextReportExecutionParams struct {
 
 func (q *Queries) SetNextReportExecution(ctx context.Context, arg SetNextReportExecutionParams) error {
 	_, err := q.db.Exec(ctx, setNextReportExecution, arg.NextExecution, arg.Name)
+	return err
+}
+
+const updateEventsinkPosition = `-- name: UpdateEventsinkPosition :exec
+UPDATE eventsink SET position = $1 WHERE name = $2
+`
+
+type UpdateEventsinkPositionParams struct {
+	Position int64
+	Name     string
+}
+
+func (q *Queries) UpdateEventsinkPosition(ctx context.Context, arg UpdateEventsinkPositionParams) error {
+	_, err := q.db.Exec(ctx, updateEventsinkPosition, arg.Position, arg.Name)
 	return err
 }
 

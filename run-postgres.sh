@@ -9,7 +9,7 @@ containerStatus=$(docker inspect repository-postgres | jq -r '.[0].State.Status'
 
 if [[ $status -ne 0 ]]; then
     # Start postgres with wal_level=logical
-    docker run -d \
+    docker run -d --rm \
        --name repository-postgres \
        -e POSTGRES_DB=repository \
        -e POSTGRES_USER=repository \

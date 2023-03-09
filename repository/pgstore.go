@@ -41,6 +41,7 @@ type PGDocStore struct {
 	archived  *FanOut[ArchivedEvent]
 	schemas   *FanOut[SchemaEvent]
 	workflows *FanOut[WorkflowEvent]
+	eventlog  *FanOut[int64]
 }
 
 func NewPGDocStore(
@@ -59,6 +60,7 @@ func NewPGDocStore(
 		archived:  NewFanOut[ArchivedEvent](),
 		schemas:   NewFanOut[SchemaEvent](),
 		workflows: NewFanOut[WorkflowEvent](),
+		eventlog:  NewFanOut[int64](),
 	}, nil
 }
 
@@ -105,6 +107,20 @@ func (s *PGDocStore) OnWorkflowUpdate(
 	})
 }
 
+// OnEventlog notifies the channel ch of all new eventlog IDs. Subscription is
+// automatically cancelled once the context is cancelled.
+//
+// Note that we don't provide any delivery guarantees for these events.
+// non-blocking send is used on ch, so if it's unbuffered events will be
+// discarded if the receiver is busy.
+func (s *PGDocStore) OnEventlog(
+	ctx context.Context, ch chan int64,
+) {
+	go s.eventlog.Listen(ctx, ch, func(_ int64) bool {
+		return true
+	})
+}
+
 // RunListener opens a connection to the database and subscribes to all store
 // notifications.
 func (s *PGDocStore) RunListener(ctx context.Context) {
@@ -133,6 +149,7 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 		NotifyArchived,
 		NotifySchemasUpdated,
 		NotifyWorkflowsUpdated,
+		NotifyEventlog,
 	}
 
 	for _, channel := range notifications {
@@ -201,6 +218,16 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 				}
 
 				s.workflows.Notify(e)
+			case NotifyEventlog:
+				var e int64
+
+				err := json.Unmarshal(
+					[]byte(notification.Payload), &e)
+				if err != nil {
+					break
+				}
+
+				s.eventlog.Notify(e)
 			}
 		}
 	})
@@ -345,6 +372,45 @@ func (s *PGDocStore) GetDocument(
 	}
 
 	return &d, nil
+}
+
+func (s *PGDocStore) GetEventlog(
+	ctx context.Context, after int64, limit int32,
+) ([]Event, error) {
+	res, err := s.reader.GetEventlog(ctx, postgres.GetEventlogParams{
+		After:    after,
+		RowLimit: limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from database: %w", err)
+	}
+
+	evts := make([]Event, len(res))
+
+	for i := range res {
+		e := Event{
+			ID:        res[i].ID,
+			Event:     EventType(res[i].Event),
+			UUID:      res[i].Uuid,
+			Timestamp: res[i].Timestamp.Time,
+			Type:      res[i].Type.String,
+			Version:   res[i].Version.Int64,
+			Status:    res[i].Status.String,
+			StatusID:  res[i].StatusID.Int64,
+		}
+
+		if res[i].Acl != nil {
+			err := json.Unmarshal(res[i].Acl, &e.ACL)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to unmarshal event ACL: %w", err)
+			}
+		}
+
+		evts[i] = e
+	}
+
+	return evts, nil
 }
 
 func (s *PGDocStore) GetVersion(

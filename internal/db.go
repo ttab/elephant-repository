@@ -19,6 +19,39 @@ func PGTime(t time.Time) pgtype.Timestamptz {
 	}
 }
 
+func PGTimeOrNull(t time.Time) pgtype.Timestamptz {
+	if t.IsZero() {
+		return pgtype.Timestamptz{}
+	}
+
+	return pgtype.Timestamptz{
+		Time:  t,
+		Valid: true,
+	}
+}
+
+func PGTextOrNull(s string) pgtype.Text {
+	if s == "" {
+		return pgtype.Text{}
+	}
+
+	return pgtype.Text{
+		String: s,
+		Valid:  true,
+	}
+}
+
+func PGBigintOrNull(n int64) pgtype.Int8 {
+	if n == 0 {
+		return pgtype.Int8{}
+	}
+
+	return pgtype.Int8{
+		Int64: n,
+		Valid: true,
+	}
+}
+
 // SafeRollback rolls back a transaction and logs if the rollback fails. If the
 // transaction already has been closed it's not treated as an error.
 func SafeRollback(

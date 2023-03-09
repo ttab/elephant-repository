@@ -19,6 +19,8 @@ service Documents {
   // GetMeta returns metadata for a document, including the ACL and current
   // status heads.
   rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
+  // Eventlog returns document update events, optionally waiting for new events.
+  rpc Eventlog(GetEventlogRequest) returns (GetEventlogResponse);
   // TODO: Add method for getting the status history of a document.
 }
 
@@ -55,6 +57,32 @@ service Reports {
   // Run a report. This will run the report and return the results instead of
   // sending it to any outputs.
   rpc Run(RunReportRequest) returns (RunReportResponse);
+}
+
+message GetEventlogRequest {
+  // After specifies the event ID after which to start returning events.
+  int64 after = 1;
+  // Wait is the maximum time to wait for new events. Defaults to 2000.
+  int32 waitMs = 2;
+  // BatchSize is the number of events we want in the response. Defaults to 10.
+  int32 batchSize = 3;
+  // BatchWaitMs is the maximum time we wait for a batch to be filled. Defaults to 200.
+  int32 batchWaitMs = 4;
+}
+
+message GetEventlogResponse {
+  repeated EventlogItem items = 1;
+}
+
+message EventlogItem {
+  int64 id = 1;
+  string event = 2;
+  string uuid = 3;
+  string timestamp = 4;
+  int64 version = 5;
+  string status = 6;
+  int64 status_id = 7;
+  repeated ACLEntry acl = 8;
 }
 
 message RunReportRequest {

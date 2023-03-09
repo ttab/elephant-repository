@@ -53,27 +53,26 @@ CREATE FUNCTION public.create_version(uuid uuid, version bigint, created timesta
     LANGUAGE sql
     AS $$
    insert into document(
-               uuid, uri, created, creator_uri,
-               updated, updater_uri, current_version
+               uuid, uri, type,
+               created, creator_uri, updated, updater_uri, current_version
           )
           values(
-               uuid, document_data->>'uri', created, creator_uri,
-               created, creator_uri, version
+               uuid, document_data->>'uri', document_data->>'type',
+               created, creator_uri, created, creator_uri, version
           )
           on conflict (uuid) do update
-             set updated = create_version.created,
+             set uri = create_version.document_data->>'uri',
+                 updated = create_version.created,
                  updater_uri = create_version.creator_uri,
                  current_version = version;
 
    insert into document_version(
-               uuid, uri, version, title, type, language,
+               uuid, version,
                created, creator_uri, meta, document_data, archived
           )
           values(
-               uuid, document_data->>'uri', version,
-               document_data->>'title', document_data->>'type',
-               document_data->>'language', created, creator_uri,
-               meta, document_data, false
+               uuid, version,
+               created, creator_uri, meta, document_data, false
           );
 $$;
 
@@ -278,6 +277,52 @@ CREATE TABLE public.document_version (
 ALTER TABLE public.document_version OWNER TO repository;
 
 --
+-- Name: eventlog; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.eventlog (
+    id bigint NOT NULL,
+    event text NOT NULL,
+    uuid uuid NOT NULL,
+    "timestamp" timestamp with time zone NOT NULL,
+    type text,
+    version bigint,
+    status text,
+    status_id bigint,
+    acl jsonb
+);
+
+
+ALTER TABLE public.eventlog OWNER TO repository;
+
+--
+-- Name: eventlog_id_seq; Type: SEQUENCE; Schema: public; Owner: repository
+--
+
+ALTER TABLE public.eventlog ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.eventlog_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: eventsink; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.eventsink (
+    name text NOT NULL,
+    "position" bigint DEFAULT 0 NOT NULL,
+    configuration jsonb
+);
+
+
+ALTER TABLE public.eventsink OWNER TO repository;
+
+--
 -- Name: report; Type: TABLE; Schema: public; Owner: repository
 --
 
@@ -440,6 +485,22 @@ ALTER TABLE ONLY public.document_version
 
 
 --
+-- Name: eventlog eventlog_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.eventlog
+    ADD CONSTRAINT eventlog_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: eventsink eventsink_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.eventsink
+    ADD CONSTRAINT eventsink_pkey PRIMARY KEY (name);
+
+
+--
 -- Name: report report_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -582,16 +643,16 @@ ALTER TABLE ONLY public.status_heads
 -- Name: eventlog; Type: PUBLICATION; Schema: -; Owner: repository
 --
 
-CREATE PUBLICATION eventlog WITH (publish = 'insert, update, delete, truncate');
+CREATE PUBLICATION eventlog WITH (publish = 'insert, update');
 
 
 ALTER PUBLICATION eventlog OWNER TO repository;
 
 --
--- Name: eventlog acl; Type: PUBLICATION TABLE; Schema: public; Owner: repository
+-- Name: eventlog acl_audit; Type: PUBLICATION TABLE; Schema: public; Owner: repository
 --
 
-ALTER PUBLICATION eventlog ADD TABLE ONLY public.acl;
+ALTER PUBLICATION eventlog ADD TABLE ONLY public.acl_audit;
 
 
 --
