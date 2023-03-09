@@ -507,9 +507,6 @@ func (s *PGDocStore) GetDocumentMeta(
 	}
 
 	heads, err := s.getFullDocumentHeads(ctx, s.reader, uuid)
-	if err != nil {
-		return nil, err
-	}
 
 	meta.Statuses = heads
 
