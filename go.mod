@@ -101,7 +101,7 @@ require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/cubicdaiya/gonp v1.0.4 // indirect
 	github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548 // indirect
-	github.com/davecgh/go-spew v1.1.1
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/gobwas/glob v0.2.3
@@ -148,7 +148,7 @@ require (
 	go.uber.org/zap v1.19.1 // indirect
 	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2
-	golang.org/x/net v0.6.0
+	golang.org/x/net v0.7.0
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
