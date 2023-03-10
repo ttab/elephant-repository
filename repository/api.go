@@ -81,6 +81,10 @@ func (a *DocumentsService) GetStatusHistory(
 	history, err := a.store.GetStatusHistory(
 		ctx, docUUID, req.Name, req.Before, 10,
 	)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to get history from store: %w", err)
+	}
 
 	res := repository.GetStatusHistoryReponse{
 		Statuses: make([]*repository.Status, len(history)),
