@@ -30,7 +30,7 @@ bin/sqlc: go.mod
 	GOBIN=${PWD}/bin go install github.com/kyleconroy/sqlc/cmd/sqlc
 
 bin/tern: go.mod
-	GOBIN=${PWD}/bin go install github.com/jackc/tern
+	GOBIN=${PWD}/bin go install github.com/jackc/tern/v2
 
 .PHONY: db-rollback
 db-rollback: bin/tern

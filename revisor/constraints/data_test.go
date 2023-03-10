@@ -3,13 +3,16 @@ package constraints_test
 import (
 	"testing"
 
-	"github.com/navigacontentlab/revisor/constraints"
+	"github.com/ttab/elephant/revisor/constraints"
 )
 
-func TestNaviga(t *testing.T) {
-	spec := constraints.Naviga()
+func TestCore(t *testing.T) {
+	spec, err := constraints.CoreSchema()
+	if err != nil {
+		t.Fatalf("failed to load core schema: %v", err)
+	}
 
 	if len(spec.Documents) == 0 {
-		t.Fatalf("expected Naviga constraint set to contain documents")
+		t.Fatalf("expected core constraint set to contain documents")
 	}
 }
