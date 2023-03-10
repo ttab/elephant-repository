@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/internal"
@@ -521,7 +520,7 @@ func (s *PGDocStore) GetDocumentMeta(
 	for _, a := range acl {
 		meta.ACL = append(meta.ACL, ACLEntry{
 			URI:         a.Uri,
-			Permissions: a.Permissions.Elements,
+			Permissions: a.Permissions,
 		})
 	}
 
@@ -568,7 +567,7 @@ func (s *PGDocStore) CheckPermission(
 	access, err := s.reader.CheckPermission(ctx,
 		postgres.CheckPermissionParams{
 			Uuid:       req.UUID,
-			Uri:        pgStringArray(req.GranteeURIs),
+			Uri:        req.GranteeURIs,
 			Permission: string(req.Permission),
 		})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -583,19 +582,6 @@ func (s *PGDocStore) CheckPermission(
 	}
 
 	return PermissionCheckAllowed, nil
-}
-
-func pgStringArray(v []string) pgtype.Array[string] {
-	return pgtype.Array[string]{
-		Elements: v,
-		Valid:    v != nil,
-		Dims: []pgtype.ArrayDimension{
-			{
-				Length:     int32(len(v)),
-				LowerBound: 1,
-			},
-		},
-	}
 }
 
 // Update implements DocStore.
@@ -923,8 +909,8 @@ func (s *PGDocStore) UpdateStatusRule(
 			Name:        rule.Name,
 			Description: rule.Description,
 			AccessRule:  rule.AccessRule,
-			AppliesTo:   pgStringArray(rule.AppliesTo),
-			ForTypes:    pgStringArray(rule.ForTypes),
+			AppliesTo:   rule.AppliesTo,
+			ForTypes:    rule.ForTypes,
 			Expression:  rule.Expression,
 		})
 		if err != nil {
@@ -968,8 +954,8 @@ func (s *PGDocStore) GetStatusRules(ctx context.Context) ([]StatusRule, error) {
 			Name:        row.Name,
 			Description: row.Description,
 			AccessRule:  row.AccessRule,
-			AppliesTo:   row.AppliesTo.Elements,
-			ForTypes:    row.ForTypes.Elements,
+			AppliesTo:   row.AppliesTo,
+			ForTypes:    row.ForTypes,
 			Expression:  row.Expression,
 		})
 	}
@@ -1309,7 +1295,7 @@ func (s *PGDocStore) updateACL(
 		acls = append(acls, postgres.ACLUpdateParams{
 			Uuid:        docUUID,
 			Uri:         acl.URI,
-			Permissions: pgStringArray(acl.Permissions),
+			Permissions: acl.Permissions,
 		})
 	}
 
