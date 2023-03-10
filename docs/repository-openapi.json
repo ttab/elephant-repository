@@ -476,6 +476,34 @@
         },
         "type": "object"
       },
+      "elephant.repository.GetStatusHistoryReponse": {
+        "properties": {
+          "statuses": {
+            "items": {
+              "$ref": "#/components/schemas/elephant.repository.Status"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.GetStatusHistoryRequest": {
+        "properties": {
+          "before": {
+            "description": "Before is a status ID used to page backwards through the status history. If no ID or a zero ID is provided the list will start with the lastest status.",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Name of the status to get.",
+            "type": "string"
+          },
+          "uuid": {
+            "description": "UUID of the document to get the status history for.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "elephant.repository.GetStatusRulesRequest": {
         "type": "object"
       },
@@ -1100,6 +1128,44 @@
           }
         ],
         "summary": "GetMeta",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Documents/GetStatusHistory": {
+      "post": {
+        "description": "GetStatusHistory returns the history of a status for a document.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.GetStatusHistoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.GetStatusHistoryReponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "GetStatusHistory",
         "tags": [
           "Documents"
         ]

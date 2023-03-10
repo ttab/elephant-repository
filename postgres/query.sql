@@ -341,3 +341,11 @@ WHERE name = @name
 DELETE FROM job_lock
 WHERE name = @name
       AND holder = @holder;
+
+-- name: GetStatusVersions :many
+SELECT id, version, created, creator_uri, meta
+FROM document_status
+WHERE uuid = @uuid AND name = @name
+      AND (@before::bigint = 0 OR id < @before::bigint)
+ORDER BY id DESC
+LIMIT @count;
