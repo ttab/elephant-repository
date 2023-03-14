@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -155,23 +156,23 @@ func TestIntegrationPasswordGrant(t *testing.T) {
 		"username":   []string{"John <user://example/john>"},
 	}
 
-	res := requestToken(t, tc, "without password", form)
+	statusWithout, _ := requestToken(t, tc, "without password", form)
 
-	test.Equal(t, http.StatusUnauthorized, res.StatusCode,
+	test.Equal(t, http.StatusUnauthorized, statusWithout,
 		"get status unauthorized back")
 
 	form.Set("password", "someting-else")
 
-	res = requestToken(t, tc, "with wrong password", form)
+	statusWrongPass, _ := requestToken(t, tc, "with wrong password", form)
 
-	test.Equal(t, http.StatusUnauthorized, res.StatusCode,
+	test.Equal(t, http.StatusUnauthorized, statusWrongPass,
 		"get status unauthorized back")
 
 	form.Set("password", "very-secret-password")
 
-	res = requestToken(t, tc, "with correct password", form)
+	statusCorrect, body := requestToken(t, tc, "with correct password", form)
 
-	test.Equal(t, http.StatusOK, res.StatusCode,
+	test.Equal(t, http.StatusOK, statusCorrect,
 		"get an ok response")
 
 	var responseData struct {
@@ -181,9 +182,7 @@ func TestIntegrationPasswordGrant(t *testing.T) {
 		ExpiresIn    int    `json:"expires_in"`
 	}
 
-	dec := json.NewDecoder(res.Body)
-
-	err := dec.Decode(&responseData)
+	err := json.Unmarshal(body, &responseData)
 	test.Must(t, err, "decode token response")
 
 	test.Equal(t, "Bearer", responseData.TokenType, "get correct token type")
@@ -202,7 +201,9 @@ func TestIntegrationPasswordGrant(t *testing.T) {
 	}
 }
 
-func requestToken(t *testing.T, tc TestContext, name string, form url.Values) *http.Response {
+func requestToken(
+	t *testing.T, tc TestContext, name string, form url.Values,
+) (int, []byte) {
 	t.Helper()
 
 	client := tc.Server.Client()
@@ -217,7 +218,16 @@ func requestToken(t *testing.T, tc TestContext, name string, form url.Values) *h
 	res, err := client.Do(req)
 	test.Must(t, err, "perform a token request %s", name)
 
-	return res
+	body, err := io.ReadAll(res.Body)
+	test.Must(t, err, "read response for request %s", name)
+
+	defer func() {
+		err := res.Body.Close()
+		test.Must(t, err,
+			"close response body for request %s", name)
+	}()
+
+	return res.StatusCode, body
 }
 
 func TestIntegrationDeleteTimeout(t *testing.T) {
