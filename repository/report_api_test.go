@@ -19,7 +19,9 @@ func TestReporting(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
-	tc := testingAPIServer(t, logger, true)
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunArchiver: true,
+	})
 
 	client := tc.ReportsClient(t,
 		test.StandardClaims(t, "report_admin"))

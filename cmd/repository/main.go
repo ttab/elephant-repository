@@ -237,6 +237,7 @@ func runServer(c *cli.Context) error {
 	router := httprouter.New()
 
 	err = repository.SetUpRouter(router,
+		repository.WithTokenEndpoint(logger, signingKey, conf.SharedSecret),
 		repository.WithDocumentsAPI(logger, signingKey, docService),
 		repository.WithSchemasAPI(logger, signingKey, schemaService),
 		repository.WithWorkflowsAPI(logger, signingKey, workflowService),

@@ -19,6 +19,7 @@ type BackendConfig struct {
 	NoReplicator  bool
 	NoReporter    bool
 	JWTSigningKey string
+	SharedSecret  string
 }
 
 func BackendConfigFromContext(c *cli.Context) BackendConfig {
@@ -31,6 +32,7 @@ func BackendConfigFromContext(c *cli.Context) BackendConfig {
 		ArchiverCount: c.Int("archiver-count"),
 		NoReplicator:  c.Bool("no-replicator"),
 		JWTSigningKey: c.String("jwt-signing-key"),
+		SharedSecret:  c.String("shared-secret"),
 		S3Options: repository.S3Options{
 			Endpoint:        c.String("s3-endpoint"),
 			AccessKeyID:     c.String("s3-key-id"),
@@ -95,6 +97,11 @@ func BackendFlags() []cli.Flag {
 			Name:    "jwt-signing-key",
 			Usage:   "ECDSA signing key used for mock JWTs",
 			EnvVars: []string{"JWT_SIGNING_KEY"},
+		},
+		&cli.StringFlag{
+			Name:    "shared-secret",
+			Usage:   "Shared secret to be used in password grants",
+			EnvVars: []string{"SHARED_PASSWORD_SECRET"},
 		},
 	}
 }
