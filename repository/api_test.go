@@ -1,6 +1,9 @@
 package repository_test
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +32,9 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
-	tc := testingAPIServer(t, logger, true)
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunArchiver: true,
+	})
 
 	client := tc.DocumentsClient(t,
 		test.StandardClaims(t, "doc_read doc_write doc_delete"))
@@ -132,6 +137,89 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	test.MustNot(t, err, "expected get of old version to fail after delete")
 }
 
+func TestIntegrationPasswordGrant(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		SharedSecret: "very-secret-password",
+	})
+
+	form := url.Values{
+		"grant_type": []string{"password"},
+		"username":   []string{"John <user://example/john>"},
+	}
+
+	res := requestToken(t, tc, "without password", form)
+
+	test.Equal(t, http.StatusUnauthorized, res.StatusCode,
+		"get status unauthorized back")
+
+	form.Set("password", "someting-else")
+
+	res = requestToken(t, tc, "with wrong password", form)
+
+	test.Equal(t, http.StatusUnauthorized, res.StatusCode,
+		"get status unauthorized back")
+
+	form.Set("password", "very-secret-password")
+
+	res = requestToken(t, tc, "with correct password", form)
+
+	test.Equal(t, http.StatusOK, res.StatusCode,
+		"get an ok response")
+
+	var responseData struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		TokenType    string `json:"token_type"`
+		ExpiresIn    int    `json:"expires_in"`
+	}
+
+	dec := json.NewDecoder(res.Body)
+
+	err := dec.Decode(&responseData)
+	test.Must(t, err, "decode token response")
+
+	test.Equal(t, "Bearer", responseData.TokenType, "get correct token type")
+
+	if responseData.ExpiresIn < 60 {
+		t.Fatalf("expected token to be valid for more than 60 seconds, got %d",
+			responseData.ExpiresIn)
+	}
+
+	if responseData.AccessToken == "" {
+		t.Fatal("expected an access token")
+	}
+
+	if responseData.RefreshToken == "" {
+		t.Fatal("expected a refresh token")
+	}
+}
+
+func requestToken(t *testing.T, tc TestContext, name string, form url.Values) *http.Response {
+	t.Helper()
+
+	client := tc.Server.Client()
+
+	req, err := http.NewRequest(
+		http.MethodPost, tc.Server.URL+"/token",
+		strings.NewReader(form.Encode()))
+	test.Must(t, err, "create a token request %s", name)
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	res, err := client.Do(req)
+	test.Must(t, err, "perform a token request %s", name)
+
+	return res
+}
+
 func TestIntegrationDeleteTimeout(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -141,7 +229,7 @@ func TestIntegrationDeleteTimeout(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
-	tc := testingAPIServer(t, logger, false)
+	tc := testingAPIServer(t, logger, testingServerOptions{})
 
 	client := tc.DocumentsClient(t,
 		test.StandardClaims(t, "doc_read doc_write doc_delete"))
@@ -178,7 +266,7 @@ func TestIntegrationStatuses(t *testing.T) {
 
 	ctx := test.Context(t)
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
-	tc := testingAPIServer(t, logger, false)
+	tc := testingAPIServer(t, logger, testingServerOptions{})
 
 	workflowClient := tc.WorkflowsClient(t,
 		test.StandardClaims(t, "workflow_admin"))
@@ -293,7 +381,7 @@ func TestIntegrationStatusRules(t *testing.T) {
 
 	ctx := test.Context(t)
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
-	tc := testingAPIServer(t, logger, false)
+	tc := testingAPIServer(t, logger, testingServerOptions{})
 
 	workflowClient := tc.WorkflowsClient(t,
 		test.StandardClaims(t, "workflow_admin"))
@@ -503,7 +591,7 @@ func TestIntegrationACL(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	ctx := test.Context(t)
-	tc := testingAPIServer(t, logger, false)
+	tc := testingAPIServer(t, logger, testingServerOptions{})
 
 	client := tc.DocumentsClient(t,
 		test.StandardClaims(t, "doc_read doc_write doc_delete"))

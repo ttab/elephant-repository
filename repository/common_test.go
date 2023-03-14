@@ -107,8 +107,13 @@ func (tc *TestContext) SchemasClient(
 	return schemasClient
 }
 
+type testingServerOptions struct {
+	RunArchiver  bool
+	SharedSecret string
+}
+
 func testingAPIServer(
-	t *testing.T, logger *slog.Logger, runArchiver bool,
+	t *testing.T, logger *slog.Logger, opts testingServerOptions,
 ) TestContext {
 	t.Helper()
 
@@ -139,7 +144,7 @@ func testingAPIServer(
 
 	go store.RunListener(ctx)
 
-	if runArchiver {
+	if opts.RunArchiver {
 		archiver := repository.NewArchiver(repository.ArchiverOptions{
 			Logger: logger,
 			S3:     env.S3,
@@ -171,6 +176,7 @@ func testingAPIServer(
 	test.Must(t, err, "create signing key")
 
 	err = repository.SetUpRouter(router,
+		repository.WithTokenEndpoint(logger, jwtKey, opts.SharedSecret),
 		repository.WithDocumentsAPI(logger, jwtKey, docService),
 		repository.WithSchemasAPI(logger, jwtKey, schemaService),
 		repository.WithWorkflowsAPI(logger, jwtKey, workflowService),
