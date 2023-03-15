@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
 	"golang.org/x/exp/slog"
@@ -28,7 +29,8 @@ type ReportRunnerOptions struct {
 	ReportQueryer Queryer
 	// DB should be a normal database connection with full repository
 	// access.
-	DB *pgxpool.Pool
+	DB                *pgxpool.Pool
+	MetricsRegisterer prometheus.Registerer
 }
 
 type ReportRunner struct {
@@ -38,18 +40,46 @@ type ReportRunner struct {
 	queryer Queryer
 	pool    *pgxpool.Pool
 
+	restarts prometheus.Counter
+	duration *prometheus.HistogramVec
+
 	cancel  func()
 	stopped chan struct{}
 }
 
-func NewReportRunner(opts ReportRunnerOptions) *ReportRunner {
-	return &ReportRunner{
-		logger:  opts.Logger,
-		s3:      opts.S3,
-		bucket:  opts.Bucket,
-		queryer: opts.ReportQueryer,
-		pool:    opts.DB,
+func NewReportRunner(opts ReportRunnerOptions) (*ReportRunner, error) {
+	if opts.MetricsRegisterer == nil {
+		opts.MetricsRegisterer = prometheus.DefaultRegisterer
 	}
+
+	restarts := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "elephant_reporter_restarts_total",
+			Help: "Number of times the reporter has restarted.",
+		},
+	)
+	if err := opts.MetricsRegisterer.Register(restarts); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
+	duration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "elephant_report_duration_seconds",
+		Help:    "Duration for generating a report.",
+		Buckets: prometheus.ExponentialBuckets(0.100, 2, 11),
+	}, []string{"name"})
+	if err := opts.MetricsRegisterer.Register(duration); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
+	return &ReportRunner{
+		logger:   opts.Logger,
+		s3:       opts.S3,
+		bucket:   opts.Bucket,
+		queryer:  opts.ReportQueryer,
+		pool:     opts.DB,
+		restarts: restarts,
+		duration: duration,
+	}, nil
 }
 
 func (r *ReportRunner) Run(ctx context.Context) {
@@ -73,6 +103,8 @@ func (r *ReportRunner) run(ctx context.Context) {
 		if errors.Is(err, context.Canceled) {
 			return
 		} else if err != nil {
+			r.restarts.Inc()
+
 			r.logger.ErrorCtx(
 				ctx, "reporter error, restarting", err,
 				slog.Duration(internal.LogKeyDelay, restartWaitSeconds),
@@ -134,7 +166,7 @@ func (r *ReportRunner) runNext(ctx context.Context) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	} else if err != nil {
-		return fmt.Errorf("failed to gen due report: %w", err)
+		return fmt.Errorf("failed to get due report: %w", err)
 	}
 
 	var report Report
@@ -144,7 +176,7 @@ func (r *ReportRunner) runNext(ctx context.Context) error {
 		return fmt.Errorf("failed to unmarshal stored report: %w", err)
 	}
 
-	now := time.Now()
+	start := time.Now()
 
 	nextExecution, err := gronx.NextTick(report.CronExpression, false)
 	if err != nil {
@@ -157,10 +189,14 @@ func (r *ReportRunner) runNext(ctx context.Context) error {
 		return fmt.Errorf("failed to generate report: %w", err)
 	}
 
+	r.duration.WithLabelValues(
+		report.Name,
+	).Observe(time.Since(start).Seconds())
+
 	obj := ReportObject{
 		Specification: report,
 		Tables:        result.Tables,
-		Created:       now,
+		Created:       start,
 	}
 
 	objBody, err := json.MarshalIndent(&obj, "", "  ")
@@ -174,7 +210,7 @@ func (r *ReportRunner) runNext(ctx context.Context) error {
 			Bucket: aws.String(r.bucket),
 			Key: aws.String(fmt.Sprintf(
 				"reports/%s/%s/result.xlsx",
-				report.Name, now.Format(time.RFC3339))),
+				report.Name, start.Format(time.RFC3339))),
 			Body: result.Spreadsheet,
 		})
 		if err != nil {
@@ -187,7 +223,7 @@ func (r *ReportRunner) runNext(ctx context.Context) error {
 		Bucket: aws.String(r.bucket),
 		Key: aws.String(fmt.Sprintf(
 			"reports/%s/%s/result.json",
-			report.Name, now.Format(time.RFC3339))),
+			report.Name, start.Format(time.RFC3339))),
 		Body: bytes.NewReader(objBody),
 	})
 	if err != nil {

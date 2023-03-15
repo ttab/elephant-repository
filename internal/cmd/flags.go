@@ -29,7 +29,6 @@ func BackendConfigFromContext(c *cli.Context) BackendConfig {
 		ArchiveBucket: c.String("archive-bucket"),
 		NoArchiver:    c.Bool("no-archiver"),
 		NoReporter:    c.Bool("no-reporter"),
-		ArchiverCount: c.Int("archiver-count"),
 		NoReplicator:  c.Bool("no-replicator"),
 		JWTSigningKey: c.String("jwt-signing-key"),
 		SharedSecret:  c.String("shared-secret"),
@@ -83,11 +82,6 @@ func BackendFlags() []cli.Flag {
 		&cli.BoolFlag{
 			Name:  "no-reporter",
 			Usage: "Disable the reporter",
-		},
-		&cli.IntFlag{
-			Name:  "archiver-count",
-			Usage: "Number of archivers to run",
-			Value: 1,
 		},
 		&cli.BoolFlag{
 			Name:  "no-replicator",

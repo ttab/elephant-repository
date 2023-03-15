@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
 	"golang.org/x/exp/slog"
@@ -48,18 +49,36 @@ type PGReplication struct {
 	pool   *pgxpool.Pool
 	dbURI  string
 	logger *slog.Logger
+
+	restarts prometheus.Counter
 }
 
 func NewPGReplication(
 	logger *slog.Logger,
 	pool *pgxpool.Pool,
 	dbURI string,
-) *PGReplication {
-	return &PGReplication{
-		pool:   pool,
-		logger: logger,
-		dbURI:  dbURI,
+	metricsRegisterer prometheus.Registerer,
+) (*PGReplication, error) {
+	if metricsRegisterer == nil {
+		metricsRegisterer = prometheus.DefaultRegisterer
 	}
+
+	restarts := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "elephant_replicator_restarts_total",
+			Help: "Number of times the replicator has restarted.",
+		},
+	)
+	if err := metricsRegisterer.Register(restarts); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
+	return &PGReplication{
+		pool:     pool,
+		logger:   logger,
+		dbURI:    dbURI,
+		restarts: restarts,
+	}, nil
 }
 
 func (pr *PGReplication) Run(ctx context.Context) {
@@ -68,6 +87,8 @@ func (pr *PGReplication) Run(ctx context.Context) {
 	for {
 		err := pr.startReplication(ctx)
 		if err != nil {
+			pr.restarts.Inc()
+
 			pr.logger.ErrorCtx(
 				ctx, "replication error, restarting", err,
 				slog.Duration(internal.LogKeyDelay, restartWaitSeconds),

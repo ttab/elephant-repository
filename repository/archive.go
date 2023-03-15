@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
@@ -89,10 +90,11 @@ func ArchiveS3Client(
 }
 
 type ArchiverOptions struct {
-	Logger *slog.Logger
-	S3     *s3.Client
-	Bucket string
-	DB     *pgxpool.Pool
+	Logger            *slog.Logger
+	S3                *s3.Client
+	Bucket            string
+	DB                *pgxpool.Pool
+	MetricsRegisterer prometheus.Registerer
 }
 
 // Archiver reads unarchived document versions, and statuses and writes a copy
@@ -105,17 +107,73 @@ type Archiver struct {
 	signingKeys        SigningKeySet
 	signingKeysChecked time.Time
 
+	versionsArchived *prometheus.CounterVec
+	statusesArchived *prometheus.CounterVec
+	deletesProcessed *prometheus.CounterVec
+	restarts         prometheus.Counter
+
 	cancel  func()
 	stopped chan struct{}
 }
 
-func NewArchiver(opts ArchiverOptions) *Archiver {
-	return &Archiver{
-		logger: opts.Logger,
-		s3:     opts.S3,
-		pool:   opts.DB,
-		bucket: opts.Bucket,
+func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
+	if opts.MetricsRegisterer == nil {
+		opts.MetricsRegisterer = prometheus.DefaultRegisterer
 	}
+
+	versionsArchived := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "elephant_archiver_documents_total",
+			Help: "Number of document versions archived.",
+		},
+		[]string{"status"},
+	)
+	if err := opts.MetricsRegisterer.Register(versionsArchived); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
+	statusesArchived := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "elephant_archiver_statuses_total",
+			Help: "Number of document statuses archived.",
+		},
+		[]string{"status"},
+	)
+	if err := opts.MetricsRegisterer.Register(statusesArchived); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
+	deletesProcessed := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "elephant_archiver_deletes_total",
+			Help: "Number of document deletes processed.",
+		},
+		[]string{"status"},
+	)
+	if err := opts.MetricsRegisterer.Register(deletesProcessed); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
+	restarts := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "elephant_archiver_restarts_total",
+			Help: "Number of times the archiver has restarted.",
+		},
+	)
+	if err := opts.MetricsRegisterer.Register(restarts); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
+	return &Archiver{
+		logger:           opts.Logger,
+		s3:               opts.S3,
+		pool:             opts.DB,
+		bucket:           opts.Bucket,
+		versionsArchived: versionsArchived,
+		statusesArchived: statusesArchived,
+		deletesProcessed: deletesProcessed,
+		restarts:         restarts,
+	}, nil
 }
 
 func (a *Archiver) Run(ctx context.Context) error {
@@ -149,6 +207,8 @@ func (a *Archiver) run(ctx context.Context) {
 		if errors.Is(err, context.Canceled) {
 			return
 		} else if err != nil {
+			a.restarts.Inc()
+
 			a.logger.ErrorCtx(
 				ctx, "archiver error, restarting", err,
 				slog.Duration(internal.LogKeyDelay, restartWaitSeconds),
@@ -174,6 +234,7 @@ func (a *Archiver) loop(ctx context.Context) error {
 
 	runWithDelay := func(
 		name string, now time.Time, d time.Duration,
+		metric *prometheus.CounterVec,
 		fn func(ctx context.Context) (bool, error),
 	) error {
 		if now.Before(wait[name]) {
@@ -182,6 +243,8 @@ func (a *Archiver) loop(ctx context.Context) error {
 
 		ok, err := fn(ctx)
 		if err != nil {
+			metric.WithLabelValues("error").Inc()
+
 			return fmt.Errorf(
 				"failed to %s: %w", name, err)
 		}
@@ -191,7 +254,11 @@ func (a *Archiver) loop(ctx context.Context) error {
 			d = n + (time.Duration(r.Int()) % n)
 
 			wait[name] = time.Now().Add(d)
+
+			return nil
 		}
+
+		metric.WithLabelValues("ok").Inc()
 
 		return nil
 	}
@@ -209,21 +276,21 @@ func (a *Archiver) loop(ctx context.Context) error {
 
 		err := runWithDelay(
 			"archive document versions", now, 500*time.Millisecond,
-			a.archiveDocumentVersions)
+			a.versionsArchived, a.archiveDocumentVersions)
 		if err != nil {
 			return err
 		}
 
 		err = runWithDelay(
 			"archive document statuses", now, 500*time.Millisecond,
-			a.archiveDocumentStatuses)
+			a.statusesArchived, a.archiveDocumentStatuses)
 		if err != nil {
 			return err
 		}
 
 		err = runWithDelay(
 			"process document deletes", now, 500*time.Millisecond,
-			a.processDeletes)
+			a.deletesProcessed, a.processDeletes)
 		if err != nil {
 			return err
 		}

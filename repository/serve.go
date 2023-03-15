@@ -57,69 +57,118 @@ func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
 	return nil
 }
 
+type ServerOptions struct {
+	Hooks          *twirp.ServerHooks
+	AuthMiddleware func(
+		w http.ResponseWriter, r *http.Request, next http.Handler,
+	) error
+}
+
+func (so *ServerOptions) SetJWTValidation(jwtKey *ecdsa.PrivateKey) {
+	// TODO: This feels like an initial sketch that should be further
+	// developed to address the JWT cacheing.
+	so.AuthMiddleware = func(
+		w http.ResponseWriter, r *http.Request, next http.Handler,
+	) error {
+		auth, err := AuthInfoFromHeader(&jwtKey.PublicKey,
+			r.Header.Get("Authorization"))
+		if err != nil && !errors.Is(err, ErrNoAuthorization) {
+			// TODO: Move the response part to a hook instead?
+			return internal.HTTPErrorf(http.StatusUnauthorized,
+				"invalid authorization method: %v", err)
+		}
+
+		if auth != nil {
+			r = r.WithContext(SetAuthInfo(r.Context(), auth))
+		}
+
+		next.ServeHTTP(w, r)
+
+		return nil
+	}
+}
+
 type RouterOption func(router *httprouter.Router) error
 
 func WithDocumentsAPI(
-	logger *slog.Logger,
-	jwtKey *ecdsa.PrivateKey, service repository.Documents,
+	logger *slog.Logger, service repository.Documents,
+	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		return documentAPI(router, jwtKey, service)
+		opts.Hooks = twirp.ChainHooks(
+			authCheckHook(""), opts.Hooks,
+		)
+
+		api := repository.NewDocumentsServer(
+			service,
+			twirp.WithServerJSONSkipDefaults(true),
+			twirp.WithServerHooks(opts.Hooks),
+		)
+
+		registerAPI(router, opts, api)
+
+		return nil
 	}
 }
 
 func WithSchemasAPI(
-	logger *slog.Logger,
-	jwtKey *ecdsa.PrivateKey, service repository.Schemas,
+	logger *slog.Logger, service repository.Schemas,
+	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		hooks := defaultAPIHooks("schema_admin")
+		opts.Hooks = twirp.ChainHooks(
+			authCheckHook("schema_admin"), opts.Hooks,
+		)
 
 		api := repository.NewSchemasServer(
 			service,
 			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(hooks),
+			twirp.WithServerHooks(opts.Hooks),
 		)
 
-		registerAPI(router, jwtKey, api)
+		registerAPI(router, opts, api)
 
 		return nil
 	}
 }
 
 func WithWorkflowsAPI(
-	logger *slog.Logger,
-	jwtKey *ecdsa.PrivateKey, service repository.Workflows,
+	logger *slog.Logger, service repository.Workflows,
+	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		hooks := defaultAPIHooks("workflow_admin")
+		opts.Hooks = twirp.ChainHooks(
+			authCheckHook("workflow_admin"), opts.Hooks,
+		)
 
 		api := repository.NewWorkflowsServer(
 			service,
 			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(hooks),
+			twirp.WithServerHooks(opts.Hooks),
 		)
 
-		registerAPI(router, jwtKey, api)
+		registerAPI(router, opts, api)
 
 		return nil
 	}
 }
 
 func WithReportsAPI(
-	logger *slog.Logger,
-	jwtKey *ecdsa.PrivateKey, service repository.Reports,
+	logger *slog.Logger, service repository.Reports,
+	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		hooks := defaultAPIHooks("")
+		opts.Hooks = twirp.ChainHooks(
+			authCheckHook(""), opts.Hooks,
+		)
 
 		api := repository.NewReportsServer(
 			service,
 			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(hooks),
+			twirp.WithServerHooks(opts.Hooks),
 		)
 
-		registerAPI(router, jwtKey, api)
+		registerAPI(router, opts, api)
 
 		return nil
 	}
@@ -238,9 +287,9 @@ func WithTokenEndpoint(
 	}
 }
 
-func defaultAPIHooks(scope string) *twirp.ServerHooks {
+func authCheckHook(scope string) *twirp.ServerHooks {
 	return &twirp.ServerHooks{
-		RequestReceived: func(
+		RequestRouted: func(
 			ctx context.Context,
 		) (context.Context, error) {
 			// Require auth for all methods
@@ -283,41 +332,18 @@ type apiServerForRouter interface {
 }
 
 func registerAPI(
-	router *httprouter.Router, jwtKey *ecdsa.PrivateKey,
+	router *httprouter.Router, opt ServerOptions,
 	api apiServerForRouter,
 ) {
 	router.POST(api.PathPrefix()+":method", internal.RHandleFunc(func(
 		w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 	) error {
-		auth, err := AuthInfoFromHeader(&jwtKey.PublicKey,
-			r.Header.Get("Authorization"))
-		if err != nil && !errors.Is(err, ErrNoAuthorization) {
-			// TODO: Move the response part to a hook instead?
-			return internal.HTTPErrorf(http.StatusUnauthorized,
-				"invalid authorization method: %v", err)
-		}
-
-		if auth != nil {
-			r = r.WithContext(SetAuthInfo(r.Context(), auth))
+		if opt.AuthMiddleware != nil {
+			return opt.AuthMiddleware(w, r, api)
 		}
 
 		api.ServeHTTP(w, r)
 
 		return nil
 	}))
-}
-
-func documentAPI(
-	router *httprouter.Router, jwtKey *ecdsa.PrivateKey,
-	server repository.Documents,
-) error {
-	api := repository.NewDocumentsServer(
-		server,
-		twirp.WithServerJSONSkipDefaults(true),
-		twirp.WithServerHooks(defaultAPIHooks("")),
-	)
-
-	registerAPI(router, jwtKey, api)
-
-	return nil
 }

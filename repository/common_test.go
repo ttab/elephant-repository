@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant/internal/test"
 	"github.com/ttab/elephant/repository"
 	rpc "github.com/ttab/elephant/rpc/repository"
@@ -145,12 +146,14 @@ func testingAPIServer(
 	go store.RunListener(ctx)
 
 	if opts.RunArchiver {
-		archiver := repository.NewArchiver(repository.ArchiverOptions{
-			Logger: logger,
-			S3:     env.S3,
-			Bucket: env.Bucket,
-			DB:     dbpool,
+		archiver, err := repository.NewArchiver(repository.ArchiverOptions{
+			Logger:            logger,
+			S3:                env.S3,
+			Bucket:            env.Bucket,
+			DB:                dbpool,
+			MetricsRegisterer: prometheus.NewRegistry(),
 		})
+		test.Must(t, err, "create archiver")
 
 		err = archiver.Run(ctx)
 		test.Must(t, err, "run archiver")
@@ -175,12 +178,16 @@ func testingAPIServer(
 	jwtKey, err := test.NewSigningKey()
 	test.Must(t, err, "create signing key")
 
+	var srvOpts repository.ServerOptions
+
+	srvOpts.SetJWTValidation(jwtKey)
+
 	err = repository.SetUpRouter(router,
 		repository.WithTokenEndpoint(logger, jwtKey, opts.SharedSecret),
-		repository.WithDocumentsAPI(logger, jwtKey, docService),
-		repository.WithSchemasAPI(logger, jwtKey, schemaService),
-		repository.WithWorkflowsAPI(logger, jwtKey, workflowService),
-		repository.WithReportsAPI(logger, jwtKey, reportsService),
+		repository.WithDocumentsAPI(logger, docService, srvOpts),
+		repository.WithSchemasAPI(logger, schemaService, srvOpts),
+		repository.WithWorkflowsAPI(logger, workflowService, srvOpts),
+		repository.WithReportsAPI(logger, reportsService, srvOpts),
 	)
 	test.Must(t, err, "set up router")
 

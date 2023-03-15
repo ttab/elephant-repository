@@ -10,7 +10,7 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-func TestReporting(t *testing.T) {
+func TestIntegrationReporting(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
