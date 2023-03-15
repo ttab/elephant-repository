@@ -278,10 +278,20 @@ func TestIntegrationStatuses(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	tc := testingAPIServer(t, logger, testingServerOptions{})
 
+	untrustedWorkflowClient := tc.WorkflowsClient(t,
+		test.StandardClaims(t, "doc_read"))
+
+	_, err := untrustedWorkflowClient.UpdateStatus(ctx,
+		&repository.UpdateStatusRequest{
+			Name: "usable",
+		})
+	test.MustNot(t, err,
+		"be able to create statues without 'workflow_admin' scope")
+
 	workflowClient := tc.WorkflowsClient(t,
 		test.StandardClaims(t, "workflow_admin"))
 
-	_, err := workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
+	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
 		Name: "usable",
 	})
 	test.Must(t, err, "create usable status")

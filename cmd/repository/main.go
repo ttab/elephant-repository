@@ -17,6 +17,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/internal/cmd"
 	"github.com/ttab/elephant/repository"
@@ -150,8 +152,19 @@ func runServer(c *cli.Context) error {
 
 			log.Debug("setting up replication")
 
-			repl := repository.NewPGReplication(log, dbpool, conf.DB)
+			repl, err := repository.NewPGReplication(
+				log, dbpool, conf.DB,
+				prometheus.DefaultRegisterer)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to create replicator: %w", err)
+			}
 
+			// TODO: Inconsistent Run functions for subsystems. The
+			// reporter and archivers don't block. Though maybe it's
+			// the better behaviour to actually block so that it
+			// becomes obvious at the callsite that a goroutine is
+			// spawned.
 			go repl.Run(c.Context)
 
 			return nil
@@ -165,14 +178,18 @@ func runServer(c *cli.Context) error {
 				"failed to create S3 client for reporter: %w", err)
 		}
 
-		reporter := repository.NewReportRunner(repository.ReportRunnerOptions{
+		reporter, err := repository.NewReportRunner(repository.ReportRunnerOptions{
 			Logger: logger,
 			S3:     rS3,
 			// TODO: separate bucket.
-			Bucket:        conf.ArchiveBucket,
-			ReportQueryer: reportDB,
-			DB:            dbpool,
+			Bucket:            conf.ArchiveBucket,
+			ReportQueryer:     reportDB,
+			DB:                dbpool,
+			MetricsRegisterer: prometheus.DefaultRegisterer,
 		})
+		if err != nil {
+			return fmt.Errorf("failed to create report runner: %w", err)
+		}
 
 		reporter.Run(c.Context)
 	}
@@ -180,15 +197,12 @@ func runServer(c *cli.Context) error {
 	if !conf.NoArchiver {
 		log := logger.With(internal.LogKeyComponent, "archiver")
 
-		logger.Debug("starting archiver(s)",
-			internal.LogKeyCount, conf.ArchiverCount)
+		logger.Debug("starting archiver")
 
-		for i := 0; i < conf.ArchiverCount; i++ {
-			group.Go(func() error {
-				return startArchiver(c.Context, gCtx,
-					log, conf, dbpool)
-			})
-		}
+		group.Go(func() error {
+			return startArchiver(c.Context, gCtx,
+				log, conf, dbpool)
+		})
 	}
 
 	err = group.Wait()
@@ -215,6 +229,10 @@ func runServer(c *cli.Context) error {
 	logger.Debug("starting API server")
 
 	go func() {
+		mux := http.DefaultServeMux
+
+		mux.Handle("/metrics", promhttp.Handler())
+
 		profileServer := http.Server{
 			Addr:              profileAddr,
 			Handler:           http.DefaultServeMux,
@@ -236,12 +254,23 @@ func runServer(c *cli.Context) error {
 
 	router := httprouter.New()
 
+	var opts repository.ServerOptions
+
+	opts.SetJWTValidation(signingKey)
+
+	metrics, err := internal.NewTwirpMetricsHooks()
+	if err != nil {
+		return fmt.Errorf("failed to create twirp metrics hook: %w", err)
+	}
+
+	opts.Hooks = metrics
+
 	err = repository.SetUpRouter(router,
 		repository.WithTokenEndpoint(logger, signingKey, conf.SharedSecret),
-		repository.WithDocumentsAPI(logger, signingKey, docService),
-		repository.WithSchemasAPI(logger, signingKey, schemaService),
-		repository.WithWorkflowsAPI(logger, signingKey, workflowService),
-		repository.WithReportsAPI(logger, signingKey, reportsService),
+		repository.WithDocumentsAPI(logger, docService, opts),
+		repository.WithSchemasAPI(logger, schemaService, opts),
+		repository.WithWorkflowsAPI(logger, workflowService, opts),
+		repository.WithReportsAPI(logger, reportsService, opts),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to set up router: %w", err)
@@ -264,12 +293,15 @@ func startArchiver(
 		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
-	archiver := repository.NewArchiver(repository.ArchiverOptions{
+	archiver, err := repository.NewArchiver(repository.ArchiverOptions{
 		Logger: logger,
 		S3:     aS3,
 		Bucket: conf.ArchiveBucket,
 		DB:     dbpool,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to create archiver: %w", err)
+	}
 
 	err = archiver.Run(ctx)
 	if err != nil {
