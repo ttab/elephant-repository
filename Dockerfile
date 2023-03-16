@@ -13,4 +13,10 @@ FROM alpine:3.17.2
 
 COPY --from=build /usr/local/bin/repository /usr/local/bin/
 
+# API server
+EXPOSE 1080
+
+# Debug/profiling server
+EXPOSE 1081
+
 ENTRYPOINT ["repository"]
