@@ -10,6 +10,7 @@ type BackendConfig struct {
 	DB            string
 	ReportingDB   string
 	ArchiveBucket string
+	ReportBucket  string
 	S3Endpoint    string
 	S3KeyID       string
 	S3KeySecret   string
@@ -27,6 +28,7 @@ func BackendConfigFromContext(c *cli.Context) BackendConfig {
 		DB:            c.String("db"),
 		ReportingDB:   c.String("reporting-db"),
 		ArchiveBucket: c.String("archive-bucket"),
+		ReportBucket:  c.String("report-bucket"),
 		NoArchiver:    c.Bool("no-archiver"),
 		NoReporter:    c.Bool("no-reporter"),
 		NoReplicator:  c.Bool("no-replicator"),
@@ -55,6 +57,11 @@ func BackendFlags() []cli.Flag {
 			Name:    "archive-bucket",
 			Value:   "elephant-archive",
 			EnvVars: []string{"ARCHIVE_BUCKET"},
+		},
+		&cli.StringFlag{
+			Name:    "report-bucket",
+			Value:   "elephant-reports",
+			EnvVars: []string{"REPORT_BUCKET"},
 		},
 		&cli.StringFlag{
 			Name:    "s3-endpoint",

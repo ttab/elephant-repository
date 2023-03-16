@@ -179,10 +179,9 @@ func runServer(c *cli.Context) error {
 		}
 
 		reporter, err := repository.NewReportRunner(repository.ReportRunnerOptions{
-			Logger: logger,
-			S3:     rS3,
-			// TODO: separate bucket.
-			Bucket:            conf.ArchiveBucket,
+			Logger:            logger,
+			S3:                rS3,
+			Bucket:            conf.ReportBucket,
 			ReportQueryer:     reportDB,
 			DB:                dbpool,
 			MetricsRegisterer: prometheus.DefaultRegisterer,
