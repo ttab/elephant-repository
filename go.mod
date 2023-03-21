@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/adhocore/gronx v1.1.2
-	github.com/antonmedv/expr v1.12.2
+	github.com/antonmedv/expr v1.12.4
 	github.com/aws/aws-sdk-go-v2 v1.17.6
 	github.com/aws/aws-sdk-go-v2/config v1.18.17
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.17
