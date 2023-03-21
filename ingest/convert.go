@@ -75,7 +75,7 @@ func (e ErrDropBlock) Error() string {
 	return "drop block"
 }
 
-func (e ErrDropBlock) ProcessBlock(in doc.Block) (doc.Block, error) {
+func (e ErrDropBlock) ProcessBlock(_ doc.Block) (doc.Block, error) {
 	return doc.Block{}, e
 }
 

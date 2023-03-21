@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,7 +16,6 @@ import (
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
-	"golang.org/x/exp/slog"
 )
 
 func SetUpRouter(
@@ -41,20 +39,8 @@ func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	go func() {
-		<-ctx.Done()
-
-		_ = server.Close()
-	}()
-
-	err := server.ListenAndServe()
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("failed to start listening: %w", err)
-	}
-
-	return nil
+	//nolint:wrapcheck
+	return internal.ListenAndServeContext(ctx, &server)
 }
 
 type ServerOptions struct {
@@ -91,7 +77,7 @@ func (so *ServerOptions) SetJWTValidation(jwtKey *ecdsa.PrivateKey) {
 type RouterOption func(router *httprouter.Router) error
 
 func WithDocumentsAPI(
-	logger *slog.Logger, service repository.Documents,
+	service repository.Documents,
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
@@ -112,7 +98,7 @@ func WithDocumentsAPI(
 }
 
 func WithSchemasAPI(
-	logger *slog.Logger, service repository.Schemas,
+	service repository.Schemas,
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
@@ -133,7 +119,7 @@ func WithSchemasAPI(
 }
 
 func WithWorkflowsAPI(
-	logger *slog.Logger, service repository.Workflows,
+	service repository.Workflows,
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
@@ -154,7 +140,7 @@ func WithWorkflowsAPI(
 }
 
 func WithReportsAPI(
-	logger *slog.Logger, service repository.Reports,
+	service repository.Reports,
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
@@ -175,7 +161,6 @@ func WithReportsAPI(
 }
 
 func WithTokenEndpoint(
-	logger *slog.Logger,
 	jwtKey *ecdsa.PrivateKey, sharedSecret string,
 ) RouterOption {
 	return func(router *httprouter.Router) error {

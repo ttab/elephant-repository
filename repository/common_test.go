@@ -183,11 +183,11 @@ func testingAPIServer(
 	srvOpts.SetJWTValidation(jwtKey)
 
 	err = repository.SetUpRouter(router,
-		repository.WithTokenEndpoint(logger, jwtKey, opts.SharedSecret),
-		repository.WithDocumentsAPI(logger, docService, srvOpts),
-		repository.WithSchemasAPI(logger, schemaService, srvOpts),
-		repository.WithWorkflowsAPI(logger, workflowService, srvOpts),
-		repository.WithReportsAPI(logger, reportsService, srvOpts),
+		repository.WithTokenEndpoint(jwtKey, opts.SharedSecret),
+		repository.WithDocumentsAPI(docService, srvOpts),
+		repository.WithSchemasAPI(schemaService, srvOpts),
+		repository.WithWorkflowsAPI(workflowService, srvOpts),
+		repository.WithReportsAPI(reportsService, srvOpts),
 	)
 	test.Must(t, err, "set up router")
 

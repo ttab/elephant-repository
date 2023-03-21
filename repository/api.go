@@ -600,10 +600,10 @@ func (a *DocumentsService) Update(
 		}
 	}
 
+	// Check for ACL write permission, but allow the write if no document is
+	// found, as we want to allow the creation of new documents.
 	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
-	if internal.IsTwirpErrorCode(err, twirp.NotFound) {
-		// Allowed to create documents given a doc_write scope is set
-	} else if err != nil {
+	if err != nil && !internal.IsTwirpErrorCode(err, twirp.NotFound) {
 		return nil, err
 	}
 
@@ -706,7 +706,7 @@ func (a *DocumentsService) Update(
 
 // Validate implements repository.Documents.
 func (a *DocumentsService) Validate(
-	ctx context.Context, req *repository.ValidateRequest,
+	_ context.Context, req *repository.ValidateRequest,
 ) (*repository.ValidateResponse, error) {
 	if req.Document == nil {
 		return nil, twirp.RequiredArgumentError("document")
