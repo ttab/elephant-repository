@@ -46,12 +46,14 @@ func BackendConfigFromContext(c *cli.Context) BackendConfig {
 func BackendFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
-			Name:  "db",
-			Value: "postgres://repository:pass@localhost/repository",
+			Name:    "db",
+			Value:   "postgres://repository:pass@localhost/repository",
+			EnvVars: []string{"CONN_STRING"},
 		},
 		&cli.StringFlag{
-			Name:  "reporting-db",
-			Value: "postgres://reportuser:reportuser@localhost/repository",
+			Name:    "reporting-db",
+			Value:   "postgres://reportuser:reportuser@localhost/repository",
+			EnvVars: []string{"REPORTING_CONN_STRING"},
 		},
 		&cli.StringFlag{
 			Name:    "archive-bucket",
