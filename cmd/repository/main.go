@@ -8,19 +8,21 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"errors"
-	_ "expvar" // Register the expvar handlers
 	"fmt"
 	"net/http"
-	_ "net/http/pprof" //nolint:gosec
 	"os"
+	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/internal/cmd"
+	"github.com/ttab/elephant/postgres"
 	"github.com/ttab/elephant/repository"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/exp/slog"
@@ -101,6 +103,12 @@ func runServer(c *cli.Context) error {
 		signingKey = key
 	}
 
+	s3Client, err := repository.S3Client(c.Context, conf.S3Options)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to create S3 client: %w", err)
+	}
+
 	dbpool, err := pgxpool.New(c.Context, conf.DB)
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)
@@ -172,15 +180,9 @@ func runServer(c *cli.Context) error {
 	}
 
 	if !conf.NoReporter {
-		rS3, err := repository.ArchiveS3Client(setupCtx, conf.S3Options)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to create S3 client for reporter: %w", err)
-		}
-
 		reporter, err := repository.NewReportRunner(repository.ReportRunnerOptions{
 			Logger:            logger,
-			S3:                rS3,
+			S3:                s3Client,
 			Bucket:            conf.ReportBucket,
 			ReportQueryer:     reportDB,
 			DB:                dbpool,
@@ -225,32 +227,6 @@ func runServer(c *cli.Context) error {
 	workflowService := repository.NewWorkflowsService(store)
 	reportsService := repository.NewReportsService(logger, store, reportDB)
 
-	logger.Debug("starting API server")
-
-	go func() {
-		mux := http.DefaultServeMux
-
-		mux.Handle("/metrics", promhttp.Handler())
-
-		profileServer := http.Server{
-			Addr:              profileAddr,
-			Handler:           http.DefaultServeMux,
-			ReadHeaderTimeout: 1 * time.Second,
-		}
-
-		go func() {
-			<-c.Context.Done()
-			profileServer.Close()
-		}()
-
-		err := profileServer.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			logger.Debug("profile server closed")
-		} else if err != nil {
-			logger.Error("failed to start profile server", err)
-		}
-	}()
-
 	router := httprouter.New()
 
 	var opts repository.ServerOptions
@@ -265,19 +241,136 @@ func runServer(c *cli.Context) error {
 	opts.Hooks = metrics
 
 	err = repository.SetUpRouter(router,
-		repository.WithTokenEndpoint(logger, signingKey, conf.SharedSecret),
-		repository.WithDocumentsAPI(logger, docService, opts),
-		repository.WithSchemasAPI(logger, schemaService, opts),
-		repository.WithWorkflowsAPI(logger, workflowService, opts),
-		repository.WithReportsAPI(logger, reportsService, opts),
+		repository.WithTokenEndpoint(signingKey, conf.SharedSecret),
+		repository.WithDocumentsAPI(docService, opts),
+		repository.WithSchemasAPI(schemaService, opts),
+		repository.WithWorkflowsAPI(workflowService, opts),
+		repository.WithReportsAPI(reportsService, opts),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to set up router: %w", err)
 	}
 
-	err = repository.ListenAndServe(c.Context, addr, router)
-	if err != nil {
-		return fmt.Errorf("failed to start server: %w", err)
+	healthServer := internal.NewHealthServer(profileAddr)
+
+	healthServer.AddReadyFunction("s3", func(ctx context.Context) error {
+		testUUID := uuid.New()
+
+		key := fmt.Sprintf(
+			"test/ready-probe-%s.txt", testUUID,
+		)
+
+		_, err := s3Client.PutObject(ctx, &s3.PutObjectInput{
+			Bucket:      aws.String(conf.ArchiveBucket),
+			Key:         aws.String(key),
+			ContentType: aws.String("text/plain"),
+			Body:        strings.NewReader("Ready probe healthcheck"),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to write to archive bucket: %w", err)
+		}
+
+		res, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(conf.ArchiveBucket),
+			Key:    aws.String(key),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to read from archive bucket: %w", err)
+		}
+
+		_ = res.Body.Close()
+
+		_, err = s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+			Bucket: aws.String(conf.ArchiveBucket),
+			Key:    aws.String(key),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to delete from archive bucket: %w", err)
+		}
+
+		return nil
+	})
+
+	healthServer.AddReadyFunction("postgres", func(ctx context.Context) error {
+		q := postgres.New(dbpool)
+
+		_, err := q.GetActiveSchemas(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to read schemas: %w", err)
+		}
+
+		return nil
+	})
+
+	router.GET("/health/alive", func(
+		w http.ResponseWriter, req *http.Request, _ httprouter.Params,
+	) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+
+		_, _ = fmt.Fprintln(w, "I AM ALIVE!")
+	})
+
+	healthServer.AddReadyFunction("api_liveness", func(ctx context.Context) error {
+		req, err := http.NewRequestWithContext(
+			ctx, http.MethodGet, fmt.Sprintf(
+				"http://localhost%s/health/alive",
+				addr,
+			), nil,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to create liveness check request: %w", err)
+		}
+
+		var client http.Client
+
+		res, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to perform liveness check request: %w", err)
+		}
+
+		_ = res.Body.Close()
+
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf(
+				"api liveness endpoint returned non-ok status:: %s",
+				res.Status)
+		}
+
+		return nil
+	})
+
+	serverGroup, gCtx := errgroup.WithContext(c.Context)
+
+	serverGroup.Go(func() error {
+		logger.Debug("starting API server")
+
+		err := repository.ListenAndServe(gCtx, addr, router)
+		if err != nil {
+			return fmt.Errorf("API server error: %w", err)
+		}
+
+		return nil
+	})
+
+	serverGroup.Go(func() error {
+		logger.Debug("starting health server")
+
+		err := healthServer.ListenAndServe(gCtx)
+		if err != nil {
+			return fmt.Errorf("health server error: %w", err)
+		}
+
+		return nil
+	})
+
+	err = serverGroup.Wait()
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("server failed to start: %w", err)
 	}
 
 	return nil
@@ -287,7 +380,7 @@ func startArchiver(
 	ctx context.Context, setupCtx context.Context, logger *slog.Logger,
 	conf cmd.BackendConfig, dbpool *pgxpool.Pool,
 ) error {
-	aS3, err := repository.ArchiveS3Client(setupCtx, conf.S3Options)
+	aS3, err := repository.S3Client(setupCtx, conf.S3Options)
 	if err != nil {
 		return fmt.Errorf("failed to create S3 client: %w", err)
 	}

@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -40,20 +39,8 @@ func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	go func() {
-		<-ctx.Done()
-
-		_ = server.Close()
-	}()
-
-	err := server.ListenAndServe()
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("failed to start listening: %w", err)
-	}
-
-	return nil
+	//nolint:wrapcheck
+	return internal.ListenAndServeContext(ctx, &server)
 }
 
 type ServerOptions struct {

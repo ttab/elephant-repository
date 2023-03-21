@@ -39,7 +39,7 @@ type S3Options struct {
 	DisableHTTPS    bool
 }
 
-func ArchiveS3Client(
+func S3Client(
 	ctx context.Context, opts S3Options,
 ) (*s3.Client, error) {
 	var (

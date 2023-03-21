@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -96,4 +97,21 @@ func writeHTTPError(w http.ResponseWriter, err error) {
 	w.WriteHeader(statusCode)
 
 	_, _ = io.Copy(w, httpErr.Body)
+}
+
+func ListenAndServeContext(ctx context.Context, server *http.Server) error {
+	go func() {
+		<-ctx.Done()
+
+		_ = server.Close()
+	}()
+
+	err := server.ListenAndServe()
+	if errors.Is(err, http.ErrServerClosed) {
+		return err //nolint:wrapcheck
+	} else if err != nil {
+		return fmt.Errorf("failed to start listening: %w", err)
+	}
+
+	return nil
 }

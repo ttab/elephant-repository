@@ -262,7 +262,7 @@ func (bs *BackingServices) bootstrapMinio() error {
 }
 
 func (bs *BackingServices) getS3Client() (*s3.Client, error) {
-	client, err := repository.ArchiveS3Client(context.Background(),
+	client, err := repository.S3Client(context.Background(),
 		repository.S3Options{
 			Endpoint: fmt.Sprintf("http://localhost:%s/",
 				bs.minio.GetPort("9000/tcp")),
