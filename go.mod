@@ -6,7 +6,7 @@ require (
 	github.com/adhocore/gronx v1.1.2
 	github.com/antonmedv/expr v1.12.2
 	github.com/aws/aws-sdk-go-v2 v1.17.6
-	github.com/aws/aws-sdk-go-v2/config v1.18.17
+	github.com/aws/aws-sdk-go-v2/config v1.18.18
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.17
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.30.1
 	github.com/dgraph-io/badger/v3 v3.2103.5
