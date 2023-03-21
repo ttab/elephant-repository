@@ -112,7 +112,7 @@ func (s *WorkflowsService) UpdateStatus(
 
 // GetStatusRules returns all status rules.
 func (s *WorkflowsService) GetStatusRules(
-	ctx context.Context, req *repository.GetStatusRulesRequest,
+	ctx context.Context, _ *repository.GetStatusRulesRequest,
 ) (*repository.GetStatusRulesResponse, error) {
 	res, err := s.store.GetStatusRules(ctx)
 	if err != nil {
@@ -140,7 +140,7 @@ func (s *WorkflowsService) GetStatusRules(
 
 // GetStatuses lists all enabled statuses.
 func (s *WorkflowsService) GetStatuses(
-	ctx context.Context, req *repository.GetStatusesRequest,
+	ctx context.Context, _ *repository.GetStatusesRequest,
 ) (*repository.GetStatusesResponse, error) {
 	res, err := s.store.GetStatuses(ctx)
 	if err != nil {

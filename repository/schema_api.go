@@ -26,7 +26,7 @@ var _ repository.Schemas = &SchemasService{}
 
 // GetAllActiveSchemas returns the currently active schemas.
 func (a *SchemasService) GetAllActive(
-	ctx context.Context, req *repository.GetAllActiveSchemasRequest,
+	ctx context.Context, _ *repository.GetAllActiveSchemasRequest,
 ) (*repository.GetAllActiveSchemasResponse, error) {
 	schemas, err := a.store.GetActiveSchemas(ctx)
 	if err != nil {

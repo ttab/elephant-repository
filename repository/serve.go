@@ -17,7 +17,6 @@ import (
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
-	"golang.org/x/exp/slog"
 )
 
 func SetUpRouter(
@@ -91,7 +90,7 @@ func (so *ServerOptions) SetJWTValidation(jwtKey *ecdsa.PrivateKey) {
 type RouterOption func(router *httprouter.Router) error
 
 func WithDocumentsAPI(
-	logger *slog.Logger, service repository.Documents,
+	service repository.Documents,
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
@@ -112,7 +111,7 @@ func WithDocumentsAPI(
 }
 
 func WithSchemasAPI(
-	logger *slog.Logger, service repository.Schemas,
+	service repository.Schemas,
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
@@ -133,7 +132,7 @@ func WithSchemasAPI(
 }
 
 func WithWorkflowsAPI(
-	logger *slog.Logger, service repository.Workflows,
+	service repository.Workflows,
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
@@ -154,7 +153,7 @@ func WithWorkflowsAPI(
 }
 
 func WithReportsAPI(
-	logger *slog.Logger, service repository.Reports,
+	service repository.Reports,
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
@@ -175,7 +174,6 @@ func WithReportsAPI(
 }
 
 func WithTokenEndpoint(
-	logger *slog.Logger,
 	jwtKey *ecdsa.PrivateKey, sharedSecret string,
 ) RouterOption {
 	return func(router *httprouter.Router) error {

@@ -59,7 +59,7 @@ func SafeRollback(
 ) {
 	err := tx.Rollback(context.Background())
 	if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		logger.Error("failed to roll back", err,
+		logger.ErrorCtx(ctx, "failed to roll back", err,
 			LogKeyTransaction, txName)
 	}
 }
