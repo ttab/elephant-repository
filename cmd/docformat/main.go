@@ -124,6 +124,10 @@ func main() {
 				Value: "http://localhost:1080",
 			},
 			&cli.StringFlag{
+				Name:  "shared-secret",
+				Usage: "Shared secret for password auth",
+			},
+			&cli.StringFlag{
 				Name:  "state-dir",
 				Value: "state",
 			},
@@ -257,6 +261,7 @@ func ingestAction(c *cli.Context) error {
 		ocURL            = c.String("oc-url")
 		token            = c.String("token")
 		repositoryURL    = c.String("repository")
+		sharedSecret     = c.String("shared-secret")
 		stateDir         = c.String("state-dir")
 		lang             = c.String("default-lang")
 		startPos         = c.Int("start-pos")
@@ -395,7 +400,7 @@ func ingestAction(c *cli.Context) error {
 	}
 
 	repoToken, err := authConf.PasswordCredentialsToken(c.Context,
-		"OC Importer <system://oc-importer>", "")
+		"OC Importer <system://oc-importer>", sharedSecret)
 	if err != nil {
 		return fmt.Errorf("failed to get access token: %w", err)
 	}
