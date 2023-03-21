@@ -26,7 +26,7 @@ require (
 	github.com/ory/dockertest/v3 v3.9.1
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rakutentech/jwk-go v1.1.2
-	github.com/schollz/progressbar/v3 v3.12.2
+	github.com/schollz/progressbar/v3 v3.13.1
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.23.7
 	github.com/xuri/excelize/v2 v2.7.0
