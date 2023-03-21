@@ -237,12 +237,13 @@ func ValueProcessingFromRPC(
 		proc := make([]ReportValueProcess, len(rv.Processors))
 
 		for i := range proc {
-			switch proc[i] {
-			case ReportHTMLDecode:
+			switch rv.Processors[i] {
+			case string(ReportHTMLDecode):
 				proc[i] = ReportHTMLDecode
 			default:
 				return nil, fmt.Errorf(
-					"unknown report value processor %q", proc[i])
+					"unknown report value processor %q",
+					rv.Processors[i])
 			}
 		}
 
