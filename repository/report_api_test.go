@@ -115,4 +115,20 @@ GROUP BY type`,
 	if len(runRes.Spreadsheet) == 0 {
 		t.Fatalf("no spreadsheet data was returned: %v", err)
 	}
+
+	testRes, err := client.Test(ctx, &repository.TestReportRequest{
+		Report: &repository.Report{
+			Queries: []*repository.ReportQuery{
+				{
+					Name: "Document types",
+					Sql: `
+SELECT type, COUNT(*)
+FROM document
+GROUP by type`,
+				},
+			},
+		},
+	})
+	test.Must(t, err, "make test run of report")
+	test.Equal(t, 1, len(testRes.Tables), "got one report table back")
 }
