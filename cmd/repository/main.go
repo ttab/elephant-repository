@@ -70,8 +70,14 @@ func runServer(c *cli.Context) error {
 		addr        = c.String("addr")
 		profileAddr = c.String("profile-addr")
 		logLevel    = c.String("log-level")
-		conf        = cmd.BackendConfigFromContext(c)
 	)
+
+	paramSource := internal.NewLazySSM()
+
+	conf, err := cmd.BackendConfigFromContext(c, paramSource.GetValue)
+	if err != nil {
+		return fmt.Errorf("failed to read configuration: %w", err)
+	}
 
 	logger := internal.SetUpLogger(logLevel, os.Stdout)
 
