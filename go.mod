@@ -3,7 +3,7 @@ module github.com/ttab/elephant
 go 1.20
 
 require (
-	github.com/adhocore/gronx v1.1.2
+	github.com/adhocore/gronx v1.2.0
 	github.com/antonmedv/expr v1.12.5
 	github.com/aws/aws-sdk-go-v2 v1.17.7
 	github.com/aws/aws-sdk-go-v2/config v1.18.19
