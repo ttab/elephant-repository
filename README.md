@@ -6,8 +6,6 @@ Executable entrypoints in cmd/docformat and cmd/repository.
 
 Revisor is documented separately in the [revisor package](revisor/README.md).
 
-TODO: UI is in a broken state at the moment, prioritised getting Postgres store right.
-
 ## Preparing the environment
 
 Follow [the instructions](#the-database) to get the database up and running.
