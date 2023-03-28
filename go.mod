@@ -26,7 +26,7 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rakutentech/jwk-go v1.1.2
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	github.com/urfave/cli/v2 v2.23.7
+	github.com/urfave/cli/v2 v2.25.1
 	github.com/xuri/excelize/v2 v2.7.0
 	golang.org/x/exp v0.0.0-20230307190834-24139beb5833
 	golang.org/x/mod v0.9.0
