@@ -1,16 +1,24 @@
 #!/usr/bin/env zsh
 
-set -o pipefail
+set -euo pipefail
+mode=${1:-""}
 
 data_dir="${STATE_DIR:-$HOME/localstate}"
 pgdata="${data_dir}/repo-pgdata"
 
-containerStatus=$(docker inspect repository-postgres | jq -r '.[0].State.Status')
-
-if [[ $status -ne 0 ]]; then
-    # Start postgres with wal_level=logical
+if containerStatus=$(docker inspect repository-postgres | jq -r '.[0].State.Status'); then
+    if [[ $containerStatus == "exited" ]]; then
+        echo "Restarting postgresql..."
+        docker start repository-postgres
+        sleep 3
+    else
+        echo "Postgresql has status: ${containerStatus}"
+    fi
+else
+    echo "Starting postgresql..."
     docker run -d --rm \
        --name repository-postgres \
+       --user $UID:$GID \
        -e POSTGRES_DB=repository \
        -e POSTGRES_USER=repository \
        -e POSTGRES_PASSWORD=pass \
@@ -22,11 +30,7 @@ if [[ $status -ne 0 ]]; then
        -c log_lock_waits=on
 
     sleep 5
-elif [[ $containerStatus == "exited" ]]; then
-    docker start repository-postgres
-    sleep 3
 fi
-
 ip=$(docker inspect repository-postgres | jq -r '.[0].NetworkSettings.IPAddress')
 url="postgres://repository:pass@${ip}/repository"
 
@@ -47,4 +51,4 @@ CREATE ROLE reportuser WITH LOGIN PASSWORD 'reportuser' IN ROLE reporting;
 
 EOF
 
-psql ${url}
+[ "$mode"  = 'psql' ] && psql ${url}
