@@ -4,12 +4,12 @@ go 1.20
 
 require (
 	github.com/adhocore/gronx v1.1.2
-	github.com/antonmedv/expr v1.12.2
-	github.com/aws/aws-sdk-go-v2 v1.17.6
-	github.com/aws/aws-sdk-go-v2/config v1.18.17
-	github.com/aws/aws-sdk-go-v2/credentials v1.13.17
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.30.1
-	github.com/dgraph-io/badger/v3 v3.2103.5
+	github.com/antonmedv/expr v1.12.5
+	github.com/aws/aws-sdk-go-v2 v1.17.7
+	github.com/aws/aws-sdk-go-v2/config v1.18.19
+	github.com/aws/aws-sdk-go-v2/credentials v1.13.18
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.31.0
+	github.com/aws/aws-sdk-go-v2/service/ssm v1.36.0
 	github.com/gobwas/glob v0.2.3
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/go-cmp v0.5.9
@@ -21,21 +21,18 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.0.1
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/kyleconroy/sqlc v1.17.2
-	github.com/navigacontentlab/navigadoc v0.1.2
 	github.com/navigacontentlab/twopdocs v0.2.1
 	github.com/ory/dockertest/v3 v3.9.1
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rakutentech/jwk-go v1.1.2
-	github.com/schollz/progressbar/v3 v3.12.2
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.23.7
 	github.com/xuri/excelize/v2 v2.7.0
 	golang.org/x/exp v0.0.0-20230307190834-24139beb5833
 	golang.org/x/mod v0.9.0
 	golang.org/x/net v0.8.0
-	golang.org/x/oauth2 v0.6.0
 	golang.org/x/sync v0.1.0
-	google.golang.org/protobuf v1.29.1
+	google.golang.org/protobuf v1.30.0
 )
 
 require (
@@ -47,44 +44,37 @@ require (
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr v0.0.0-20220626175859-9abda183db8e // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.10 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.13.0 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.30 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.24 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/ini v1.3.31 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.0.18 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.13.1 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.31 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.25 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/ini v1.3.32 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.0.23 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.9.11 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.1.22 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.9.24 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.13.21 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.12.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.14.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.18.6 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.1.26 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.9.25 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.14.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.12.6 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.14.6 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.18.7 // indirect
 	github.com/aws/smithy-go v1.13.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytecodealliance/wasmtime-go/v5 v5.0.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
-	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/containerd/continuity v0.3.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/cubicdaiya/gonp v1.0.4 // indirect
 	github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/docker/cli v20.10.14+incompatible // indirect
 	github.com/docker/docker v20.10.7+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/getkin/kin-openapi v0.98.0 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/swag v0.22.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b // indirect
-	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/golang/snappy v0.0.3 // indirect
-	github.com/google/flatbuffers v1.12.1 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
@@ -95,12 +85,11 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
 	github.com/jackc/puddle/v2 v2.2.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
-	github.com/klauspost/compress v1.12.3 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
-	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.4.1 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
@@ -135,16 +124,13 @@ require (
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/xuri/efp v0.0.0-20220603152613-6918739fd470 // indirect
 	github.com/xuri/nfp v0.0.0-20220409054826-5e722a1d9e22 // indirect
-	go.opencensus.io v0.22.5 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
 	go.uber.org/zap v1.19.1 // indirect
 	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
-	golang.org/x/term v0.6.0 // indirect
 	golang.org/x/text v0.8.0 // indirect
 	golang.org/x/tools v0.6.0 // indirect
-	google.golang.org/appengine v1.6.7 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

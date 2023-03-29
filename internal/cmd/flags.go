@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/ttab/elephant/repository"
 	"github.com/urfave/cli/v2"
 )
@@ -23,8 +26,10 @@ type BackendConfig struct {
 	SharedSecret  string
 }
 
-func BackendConfigFromContext(c *cli.Context) BackendConfig {
-	return BackendConfig{
+type ParameterSource func(ctx context.Context, name string) (string, error)
+
+func BackendConfigFromContext(c *cli.Context, src ParameterSource) (BackendConfig, error) {
+	cfg := BackendConfig{
 		DB:            c.String("db"),
 		ReportingDB:   c.String("reporting-db"),
 		ArchiveBucket: c.String("archive-bucket"),
@@ -41,6 +46,46 @@ func BackendConfigFromContext(c *cli.Context) BackendConfig {
 			DisableHTTPS:    c.Bool("s3-insecure"),
 		},
 	}
+
+	db, err := resolveParam(c, src, "db-parameter", cfg.DB)
+	if err != nil {
+		return BackendConfig{}, err
+	}
+
+	cfg.DB = db
+
+	reportingDB, err := resolveParam(c, src, "reporting-db-parameter", cfg.ReportingDB)
+	if err != nil {
+		return BackendConfig{}, err
+	}
+
+	cfg.ReportingDB = reportingDB
+
+	sharedSecret, err := resolveParam(c, src, "shared-secret-parameter", cfg.SharedSecret)
+	if err != nil {
+		return BackendConfig{}, err
+	}
+
+	cfg.SharedSecret = sharedSecret
+
+	return cfg, nil
+}
+
+func resolveParam(
+	c *cli.Context, src ParameterSource, name string, defaultValue string,
+) (string, error) {
+	paramName := c.String(name)
+	if paramName == "" {
+		return defaultValue, nil
+	}
+
+	value, err := src(c.Context, paramName)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch %q (%s) parameter value: %w",
+			paramName, name, err)
+	}
+
+	return value, nil
 }
 
 func BackendFlags() []cli.Flag {
@@ -51,9 +96,17 @@ func BackendFlags() []cli.Flag {
 			EnvVars: []string{"CONN_STRING"},
 		},
 		&cli.StringFlag{
+			Name:    "db-parameter",
+			EnvVars: []string{"CONN_STRING_PARAMETER"},
+		},
+		&cli.StringFlag{
 			Name:    "reporting-db",
 			Value:   "postgres://reportuser:reportuser@localhost/repository",
 			EnvVars: []string{"REPORTING_CONN_STRING"},
+		},
+		&cli.StringFlag{
+			Name:    "reporting-db-parameter",
+			EnvVars: []string{"REPORTING_CONN_STRING_PARAMETER"},
 		},
 		&cli.StringFlag{
 			Name:    "archive-bucket",
@@ -105,6 +158,11 @@ func BackendFlags() []cli.Flag {
 			Name:    "shared-secret",
 			Usage:   "Shared secret to be used in password grants",
 			EnvVars: []string{"SHARED_PASSWORD_SECRET"},
+		},
+		&cli.StringFlag{
+			Name:    "shared-secret-parameter",
+			Usage:   "Shared secret to be used in password grants",
+			EnvVars: []string{"SHARED_PASSWORD_SECRET_PARAMETER"},
 		},
 	}
 }
