@@ -228,6 +228,36 @@ func (s *ReportsService) Run(
 	return &response, nil
 }
 
+func (s *ReportsService) Test(
+	ctx context.Context, req *repository.TestReportRequest,
+) (*repository.TestReportResponse, error) {
+	err := requireAnyScope(ctx, "report_admin")
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := ReportFromRPC(req.Report)
+	if err != nil {
+		return nil, twirp.InvalidArgumentError("report", err.Error())
+	}
+
+	report, err := GenerateReport(ctx, s.logger, res, s.reportingDB)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to generate report: %w", err)
+	}
+
+	response := repository.TestReportResponse{
+		Tables: report.Tables,
+	}
+
+	if report.Spreadsheet != nil {
+		response.Spreadsheet = report.Spreadsheet.Bytes()
+	}
+
+	return &response, nil
+}
+
 func ValueProcessingFromRPC(
 	r []*repository.ReportValue,
 ) (map[string][]ReportValueProcess, error) {

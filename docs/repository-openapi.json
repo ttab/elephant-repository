@@ -731,6 +731,28 @@
         },
         "type": "object"
       },
+      "elephant.repository.TestReportRequest": {
+        "properties": {
+          "report": {
+            "$ref": "#/components/schemas/elephant.repository.Report"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.TestReportResponse": {
+        "properties": {
+          "spreadsheet": {
+            "type": "string"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "elephant.repository.UpdatePermissionsRequest": {
         "properties": {
           "list": {
@@ -1227,6 +1249,44 @@
           }
         ],
         "summary": "Run",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Reports/Test": {
+      "post": {
+        "description": "Test a report by runing it without saving.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.TestReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.TestReportResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Test",
         "tags": [
           "Reports"
         ]
