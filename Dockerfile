@@ -13,6 +13,8 @@ FROM alpine:3.17.2
 
 COPY --from=build /usr/local/bin/repository /usr/local/bin/
 
+RUN apk upgrade --no-cache
+
 # API server
 EXPOSE 1080
 
