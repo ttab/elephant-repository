@@ -72,14 +72,14 @@ func runServer(c *cli.Context) error {
 		logLevel    = c.String("log-level")
 	)
 
+	logger := internal.SetUpLogger(logLevel, os.Stdout)
+
 	paramSource := internal.NewLazySSM()
 
 	conf, err := cmd.BackendConfigFromContext(c, paramSource.GetValue)
 	if err != nil {
 		return fmt.Errorf("failed to read configuration: %w", err)
 	}
-
-	logger := internal.SetUpLogger(logLevel, os.Stdout)
 
 	var signingKey *ecdsa.PrivateKey
 
