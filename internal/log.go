@@ -10,6 +10,7 @@ import (
 // Log attribute keys used throughout the application.
 const (
 	LogKeyLogLevel     = "log_level"
+	LogKeyError        = "err"
 	LogKeyCountMetric  = "count_metric"
 	LogKeyDocumentUUID = "document_uuid"
 	LogKeyTransaction  = "transaction"
@@ -36,7 +37,8 @@ func SetUpLogger(logLevel string, w io.Writer) *slog.Logger {
 		if err != nil {
 			level = slog.LevelWarn
 
-			logger.Error("invalid log level", err,
+			logger.Error("invalid log level",
+				LogKeyError, err,
 				LogKeyLogLevel, logLevel)
 		}
 	}

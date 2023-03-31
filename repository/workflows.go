@@ -62,7 +62,8 @@ func (w *Workflows) reloadLoop(
 		err := w.loadWorkflows(ctx, loader)
 		if err != nil {
 			// TODO: add handler that reacts to LogKeyCountMetric
-			logger.ErrorCtx(ctx, "failed to refresh workfows", err,
+			logger.ErrorCtx(ctx, "failed to refresh workfows",
+				internal.LogKeyError, err,
 				internal.LogKeyCountMetric, "elephant_workflow_refresh_failure_count")
 		}
 	}

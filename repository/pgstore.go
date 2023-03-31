@@ -129,7 +129,9 @@ func (s *PGDocStore) RunListener(ctx context.Context) {
 			return
 		} else if err != nil {
 			s.logger.ErrorCtx(
-				ctx, "failed to run notification listener", err)
+				ctx, "failed to run notification listener",
+				internal.LogKeyError, err,
+			)
 		}
 
 		time.Sleep(5 * time.Second)

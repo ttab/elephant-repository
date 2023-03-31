@@ -3,7 +3,7 @@ module github.com/ttab/elephant
 go 1.20
 
 require (
-	github.com/adhocore/gronx v1.1.2
+	github.com/adhocore/gronx v1.2.0
 	github.com/antonmedv/expr v1.12.5
 	github.com/aws/aws-sdk-go-v2 v1.17.7
 	github.com/aws/aws-sdk-go-v2/config v1.18.19
@@ -14,7 +14,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
-	github.com/jackc/pglogrepl v0.0.0-20221125161640-1e972958ba03
+	github.com/jackc/pglogrepl v0.0.0-20230318140337-5ef673a9d169
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/jackc/tern/v2 v2.0.1
 	github.com/jedib0t/go-pretty/v6 v6.4.6
@@ -26,9 +26,9 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rakutentech/jwk-go v1.1.2
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	github.com/urfave/cli/v2 v2.23.7
+	github.com/urfave/cli/v2 v2.25.1
 	github.com/xuri/excelize/v2 v2.7.0
-	golang.org/x/exp v0.0.0-20230307190834-24139beb5833
+	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 	golang.org/x/mod v0.9.0
 	golang.org/x/net v0.8.0
 	golang.org/x/sync v0.1.0
@@ -97,7 +97,7 @@ require (
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
-	github.com/opencontainers/runc v1.1.4 // indirect
+	github.com/opencontainers/runc v1.1.5 // indirect
 	github.com/pganalyze/pg_query_go/v2 v2.2.0 // indirect
 	github.com/pingcap/errors v0.11.5-0.20210425183316-da1aaba5fb63 // indirect
 	github.com/pingcap/log v0.0.0-20210906054005-afc726e70354 // indirect

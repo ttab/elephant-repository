@@ -58,7 +58,8 @@ func (v *Validator) reloadLoop(
 		err := v.loadSchemas(ctx, loader)
 		if err != nil {
 			// TODO: add handler that reacts to LogKeyCountMetric
-			logger.ErrorCtx(ctx, "failed to refresh schemas", err,
+			logger.ErrorCtx(ctx, "failed to refresh schemas",
+				internal.LogKeyError, err,
 				internal.LogKeyCountMetric, "elephant_schema_refresh_failure_count")
 		}
 	}

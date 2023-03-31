@@ -106,8 +106,9 @@ func (r *ReportRunner) run(ctx context.Context) {
 			r.restarts.Inc()
 
 			r.logger.ErrorCtx(
-				ctx, "reporter error, restarting", err,
-				slog.Duration(internal.LogKeyDelay, restartWaitSeconds),
+				ctx, "reporter error, restarting",
+				internal.LogKeyError, err,
+				internal.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
 			)
 		}
 

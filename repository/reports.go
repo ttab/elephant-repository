@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/ttab/elephant/internal"
 	"golang.org/x/exp/slog"
 )
 
@@ -69,7 +70,9 @@ func GenerateReport(
 		defer func() {
 			if err := spreadsheet.File.Close(); err != nil {
 				logger.ErrorCtx(ctx,
-					"failed to close spreadsheet", err)
+					"failed to close spreadsheet",
+					internal.LogKeyError, err,
+				)
 			}
 		}()
 

@@ -92,7 +92,8 @@ func pgNotify[T any](
 ) {
 	message, err := json.Marshal(payload)
 	if err != nil {
-		logger.Error("failed to marshal payload for notification", err,
+		logger.ErrorCtx(ctx, "failed to marshal payload for notification",
+			internal.LogKeyError, err,
 			internal.LogKeyChannel, channel)
 	}
 
@@ -101,8 +102,8 @@ func pgNotify[T any](
 		Message: string(message),
 	})
 	if err != nil {
-		logger.Error(
-			"failed to marshal payload for notification", err,
+		logger.ErrorCtx(ctx, "failed to marshal payload for notification",
+			internal.LogKeyError, err,
 			internal.LogKeyChannel, channel,
 			internal.LogKeyMessage, json.RawMessage(message))
 	}

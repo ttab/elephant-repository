@@ -60,7 +60,8 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		slog.Error("failed to run server", err)
+		slog.Error("failed to run server",
+			internal.LogKeyError, err)
 		os.Exit(1)
 	}
 }

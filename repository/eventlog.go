@@ -90,8 +90,9 @@ func (pr *PGReplication) Run(ctx context.Context) {
 			pr.restarts.Inc()
 
 			pr.logger.ErrorCtx(
-				ctx, "replication error, restarting", err,
-				slog.Duration(internal.LogKeyDelay, restartWaitSeconds),
+				ctx, "replication error, restarting",
+				internal.LogKeyError, err,
+				internal.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
 			)
 		}
 

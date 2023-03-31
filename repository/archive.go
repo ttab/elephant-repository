@@ -209,9 +209,9 @@ func (a *Archiver) run(ctx context.Context) {
 		} else if err != nil {
 			a.restarts.Inc()
 
-			a.logger.ErrorCtx(
-				ctx, "archiver error, restarting", err,
-				slog.Duration(internal.LogKeyDelay, restartWaitSeconds),
+			a.logger.ErrorCtx(ctx, "archiver error, restarting",
+				internal.LogKeyError, err,
+				internal.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
 			)
 		}
 
@@ -537,7 +537,8 @@ func (a *Archiver) archiveDocumentVersions(
 		})
 		if cErr != nil {
 			a.logger.ErrorCtx(ctx,
-				"failed to clean up archive object after commit failed", cErr,
+				"failed to clean up archive object after commit failed",
+				internal.LogKeyError, cErr,
 				internal.LogKeyBucket, a.bucket,
 				internal.LogKeyObjectKey, key)
 		}
@@ -664,7 +665,8 @@ func (a *Archiver) archiveDocumentStatuses(
 		})
 		if cErr != nil {
 			a.logger.ErrorCtx(ctx,
-				"failed to clean up archive object after commit failed", cErr,
+				"failed to clean up archive object after commit failed",
+				internal.LogKeyError, cErr,
 				internal.LogKeyBucket, a.bucket,
 				internal.LogKeyObjectKey, key)
 		}
