@@ -295,6 +295,7 @@ INSERT INTO eventlog(
 SELECT id, event, uuid, timestamp, type, version, status, status_id, acl
 FROM eventlog
 WHERE id > @after
+ORDER BY id ASC
 LIMIT sqlc.arg(row_limit);
 
 -- name: ConfigureEventsink :exec

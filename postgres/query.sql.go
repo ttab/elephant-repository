@@ -562,6 +562,7 @@ const getEventlog = `-- name: GetEventlog :many
 SELECT id, event, uuid, timestamp, type, version, status, status_id, acl
 FROM eventlog
 WHERE id > $1
+ORDER BY id ASC
 LIMIT $2
 `
 
