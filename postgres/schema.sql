@@ -289,7 +289,8 @@ CREATE TABLE public.eventlog (
     version bigint,
     status text,
     status_id bigint,
-    acl jsonb
+    acl jsonb,
+    updater text
 );
 
 
@@ -321,6 +322,20 @@ CREATE TABLE public.eventsink (
 
 
 ALTER TABLE public.eventsink OWNER TO repository;
+
+--
+-- Name: job_lock; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.job_lock (
+    name text NOT NULL,
+    holder text NOT NULL,
+    touched timestamp with time zone NOT NULL,
+    iteration bigint NOT NULL
+);
+
+
+ALTER TABLE public.job_lock OWNER TO repository;
 
 --
 -- Name: report; Type: TABLE; Schema: public; Owner: repository
@@ -498,6 +513,14 @@ ALTER TABLE ONLY public.eventlog
 
 ALTER TABLE ONLY public.eventsink
     ADD CONSTRAINT eventsink_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: job_lock job_lock_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.job_lock
+    ADD CONSTRAINT job_lock_pkey PRIMARY KEY (name);
 
 
 --

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/exp/slog"
 )
@@ -84,4 +85,19 @@ func SetConnStringVariables(conn string, vars url.Values) (string, error) {
 	u.RawQuery = q.Encode()
 
 	return u.String(), nil
+}
+
+func IsConstraintError(err error, constraint string) bool {
+	if err == nil {
+		return false
+	}
+
+	var pgerr *pgconn.PgError
+
+	ok := errors.As(err, &pgerr)
+	if !ok {
+		return false
+	}
+
+	return pgerr.ConstraintName == constraint
 }

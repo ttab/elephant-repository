@@ -394,6 +394,7 @@ func (s *PGDocStore) GetEventlog(
 			Event:     EventType(res[i].Event),
 			UUID:      res[i].Uuid,
 			Timestamp: res[i].Timestamp.Time,
+			Updater:   res[i].Updater.String,
 			Type:      res[i].Type.String,
 			Version:   res[i].Version.Int64,
 			Status:    res[i].Status.String,
@@ -412,6 +413,29 @@ func (s *PGDocStore) GetEventlog(
 	}
 
 	return evts, nil
+}
+
+func (s *PGDocStore) GetSinkPosition(ctx context.Context, name string) (int64, error) {
+	pos, err := s.reader.GetEventsinkPosition(ctx, name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	} else if err != nil {
+		return 0, fmt.Errorf("failed to read database record: %w", err)
+	}
+
+	return pos, nil
+}
+
+func (s *PGDocStore) SetSinkPosition(ctx context.Context, name string, pos int64) error {
+	err := s.reader.UpdateEventsinkPosition(ctx, postgres.UpdateEventsinkPositionParams{
+		Name:     name,
+		Position: pos,
+	})
+	if err != nil {
+		return fmt.Errorf("failed update database record: %w", err)
+	}
+
+	return nil
 }
 
 func (s *PGDocStore) GetVersion(
@@ -998,7 +1022,7 @@ func (s *PGDocStore) RegisterSchema(
 			Version: req.Version,
 			Spec:    spec,
 		})
-		if isConstraintError(err, "document_schema_pkey") {
+		if internal.IsConstraintError(err, "document_schema_pkey") {
 			return DocStoreErrorf(ErrCodeExists,
 				"schema version already exists")
 		} else if err != nil {
@@ -1245,21 +1269,6 @@ func (s *PGDocStore) UpdateReport(
 	}
 
 	return nextExec, nil
-}
-
-func isConstraintError(err error, constraint string) bool {
-	if err == nil {
-		return false
-	}
-
-	var pgerr *pgconn.PgError
-
-	ok := errors.As(err, &pgerr)
-	if !ok {
-		return false
-	}
-
-	return pgerr.ConstraintName == constraint
 }
 
 func (s *PGDocStore) updateACL(

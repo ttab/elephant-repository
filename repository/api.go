@@ -54,7 +54,7 @@ func (a *DocumentsService) Eventlog(
 			"no anonymous requests allowed")
 	}
 
-	if !auth.Claims.HasScope("read_eventlog") {
+	if !auth.Claims.HasAnyScope("superuser", "read_eventlog") {
 		return nil, twirp.PermissionDenied.Error(
 			"no eventlog read permission")
 	}
@@ -96,7 +96,7 @@ func (a *DocumentsService) Eventlog(
 			maxID = evts[i].ID
 		}
 
-		res.Items = append(res.Items, eventToRPC(evts[i]))
+		res.Items = append(res.Items, EventToRPC(evts[i]))
 	}
 
 	if wait < 0 || len(res.Items) == int(limit) {
@@ -145,7 +145,7 @@ func (a *DocumentsService) eventlogWaitLoop(
 				after = evts[i].ID
 			}
 
-			res.Items = append(res.Items, eventToRPC(evts[i]))
+			res.Items = append(res.Items, EventToRPC(evts[i]))
 		}
 
 		if len(res.Items) == int(limit) {
@@ -158,25 +158,65 @@ func (a *DocumentsService) eventlogWaitLoop(
 	}
 }
 
-func eventToRPC(evt Event) *repository.EventlogItem {
-	var acl []*repository.ACLEntry
+func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
+	acl := make([]ACLEntry, len(evt.Acl))
 
-	for _, a := range evt.ACL {
-		acl = append(acl, &repository.ACLEntry{
+	for i, a := range evt.Acl {
+		if a == nil {
+			continue
+		}
+
+		acl[i] = ACLEntry{
+			URI:         a.Uri,
+			Permissions: a.Permissions,
+		}
+	}
+
+	docUUID, err := uuid.Parse(evt.Uuid)
+	if err != nil {
+		return Event{}, fmt.Errorf(
+			"invalid document UUID for event: %w", err)
+	}
+
+	timestamp, err := time.Parse(time.RFC3339, evt.Timestamp)
+	if err != nil {
+		return Event{}, fmt.Errorf(
+			"invalid timestamp for event: %w", err)
+	}
+
+	return Event{
+		ID:        evt.Id,
+		Event:     EventType(evt.Event),
+		UUID:      docUUID,
+		Timestamp: timestamp,
+		Updater:   evt.UpdaterUri,
+		Version:   evt.Version,
+		Status:    evt.Status,
+		StatusID:  evt.StatusId,
+		ACL:       acl,
+	}, nil
+}
+
+func EventToRPC(evt Event) *repository.EventlogItem {
+	acl := make([]*repository.ACLEntry, len(evt.ACL))
+
+	for i, a := range evt.ACL {
+		acl[i] = &repository.ACLEntry{
 			Uri:         a.URI,
 			Permissions: a.Permissions,
-		})
+		}
 	}
 
 	return &repository.EventlogItem{
-		Id:        evt.ID,
-		Event:     string(evt.Event),
-		Uuid:      evt.UUID.String(),
-		Timestamp: evt.Timestamp.Format(time.RFC3339),
-		Version:   evt.Version,
-		Status:    evt.Status,
-		StatusId:  evt.StatusID,
-		Acl:       acl,
+		Id:         evt.ID,
+		Event:      string(evt.Event),
+		Uuid:       evt.UUID.String(),
+		Timestamp:  evt.Timestamp.Format(time.RFC3339),
+		UpdaterUri: evt.Updater,
+		Version:    evt.Version,
+		Status:     evt.Status,
+		StatusId:   evt.StatusID,
+		Acl:        acl,
 	}
 }
 

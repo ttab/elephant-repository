@@ -99,12 +99,20 @@ type Eventlog struct {
 	Status    pgtype.Text
 	StatusID  pgtype.Int8
 	Acl       []byte
+	Updater   pgtype.Text
 }
 
 type Eventsink struct {
 	Name          string
 	Position      int64
 	Configuration []byte
+}
+
+type JobLock struct {
+	Name      string
+	Holder    string
+	Touched   pgtype.Timestamptz
+	Iteration int64
 }
 
 type Report struct {
