@@ -98,6 +98,12 @@ GROUP BY type`,
 		t.Fatalf("next exec must be in the future, got %v", nextExec)
 	}
 
+	hours := nextExec.Format("15:04")
+	if hours != "18:00" {
+		t.Fatalf("expected nextExec to be 18:00 in the specified time zone, got %v",
+			hours)
+	}
+
 	retrieved, err := client.Get(ctx, &repository.GetReportRequest{
 		Name: "today",
 	})
@@ -105,7 +111,7 @@ GROUP BY type`,
 
 	test.EqualMessage(t, &repository.GetReportResponse{
 		Enabled:       true,
-		NextExecution: nextExec.Local().Format(time.RFC3339),
+		NextExecution: nextExec.Format(time.RFC3339),
 		Report:        &reportSpec,
 	}, retrieved, "get the correct definition back")
 

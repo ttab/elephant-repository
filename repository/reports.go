@@ -24,7 +24,6 @@ type Report struct {
 
 func (r *Report) NextTick() (time.Time, error) {
 	tz, err := time.LoadLocation(r.CronTimezone)
-
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to load location: %w", err)
 	}
