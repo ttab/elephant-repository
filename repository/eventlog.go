@@ -75,7 +75,7 @@ func NewPGReplication(
 	events := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "elephant_replicator_events_total",
-			Help: "Number of recieved replicator events.",
+			Help: "Number of received replicator events.",
 		},
 		[]string{"type", "relation"},
 	)
@@ -221,7 +221,7 @@ func (pr *PGReplication) replicationLoop(
 
 		msg, ok := rawMsg.(*pgproto3.CopyData)
 		if !ok {
-			pr.logger.Error("recieved unexpected message",
+			pr.logger.Error("received unexpected message",
 				internal.LogKeyMessage, fmt.Sprintf("%T", rawMsg))
 
 			continue

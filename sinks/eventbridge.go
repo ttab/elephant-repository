@@ -186,7 +186,6 @@ func (eb *EventBridge) eventBridgeBatch(
 			EventID:               evt.Event.ID,
 			PutEventsRequestEntry: e,
 		})
-
 	}
 
 	return entries, len(evts), nil

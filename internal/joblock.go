@@ -146,9 +146,9 @@ func (jl *JobLock) loop() {
 			case jl.out <- jl.state:
 			default:
 				jl.logger.Error("state change channel buffer is full, aborting")
+
 				return
 			}
-
 		}
 
 		var wait <-chan time.Time

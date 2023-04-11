@@ -159,7 +159,7 @@ func (r *EventForwarder) loop(ctx context.Context) error {
 		}
 
 		if err != nil {
-			return err
+			return err //nolint:wrapcheck
 		}
 
 		select {
@@ -213,7 +213,7 @@ func (r *EventForwarder) runNext(ctx context.Context, pos int64) (int64, error) 
 			Event: event,
 		}
 
-		switch event.Event {
+		switch event.Event { //nolint:exhaustive
 		case repo.TypeDocumentVersion, repo.TypeNewStatus:
 			docRes, err := r.documents.Get(aCtx, &repository.GetDocumentRequest{
 				Uuid:    item.Uuid,

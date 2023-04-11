@@ -254,6 +254,8 @@ func runServer(c *cli.Context) error {
 				return fmt.Errorf("failed to configure eventsink %q: %w",
 					sink.SinkName(), err)
 			}
+		default:
+			return fmt.Errorf("unknown event sink %q", conf.Eventsink)
 		}
 
 		forwarder, err := sinks.NewEventForwarder(sinks.EventForwarderOptions{
