@@ -508,6 +508,45 @@ func (s *PGDocStore) GetVersionHistory(
 	return updates, nil
 }
 
+func (s *PGDocStore) GetStatusHistory(
+	ctx context.Context, uuid uuid.UUID,
+	name string, before int64, count int,
+) ([]Status, error) {
+	history, err := s.reader.GetStatusVersions(ctx, postgres.GetStatusVersionsParams{
+		Uuid:   uuid,
+		Name:   name,
+		Before: before,
+		Count:  int32(count),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch status history: %w", err)
+	}
+
+	statuses := make([]Status, len(history))
+
+	for i := range history {
+		s := Status{
+			ID:      history[i].ID,
+			Version: history[i].Version,
+			Creator: history[i].CreatorUri,
+			Created: history[i].Created.Time,
+		}
+
+		if history[i].Meta != nil {
+			err := json.Unmarshal(history[i].Meta, &s.Meta)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to unmarshal metadata for status %d: %w",
+					s.ID, err)
+			}
+		}
+
+		statuses[i] = s
+	}
+
+	return statuses, nil
+}
+
 // GetDocumentMeta implements DocStore.
 func (s *PGDocStore) GetDocumentMeta(
 	ctx context.Context, uuid uuid.UUID,

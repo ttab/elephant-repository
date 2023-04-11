@@ -40,6 +40,10 @@ type DocStore interface {
 	OnEventlog(
 		ctx context.Context, ch chan int64,
 	)
+	GetStatusHistory(
+		ctx context.Context, uuid uuid.UUID,
+		name string, before int64, count int,
+	) ([]Status, error)
 }
 
 type SchemaStore interface {

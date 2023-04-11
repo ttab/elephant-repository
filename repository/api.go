@@ -44,6 +44,65 @@ func NewDocumentsService(
 // Interface guard.
 var _ repository.Documents = &DocumentsService{}
 
+// GetStatusHistory returns the history of a status for a document.
+func (a *DocumentsService) GetStatusHistory(
+	ctx context.Context, req *repository.GetStatusHistoryRequest,
+) (*repository.GetStatusHistoryReponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("doc_read") {
+		return nil, twirp.PermissionDenied.Error(
+			"no read permission")
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.accessCheck(ctx, auth, docUUID, ReadPermission)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Name == "" {
+		return nil, twirp.RequiredArgumentError("name")
+	}
+
+	if req.Before != 0 && req.Before < 2 {
+		return nil, twirp.InvalidArgumentError("before",
+			"cannot be non-zero and less that 2")
+	}
+
+	history, err := a.store.GetStatusHistory(
+		ctx, docUUID, req.Name, req.Before, 10,
+	)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to get history from store: %w", err)
+	}
+
+	res := repository.GetStatusHistoryReponse{
+		Statuses: make([]*repository.Status, len(history)),
+	}
+
+	for i := range history {
+		res.Statuses[i] = &repository.Status{
+			Id:      history[i].ID,
+			Version: history[i].Version,
+			Creator: history[i].Creator,
+			Created: history[i].Created.Format(time.RFC3339),
+			Meta:    history[i].Meta,
+		}
+	}
+
+	return &res, nil
+}
+
 // Eventlog returns document update events, optionally waiting for new events.
 func (a *DocumentsService) Eventlog(
 	ctx context.Context, req *repository.GetEventlogRequest,

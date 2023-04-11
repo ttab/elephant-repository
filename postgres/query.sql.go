@@ -824,6 +824,61 @@ func (q *Queries) GetStatusRules(ctx context.Context) ([]StatusRule, error) {
 	return items, nil
 }
 
+const getStatusVersions = `-- name: GetStatusVersions :many
+SELECT id, version, created, creator_uri, meta
+FROM document_status
+WHERE uuid = $1 AND name = $2
+      AND ($3::bigint = 0 OR id < $3::bigint)
+ORDER BY id DESC
+LIMIT $4
+`
+
+type GetStatusVersionsParams struct {
+	Uuid   uuid.UUID
+	Name   string
+	Before int64
+	Count  int32
+}
+
+type GetStatusVersionsRow struct {
+	ID         int64
+	Version    int64
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Meta       []byte
+}
+
+func (q *Queries) GetStatusVersions(ctx context.Context, arg GetStatusVersionsParams) ([]GetStatusVersionsRow, error) {
+	rows, err := q.db.Query(ctx, getStatusVersions,
+		arg.Uuid,
+		arg.Name,
+		arg.Before,
+		arg.Count,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetStatusVersionsRow
+	for rows.Next() {
+		var i GetStatusVersionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Version,
+			&i.Created,
+			&i.CreatorUri,
+			&i.Meta,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getStatuses = `-- name: GetStatuses :many
 SELECT uuid, name, id, version, created, creator_uri, meta
 FROM document_status

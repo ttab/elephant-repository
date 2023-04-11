@@ -21,7 +21,8 @@ service Documents {
   rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
   // Eventlog returns document update events, optionally waiting for new events.
   rpc Eventlog(GetEventlogRequest) returns (GetEventlogResponse);
-  // TODO: Add method for getting the status history of a document.
+  // GetStatusHistory returns the history of a status for a document.
+  rpc GetStatusHistory(GetStatusHistoryRequest) returns (GetStatusHistoryReponse);
 }
 
 service Schemas {
@@ -59,6 +60,20 @@ service Reports {
   rpc Run(RunReportRequest) returns (RunReportResponse);
   // Test a report by runing it without saving.
   rpc Test(TestReportRequest) returns (TestReportResponse);
+}
+
+message GetStatusHistoryRequest {
+  // UUID of the document to get the status history for.
+  string uuid = 1;
+  // Name of the status to get.
+  string name = 2;
+  // Before is a status ID used to page backwards through the status history. If
+  // no ID or a zero ID is provided the list will start with the lastest status.
+  int64 before = 3;
+}
+
+message GetStatusHistoryReponse {
+  repeated Status statuses = 1;
 }
 
 message GetEventlogRequest {

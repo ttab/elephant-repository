@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -228,6 +229,100 @@ func requestToken(
 	}()
 
 	return res.StatusCode, body
+}
+
+func TestIntegrationStatus(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	client := tc.DocumentsClient(t,
+		test.StandardClaims(t, "doc_read doc_write doc_delete"))
+
+	ctx := test.Context(t)
+
+	const (
+		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI  = "article://test/123"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	docRes, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.Must(t, err, "create article")
+
+	const (
+		pageSize    = 10
+		numStatuses = 12
+	)
+
+	for n := 0; n < numStatuses; n++ {
+		meta := map[string]string{
+			"update_number": strconv.Itoa(n),
+		}
+
+		_, err := client.Update(ctx, &repository.UpdateRequest{
+			Uuid: docUUID,
+			Status: []*repository.StatusUpdate{
+				{Name: "done", Version: docRes.Version, Meta: meta},
+				{Name: "usable", Version: docRes.Version, Meta: meta},
+			},
+		})
+		test.Must(t, err, "set done and usable status %d", n+1)
+	}
+
+	fromHeadRes, err := client.GetStatusHistory(ctx, &repository.GetStatusHistoryRequest{
+		Uuid: docUUID,
+		Name: "usable",
+	})
+	test.Must(t, err, "get usable status history from head")
+
+	test.Equal(t, pageSize, len(fromHeadRes.Statuses),
+		"get the expected number of statuses")
+
+	var minStatus int64 = numStatuses
+
+	for i, s := range fromHeadRes.Statuses {
+		test.Equal(t, int64(numStatuses-i), s.Id,
+			"expect the %dnth status to have the correct ID", i+1)
+
+		test.Equal(t, len(s.Meta), 1, "expect the status to have metadata")
+
+		metaV := s.Meta["update_number"]
+
+		test.Equal(t,
+			strconv.Itoa(int(s.Id-1)), metaV,
+			"expected the status to have a correct update_number metadata value")
+
+		if s.Id < minStatus {
+			minStatus = s.Id
+		}
+	}
+
+	fromLastRes, err := client.GetStatusHistory(ctx,
+		&repository.GetStatusHistoryRequest{
+			Uuid:   docUUID,
+			Name:   "usable",
+			Before: minStatus,
+		})
+	test.Must(t, err, "get next page of status history")
+
+	test.Equal(t, numStatuses-pageSize, len(fromLastRes.Statuses),
+		"get the expected number of statuses")
+
+	for i, s := range fromLastRes.Statuses {
+		test.Equal(t, int64(numStatuses-i-pageSize), s.Id,
+			"expect the %dnth status to have the correct ID", i+1)
+	}
 }
 
 func TestIntegrationDeleteTimeout(t *testing.T) {
