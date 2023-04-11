@@ -3,8 +3,10 @@ package repository_test
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -204,4 +206,16 @@ func testingAPIServer(
 		WorkflowProvider: workflows,
 		Env:              env,
 	}
+}
+
+func TestMain(m *testing.M) {
+	exitVal := m.Run()
+
+	err := test.PurgeBackingServices()
+	if err != nil {
+		fmt.Fprintf(os.Stderr,
+			"failed to clean up backend services: %v\n", err)
+	}
+
+	os.Exit(exitVal)
 }
