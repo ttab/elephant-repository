@@ -286,13 +286,13 @@ WHERE enabled;
 
 -- name: InsertIntoEventLog :one
 INSERT INTO eventlog(
-       event, uuid, type, timestamp, version, status, status_id, acl
+       event, uuid, type, timestamp, updater, version, status, status_id, acl
 ) VALUES (
-       @event, @uuid, @type, @timestamp, @version, @status, @status_id, @acl
+       @event, @uuid, @type, @timestamp, @updater, @version, @status, @status_id, @acl
 ) RETURNING id;
 
 -- name: GetEventlog :many
-SELECT id, event, uuid, timestamp, type, version, status, status_id, acl
+SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl
 FROM eventlog
 WHERE id > @after
 ORDER BY id ASC
@@ -305,3 +305,39 @@ ON CONFLICT (name) DO UPDATE SET
 
 -- name: UpdateEventsinkPosition :exec
 UPDATE eventsink SET position = @position WHERE name = @name;
+
+-- name: GetEventsinkPosition :one
+SELECT position FROM eventsink WHERE name = @name;
+
+-- name: GetJobLock :one
+SELECT holder, touched, iteration
+FROM job_lock
+WHERE name = $1
+FOR UPDATE;
+
+-- name: InsertJobLock :one
+INSERT INTO job_lock(name, holder, touched, iteration)
+VALUES (@name, @holder, now(), 1)
+RETURNING iteration;
+
+-- name: PingJobLock :execrows
+UPDATE job_lock
+SET touched = now(),
+    iteration = iteration + 1
+WHERE name = @name
+      AND holder = @holder
+      AND iteration = @iteration;
+
+-- name: StealJobLock :execrows
+UPDATE job_lock
+SET holder = @new_holder,
+    touched = now(),
+    iteration = iteration + 1
+WHERE name = @name
+      AND holder = @previous_holder
+      AND iteration = @iteration;
+
+-- name: ReleaseJobLock :execrows
+DELETE FROM job_lock
+WHERE name = @name
+      AND holder = @holder;

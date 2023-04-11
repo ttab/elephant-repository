@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,6 +26,7 @@ import (
 	"github.com/ttab/elephant/internal/cmd"
 	"github.com/ttab/elephant/postgres"
 	"github.com/ttab/elephant/repository"
+	"github.com/ttab/elephant/sinks"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
@@ -156,6 +159,19 @@ func runServer(c *cli.Context) error {
 			"failed to connect to reporting database: %w", err)
 	}
 
+	validator, err := repository.NewValidator(
+		c.Context, logger, store)
+	if err != nil {
+		return fmt.Errorf("failed to create validator: %w", err)
+	}
+
+	workflows, err := repository.NewWorkflows(c.Context, logger, store)
+	if err != nil {
+		return fmt.Errorf("failed to create workflows: %w", err)
+	}
+
+	docService := repository.NewDocumentsService(store, validator, workflows)
+
 	setupCtx, cancel := context.WithTimeout(c.Context, 10*time.Second)
 	defer cancel()
 
@@ -213,23 +229,53 @@ func runServer(c *cli.Context) error {
 		})
 	}
 
+	if !conf.NoEventsink && conf.Eventsink != "" {
+		var sink sinks.EventSink
+
+		switch conf.Eventsink {
+		case "aws-eventbridge":
+			conf, err := config.LoadDefaultConfig(c.Context)
+			if err != nil {
+				return fmt.Errorf("failed to load AWS SDK config for Eventbridge: %w", err)
+			}
+
+			client := eventbridge.NewFromConfig(conf)
+
+			sink = sinks.NewEventBridge(client, sinks.EventBridgeOptions{
+				Logger: logger.With(internal.LogKeyComponent, "eventsink"),
+			})
+
+			q := postgres.New(dbpool)
+
+			err = q.ConfigureEventsink(c.Context, postgres.ConfigureEventsinkParams{
+				Name: sink.SinkName(),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to configure eventsink %q: %w",
+					sink.SinkName(), err)
+			}
+		}
+
+		forwarder, err := sinks.NewEventForwarder(sinks.EventForwarderOptions{
+			Logger:            logger.With(internal.LogKeyComponent, "event-forwarder"),
+			Documents:         docService,
+			MetricsRegisterer: prometheus.DefaultRegisterer,
+			Sink:              sink,
+			StateStore:        store,
+		})
+		if err != nil {
+			return fmt.Errorf(
+				"failed to create eventsink forwarder: %w", err)
+		}
+
+		forwarder.Run(c.Context)
+	}
+
 	err = group.Wait()
 	if err != nil {
 		return fmt.Errorf("subsystem setup failed: %w", err)
 	}
 
-	validator, err := repository.NewValidator(
-		c.Context, logger, store)
-	if err != nil {
-		return fmt.Errorf("failed to create validator: %w", err)
-	}
-
-	workflows, err := repository.NewWorkflows(c.Context, logger, store)
-	if err != nil {
-		return fmt.Errorf("failed to create workflows: %w", err)
-	}
-
-	docService := repository.NewDocumentsService(store, validator, workflows)
 	schemaService := repository.NewSchemasService(store)
 	workflowService := repository.NewWorkflowsService(store)
 	reportsService := repository.NewReportsService(logger, store, reportDB)

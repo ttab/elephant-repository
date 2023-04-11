@@ -559,7 +559,7 @@ func (q *Queries) GetDueReport(ctx context.Context) (Report, error) {
 }
 
 const getEventlog = `-- name: GetEventlog :many
-SELECT id, event, uuid, timestamp, type, version, status, status_id, acl
+SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl
 FROM eventlog
 WHERE id > $1
 ORDER BY id ASC
@@ -571,20 +571,34 @@ type GetEventlogParams struct {
 	RowLimit int32
 }
 
-func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]Eventlog, error) {
+type GetEventlogRow struct {
+	ID        int64
+	Event     string
+	Uuid      uuid.UUID
+	Timestamp pgtype.Timestamptz
+	Updater   pgtype.Text
+	Type      pgtype.Text
+	Version   pgtype.Int8
+	Status    pgtype.Text
+	StatusID  pgtype.Int8
+	Acl       []byte
+}
+
+func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]GetEventlogRow, error) {
 	rows, err := q.db.Query(ctx, getEventlog, arg.After, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Eventlog
+	var items []GetEventlogRow
 	for rows.Next() {
-		var i Eventlog
+		var i GetEventlogRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Event,
 			&i.Uuid,
 			&i.Timestamp,
+			&i.Updater,
 			&i.Type,
 			&i.Version,
 			&i.Status,
@@ -599,6 +613,17 @@ func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]Eve
 		return nil, err
 	}
 	return items, nil
+}
+
+const getEventsinkPosition = `-- name: GetEventsinkPosition :one
+SELECT position FROM eventsink WHERE name = $1
+`
+
+func (q *Queries) GetEventsinkPosition(ctx context.Context, name string) (int64, error) {
+	row := q.db.QueryRow(ctx, getEventsinkPosition, name)
+	var position int64
+	err := row.Scan(&position)
+	return position, err
 }
 
 const getFullDocumentHeads = `-- name: GetFullDocumentHeads :many
@@ -671,6 +696,26 @@ func (q *Queries) GetFullVersion(ctx context.Context, arg GetFullVersionParams) 
 		&i.Archived,
 		&i.Signature,
 	)
+	return i, err
+}
+
+const getJobLock = `-- name: GetJobLock :one
+SELECT holder, touched, iteration
+FROM job_lock
+WHERE name = $1
+FOR UPDATE
+`
+
+type GetJobLockRow struct {
+	Holder    string
+	Touched   pgtype.Timestamptz
+	Iteration int64
+}
+
+func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, error) {
+	row := q.db.QueryRow(ctx, getJobLock, name)
+	var i GetJobLockRow
+	err := row.Scan(&i.Holder, &i.Touched, &i.Iteration)
 	return i, err
 }
 
@@ -1003,9 +1048,9 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 
 const insertIntoEventLog = `-- name: InsertIntoEventLog :one
 INSERT INTO eventlog(
-       event, uuid, type, timestamp, version, status, status_id, acl
+       event, uuid, type, timestamp, updater, version, status, status_id, acl
 ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8
+       $1, $2, $3, $4, $5, $6, $7, $8, $9
 ) RETURNING id
 `
 
@@ -1014,6 +1059,7 @@ type InsertIntoEventLogParams struct {
 	Uuid      uuid.UUID
 	Type      pgtype.Text
 	Timestamp pgtype.Timestamptz
+	Updater   pgtype.Text
 	Version   pgtype.Int8
 	Status    pgtype.Text
 	StatusID  pgtype.Int8
@@ -1026,6 +1072,7 @@ func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLog
 		arg.Uuid,
 		arg.Type,
 		arg.Timestamp,
+		arg.Updater,
 		arg.Version,
 		arg.Status,
 		arg.StatusID,
@@ -1034,6 +1081,24 @@ func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLog
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const insertJobLock = `-- name: InsertJobLock :one
+INSERT INTO job_lock(name, holder, touched, iteration)
+VALUES ($1, $2, now(), 1)
+RETURNING iteration
+`
+
+type InsertJobLockParams struct {
+	Name   string
+	Holder string
+}
+
+func (q *Queries) InsertJobLock(ctx context.Context, arg InsertJobLockParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertJobLock, arg.Name, arg.Holder)
+	var iteration int64
+	err := row.Scan(&iteration)
+	return iteration, err
 }
 
 const insertSigningKey = `-- name: InsertSigningKey :exec
@@ -1064,6 +1129,29 @@ func (q *Queries) Notify(ctx context.Context, arg NotifyParams) error {
 	return err
 }
 
+const pingJobLock = `-- name: PingJobLock :execrows
+UPDATE job_lock
+SET touched = now(),
+    iteration = iteration + 1
+WHERE name = $1
+      AND holder = $2
+      AND iteration = $3
+`
+
+type PingJobLockParams struct {
+	Name      string
+	Holder    string
+	Iteration int64
+}
+
+func (q *Queries) PingJobLock(ctx context.Context, arg PingJobLockParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pingJobLock, arg.Name, arg.Holder, arg.Iteration)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const registerSchema = `-- name: RegisterSchema :exec
 INSERT INTO document_schema(name, version, spec)
 VALUES ($1, $2, $3)
@@ -1078,6 +1166,25 @@ type RegisterSchemaParams struct {
 func (q *Queries) RegisterSchema(ctx context.Context, arg RegisterSchemaParams) error {
 	_, err := q.db.Exec(ctx, registerSchema, arg.Name, arg.Version, arg.Spec)
 	return err
+}
+
+const releaseJobLock = `-- name: ReleaseJobLock :execrows
+DELETE FROM job_lock
+WHERE name = $1
+      AND holder = $2
+`
+
+type ReleaseJobLockParams struct {
+	Name   string
+	Holder string
+}
+
+func (q *Queries) ReleaseJobLock(ctx context.Context, arg ReleaseJobLockParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseJobLock, arg.Name, arg.Holder)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setDocumentStatusAsArchived = `-- name: SetDocumentStatusAsArchived :exec
@@ -1128,6 +1235,36 @@ type SetNextReportExecutionParams struct {
 func (q *Queries) SetNextReportExecution(ctx context.Context, arg SetNextReportExecutionParams) error {
 	_, err := q.db.Exec(ctx, setNextReportExecution, arg.NextExecution, arg.Name)
 	return err
+}
+
+const stealJobLock = `-- name: StealJobLock :execrows
+UPDATE job_lock
+SET holder = $1,
+    touched = now(),
+    iteration = iteration + 1
+WHERE name = $2
+      AND holder = $3
+      AND iteration = $4
+`
+
+type StealJobLockParams struct {
+	NewHolder      string
+	Name           string
+	PreviousHolder string
+	Iteration      int64
+}
+
+func (q *Queries) StealJobLock(ctx context.Context, arg StealJobLockParams) (int64, error) {
+	result, err := q.db.Exec(ctx, stealJobLock,
+		arg.NewHolder,
+		arg.Name,
+		arg.PreviousHolder,
+		arg.Iteration,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateEventsinkPosition = `-- name: UpdateEventsinkPosition :exec

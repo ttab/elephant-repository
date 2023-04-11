@@ -12,6 +12,7 @@ type BackendConfig struct {
 	repository.S3Options
 	DB            string
 	ReportingDB   string
+	Eventsink     string
 	ArchiveBucket string
 	ReportBucket  string
 	S3Endpoint    string
@@ -21,6 +22,7 @@ type BackendConfig struct {
 	NoArchiver    bool
 	ArchiverCount int
 	NoReplicator  bool
+	NoEventsink   bool
 	NoReporter    bool
 	JWTSigningKey string
 	SharedSecret  string
@@ -32,9 +34,11 @@ func BackendConfigFromContext(c *cli.Context, src ParameterSource) (BackendConfi
 	cfg := BackendConfig{
 		DB:            c.String("db"),
 		ReportingDB:   c.String("reporting-db"),
+		Eventsink:     c.String("eventsink"),
 		ArchiveBucket: c.String("archive-bucket"),
 		ReportBucket:  c.String("report-bucket"),
 		NoArchiver:    c.Bool("no-archiver"),
+		NoEventsink:   c.Bool("no-eventsink"),
 		NoReporter:    c.Bool("no-reporter"),
 		NoReplicator:  c.Bool("no-replicator"),
 		JWTSigningKey: c.String("jwt-signing-key"),
@@ -109,6 +113,11 @@ func BackendFlags() []cli.Flag {
 			EnvVars: []string{"REPORTING_CONN_STRING_PARAMETER"},
 		},
 		&cli.StringFlag{
+			Name:    "eventsink",
+			Value:   "aws-eventbridge",
+			EnvVars: []string{"EVENTSINK"},
+		},
+		&cli.StringFlag{
 			Name:    "archive-bucket",
 			Value:   "elephant-archive",
 			EnvVars: []string{"ARCHIVE_BUCKET"},
@@ -140,6 +149,10 @@ func BackendFlags() []cli.Flag {
 		&cli.BoolFlag{
 			Name:  "no-archiver",
 			Usage: "Disable the archiver",
+		},
+		&cli.BoolFlag{
+			Name:  "no-eventsink",
+			Usage: "Disable the eventsink",
 		},
 		&cli.BoolFlag{
 			Name:  "no-reporter",

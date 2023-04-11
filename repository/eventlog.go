@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,6 +49,7 @@ type PGReplication struct {
 	logger *slog.Logger
 
 	restarts prometheus.Counter
+	events   *prometheus.CounterVec
 }
 
 func NewPGReplication(
@@ -73,11 +72,23 @@ func NewPGReplication(
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
 
+	events := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "elephant_replicator_events_total",
+			Help: "Number of recieved replicator events.",
+		},
+		[]string{"type", "relation"},
+	)
+	if err := metricsRegisterer.Register(events); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
 	return &PGReplication{
 		pool:     pool,
 		logger:   logger,
 		dbURI:    dbURI,
 		restarts: restarts,
+		events:   events,
 	}, nil
 }
 
@@ -210,7 +221,8 @@ func (pr *PGReplication) replicationLoop(
 
 		msg, ok := rawMsg.(*pgproto3.CopyData)
 		if !ok {
-			log.Printf("Received unexpected message: %T\n", rawMsg)
+			pr.logger.Error("recieved unexpected message",
+				internal.LogKeyMessage, fmt.Sprintf("%T", rawMsg))
 
 			continue
 		}
@@ -266,6 +278,10 @@ func (pr *PGReplication) handleReplicationMessage(
 ) error {
 	switch logicalMsg := msg.(type) {
 	case *pglogrepl.RelationMessage:
+		pr.events.WithLabelValues(
+			"relation", logicalMsg.RelationName,
+		).Inc()
+
 		dec.RegisterRelation(logicalMsg)
 	case *pglogrepl.InsertMessage:
 		rel, values, err := dec.DecodeValues(
@@ -274,6 +290,10 @@ func (pr *PGReplication) handleReplicationMessage(
 			return fmt.Errorf(
 				"failed to decode values: %w", err)
 		}
+
+		pr.events.WithLabelValues(
+			"insert", rel.RelationName,
+		).Inc()
 
 		if rel.Namespace != "public" {
 			return nil
@@ -290,6 +310,14 @@ func (pr *PGReplication) handleReplicationMessage(
 			return fmt.Errorf("got message for unknown relation")
 		}
 
+		pr.events.WithLabelValues(
+			"update", rel.RelationName,
+		).Inc()
+
+		if rel.Namespace != "public" {
+			return nil
+		}
+
 		switch rel.RelationName {
 		case "document":
 		case "status_heads":
@@ -303,10 +331,6 @@ func (pr *PGReplication) handleReplicationMessage(
 		if err != nil {
 			return fmt.Errorf(
 				"failed to decode values: %w", err)
-		}
-
-		if rel.Namespace != "public" {
-			return nil
 		}
 
 		msg := replMessage{
@@ -339,9 +363,6 @@ func (pr *PGReplication) handleReplicationMessage(
 }
 
 func (pr *PGReplication) handleMessage(msg replMessage) error {
-	enc := json.NewEncoder(os.Stderr)
-	enc.SetIndent("", "  ")
-
 	var evt Event
 
 	switch msg.Table {
@@ -529,10 +550,10 @@ func parseDocumentMessage(msg replMessage) (Event, error) {
 
 	evt.Version = version
 
-	if msg.OldValues == nil {
+	if msg.OldValues != nil {
 		evt.Event = TypeDocumentVersion
 
-		oldVersion, ok := msg.NewValues["current_version"].(int64)
+		oldVersion, ok := msg.OldValues["current_version"].(int64)
 		if !ok {
 			return Event{}, fmt.Errorf("failed to extract old version")
 		}
@@ -590,6 +611,7 @@ func (pr *PGReplication) recordEvent(evt Event) error {
 		Event:     string(evt.Event),
 		Uuid:      evt.UUID,
 		Timestamp: internal.PGTime(evt.Timestamp),
+		Updater:   internal.PGTextOrNull(evt.Updater),
 		Type:      internal.PGTextOrNull(evt.Type),
 		Version:   internal.PGBigintOrNull(evt.Version),
 		Status:    internal.PGTextOrNull(evt.Status),

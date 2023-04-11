@@ -85,6 +85,7 @@ message EventlogItem {
   string status = 6;
   int64 status_id = 7;
   repeated ACLEntry acl = 8;
+  string updater_uri = 9;
 }
 
 message RunReportRequest {
