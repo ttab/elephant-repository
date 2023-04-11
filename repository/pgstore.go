@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adhocore/gronx"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -1276,10 +1275,9 @@ func (s *PGDocStore) GetReport(
 func (s *PGDocStore) UpdateReport(
 	ctx context.Context, report Report, enabled bool,
 ) (time.Time, error) {
-	nextExec, err := gronx.NextTick(report.CronExpression, false)
+	nextExec, err := report.NextTick()
 	if err != nil {
-		return time.Time{}, fmt.Errorf(
-			"failed to calculate next execution time: %w", err)
+		return nextExec, err
 	}
 
 	spec, err := json.Marshal(report)

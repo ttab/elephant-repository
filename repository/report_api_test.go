@@ -49,6 +49,7 @@ func TestIntegrationReporting(t *testing.T) {
 		Title:          "Documents created today",
 		GenerateSheet:  true,
 		CronExpression: "0 18 * * *",
+		CronTimezone:   "Asia/Tokyo",
 		SlackChannels:  []string{"chachachan"},
 		Queries: []*repository.ReportQuery{
 			{
@@ -72,6 +73,16 @@ GROUP BY type`,
 	})
 	test.MustNot(t, err, "create nonsense report")
 
+	wrongTzSpec := test.CloneMessage(&reportSpec)
+
+	wrongTzSpec.CronTimezone = "foo"
+
+	_, err = client.Update(ctx, &repository.UpdateReportRequest{
+		Report:  wrongTzSpec,
+		Enabled: true,
+	})
+	test.MustNot(t, err, "accept bogus time zonees")
+
 	now := time.Now()
 
 	repRes, err := client.Update(ctx, &repository.UpdateReportRequest{
@@ -94,7 +105,7 @@ GROUP BY type`,
 
 	test.EqualMessage(t, &repository.GetReportResponse{
 		Enabled:       true,
-		NextExecution: nextExec.Format(time.RFC3339),
+		NextExecution: nextExec.Local().Format(time.RFC3339),
 		Report:        &reportSpec,
 	}, retrieved, "get the correct definition back")
 

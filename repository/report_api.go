@@ -55,6 +55,10 @@ func (s *ReportsService) Update(
 		return nil, twirp.RequiredArgumentError("report.cron_expression")
 	}
 
+	if req.Report.CronTimezone == "" {
+		return nil, twirp.RequiredArgumentError("report.cron_timezone")
+	}
+
 	if len(req.Report.Queries) == 0 {
 		return nil, twirp.RequiredArgumentError("report.queries")
 	}
@@ -80,6 +84,12 @@ func (s *ReportsService) Update(
 	if err != nil {
 		return nil, twirp.InvalidArgumentError(
 			"report.cron_expression", err.Error())
+	}
+
+	_, err = time.LoadLocation(req.Report.CronTimezone)
+	if err != nil {
+		return nil, twirp.InvalidArgumentError(
+			"report.cron_timezone", err.Error())
 	}
 
 	report, err := ReportFromRPC(req.Report)
@@ -137,6 +147,7 @@ func ReportToRPC(r Report) *repository.Report {
 		Name:           r.Name,
 		Title:          r.Title,
 		CronExpression: r.CronExpression,
+		CronTimezone:   r.CronTimezone,
 		GenerateSheet:  r.GenerateSheet,
 		SlackChannels:  r.SlackChannels,
 	}
@@ -164,6 +175,7 @@ func ReportFromRPC(r *repository.Report) (Report, error) {
 		Name:           r.Name,
 		Title:          r.Title,
 		CronExpression: r.CronExpression,
+		CronTimezone:   r.CronTimezone,
 		GenerateSheet:  r.GenerateSheet,
 		SlackChannels:  r.SlackChannels,
 	}
