@@ -180,7 +180,7 @@ func (r *ReportRunner) runNext(ctx context.Context) error {
 
 	nextExecution, err := report.NextTick()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to calculate next execution: %w", err)
 	}
 
 	result, err := GenerateReport(ctx, r.logger, report, r.queryer)
