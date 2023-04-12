@@ -1269,6 +1269,13 @@ func (s *PGDocStore) GetReport(
 		return nil, fmt.Errorf("failed to unmarshal stored report: %w", err)
 	}
 
+	tz, err := time.LoadLocation(res.Report.CronTimezone)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load location: %w", err)
+	}
+
+	res.NextExecution = res.NextExecution.In(tz)
+
 	return &res, nil
 }
 

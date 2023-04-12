@@ -131,16 +131,10 @@ func (s *ReportsService) Get(
 			"failed to load report: %w", err)
 	}
 
-	tz, err := time.LoadLocation(res.Report.CronTimezone)
-	if err != nil {
-		return nil, twirp.InternalErrorf(
-			"failed to load location: %w", err)
-	}
-
 	return &repository.GetReportResponse{
 		Report:        ReportToRPC(res.Report),
 		Enabled:       res.Enabled,
-		NextExecution: res.NextExecution.In(tz).Format(time.RFC3339),
+		NextExecution: res.NextExecution.Format(time.RFC3339),
 	}, nil
 }
 
