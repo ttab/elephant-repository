@@ -2,15 +2,16 @@ package sinks
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant/internal"
 	repo "github.com/ttab/elephant/repository"
 	"github.com/ttab/elephant/rpc/repository"
+	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
 )
 
@@ -36,6 +37,7 @@ type SinkStateStore interface {
 
 type EventForwarderOptions struct {
 	Logger            *slog.Logger
+	DB                *pgxpool.Pool
 	Documents         repository.Documents
 	MetricsRegisterer prometheus.Registerer
 	Sink              EventSink
@@ -44,6 +46,7 @@ type EventForwarderOptions struct {
 
 type EventForwarder struct {
 	logger    *slog.Logger
+	db        *pgxpool.Pool
 	documents repository.Documents
 	sink      EventSink
 	state     SinkStateStore
@@ -90,6 +93,7 @@ func NewEventForwarder(opts EventForwarderOptions) (*EventForwarder, error) {
 
 	return &EventForwarder{
 		logger:    opts.Logger,
+		db:        opts.DB,
 		restarts:  restarts,
 		skips:     skips,
 		latency:   latency,
@@ -113,11 +117,30 @@ func (r *EventForwarder) run(ctx context.Context) {
 
 	defer close(r.stopped)
 
+	var wait time.Duration
+
 	for {
+		select {
+		case <-time.After(wait):
+			wait = restartWaitSeconds * time.Second
+		case <-ctx.Done():
+			return
+		}
+
+		jobLock, err := internal.NewJobLock(
+			r.db, r.logger, "forwarder",
+			10*time.Second, 1*time.Minute, 20*time.Second, 5*time.Second)
+		if err != nil {
+			r.logger.ErrorCtx(ctx, "failed to create job lock",
+				internal.LogKeyError, err)
+
+			continue
+		}
+
 		r.logger.Debug("starting event forwarder")
 
-		err := r.loop(ctx)
-		if errors.Is(err, context.Canceled) {
+		err = jobLock.RunWithContext(ctx, r.loop)
+		if ctx.Err() != nil {
 			return
 		} else if err != nil {
 			r.restarts.WithLabelValues(r.sink.SinkName()).Inc()
@@ -127,12 +150,6 @@ func (r *EventForwarder) run(ctx context.Context) {
 				internal.LogKeyError, err,
 				internal.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
 			)
-		}
-
-		select {
-		case <-time.After(restartWaitSeconds * time.Second):
-		case <-ctx.Done():
-			return
 		}
 	}
 }
@@ -209,28 +226,11 @@ func (r *EventForwarder) runNext(ctx context.Context, pos int64) (int64, error) 
 			continue
 		}
 
-		detail := EventDetail{
+		detail, err := r.enrichEvent(aCtx, EventDetail{
 			Event: event,
-		}
-
-		switch event.Event { //nolint:exhaustive
-		case repo.TypeDocumentVersion, repo.TypeNewStatus:
-			docRes, err := r.documents.Get(aCtx, &repository.GetDocumentRequest{
-				Uuid:    item.Uuid,
-				Version: item.Version,
-			})
-			if err != nil {
-				return 0, fmt.Errorf(
-					"failed to load document %s v%d for event: %w",
-					item.Uuid, item.Version, err)
-			}
-
-			detail.Document = DetailFromDocument(
-				repo.RPCToDocument(docRes.Document),
-			)
-
-			detail.Event.Version = docRes.Version
-			detail.Event.Type = docRes.Document.Type
+		})
+		if err != nil {
+			return pos, err
 		}
 
 		events[i] = detail
@@ -263,4 +263,52 @@ func (r *EventForwarder) runNext(ctx context.Context, pos int64) (int64, error) 
 	}
 
 	return pos, nil
+}
+
+func (r *EventForwarder) enrichEvent(
+	ctx context.Context, detail EventDetail,
+) (EventDetail, error) {
+	if detail.Event.Event != repo.TypeDocumentVersion &&
+		detail.Event.Event != repo.TypeNewStatus {
+		return detail, nil
+	}
+
+	docRes, err := r.documents.Get(ctx, &repository.GetDocumentRequest{
+		Uuid:    detail.Event.UUID.String(),
+		Version: detail.Event.Version,
+	})
+
+	switch {
+	case internal.IsTwirpErrorCode(err, twirp.NotFound):
+		// TODO: This raises the question if we need some other way to
+		// get to the data for decoration purposes, as we will fail to
+		// emit an update event for a document if it was deleted before
+		// we got to it. This might also be fine, the end result is a
+		// delete after all.
+		r.logger.Error("document has been deleted",
+			internal.LogKeyError, err,
+			internal.LogKeyEventID, detail.Event.ID)
+
+		r.skips.WithLabelValues(
+			r.sink.SinkName(), string(detail.Event.Event), "deleted",
+		).Inc()
+
+		detail.Event.Event = repo.TypeEventIgnored
+
+		return detail, nil
+
+	case err != nil:
+		return EventDetail{}, fmt.Errorf(
+			"failed to load document %s v%d for event: %w",
+			detail.Event.UUID, detail.Event.Version, err)
+	}
+
+	detail.Document = DetailFromDocument(
+		repo.RPCToDocument(docRes.Document),
+	)
+
+	detail.Event.Version = docRes.Version
+	detail.Event.Type = docRes.Document.Type
+
+	return detail, nil
 }

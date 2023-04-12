@@ -89,10 +89,6 @@ func NewJobLock(
 	return &jl, nil
 }
 
-func (jl *JobLock) StateChanges() <-chan JobLockState {
-	return jl.out
-}
-
 func (jl *JobLock) Stop() {
 	close(jl.abort)
 
@@ -102,8 +98,49 @@ func (jl *JobLock) Stop() {
 	}
 }
 
-func (jl *JobLock) Run() {
+func (jl *JobLock) run() {
 	jl.once.Do(jl.loop)
+}
+
+func (jl *JobLock) RunWithContext(
+	ctx context.Context,
+	fn func(ctx context.Context) error,
+) error {
+	waitCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	acquiredLock := make(chan struct{})
+
+	go func() {
+		go jl.run()
+
+		defer jl.Stop()
+		defer cancel()
+
+		for {
+			select {
+			case <-jl.abort:
+				return
+			case state := <-jl.out:
+				switch state {
+				case JobLockStateNone:
+				case JobLockStateLost, JobLockStateReleased:
+					return
+				case JobLockStateHeld:
+					close(acquiredLock)
+				}
+			case <-waitCtx.Done():
+				return
+			}
+		}
+	}()
+
+	select {
+	case <-acquiredLock:
+		return fn(waitCtx)
+	case <-waitCtx.Done():
+		return waitCtx.Err()
+	}
 }
 
 func (jl *JobLock) loop() {
