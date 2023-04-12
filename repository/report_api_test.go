@@ -104,6 +104,11 @@ GROUP BY type`,
 			hours)
 	}
 
+	_, offset := nextExec.Zone()
+	if offset != 3600 * 9 {
+		t.Fatalf("expected 9 hours offset, got %v", offset / 3600)
+	}
+
 	retrieved, err := client.Get(ctx, &repository.GetReportRequest{
 		Name: "today",
 	})
