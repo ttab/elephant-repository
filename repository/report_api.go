@@ -55,10 +55,6 @@ func (s *ReportsService) Update(
 		return nil, twirp.RequiredArgumentError("report.cron_expression")
 	}
 
-	if req.Report.CronTimezone == "" {
-		return nil, twirp.RequiredArgumentError("report.cron_timezone")
-	}
-
 	if len(req.Report.Queries) == 0 {
 		return nil, twirp.RequiredArgumentError("report.queries")
 	}
