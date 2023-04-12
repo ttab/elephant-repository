@@ -81,7 +81,7 @@ GROUP BY type`,
 		Report:  wrongTzSpec,
 		Enabled: true,
 	})
-	test.MustNot(t, err, "accept bogus time zonees")
+	test.MustNot(t, err, "accept bogus time zones")
 
 	now := time.Now()
 
