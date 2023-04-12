@@ -260,6 +260,7 @@ func runServer(c *cli.Context) error {
 
 		forwarder, err := sinks.NewEventForwarder(sinks.EventForwarderOptions{
 			Logger:            logger.With(internal.LogKeyComponent, "event-forwarder"),
+			DB:                dbpool,
 			Documents:         docService,
 			MetricsRegisterer: prometheus.DefaultRegisterer,
 			Sink:              sink,
