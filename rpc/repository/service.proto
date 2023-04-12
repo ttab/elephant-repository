@@ -141,6 +141,7 @@ message Report {
   string title = 2;
   bool generate_sheet = 3;
   string cron_expression = 4;
+  string cron_timezone = 7; // (default UTC)
   repeated string slack_channels = 5;
   repeated ReportQuery queries = 6;
 }

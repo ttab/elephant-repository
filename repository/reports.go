@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/adhocore/gronx"
 	"github.com/jackc/pgx/v5"
 	"github.com/ttab/elephant/internal"
 	"golang.org/x/exp/slog"
@@ -15,9 +16,25 @@ type Report struct {
 	Name           string        `json:"name"`
 	Title          string        `json:"title"`
 	CronExpression string        `json:"cron_expression"`
+	CronTimezone   string        `json:"cron_timezone"`
 	GenerateSheet  bool          `json:"generate_sheet,omitempty"`
 	Queries        []ReportQuery `json:"queries"`
 	SlackChannels  []string      `json:"slack_channels,omitempty"`
+}
+
+func (r *Report) NextTick() (time.Time, error) {
+	tz, err := time.LoadLocation(r.CronTimezone)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to load location: %w", err)
+	}
+
+	next, err := gronx.NextTickAfter(r.CronExpression, time.Now().In(tz), false)
+	if err != nil {
+		return time.Time{}, fmt.Errorf(
+			"failed to apply cron expression: %w", err)
+	}
+
+	return next, nil
 }
 
 type ReportResult struct {

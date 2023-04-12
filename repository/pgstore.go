@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adhocore/gronx"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -1270,16 +1269,23 @@ func (s *PGDocStore) GetReport(
 		return nil, fmt.Errorf("failed to unmarshal stored report: %w", err)
 	}
 
+	tz, err := time.LoadLocation(res.Report.CronTimezone)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load location: %w", err)
+	}
+
+	res.NextExecution = res.NextExecution.In(tz)
+
 	return &res, nil
 }
 
 func (s *PGDocStore) UpdateReport(
 	ctx context.Context, report Report, enabled bool,
 ) (time.Time, error) {
-	nextExec, err := gronx.NextTick(report.CronExpression, false)
+	nextExec, err := report.NextTick()
 	if err != nil {
-		return time.Time{}, fmt.Errorf(
-			"failed to calculate next execution time: %w", err)
+		return time.Time{},
+			fmt.Errorf("failed to calculate next execution: %w", err)
 	}
 
 	spec, err := json.Marshal(report)

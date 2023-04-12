@@ -564,6 +564,9 @@
           "cron_expression": {
             "type": "string"
           },
+          "cron_timezone": {
+            "type": "string"
+          },
           "generate_sheet": {
             "type": "boolean"
           },

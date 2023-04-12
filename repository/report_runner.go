@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/adhocore/gronx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5"
@@ -179,10 +178,9 @@ func (r *ReportRunner) runNext(ctx context.Context) error {
 
 	start := time.Now()
 
-	nextExecution, err := gronx.NextTick(report.CronExpression, false)
+	nextExecution, err := report.NextTick()
 	if err != nil {
-		return fmt.Errorf(
-			"could not calculate next execution: %w", err)
+		return fmt.Errorf("failed to calculate next execution: %w", err)
 	}
 
 	result, err := GenerateReport(ctx, r.logger, report, r.queryer)
