@@ -140,9 +140,7 @@ func (r *EventForwarder) run(ctx context.Context) {
 		r.logger.Debug("starting event forwarder")
 
 		err = jobLock.RunWithContext(ctx, r.loop)
-		if ctx.Err() != nil {
-			return
-		} else if err != nil {
+		if err != nil {
 			r.restarts.WithLabelValues(r.sink.SinkName()).Inc()
 
 			r.logger.ErrorCtx(

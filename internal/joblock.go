@@ -139,7 +139,7 @@ func (jl *JobLock) RunWithContext(
 	case <-acquiredLock:
 		return fn(waitCtx)
 	case <-waitCtx.Done():
-		return waitCtx.Err()
+		return nil
 	}
 }
 
