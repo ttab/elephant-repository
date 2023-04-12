@@ -31,7 +31,7 @@ func (r *Report) NextTick() (time.Time, error) {
 	next, err := gronx.NextTickAfter(r.CronExpression, time.Now().In(tz), false)
 	if err != nil {
 		return time.Time{}, fmt.Errorf(
-			"failed to calculate next execution time: %w", err)
+			"failed to apply cron expression: %w", err)
 	}
 
 	return next, nil

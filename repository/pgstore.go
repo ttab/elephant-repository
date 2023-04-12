@@ -1285,7 +1285,7 @@ func (s *PGDocStore) UpdateReport(
 	nextExec, err := report.NextTick()
 	if err != nil {
 		return time.Time{},
-			fmt.Errorf("failted to calculate next execution: %w", err)
+			fmt.Errorf("failed to calculate next execution: %w", err)
 	}
 
 	spec, err := json.Marshal(report)
