@@ -353,3 +353,16 @@ WHERE uuid = @uuid AND name = @name
       AND (@before::bigint = 0 OR id < @before::bigint)
 ORDER BY id DESC
 LIMIT @count;
+
+-- name: RegisterMetricKind :exec
+INSERT INTO metric_kind(name)
+VALUES (@name);
+
+-- name: DeleteMetricKind :exec
+DELETE FROM metric_kind
+WHERE id = @id;
+
+-- name: GetMetricKinds :many
+SELECT id, name
+FROM metric_kind
+ORDER BY name;

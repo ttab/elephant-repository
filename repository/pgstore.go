@@ -1338,6 +1338,46 @@ func (s *PGDocStore) UpdateReport(
 	return nextExec, nil
 }
 
+func (s *PGDocStore) RegisterMetricKind(
+	ctx context.Context, name string,
+) error {
+
+	err := s.withTX(ctx, "register metric kind", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.RegisterMetricKind(ctx, name)
+		if err != nil {
+			return fmt.Errorf("failed to save to databaase: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *PGDocStore) GetMetricKinds(
+	ctx context.Context,
+) ([]*MetricKind, error) {
+	rows, err := s.reader.GetMetricKinds(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch metric kinds: %w", err)
+	}
+
+	res := make([]*MetricKind, len(rows))
+
+	for i := range rows {
+		res[i] = &MetricKind{
+			ID:   rows[i].ID,
+			Name: rows[i].Name,
+		}
+	}
+
+	return res, nil
+}
+
 func (s *PGDocStore) updateACL(
 	ctx context.Context, q *postgres.Queries,
 	docUUID uuid.UUID, docType string, updateACL []ACLEntry,

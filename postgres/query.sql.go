@@ -163,6 +163,16 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 	return err
 }
 
+const deleteMetricKind = `-- name: DeleteMetricKind :exec
+DELETE FROM metric_kind
+WHERE id = $1
+`
+
+func (q *Queries) DeleteMetricKind(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, deleteMetricKind, id)
+	return err
+}
+
 const deleteStatusRule = `-- name: DeleteStatusRule :exec
 DELETE FROM status_rule WHERE name = $1
 `
@@ -721,6 +731,32 @@ func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, e
 	return i, err
 }
 
+const getMetricKinds = `-- name: GetMetricKinds :many
+SELECT id, name
+FROM metric_kind
+ORDER BY name
+`
+
+func (q *Queries) GetMetricKinds(ctx context.Context) ([]MetricKind, error) {
+	rows, err := q.db.Query(ctx, getMetricKinds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MetricKind
+	for rows.Next() {
+		var i MetricKind
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getNextReportDueTime = `-- name: GetNextReportDueTime :one
 SELECT MIN(next_execution)::timestamptz
 FROM report
@@ -1238,6 +1274,16 @@ func (q *Queries) PingJobLock(ctx context.Context, arg PingJobLockParams) (int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const registerMetricKind = `-- name: RegisterMetricKind :exec
+INSERT INTO metric_kind(name)
+VALUES ($1)
+`
+
+func (q *Queries) RegisterMetricKind(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, registerMetricKind, name)
+	return err
 }
 
 const registerSchema = `-- name: RegisterSchema :exec

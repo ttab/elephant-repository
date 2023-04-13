@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 15.1 (Debian 15.1-1.pgdg110+1)
--- Dumped by pg_dump version 15.1 (Debian 15.1-1.pgdg110+1)
+-- Dumped from database version 15.2 (Debian 15.2-1.pgdg110+1)
+-- Dumped by pg_dump version 15.2 (Debian 15.2-1.pgdg110+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -197,11 +197,11 @@ CREATE TABLE public.delete_record (
     id bigint NOT NULL,
     uuid uuid NOT NULL,
     uri text NOT NULL,
+    type text NOT NULL,
     version bigint NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
-    meta jsonb,
-    type text NOT NULL
+    meta jsonb
 );
 
 
@@ -228,13 +228,13 @@ ALTER TABLE public.delete_record ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTIT
 CREATE TABLE public.document (
     uuid uuid NOT NULL,
     uri text NOT NULL,
+    type text NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
     updated timestamp with time zone NOT NULL,
     updater_uri text NOT NULL,
     current_version bigint NOT NULL,
-    deleting boolean DEFAULT false NOT NULL,
-    type text NOT NULL
+    deleting boolean DEFAULT false NOT NULL
 );
 
 ALTER TABLE ONLY public.document REPLICA IDENTITY FULL;
@@ -367,6 +367,88 @@ CREATE TABLE public.job_lock (
 
 
 ALTER TABLE public.job_lock OWNER TO repository;
+
+--
+-- Name: metric; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.metric (
+    id bigint NOT NULL,
+    document_uuid uuid,
+    metric_kind_id integer NOT NULL,
+    metric_label_id integer,
+    value integer,
+    created timestamp with time zone
+);
+
+
+ALTER TABLE public.metric OWNER TO repository;
+
+--
+-- Name: metric_id_seq; Type: SEQUENCE; Schema: public; Owner: repository
+--
+
+ALTER TABLE public.metric ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.metric_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: metric_kind; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.metric_kind (
+    id integer NOT NULL,
+    name text NOT NULL
+);
+
+
+ALTER TABLE public.metric_kind OWNER TO repository;
+
+--
+-- Name: metric_kind_id_seq; Type: SEQUENCE; Schema: public; Owner: repository
+--
+
+ALTER TABLE public.metric_kind ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.metric_kind_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: metric_label; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.metric_label (
+    id integer NOT NULL,
+    name text NOT NULL
+);
+
+
+ALTER TABLE public.metric_label OWNER TO repository;
+
+--
+-- Name: metric_label_id_seq; Type: SEQUENCE; Schema: public; Owner: repository
+--
+
+ALTER TABLE public.metric_label ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.metric_label_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
 
 --
 -- Name: report; Type: TABLE; Schema: public; Owner: repository
@@ -557,6 +639,30 @@ ALTER TABLE ONLY public.job_lock
 
 
 --
+-- Name: metric_kind metric_kind_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.metric_kind
+    ADD CONSTRAINT metric_kind_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: metric_label metric_label_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.metric_label
+    ADD CONSTRAINT metric_label_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: metric metric_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.metric
+    ADD CONSTRAINT metric_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: report report_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -688,6 +794,30 @@ ALTER TABLE ONLY public.document_version
 
 
 --
+-- Name: metric metric_document_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.metric
+    ADD CONSTRAINT metric_document_uuid_fkey FOREIGN KEY (document_uuid) REFERENCES public.document(uuid);
+
+
+--
+-- Name: metric metric_metric_kind_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.metric
+    ADD CONSTRAINT metric_metric_kind_id_fkey FOREIGN KEY (metric_kind_id) REFERENCES public.metric_kind(id);
+
+
+--
+-- Name: metric metric_metric_label_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.metric
+    ADD CONSTRAINT metric_metric_label_id_fkey FOREIGN KEY (metric_label_id) REFERENCES public.metric_label(id);
+
+
+--
 -- Name: status_heads status_heads_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -730,69 +860,6 @@ ALTER PUBLICATION eventlog ADD TABLE ONLY public.document;
 --
 
 ALTER PUBLICATION eventlog ADD TABLE ONLY public.status_heads;
-
-
---
--- Name: TABLE acl; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.acl TO reporting;
-
-
---
--- Name: TABLE acl_audit; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.acl_audit TO reporting;
-
-
---
--- Name: TABLE delete_record; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.delete_record TO reporting;
-
-
---
--- Name: TABLE document; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.document TO reporting;
-
-
---
--- Name: TABLE document_status; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.document_status TO reporting;
-
-
---
--- Name: TABLE document_version; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.document_version TO reporting;
-
-
---
--- Name: TABLE status; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.status TO reporting;
-
-
---
--- Name: TABLE status_heads; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.status_heads TO reporting;
-
-
---
--- Name: TABLE status_rule; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.status_rule TO reporting;
 
 
 --

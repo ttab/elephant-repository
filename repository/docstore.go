@@ -87,6 +87,25 @@ type ReportStore interface {
 	) (*StoredReport, error)
 }
 
+type MetricStore interface {
+	// UpdateMetric(
+	// 	ctx context.Context, 
+	// ) error
+	RegisterMetricKind(
+		ctx context.Context, name string,
+	) error
+	DeleteMetricKind(
+		ctx context.Context, id int,
+	) error
+	GetMetricKinds(
+		ctx context.Context,
+	) ([]*MetricKind, error)
+
+	// RegisterMetricLabel()
+	// DeleteMetricLabel()
+	// GetMetricLabels()
+}
+
 type DocumentStatus struct {
 	Name     string
 	Disabled bool
