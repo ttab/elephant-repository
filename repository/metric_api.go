@@ -1,9 +1,9 @@
 package repository
 
 type Metric struct {
-	uuid string
-	kind MetricKind
-	label MetricLabel
+	Uuid string
+	Kind MetricKind
+	Label MetricLabel
 }
 
 type MetricKind struct {
@@ -11,4 +11,7 @@ type MetricKind struct {
 	Name string
 }
 
-type MetricLabel struct {}
+type MetricLabel struct {
+	ID int32
+	Name string
+}
