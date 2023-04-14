@@ -9,7 +9,6 @@ import (
 	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/revisor"
-	"github.com/ttab/elephant/revisor/constraints"
 	"golang.org/x/exp/slog"
 )
 
@@ -66,26 +65,15 @@ func (v *Validator) reloadLoop(
 }
 
 func (v *Validator) loadSchemas(ctx context.Context, loader SchemaLoader) error {
-	core, err := constraints.CoreSchema()
-	if err != nil {
-		return fmt.Errorf("failed to get core schema: %w", err)
-	}
-
 	schemas, err := loader.GetActiveSchemas(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get active schemas: %w", err)
 	}
 
-	constraints := []revisor.ConstraintSet{
-		core,
-	}
+	var constraints []revisor.ConstraintSet
 
 	for _, schema := range schemas {
-		if schema.Name == "core" {
-			constraints[0] = schema.Specification
-		} else {
-			constraints = append(constraints, schema.Specification)
-		}
+		constraints = append(constraints, schema.Specification)
 	}
 
 	val, err := revisor.NewValidator(constraints...)
@@ -107,4 +95,11 @@ func (v *Validator) ValidateDocument(document *doc.Document) []revisor.Validatio
 	v.m.RUnlock()
 
 	return val.ValidateDocument(document)
+}
+
+func (v *Validator) GetValidator() *revisor.Validator {
+	v.m.RLock()
+	defer v.m.RUnlock()
+
+	return v.val
 }

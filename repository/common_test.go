@@ -147,6 +147,9 @@ func testingAPIServer(
 
 	go store.RunListener(ctx)
 
+	err = repository.EnsureCoreSchema(ctx, store)
+	test.Must(t, err, "ensure core schema")
+
 	if opts.RunArchiver {
 		archiver, err := repository.NewArchiver(repository.ArchiverOptions{
 			Logger:            logger,

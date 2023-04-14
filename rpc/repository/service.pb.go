@@ -745,7 +745,7 @@ type Report struct {
 	Title          string         `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
 	GenerateSheet  bool           `protobuf:"varint,3,opt,name=generate_sheet,json=generateSheet,proto3" json:"generate_sheet,omitempty"`
 	CronExpression string         `protobuf:"bytes,4,opt,name=cron_expression,json=cronExpression,proto3" json:"cron_expression,omitempty"`
-	CronTimezone   string         `protobuf:"bytes,7,opt,name=cron_timezone,json=cronTimezone,proto3" json:"cron_timezone,omitempty"`
+	CronTimezone   string         `protobuf:"bytes,7,opt,name=cron_timezone,json=cronTimezone,proto3" json:"cron_timezone,omitempty"` // (default UTC)
 	SlackChannels  []string       `protobuf:"bytes,5,rep,name=slack_channels,json=slackChannels,proto3" json:"slack_channels,omitempty"`
 	Queries        []*ReportQuery `protobuf:"bytes,6,rep,name=queries,proto3" json:"queries,omitempty"`
 }
@@ -3574,6 +3574,9 @@ type GetAllActiveSchemasRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
+
+	WaitSeconds int64             `protobuf:"varint,1,opt,name=wait_seconds,json=waitSeconds,proto3" json:"wait_seconds,omitempty"`
+	Known       map[string]string `protobuf:"bytes,2,rep,name=known,proto3" json:"known,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 }
 
 func (x *GetAllActiveSchemasRequest) Reset() {
@@ -3606,6 +3609,20 @@ func (x *GetAllActiveSchemasRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use GetAllActiveSchemasRequest.ProtoReflect.Descriptor instead.
 func (*GetAllActiveSchemasRequest) Descriptor() ([]byte, []int) {
 	return file_rpc_repository_service_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *GetAllActiveSchemasRequest) GetWaitSeconds() int64 {
+	if x != nil {
+		return x.WaitSeconds
+	}
+	return 0
+}
+
+func (x *GetAllActiveSchemasRequest) GetKnown() map[string]string {
+	if x != nil {
+		return x.Known
+	}
+	return nil
 }
 
 type GetAllActiveSchemasResponse struct {
@@ -4134,8 +4151,19 @@ var file_rpc_repository_service_proto_rawDesc = []byte{
 	0x65, 0x12, 0x18, 0x0a, 0x07, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x18, 0x01, 0x20, 0x01,
 	0x28, 0x09, 0x52, 0x07, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x12, 0x12, 0x0a, 0x04, 0x73,
 	0x70, 0x65, 0x63, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x04, 0x73, 0x70, 0x65, 0x63, 0x22,
-	0x1c, 0x0a, 0x1a, 0x47, 0x65, 0x74, 0x41, 0x6c, 0x6c, 0x41, 0x63, 0x74, 0x69, 0x76, 0x65, 0x53,
-	0x63, 0x68, 0x65, 0x6d, 0x61, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x54, 0x0a,
+	0xcb, 0x01, 0x0a, 0x1a, 0x47, 0x65, 0x74, 0x41, 0x6c, 0x6c, 0x41, 0x63, 0x74, 0x69, 0x76, 0x65,
+	0x53, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x21,
+	0x0a, 0x0c, 0x77, 0x61, 0x69, 0x74, 0x5f, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x03, 0x52, 0x0b, 0x77, 0x61, 0x69, 0x74, 0x53, 0x65, 0x63, 0x6f, 0x6e, 0x64,
+	0x73, 0x12, 0x50, 0x0a, 0x05, 0x6b, 0x6e, 0x6f, 0x77, 0x6e, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b,
+	0x32, 0x3a, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f,
+	0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x47, 0x65, 0x74, 0x41, 0x6c, 0x6c, 0x41, 0x63, 0x74,
+	0x69, 0x76, 0x65, 0x53, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x2e, 0x4b, 0x6e, 0x6f, 0x77, 0x6e, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x52, 0x05, 0x6b, 0x6e,
+	0x6f, 0x77, 0x6e, 0x1a, 0x38, 0x0a, 0x0a, 0x4b, 0x6e, 0x6f, 0x77, 0x6e, 0x45, 0x6e, 0x74, 0x72,
+	0x79, 0x12, 0x10, 0x0a, 0x03, 0x6b, 0x65, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03,
+	0x6b, 0x65, 0x79, 0x12, 0x14, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x02, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x3a, 0x02, 0x38, 0x01, 0x22, 0x54, 0x0a,
 	0x1b, 0x47, 0x65, 0x74, 0x41, 0x6c, 0x6c, 0x41, 0x63, 0x74, 0x69, 0x76, 0x65, 0x53, 0x63, 0x68,
 	0x65, 0x6d, 0x61, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x35, 0x0a, 0x07,
 	0x73, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1b, 0x2e,
@@ -4293,7 +4321,7 @@ func file_rpc_repository_service_proto_rawDescGZIP() []byte {
 	return file_rpc_repository_service_proto_rawDescData
 }
 
-var file_rpc_repository_service_proto_msgTypes = make([]protoimpl.MessageInfo, 68)
+var file_rpc_repository_service_proto_msgTypes = make([]protoimpl.MessageInfo, 69)
 var file_rpc_repository_service_proto_goTypes = []interface{}{
 	(*GetStatusHistoryRequest)(nil),     // 0: elephant.repository.GetStatusHistoryRequest
 	(*GetStatusHistoryReponse)(nil),     // 1: elephant.repository.GetStatusHistoryReponse
@@ -4363,6 +4391,7 @@ var file_rpc_repository_service_proto_goTypes = []interface{}{
 	nil,                                 // 65: elephant.repository.DocumentMeta.HeadsEntry
 	nil,                                 // 66: elephant.repository.Status.MetaEntry
 	nil,                                 // 67: elephant.repository.Block.DataEntry
+	nil,                                 // 68: elephant.repository.GetAllActiveSchemasRequest.KnownEntry
 }
 var file_rpc_repository_service_proto_depIdxs = []int32{
 	48, // 0: elephant.repository.GetStatusHistoryReponse.statuses:type_name -> elephant.repository.Status
@@ -4402,55 +4431,56 @@ var file_rpc_repository_service_proto_depIdxs = []int32{
 	51, // 34: elephant.repository.Block.content:type_name -> elephant.repository.Block
 	51, // 35: elephant.repository.Block.meta:type_name -> elephant.repository.Block
 	60, // 36: elephant.repository.RegisterSchemaRequest.schema:type_name -> elephant.repository.Schema
-	60, // 37: elephant.repository.GetAllActiveSchemasResponse.schemas:type_name -> elephant.repository.Schema
-	48, // 38: elephant.repository.DocumentMeta.HeadsEntry.value:type_name -> elephant.repository.Status
-	28, // 39: elephant.repository.Documents.Get:input_type -> elephant.repository.GetDocumentRequest
-	30, // 40: elephant.repository.Documents.GetHistory:input_type -> elephant.repository.GetHistoryRequest
-	33, // 41: elephant.repository.Documents.Update:input_type -> elephant.repository.UpdateRequest
-	36, // 42: elephant.repository.Documents.Validate:input_type -> elephant.repository.ValidateRequest
-	43, // 43: elephant.repository.Documents.Delete:input_type -> elephant.repository.DeleteDocumentRequest
-	45, // 44: elephant.repository.Documents.GetMeta:input_type -> elephant.repository.GetMetaRequest
-	2,  // 45: elephant.repository.Documents.Eventlog:input_type -> elephant.repository.GetEventlogRequest
-	0,  // 46: elephant.repository.Documents.GetStatusHistory:input_type -> elephant.repository.GetStatusHistoryRequest
-	52, // 47: elephant.repository.Schemas.Register:input_type -> elephant.repository.RegisterSchemaRequest
-	54, // 48: elephant.repository.Schemas.SetActive:input_type -> elephant.repository.SetActiveSchemaRequest
-	56, // 49: elephant.repository.Schemas.Get:input_type -> elephant.repository.GetSchemaRequest
-	58, // 50: elephant.repository.Schemas.GetAllActive:input_type -> elephant.repository.GetAllActiveSchemasRequest
-	21, // 51: elephant.repository.Workflows.UpdateStatus:input_type -> elephant.repository.UpdateStatusRequest
-	18, // 52: elephant.repository.Workflows.GetStatuses:input_type -> elephant.repository.GetStatusesRequest
-	23, // 53: elephant.repository.Workflows.CreateStatusRule:input_type -> elephant.repository.CreateStatusRuleRequest
-	26, // 54: elephant.repository.Workflows.DeleteStatusRule:input_type -> elephant.repository.DeleteStatusRuleRequest
-	16, // 55: elephant.repository.Workflows.GetStatusRules:input_type -> elephant.repository.GetStatusRulesRequest
-	11, // 56: elephant.repository.Reports.Update:input_type -> elephant.repository.UpdateReportRequest
-	9,  // 57: elephant.repository.Reports.Get:input_type -> elephant.repository.GetReportRequest
-	5,  // 58: elephant.repository.Reports.Run:input_type -> elephant.repository.RunReportRequest
-	7,  // 59: elephant.repository.Reports.Test:input_type -> elephant.repository.TestReportRequest
-	29, // 60: elephant.repository.Documents.Get:output_type -> elephant.repository.GetDocumentResponse
-	31, // 61: elephant.repository.Documents.GetHistory:output_type -> elephant.repository.GetHistoryResponse
-	35, // 62: elephant.repository.Documents.Update:output_type -> elephant.repository.UpdateResponse
-	37, // 63: elephant.repository.Documents.Validate:output_type -> elephant.repository.ValidateResponse
-	44, // 64: elephant.repository.Documents.Delete:output_type -> elephant.repository.DeleteDocumentResponse
-	46, // 65: elephant.repository.Documents.GetMeta:output_type -> elephant.repository.GetMetaResponse
-	3,  // 66: elephant.repository.Documents.Eventlog:output_type -> elephant.repository.GetEventlogResponse
-	1,  // 67: elephant.repository.Documents.GetStatusHistory:output_type -> elephant.repository.GetStatusHistoryReponse
-	53, // 68: elephant.repository.Schemas.Register:output_type -> elephant.repository.RegisterSchemaResponse
-	55, // 69: elephant.repository.Schemas.SetActive:output_type -> elephant.repository.SetActiveSchemaResponse
-	57, // 70: elephant.repository.Schemas.Get:output_type -> elephant.repository.GetSchemaResponse
-	59, // 71: elephant.repository.Schemas.GetAllActive:output_type -> elephant.repository.GetAllActiveSchemasResponse
-	22, // 72: elephant.repository.Workflows.UpdateStatus:output_type -> elephant.repository.UpdateStatusResponse
-	20, // 73: elephant.repository.Workflows.GetStatuses:output_type -> elephant.repository.GetStatusesResponse
-	25, // 74: elephant.repository.Workflows.CreateStatusRule:output_type -> elephant.repository.CreateStatusRuleResponse
-	27, // 75: elephant.repository.Workflows.DeleteStatusRule:output_type -> elephant.repository.DeleteStatusRuleResponse
-	17, // 76: elephant.repository.Workflows.GetStatusRules:output_type -> elephant.repository.GetStatusRulesResponse
-	15, // 77: elephant.repository.Reports.Update:output_type -> elephant.repository.UpdateReportResponse
-	10, // 78: elephant.repository.Reports.Get:output_type -> elephant.repository.GetReportResponse
-	6,  // 79: elephant.repository.Reports.Run:output_type -> elephant.repository.RunReportResponse
-	8,  // 80: elephant.repository.Reports.Test:output_type -> elephant.repository.TestReportResponse
-	60, // [60:81] is the sub-list for method output_type
-	39, // [39:60] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	68, // 37: elephant.repository.GetAllActiveSchemasRequest.known:type_name -> elephant.repository.GetAllActiveSchemasRequest.KnownEntry
+	60, // 38: elephant.repository.GetAllActiveSchemasResponse.schemas:type_name -> elephant.repository.Schema
+	48, // 39: elephant.repository.DocumentMeta.HeadsEntry.value:type_name -> elephant.repository.Status
+	28, // 40: elephant.repository.Documents.Get:input_type -> elephant.repository.GetDocumentRequest
+	30, // 41: elephant.repository.Documents.GetHistory:input_type -> elephant.repository.GetHistoryRequest
+	33, // 42: elephant.repository.Documents.Update:input_type -> elephant.repository.UpdateRequest
+	36, // 43: elephant.repository.Documents.Validate:input_type -> elephant.repository.ValidateRequest
+	43, // 44: elephant.repository.Documents.Delete:input_type -> elephant.repository.DeleteDocumentRequest
+	45, // 45: elephant.repository.Documents.GetMeta:input_type -> elephant.repository.GetMetaRequest
+	2,  // 46: elephant.repository.Documents.Eventlog:input_type -> elephant.repository.GetEventlogRequest
+	0,  // 47: elephant.repository.Documents.GetStatusHistory:input_type -> elephant.repository.GetStatusHistoryRequest
+	52, // 48: elephant.repository.Schemas.Register:input_type -> elephant.repository.RegisterSchemaRequest
+	54, // 49: elephant.repository.Schemas.SetActive:input_type -> elephant.repository.SetActiveSchemaRequest
+	56, // 50: elephant.repository.Schemas.Get:input_type -> elephant.repository.GetSchemaRequest
+	58, // 51: elephant.repository.Schemas.GetAllActive:input_type -> elephant.repository.GetAllActiveSchemasRequest
+	21, // 52: elephant.repository.Workflows.UpdateStatus:input_type -> elephant.repository.UpdateStatusRequest
+	18, // 53: elephant.repository.Workflows.GetStatuses:input_type -> elephant.repository.GetStatusesRequest
+	23, // 54: elephant.repository.Workflows.CreateStatusRule:input_type -> elephant.repository.CreateStatusRuleRequest
+	26, // 55: elephant.repository.Workflows.DeleteStatusRule:input_type -> elephant.repository.DeleteStatusRuleRequest
+	16, // 56: elephant.repository.Workflows.GetStatusRules:input_type -> elephant.repository.GetStatusRulesRequest
+	11, // 57: elephant.repository.Reports.Update:input_type -> elephant.repository.UpdateReportRequest
+	9,  // 58: elephant.repository.Reports.Get:input_type -> elephant.repository.GetReportRequest
+	5,  // 59: elephant.repository.Reports.Run:input_type -> elephant.repository.RunReportRequest
+	7,  // 60: elephant.repository.Reports.Test:input_type -> elephant.repository.TestReportRequest
+	29, // 61: elephant.repository.Documents.Get:output_type -> elephant.repository.GetDocumentResponse
+	31, // 62: elephant.repository.Documents.GetHistory:output_type -> elephant.repository.GetHistoryResponse
+	35, // 63: elephant.repository.Documents.Update:output_type -> elephant.repository.UpdateResponse
+	37, // 64: elephant.repository.Documents.Validate:output_type -> elephant.repository.ValidateResponse
+	44, // 65: elephant.repository.Documents.Delete:output_type -> elephant.repository.DeleteDocumentResponse
+	46, // 66: elephant.repository.Documents.GetMeta:output_type -> elephant.repository.GetMetaResponse
+	3,  // 67: elephant.repository.Documents.Eventlog:output_type -> elephant.repository.GetEventlogResponse
+	1,  // 68: elephant.repository.Documents.GetStatusHistory:output_type -> elephant.repository.GetStatusHistoryReponse
+	53, // 69: elephant.repository.Schemas.Register:output_type -> elephant.repository.RegisterSchemaResponse
+	55, // 70: elephant.repository.Schemas.SetActive:output_type -> elephant.repository.SetActiveSchemaResponse
+	57, // 71: elephant.repository.Schemas.Get:output_type -> elephant.repository.GetSchemaResponse
+	59, // 72: elephant.repository.Schemas.GetAllActive:output_type -> elephant.repository.GetAllActiveSchemasResponse
+	22, // 73: elephant.repository.Workflows.UpdateStatus:output_type -> elephant.repository.UpdateStatusResponse
+	20, // 74: elephant.repository.Workflows.GetStatuses:output_type -> elephant.repository.GetStatusesResponse
+	25, // 75: elephant.repository.Workflows.CreateStatusRule:output_type -> elephant.repository.CreateStatusRuleResponse
+	27, // 76: elephant.repository.Workflows.DeleteStatusRule:output_type -> elephant.repository.DeleteStatusRuleResponse
+	17, // 77: elephant.repository.Workflows.GetStatusRules:output_type -> elephant.repository.GetStatusRulesResponse
+	15, // 78: elephant.repository.Reports.Update:output_type -> elephant.repository.UpdateReportResponse
+	10, // 79: elephant.repository.Reports.Get:output_type -> elephant.repository.GetReportResponse
+	6,  // 80: elephant.repository.Reports.Run:output_type -> elephant.repository.RunReportResponse
+	8,  // 81: elephant.repository.Reports.Test:output_type -> elephant.repository.TestReportResponse
+	61, // [61:82] is the sub-list for method output_type
+	40, // [40:61] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_rpc_repository_service_proto_init() }
@@ -5198,7 +5228,7 @@ func file_rpc_repository_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_rpc_repository_service_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   68,
+			NumMessages:   69,
 			NumExtensions: 0,
 			NumServices:   4,
 		},

@@ -21,6 +21,7 @@ type BackendConfig struct {
 	S3Insecure    bool
 	NoArchiver    bool
 	ArchiverCount int
+	NoCoreSchema  bool
 	NoReplicator  bool
 	NoEventsink   bool
 	NoReporter    bool
@@ -145,6 +146,10 @@ func BackendFlags() []cli.Flag {
 		&cli.BoolFlag{
 			Name:  "s3-insecure",
 			Usage: "Disable https for S3 access when using minio",
+		},
+		&cli.BoolFlag{
+			Name:  "no-core-schema",
+			Usage: "Don't register the built in core schema",
 		},
 		&cli.BoolFlag{
 			Name:  "no-archiver",
