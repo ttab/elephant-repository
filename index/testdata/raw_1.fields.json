@@ -1,0 +1,282 @@
+{
+  "created": {
+    "type": "date",
+    "values": [
+      "2023-04-02T01:04:49Z"
+    ]
+  },
+  "current_version": {
+    "type": "long",
+    "values": [
+      "42"
+    ]
+  },
+  "document.content.core_heading_1.data.text": {
+    "type": "text",
+    "values": [
+      "Över 20 döda efter tornador i USA"
+    ]
+  },
+  "document.content.core_paragraph.data.text": {
+    "type": "text",
+    "values": [
+      "Fler än 50 misstänkta tornador rapporterades in under fredagen i minst sju delstater, rapporterar CNN.",
+      "Den totala omfattningen på skadorna kunde ännu inte överblickas på lördagen, då över 530|000 hem och verksamheter fortfarande saknade ström.",
+      "Förstörelsen var närmast ofattbar i det lilla samhället Wynne i Arkansas, omkring åtta mil från Memphis i Tennessee, där minst fyra personer omkom.",
+      "– Vår skola är borta, min kyrka är borta, sade Heidi Jenkins som driver en skönhetssalong i Wynne med omkring 8|000 invånare.",
+      "Ett av de värst utsatta områdena var McNairy County i Tennessee där sju personer dödades.",
+      "I Belvidere, Illinois, längre norrut i USA slog en tornado till mot teatern Apollo där en hårdrocksfestival pågick. En man omkom när delar av taket rasade in och ytterligare ett 30-tal skadades under konserten.",
+      "Det vidsträckta stormsystemets vindar fick också bränder till skogs och på slätterna att ta fart. I Oklahoma skadades minst 32 personer och mer än 40 hem förstördes, i över 100 rapporterade bränder."
+    ]
+  },
+  "document.content.core_preamble.data.text": {
+    "type": "text",
+    "values": [
+      "Minst 26 människor omkom när vårstormar och tornador slet sönder städer och samhällen i den amerikanska södern och mellanvästern under fredagen och lördagen."
+    ]
+  },
+  "document.content.tt_dateline.data.text": {
+    "type": "text",
+    "values": [
+      "USA"
+    ]
+  },
+  "document.content.tt_visual.data.caption": {
+    "type": "text",
+    "values": [
+      "Förstörelsen är omfattande efter virvelstormars framfart i USA. Arkivbild."
+    ]
+  },
+  "document.content.tt_visual.rel.self.data.credit": {
+    "type": "text",
+    "values": [
+      "Doug McSchooler/AP/TT"
+    ]
+  },
+  "document.content.tt_visual.rel.self.data.height": {
+    "type": "long",
+    "values": [
+      "683"
+    ]
+  },
+  "document.content.tt_visual.rel.self.data.hiresScale": {
+    "type": "double",
+    "values": [
+      "2.9296875"
+    ]
+  },
+  "document.content.tt_visual.rel.self.data.width": {
+    "type": "long",
+    "values": [
+      "1024"
+    ]
+  },
+  "document.content.tt_visual.rel.self.type": {
+    "type": "keyword",
+    "values": [
+      "tt/picture"
+    ]
+  },
+  "document.content.tt_visual.rel.self.uri": {
+    "type": "keyword",
+    "values": [
+      "http://tt.se/media/image/sdl75GGVjG0o-Q"
+    ]
+  },
+  "document.content.tt_visual.rel.self.url": {
+    "type": "keyword",
+    "values": [
+      "https://beta.tt.se/media/image/sdl75GGVjG0o-Q_NormalPreview.jpg"
+    ]
+  },
+  "document.language": {
+    "type": "keyword",
+    "values": [
+      "sv"
+    ]
+  },
+  "document.meta.core_newsvalue.data.duration": {
+    "type": "long",
+    "values": [
+      "86400"
+    ]
+  },
+  "document.meta.core_newsvalue.data.score": {
+    "type": "long",
+    "values": [
+      "3"
+    ]
+  },
+  "document.meta.core_note.data.text": {
+    "type": "text",
+    "values": [
+      "Uppdaterat dödstal, samt stycke om bränder."
+    ]
+  },
+  "document.meta.core_note.role": {
+    "type": "keyword",
+    "values": [
+      "public"
+    ]
+  },
+  "document.meta.tt_slugline.value": {
+    "type": "text",
+    "values": [
+      "usa-oväderUV2"
+    ]
+  },
+  "document.rel.assignment.type": {
+    "type": "keyword",
+    "values": [
+      "core/assignment"
+    ]
+  },
+  "document.rel.assignment.uuid": {
+    "type": "keyword",
+    "values": [
+      "c3c4327a-4fa1-4a5b-b709-bd3e9b8d6807"
+    ]
+  },
+  "document.rel.source.type": {
+    "type": "keyword",
+    "values": [
+      "core/article",
+      "core/content-source"
+    ]
+  },
+  "document.rel.source.uri": {
+    "type": "keyword",
+    "values": [
+      "tt://content-source/tt-ap-afp"
+    ]
+  },
+  "document.rel.source.uuid": {
+    "type": "keyword",
+    "values": [
+      "82119f60-072d-4f78-98b3-4039bf4243c0"
+    ]
+  },
+  "document.rel.subject.title": {
+    "type": "text",
+    "values": [
+      "Utrikes"
+    ]
+  },
+  "document.rel.subject.type": {
+    "type": "keyword",
+    "values": [
+      "core/section"
+    ]
+  },
+  "document.rel.subject.uuid": {
+    "type": "keyword",
+    "values": [
+      "111932dc-99f3-4ba4-acf2-ed9d9f2f1c7c"
+    ]
+  },
+  "document.title": {
+    "type": "text",
+    "values": [
+      "usa-oväderUV2"
+    ]
+  },
+  "document.type": {
+    "type": "keyword",
+    "values": [
+      "core/article"
+    ]
+  },
+  "document.uri": {
+    "type": "keyword",
+    "values": [
+      "core://article/4589c261-2bda-407e-b72d-ac0331264b23"
+    ]
+  },
+  "document.url": {
+    "type": "keyword",
+    "values": [
+      ""
+    ]
+  },
+  "heads.approved.created": {
+    "type": "date",
+    "values": [
+      "2023-04-02T03:12:29Z"
+    ]
+  },
+  "heads.approved.creator": {
+    "type": "keyword",
+    "values": [
+      "imid://user/sub/dbf4aa9e-3725-4bfd-8daf-b4c379dd0625"
+    ]
+  },
+  "heads.approved.id": {
+    "type": "long",
+    "values": [
+      "4"
+    ]
+  },
+  "heads.approved.meta.cause": {
+    "type": "keyword",
+    "values": [
+      "development"
+    ]
+  },
+  "heads.approved.version": {
+    "type": "long",
+    "values": [
+      "41"
+    ]
+  },
+  "heads.usable.created": {
+    "type": "date",
+    "values": [
+      "2023-04-02T03:18:54Z"
+    ]
+  },
+  "heads.usable.creator": {
+    "type": "keyword",
+    "values": [
+      "imid://user/sub/dbf4aa9e-3725-4bfd-8daf-b4c379dd0625"
+    ]
+  },
+  "heads.usable.id": {
+    "type": "long",
+    "values": [
+      "3"
+    ]
+  },
+  "heads.usable.meta.cause": {
+    "type": "keyword",
+    "values": [
+      "development"
+    ]
+  },
+  "heads.usable.version": {
+    "type": "long",
+    "values": [
+      "42"
+    ]
+  },
+  "modified": {
+    "type": "date",
+    "values": [
+      "2023-04-02T03:18:54Z"
+    ]
+  },
+  "text": {
+    "type": "text",
+    "values": [
+      "Över 20 döda efter tornador i USA",
+      "USA",
+      "Minst 26 människor omkom när vårstormar och tornador slet sönder städer och samhällen i den amerikanska södern och mellanvästern under fredagen och lördagen.",
+      "Fler än 50 misstänkta tornador rapporterades in under fredagen i minst sju delstater, rapporterar CNN.",
+      "Den totala omfattningen på skadorna kunde ännu inte överblickas på lördagen, då över 530|000 hem och verksamheter fortfarande saknade ström.",
+      "Förstörelsen var närmast ofattbar i det lilla samhället Wynne i Arkansas, omkring åtta mil från Memphis i Tennessee, där minst fyra personer omkom.",
+      "– Vår skola är borta, min kyrka är borta, sade Heidi Jenkins som driver en skönhetssalong i Wynne med omkring 8|000 invånare.",
+      "Ett av de värst utsatta områdena var McNairy County i Tennessee där sju personer dödades.",
+      "I Belvidere, Illinois, längre norrut i USA slog en tornado till mot teatern Apollo där en hårdrocksfestival pågick. En man omkom när delar av taket rasade in och ytterligare ett 30-tal skadades under konserten.",
+      "Det vidsträckta stormsystemets vindar fick också bränder till skogs och på slätterna att ta fart. I Oklahoma skadades minst 32 personer och mer än 40 hem förstördes, i över 100 rapporterade bränder."
+    ]
+  }
+}

@@ -1,0 +1,177 @@
+{
+  "created": "2023-04-02T01:04:49Z",
+  "modified": "2023-04-02T03:18:54Z",
+  "heads": {
+    "approved": {
+      "id": 4,
+      "version": 41,
+      "creator": "imid://user/sub/dbf4aa9e-3725-4bfd-8daf-b4c379dd0625",
+      "created": "2023-04-02T03:12:29Z",
+      "meta": {
+        "cause": "development"
+      }
+    },
+    "usable": {
+      "id": 3,
+      "version": 42,
+      "creator": "imid://user/sub/dbf4aa9e-3725-4bfd-8daf-b4c379dd0625",
+      "created": "2023-04-02T03:18:54Z",
+      "meta": {
+        "cause": "development"
+      }
+    }
+  },
+  "acl": [
+    {
+      "uri": "core://unit/redaktionen",
+      "permissions": [
+        "r",
+        "w"
+      ]
+    }
+  ],
+  "document": {
+    "uuid": "4589c261-2bda-407e-b72d-ac0331264b23",
+    "type": "core/article",
+    "uri": "core://article/4589c261-2bda-407e-b72d-ac0331264b23",
+    "title": "usa-oväderUV2",
+    "content": [
+      {
+        "id": "NzUsMjQ2LDIwOCwxNTE",
+        "type": "core/heading-1",
+        "data": {
+          "text": "Över 20 döda efter tornador i USA"
+        }
+      },
+      {
+        "id": "MTc2LDE1NSwzMCw5MA",
+        "type": "tt/visual",
+        "data": {
+          "caption": "Förstörelsen är omfattande efter virvelstormars framfart i USA. Arkivbild."
+        },
+        "links": [
+          {
+            "uri": "http://tt.se/media/image/sdl75GGVjG0o-Q",
+            "url": "https://beta.tt.se/media/image/sdl75GGVjG0o-Q_NormalPreview.jpg",
+            "type": "tt/picture",
+            "data": {
+              "credit": "Doug McSchooler/AP/TT",
+              "height": "683",
+              "hiresScale": "2.9296875",
+              "width": "1024"
+            },
+            "rel": "self"
+          }
+        ]
+      },
+      {
+        "id": "pagedateline-5b8149a71b05cef3c73af71ca95c555d",
+        "type": "tt/dateline",
+        "data": {
+          "text": "USA"
+        }
+      },
+      {
+        "id": "MjAxLDEzNCwxLDI1Mg",
+        "type": "core/preamble",
+        "data": {
+          "text": "Minst 26 människor omkom när vårstormar och tornador slet sönder städer och samhällen i den amerikanska södern och mellanvästern under fredagen och lördagen."
+        }
+      },
+      {
+        "id": "paragraph-cf8547dd3e3dd86e539dec87c46e89d8",
+        "type": "core/paragraph",
+        "data": {
+          "text": "Fler än 50 misstänkta tornador rapporterades in under fredagen i minst sju delstater, rapporterar <a href=\"https://edition.cnn.com/2023/04/01/us/us-severe-storm-south-midwest-saturday/index.html\" id=\"link-7a56cea4ba9fbbf883a619e267c44266\">CNN</a>."
+        }
+      },
+      {
+        "id": "paragraph-f4016e45d77e66c81f33a384db517ed7",
+        "type": "core/paragraph",
+        "data": {
+          "text": "Den totala omfattningen på skadorna kunde ännu inte överblickas på lördagen, då över 530|000 hem och verksamheter fortfarande saknade ström."
+        }
+      },
+      {
+        "id": "paragraph-2861b1ed5df6d41df318e68f6dc24369",
+        "type": "core/paragraph",
+        "data": {
+          "text": "Förstörelsen var närmast ofattbar i det lilla samhället Wynne i Arkansas, omkring åtta mil från Memphis i Tennessee, där minst fyra personer omkom."
+        }
+      },
+      {
+        "id": "paragraph-716e843d08f3a0e4c86e0bc74d63963c",
+        "type": "core/paragraph",
+        "data": {
+          "text": "– Vår skola är borta, min kyrka är borta, sade Heidi Jenkins som driver en skönhetssalong i Wynne med omkring 8|000 invånare."
+        }
+      },
+      {
+        "id": "paragraph-cfd601ed15ced0f8d92016ff434f70f2",
+        "type": "core/paragraph",
+        "data": {
+          "text": "Ett av de värst utsatta områdena var McNairy County i Tennessee där sju personer dödades."
+        }
+      },
+      {
+        "id": "paragraph-b914ddfb88f79a3028718fd63adc5898",
+        "type": "core/paragraph",
+        "data": {
+          "text": "I Belvidere, Illinois, längre norrut i USA slog en tornado till mot teatern Apollo där en hårdrocksfestival pågick. En man omkom när delar av taket rasade in och ytterligare ett 30-tal skadades under konserten."
+        }
+      },
+      {
+        "id": "paragraph-4a56852710c11e4d6794b1eb8a374359",
+        "type": "core/paragraph",
+        "data": {
+          "text": "Det vidsträckta stormsystemets vindar fick också bränder till skogs och på slätterna att ta fart. I Oklahoma skadades minst 32 personer och mer än 40 hem förstördes, i över 100 rapporterade bränder."
+        }
+      }
+    ],
+    "meta": [
+      {
+        "type": "core/note",
+        "data": {
+          "text": "Uppdaterat dödstal, samt stycke om bränder."
+        },
+        "role": "public"
+      },
+      {
+        "type": "core/newsvalue",
+        "data": {
+          "duration": "86400",
+          "score": "3"
+        }
+      },
+      {
+        "type": "tt/slugline",
+        "value": "usa-oväderUV2"
+      }
+    ],
+    "links": [
+      {
+        "uuid": "111932dc-99f3-4ba4-acf2-ed9d9f2f1c7c",
+        "type": "core/section",
+        "title": "Utrikes",
+        "rel": "subject"
+      },
+      {
+        "uuid": "82119f60-072d-4f78-98b3-4039bf4243c0",
+        "type": "core/article",
+        "rel": "source"
+      },
+      {
+        "uuid": "c3c4327a-4fa1-4a5b-b709-bd3e9b8d6807",
+        "type": "core/assignment",
+        "rel": "assignment"
+      },
+      {
+        "uri": "tt://content-source/tt-ap-afp",
+        "type": "core/content-source",
+        "rel": "source"
+      }
+    ],
+    "language": "sv"
+  },
+  "current_version": 42
+}
