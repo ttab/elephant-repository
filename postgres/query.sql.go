@@ -173,6 +173,16 @@ func (q *Queries) DeleteMetricKind(ctx context.Context, name string) error {
 	return err
 }
 
+const deleteMetricLabel = `-- name: DeleteMetricLabel :exec
+DELETE FROM metric_label
+WHERE name = $1
+`
+
+func (q *Queries) DeleteMetricLabel(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, deleteMetricLabel, name)
+	return err
+}
+
 const deleteStatusRule = `-- name: DeleteStatusRule :exec
 DELETE FROM status_rule WHERE name = $1
 `
@@ -757,6 +767,32 @@ func (q *Queries) GetMetricKinds(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const getMetricLabels = `-- name: GetMetricLabels :many
+SELECT name
+FROM metric_label
+ORDER BY name
+`
+
+func (q *Queries) GetMetricLabels(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, getMetricLabels)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getNextReportDueTime = `-- name: GetNextReportDueTime :one
 SELECT MIN(next_execution)::timestamptz
 FROM report
@@ -1283,6 +1319,16 @@ VALUES ($1)
 
 func (q *Queries) RegisterMetricKind(ctx context.Context, name string) error {
 	_, err := q.db.Exec(ctx, registerMetricKind, name)
+	return err
+}
+
+const registerMetricLabel = `-- name: RegisterMetricLabel :exec
+INSERT INTO metric_label(name)
+VALUES ($1)
+`
+
+func (q *Queries) RegisterMetricLabel(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, registerMetricLabel, name)
 	return err
 }
 

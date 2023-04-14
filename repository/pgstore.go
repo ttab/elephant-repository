@@ -1386,6 +1386,54 @@ func (s *PGDocStore) GetMetricKinds(
 	return res, nil
 }
 
+func (s *PGDocStore) RegisterMetricLabel(
+	ctx context.Context, name string,
+) error {
+	return s.withTX(ctx, "register metric label", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.RegisterMetricLabel(ctx, name)
+		if internal.IsConstraintError(err, "metric_label_pkey") {
+			return DocStoreErrorf(ErrCodeExists,
+				"metric label already exists")
+		} else if err != nil {
+			return fmt.Errorf("failed to save to databaase: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (s *PGDocStore) DeleteMetricLabel(
+	ctx context.Context, name string,
+) error {
+	err := s.reader.DeleteMetricLabel(ctx, name)
+	if err != nil {
+		return fmt.Errorf("failed to delete metric label: %w", err)
+	}
+
+	return nil
+}
+
+func (s *PGDocStore) GetMetricLabels(
+	ctx context.Context,
+) ([]*MetricLabel, error) {
+	rows, err := s.reader.GetMetricLabels(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch metric labels: %w", err)
+	}
+
+	res := make([]*MetricLabel, len(rows))
+
+	for i := range rows {
+		res[i] = &MetricLabel{
+			Name: rows[i],
+		}
+	}
+
+	return res, nil
+}
+
 func (s *PGDocStore) updateACL(
 	ctx context.Context, q *postgres.Queries,
 	docUUID uuid.UUID, docType string, updateACL []ACLEntry,

@@ -366,3 +366,16 @@ WHERE name = @name;
 SELECT name
 FROM metric_kind
 ORDER BY name;
+
+-- name: RegisterMetricLabel :exec
+INSERT INTO metric_label(name)
+VALUES (@name);
+
+-- name: DeleteMetricLabel :exec
+DELETE FROM metric_label
+WHERE name = @name;
+
+-- name: GetMetricLabels :many
+SELECT name
+FROM metric_label
+ORDER BY name;

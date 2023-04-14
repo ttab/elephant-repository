@@ -141,6 +141,17 @@
       "elephant.repository.DeleteMetricKindResponse": {
         "type": "object"
       },
+      "elephant.repository.DeleteMetricLabelRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.DeleteMetricLabelResponse": {
+        "type": "object"
+      },
       "elephant.repository.DeleteStatusRuleRequest": {
         "properties": {
           "name": {
@@ -469,6 +480,20 @@
         },
         "type": "object"
       },
+      "elephant.repository.GetMetricLabelsRequest": {
+        "type": "object"
+      },
+      "elephant.repository.GetMetricLabelsResponse": {
+        "properties": {
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/elephant.repository.MetricLabel"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "elephant.repository.GetReportRequest": {
         "properties": {
           "name": {
@@ -594,6 +619,17 @@
         },
         "type": "object"
       },
+      "elephant.repository.MetricLabel": {
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "elephant.repository.RegisterMetricKindRequest": {
         "properties": {
           "name": {
@@ -603,6 +639,17 @@
         "type": "object"
       },
       "elephant.repository.RegisterMetricKindResponse": {
+        "type": "object"
+      },
+      "elephant.repository.RegisterMetricLabelRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.RegisterMetricLabelResponse": {
         "type": "object"
       },
       "elephant.repository.RegisterSchemaRequest": {
@@ -1350,6 +1397,44 @@
         ]
       }
     },
+    "/twirp/elephant.repository.Metrics/DeleteLabel": {
+      "post": {
+        "description": "Delete a metric label",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.DeleteMetricLabelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.DeleteMetricLabelResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "DeleteLabel",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
     "/twirp/elephant.repository.Metrics/GetKinds": {
       "post": {
         "description": "List all metric kinds",
@@ -1388,6 +1473,44 @@
         ]
       }
     },
+    "/twirp/elephant.repository.Metrics/GetLabels": {
+      "post": {
+        "description": "List all metric labels",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.GetMetricLabelsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.GetMetricLabelsResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "GetLabels",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
     "/twirp/elephant.repository.Metrics/RegisterKind": {
       "post": {
         "description": "Register a metric kind",
@@ -1421,6 +1544,44 @@
           }
         ],
         "summary": "RegisterKind",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Metrics/RegisterLabel": {
+      "post": {
+        "description": "Register a metric label",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.RegisterMetricLabelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.RegisterMetricLabelResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "RegisterLabel",
         "tags": [
           "Metrics"
         ]

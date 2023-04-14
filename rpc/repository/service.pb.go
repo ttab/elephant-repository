@@ -4053,6 +4053,316 @@ func (x *MetricKind) GetName() string {
 	return ""
 }
 
+type RegisterMetricLabelRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+}
+
+func (x *RegisterMetricLabelRequest) Reset() {
+	*x = RegisterMetricLabelRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_rpc_repository_service_proto_msgTypes[68]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *RegisterMetricLabelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterMetricLabelRequest) ProtoMessage() {}
+
+func (x *RegisterMetricLabelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_repository_service_proto_msgTypes[68]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterMetricLabelRequest.ProtoReflect.Descriptor instead.
+func (*RegisterMetricLabelRequest) Descriptor() ([]byte, []int) {
+	return file_rpc_repository_service_proto_rawDescGZIP(), []int{68}
+}
+
+func (x *RegisterMetricLabelRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type RegisterMetricLabelResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *RegisterMetricLabelResponse) Reset() {
+	*x = RegisterMetricLabelResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_rpc_repository_service_proto_msgTypes[69]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *RegisterMetricLabelResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterMetricLabelResponse) ProtoMessage() {}
+
+func (x *RegisterMetricLabelResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_repository_service_proto_msgTypes[69]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterMetricLabelResponse.ProtoReflect.Descriptor instead.
+func (*RegisterMetricLabelResponse) Descriptor() ([]byte, []int) {
+	return file_rpc_repository_service_proto_rawDescGZIP(), []int{69}
+}
+
+type DeleteMetricLabelRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+}
+
+func (x *DeleteMetricLabelRequest) Reset() {
+	*x = DeleteMetricLabelRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_rpc_repository_service_proto_msgTypes[70]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *DeleteMetricLabelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMetricLabelRequest) ProtoMessage() {}
+
+func (x *DeleteMetricLabelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_repository_service_proto_msgTypes[70]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMetricLabelRequest.ProtoReflect.Descriptor instead.
+func (*DeleteMetricLabelRequest) Descriptor() ([]byte, []int) {
+	return file_rpc_repository_service_proto_rawDescGZIP(), []int{70}
+}
+
+func (x *DeleteMetricLabelRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type DeleteMetricLabelResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *DeleteMetricLabelResponse) Reset() {
+	*x = DeleteMetricLabelResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_rpc_repository_service_proto_msgTypes[71]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *DeleteMetricLabelResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMetricLabelResponse) ProtoMessage() {}
+
+func (x *DeleteMetricLabelResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_repository_service_proto_msgTypes[71]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMetricLabelResponse.ProtoReflect.Descriptor instead.
+func (*DeleteMetricLabelResponse) Descriptor() ([]byte, []int) {
+	return file_rpc_repository_service_proto_rawDescGZIP(), []int{71}
+}
+
+type GetMetricLabelsRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *GetMetricLabelsRequest) Reset() {
+	*x = GetMetricLabelsRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_rpc_repository_service_proto_msgTypes[72]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *GetMetricLabelsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMetricLabelsRequest) ProtoMessage() {}
+
+func (x *GetMetricLabelsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_repository_service_proto_msgTypes[72]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMetricLabelsRequest.ProtoReflect.Descriptor instead.
+func (*GetMetricLabelsRequest) Descriptor() ([]byte, []int) {
+	return file_rpc_repository_service_proto_rawDescGZIP(), []int{72}
+}
+
+type GetMetricLabelsResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Labels []*MetricLabel `protobuf:"bytes,1,rep,name=labels,proto3" json:"labels,omitempty"`
+}
+
+func (x *GetMetricLabelsResponse) Reset() {
+	*x = GetMetricLabelsResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_rpc_repository_service_proto_msgTypes[73]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *GetMetricLabelsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMetricLabelsResponse) ProtoMessage() {}
+
+func (x *GetMetricLabelsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_repository_service_proto_msgTypes[73]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMetricLabelsResponse.ProtoReflect.Descriptor instead.
+func (*GetMetricLabelsResponse) Descriptor() ([]byte, []int) {
+	return file_rpc_repository_service_proto_rawDescGZIP(), []int{73}
+}
+
+func (x *GetMetricLabelsResponse) GetLabels() []*MetricLabel {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
+type MetricLabel struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id   int64  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+}
+
+func (x *MetricLabel) Reset() {
+	*x = MetricLabel{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_rpc_repository_service_proto_msgTypes[74]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *MetricLabel) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetricLabel) ProtoMessage() {}
+
+func (x *MetricLabel) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_repository_service_proto_msgTypes[74]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetricLabel.ProtoReflect.Descriptor instead.
+func (*MetricLabel) Descriptor() ([]byte, []int) {
+	return file_rpc_repository_service_proto_rawDescGZIP(), []int{74}
+}
+
+func (x *MetricLabel) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *MetricLabel) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 var File_rpc_repository_service_proto protoreflect.FileDescriptor
 
 var file_rpc_repository_service_proto_rawDesc = []byte{
@@ -4512,6 +4822,26 @@ var file_rpc_repository_service_proto_rawDesc = []byte{
 	0x52, 0x05, 0x6b, 0x69, 0x6e, 0x64, 0x73, 0x22, 0x30, 0x0a, 0x0a, 0x4d, 0x65, 0x74, 0x72, 0x69,
 	0x63, 0x4b, 0x69, 0x6e, 0x64, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28,
 	0x03, 0x52, 0x02, 0x69, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x30, 0x0a, 0x1a, 0x52, 0x65, 0x67,
+	0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x1d, 0x0a, 0x1b, 0x52,
+	0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62,
+	0x65, 0x6c, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x2e, 0x0a, 0x18, 0x44, 0x65,
+	0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x1b, 0x0a, 0x19, 0x44, 0x65,
+	0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x18, 0x0a, 0x16, 0x47, 0x65, 0x74, 0x4d, 0x65,
+	0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x22, 0x53, 0x0a, 0x17, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61,
+	0x62, 0x65, 0x6c, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x38, 0x0a, 0x06,
+	0x6c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x65,
+	0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f,
+	0x72, 0x79, 0x2e, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x52, 0x06,
+	0x6c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x22, 0x31, 0x0a, 0x0b, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63,
+	0x4c, 0x61, 0x62, 0x65, 0x6c, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x03, 0x52, 0x02, 0x69, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20,
 	0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x32, 0xf8, 0x05, 0x0a, 0x09, 0x44, 0x6f,
 	0x63, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x73, 0x12, 0x58, 0x0a, 0x03, 0x47, 0x65, 0x74, 0x12, 0x27,
 	0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69,
@@ -4643,7 +4973,7 @@ var file_rpc_repository_service_proto_rawDesc = []byte{
 	0x73, 0x74, 0x52, 0x65, 0x70, 0x6f, 0x72, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
 	0x27, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73,
 	0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x54, 0x65, 0x73, 0x74, 0x52, 0x65, 0x70, 0x6f, 0x72, 0x74,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0xca, 0x02, 0x0a, 0x07, 0x4d, 0x65, 0x74,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0x94, 0x05, 0x0a, 0x07, 0x4d, 0x65, 0x74,
 	0x72, 0x69, 0x63, 0x73, 0x12, 0x6f, 0x0a, 0x0c, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72,
 	0x4b, 0x69, 0x6e, 0x64, 0x12, 0x2e, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e,
 	0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x52, 0x65, 0x67, 0x69, 0x73,
@@ -4664,9 +4994,29 @@ var file_rpc_repository_service_proto_rawDesc = []byte{
 	0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2b, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68,
 	0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x47,
 	0x65, 0x74, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64, 0x73, 0x52, 0x65, 0x73,
-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x12, 0x5a, 0x10, 0x2e, 0x2f, 0x72, 0x70, 0x63, 0x2f, 0x72,
-	0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x33,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x72, 0x0a, 0x0d, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65,
+	0x72, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x12, 0x2f, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e,
+	0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x52, 0x65, 0x67,
+	0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x30, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61,
+	0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x52, 0x65,
+	0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65,
+	0x6c, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x6c, 0x0a, 0x0b, 0x44, 0x65, 0x6c,
+	0x65, 0x74, 0x65, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x12, 0x2d, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68,
+	0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x44,
+	0x65, 0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2e, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61,
+	0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x44, 0x65,
+	0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x66, 0x0a, 0x09, 0x47, 0x65, 0x74, 0x4c, 0x61,
+	0x62, 0x65, 0x6c, 0x73, 0x12, 0x2b, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e,
+	0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x47, 0x65, 0x74, 0x4d, 0x65,
+	0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x1a, 0x2c, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70,
+	0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74, 0x72, 0x69,
+	0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42,
+	0x12, 0x5a, 0x10, 0x2e, 0x2f, 0x72, 0x70, 0x63, 0x2f, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74,
+	0x6f, 0x72, 0x79, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -4681,7 +5031,7 @@ func file_rpc_repository_service_proto_rawDescGZIP() []byte {
 	return file_rpc_repository_service_proto_rawDescData
 }
 
-var file_rpc_repository_service_proto_msgTypes = make([]protoimpl.MessageInfo, 76)
+var file_rpc_repository_service_proto_msgTypes = make([]protoimpl.MessageInfo, 83)
 var file_rpc_repository_service_proto_goTypes = []interface{}{
 	(*GetStatusHistoryRequest)(nil),     // 0: elephant.repository.GetStatusHistoryRequest
 	(*GetStatusHistoryReponse)(nil),     // 1: elephant.repository.GetStatusHistoryReponse
@@ -4751,14 +5101,21 @@ var file_rpc_repository_service_proto_goTypes = []interface{}{
 	(*GetMetricKindsRequest)(nil),       // 65: elephant.repository.GetMetricKindsRequest
 	(*GetMetricKindsResponse)(nil),      // 66: elephant.repository.GetMetricKindsResponse
 	(*MetricKind)(nil),                  // 67: elephant.repository.MetricKind
-	nil,                                 // 68: elephant.repository.DocumentVersion.MetaEntry
-	nil,                                 // 69: elephant.repository.UpdateRequest.MetaEntry
-	nil,                                 // 70: elephant.repository.StatusUpdate.MetaEntry
-	nil,                                 // 71: elephant.repository.DeleteDocumentRequest.MetaEntry
-	nil,                                 // 72: elephant.repository.DocumentMeta.HeadsEntry
-	nil,                                 // 73: elephant.repository.Status.MetaEntry
-	nil,                                 // 74: elephant.repository.Block.DataEntry
-	nil,                                 // 75: elephant.repository.GetAllActiveSchemasRequest.KnownEntry
+	(*RegisterMetricLabelRequest)(nil),  // 68: elephant.repository.RegisterMetricLabelRequest
+	(*RegisterMetricLabelResponse)(nil), // 69: elephant.repository.RegisterMetricLabelResponse
+	(*DeleteMetricLabelRequest)(nil),    // 70: elephant.repository.DeleteMetricLabelRequest
+	(*DeleteMetricLabelResponse)(nil),   // 71: elephant.repository.DeleteMetricLabelResponse
+	(*GetMetricLabelsRequest)(nil),      // 72: elephant.repository.GetMetricLabelsRequest
+	(*GetMetricLabelsResponse)(nil),     // 73: elephant.repository.GetMetricLabelsResponse
+	(*MetricLabel)(nil),                 // 74: elephant.repository.MetricLabel
+	nil,                                 // 75: elephant.repository.DocumentVersion.MetaEntry
+	nil,                                 // 76: elephant.repository.UpdateRequest.MetaEntry
+	nil,                                 // 77: elephant.repository.StatusUpdate.MetaEntry
+	nil,                                 // 78: elephant.repository.DeleteDocumentRequest.MetaEntry
+	nil,                                 // 79: elephant.repository.DocumentMeta.HeadsEntry
+	nil,                                 // 80: elephant.repository.Status.MetaEntry
+	nil,                                 // 81: elephant.repository.Block.DataEntry
+	nil,                                 // 82: elephant.repository.GetAllActiveSchemasRequest.KnownEntry
 }
 var file_rpc_repository_service_proto_depIdxs = []int32{
 	48, // 0: elephant.repository.GetStatusHistoryReponse.statuses:type_name -> elephant.repository.Status
@@ -4774,87 +5131,94 @@ var file_rpc_repository_service_proto_depIdxs = []int32{
 	24, // 10: elephant.repository.CreateStatusRuleRequest.rule:type_name -> elephant.repository.StatusRule
 	50, // 11: elephant.repository.GetDocumentResponse.document:type_name -> elephant.repository.Document
 	32, // 12: elephant.repository.GetHistoryResponse.versions:type_name -> elephant.repository.DocumentVersion
-	68, // 13: elephant.repository.DocumentVersion.meta:type_name -> elephant.repository.DocumentVersion.MetaEntry
+	75, // 13: elephant.repository.DocumentVersion.meta:type_name -> elephant.repository.DocumentVersion.MetaEntry
 	50, // 14: elephant.repository.UpdateRequest.document:type_name -> elephant.repository.Document
-	69, // 15: elephant.repository.UpdateRequest.meta:type_name -> elephant.repository.UpdateRequest.MetaEntry
+	76, // 15: elephant.repository.UpdateRequest.meta:type_name -> elephant.repository.UpdateRequest.MetaEntry
 	40, // 16: elephant.repository.UpdateRequest.status:type_name -> elephant.repository.StatusUpdate
 	49, // 17: elephant.repository.UpdateRequest.acl:type_name -> elephant.repository.ACLEntry
 	34, // 18: elephant.repository.UpdateRequest.import_directive:type_name -> elephant.repository.ImportDirective
 	50, // 19: elephant.repository.ValidateRequest.document:type_name -> elephant.repository.Document
 	38, // 20: elephant.repository.ValidateResponse.errors:type_name -> elephant.repository.ValidationResult
 	39, // 21: elephant.repository.ValidationResult.entity:type_name -> elephant.repository.EntityRef
-	70, // 22: elephant.repository.StatusUpdate.meta:type_name -> elephant.repository.StatusUpdate.MetaEntry
+	77, // 22: elephant.repository.StatusUpdate.meta:type_name -> elephant.repository.StatusUpdate.MetaEntry
 	49, // 23: elephant.repository.UpdatePermissionsRequest.list:type_name -> elephant.repository.ACLEntry
-	71, // 24: elephant.repository.DeleteDocumentRequest.meta:type_name -> elephant.repository.DeleteDocumentRequest.MetaEntry
+	78, // 24: elephant.repository.DeleteDocumentRequest.meta:type_name -> elephant.repository.DeleteDocumentRequest.MetaEntry
 	47, // 25: elephant.repository.GetMetaResponse.meta:type_name -> elephant.repository.DocumentMeta
-	72, // 26: elephant.repository.DocumentMeta.heads:type_name -> elephant.repository.DocumentMeta.HeadsEntry
+	79, // 26: elephant.repository.DocumentMeta.heads:type_name -> elephant.repository.DocumentMeta.HeadsEntry
 	49, // 27: elephant.repository.DocumentMeta.acl:type_name -> elephant.repository.ACLEntry
-	73, // 28: elephant.repository.Status.meta:type_name -> elephant.repository.Status.MetaEntry
+	80, // 28: elephant.repository.Status.meta:type_name -> elephant.repository.Status.MetaEntry
 	51, // 29: elephant.repository.Document.content:type_name -> elephant.repository.Block
 	51, // 30: elephant.repository.Document.meta:type_name -> elephant.repository.Block
 	51, // 31: elephant.repository.Document.links:type_name -> elephant.repository.Block
-	74, // 32: elephant.repository.Block.data:type_name -> elephant.repository.Block.DataEntry
+	81, // 32: elephant.repository.Block.data:type_name -> elephant.repository.Block.DataEntry
 	51, // 33: elephant.repository.Block.links:type_name -> elephant.repository.Block
 	51, // 34: elephant.repository.Block.content:type_name -> elephant.repository.Block
 	51, // 35: elephant.repository.Block.meta:type_name -> elephant.repository.Block
 	60, // 36: elephant.repository.RegisterSchemaRequest.schema:type_name -> elephant.repository.Schema
-	75, // 37: elephant.repository.GetAllActiveSchemasRequest.known:type_name -> elephant.repository.GetAllActiveSchemasRequest.KnownEntry
+	82, // 37: elephant.repository.GetAllActiveSchemasRequest.known:type_name -> elephant.repository.GetAllActiveSchemasRequest.KnownEntry
 	60, // 38: elephant.repository.GetAllActiveSchemasResponse.schemas:type_name -> elephant.repository.Schema
 	67, // 39: elephant.repository.GetMetricKindsResponse.kinds:type_name -> elephant.repository.MetricKind
-	48, // 40: elephant.repository.DocumentMeta.HeadsEntry.value:type_name -> elephant.repository.Status
-	28, // 41: elephant.repository.Documents.Get:input_type -> elephant.repository.GetDocumentRequest
-	30, // 42: elephant.repository.Documents.GetHistory:input_type -> elephant.repository.GetHistoryRequest
-	33, // 43: elephant.repository.Documents.Update:input_type -> elephant.repository.UpdateRequest
-	36, // 44: elephant.repository.Documents.Validate:input_type -> elephant.repository.ValidateRequest
-	43, // 45: elephant.repository.Documents.Delete:input_type -> elephant.repository.DeleteDocumentRequest
-	45, // 46: elephant.repository.Documents.GetMeta:input_type -> elephant.repository.GetMetaRequest
-	2,  // 47: elephant.repository.Documents.Eventlog:input_type -> elephant.repository.GetEventlogRequest
-	0,  // 48: elephant.repository.Documents.GetStatusHistory:input_type -> elephant.repository.GetStatusHistoryRequest
-	52, // 49: elephant.repository.Schemas.Register:input_type -> elephant.repository.RegisterSchemaRequest
-	54, // 50: elephant.repository.Schemas.SetActive:input_type -> elephant.repository.SetActiveSchemaRequest
-	56, // 51: elephant.repository.Schemas.Get:input_type -> elephant.repository.GetSchemaRequest
-	58, // 52: elephant.repository.Schemas.GetAllActive:input_type -> elephant.repository.GetAllActiveSchemasRequest
-	21, // 53: elephant.repository.Workflows.UpdateStatus:input_type -> elephant.repository.UpdateStatusRequest
-	18, // 54: elephant.repository.Workflows.GetStatuses:input_type -> elephant.repository.GetStatusesRequest
-	23, // 55: elephant.repository.Workflows.CreateStatusRule:input_type -> elephant.repository.CreateStatusRuleRequest
-	26, // 56: elephant.repository.Workflows.DeleteStatusRule:input_type -> elephant.repository.DeleteStatusRuleRequest
-	16, // 57: elephant.repository.Workflows.GetStatusRules:input_type -> elephant.repository.GetStatusRulesRequest
-	11, // 58: elephant.repository.Reports.Update:input_type -> elephant.repository.UpdateReportRequest
-	9,  // 59: elephant.repository.Reports.Get:input_type -> elephant.repository.GetReportRequest
-	5,  // 60: elephant.repository.Reports.Run:input_type -> elephant.repository.RunReportRequest
-	7,  // 61: elephant.repository.Reports.Test:input_type -> elephant.repository.TestReportRequest
-	61, // 62: elephant.repository.Metrics.RegisterKind:input_type -> elephant.repository.RegisterMetricKindRequest
-	63, // 63: elephant.repository.Metrics.DeleteKind:input_type -> elephant.repository.DeleteMetricKindRequest
-	65, // 64: elephant.repository.Metrics.GetKinds:input_type -> elephant.repository.GetMetricKindsRequest
-	29, // 65: elephant.repository.Documents.Get:output_type -> elephant.repository.GetDocumentResponse
-	31, // 66: elephant.repository.Documents.GetHistory:output_type -> elephant.repository.GetHistoryResponse
-	35, // 67: elephant.repository.Documents.Update:output_type -> elephant.repository.UpdateResponse
-	37, // 68: elephant.repository.Documents.Validate:output_type -> elephant.repository.ValidateResponse
-	44, // 69: elephant.repository.Documents.Delete:output_type -> elephant.repository.DeleteDocumentResponse
-	46, // 70: elephant.repository.Documents.GetMeta:output_type -> elephant.repository.GetMetaResponse
-	3,  // 71: elephant.repository.Documents.Eventlog:output_type -> elephant.repository.GetEventlogResponse
-	1,  // 72: elephant.repository.Documents.GetStatusHistory:output_type -> elephant.repository.GetStatusHistoryReponse
-	53, // 73: elephant.repository.Schemas.Register:output_type -> elephant.repository.RegisterSchemaResponse
-	55, // 74: elephant.repository.Schemas.SetActive:output_type -> elephant.repository.SetActiveSchemaResponse
-	57, // 75: elephant.repository.Schemas.Get:output_type -> elephant.repository.GetSchemaResponse
-	59, // 76: elephant.repository.Schemas.GetAllActive:output_type -> elephant.repository.GetAllActiveSchemasResponse
-	22, // 77: elephant.repository.Workflows.UpdateStatus:output_type -> elephant.repository.UpdateStatusResponse
-	20, // 78: elephant.repository.Workflows.GetStatuses:output_type -> elephant.repository.GetStatusesResponse
-	25, // 79: elephant.repository.Workflows.CreateStatusRule:output_type -> elephant.repository.CreateStatusRuleResponse
-	27, // 80: elephant.repository.Workflows.DeleteStatusRule:output_type -> elephant.repository.DeleteStatusRuleResponse
-	17, // 81: elephant.repository.Workflows.GetStatusRules:output_type -> elephant.repository.GetStatusRulesResponse
-	15, // 82: elephant.repository.Reports.Update:output_type -> elephant.repository.UpdateReportResponse
-	10, // 83: elephant.repository.Reports.Get:output_type -> elephant.repository.GetReportResponse
-	6,  // 84: elephant.repository.Reports.Run:output_type -> elephant.repository.RunReportResponse
-	8,  // 85: elephant.repository.Reports.Test:output_type -> elephant.repository.TestReportResponse
-	62, // 86: elephant.repository.Metrics.RegisterKind:output_type -> elephant.repository.RegisterMetricKindResponse
-	64, // 87: elephant.repository.Metrics.DeleteKind:output_type -> elephant.repository.DeleteMetricKindResponse
-	66, // 88: elephant.repository.Metrics.GetKinds:output_type -> elephant.repository.GetMetricKindsResponse
-	65, // [65:89] is the sub-list for method output_type
-	41, // [41:65] is the sub-list for method input_type
-	41, // [41:41] is the sub-list for extension type_name
-	41, // [41:41] is the sub-list for extension extendee
-	0,  // [0:41] is the sub-list for field type_name
+	74, // 40: elephant.repository.GetMetricLabelsResponse.labels:type_name -> elephant.repository.MetricLabel
+	48, // 41: elephant.repository.DocumentMeta.HeadsEntry.value:type_name -> elephant.repository.Status
+	28, // 42: elephant.repository.Documents.Get:input_type -> elephant.repository.GetDocumentRequest
+	30, // 43: elephant.repository.Documents.GetHistory:input_type -> elephant.repository.GetHistoryRequest
+	33, // 44: elephant.repository.Documents.Update:input_type -> elephant.repository.UpdateRequest
+	36, // 45: elephant.repository.Documents.Validate:input_type -> elephant.repository.ValidateRequest
+	43, // 46: elephant.repository.Documents.Delete:input_type -> elephant.repository.DeleteDocumentRequest
+	45, // 47: elephant.repository.Documents.GetMeta:input_type -> elephant.repository.GetMetaRequest
+	2,  // 48: elephant.repository.Documents.Eventlog:input_type -> elephant.repository.GetEventlogRequest
+	0,  // 49: elephant.repository.Documents.GetStatusHistory:input_type -> elephant.repository.GetStatusHistoryRequest
+	52, // 50: elephant.repository.Schemas.Register:input_type -> elephant.repository.RegisterSchemaRequest
+	54, // 51: elephant.repository.Schemas.SetActive:input_type -> elephant.repository.SetActiveSchemaRequest
+	56, // 52: elephant.repository.Schemas.Get:input_type -> elephant.repository.GetSchemaRequest
+	58, // 53: elephant.repository.Schemas.GetAllActive:input_type -> elephant.repository.GetAllActiveSchemasRequest
+	21, // 54: elephant.repository.Workflows.UpdateStatus:input_type -> elephant.repository.UpdateStatusRequest
+	18, // 55: elephant.repository.Workflows.GetStatuses:input_type -> elephant.repository.GetStatusesRequest
+	23, // 56: elephant.repository.Workflows.CreateStatusRule:input_type -> elephant.repository.CreateStatusRuleRequest
+	26, // 57: elephant.repository.Workflows.DeleteStatusRule:input_type -> elephant.repository.DeleteStatusRuleRequest
+	16, // 58: elephant.repository.Workflows.GetStatusRules:input_type -> elephant.repository.GetStatusRulesRequest
+	11, // 59: elephant.repository.Reports.Update:input_type -> elephant.repository.UpdateReportRequest
+	9,  // 60: elephant.repository.Reports.Get:input_type -> elephant.repository.GetReportRequest
+	5,  // 61: elephant.repository.Reports.Run:input_type -> elephant.repository.RunReportRequest
+	7,  // 62: elephant.repository.Reports.Test:input_type -> elephant.repository.TestReportRequest
+	61, // 63: elephant.repository.Metrics.RegisterKind:input_type -> elephant.repository.RegisterMetricKindRequest
+	63, // 64: elephant.repository.Metrics.DeleteKind:input_type -> elephant.repository.DeleteMetricKindRequest
+	65, // 65: elephant.repository.Metrics.GetKinds:input_type -> elephant.repository.GetMetricKindsRequest
+	68, // 66: elephant.repository.Metrics.RegisterLabel:input_type -> elephant.repository.RegisterMetricLabelRequest
+	70, // 67: elephant.repository.Metrics.DeleteLabel:input_type -> elephant.repository.DeleteMetricLabelRequest
+	72, // 68: elephant.repository.Metrics.GetLabels:input_type -> elephant.repository.GetMetricLabelsRequest
+	29, // 69: elephant.repository.Documents.Get:output_type -> elephant.repository.GetDocumentResponse
+	31, // 70: elephant.repository.Documents.GetHistory:output_type -> elephant.repository.GetHistoryResponse
+	35, // 71: elephant.repository.Documents.Update:output_type -> elephant.repository.UpdateResponse
+	37, // 72: elephant.repository.Documents.Validate:output_type -> elephant.repository.ValidateResponse
+	44, // 73: elephant.repository.Documents.Delete:output_type -> elephant.repository.DeleteDocumentResponse
+	46, // 74: elephant.repository.Documents.GetMeta:output_type -> elephant.repository.GetMetaResponse
+	3,  // 75: elephant.repository.Documents.Eventlog:output_type -> elephant.repository.GetEventlogResponse
+	1,  // 76: elephant.repository.Documents.GetStatusHistory:output_type -> elephant.repository.GetStatusHistoryReponse
+	53, // 77: elephant.repository.Schemas.Register:output_type -> elephant.repository.RegisterSchemaResponse
+	55, // 78: elephant.repository.Schemas.SetActive:output_type -> elephant.repository.SetActiveSchemaResponse
+	57, // 79: elephant.repository.Schemas.Get:output_type -> elephant.repository.GetSchemaResponse
+	59, // 80: elephant.repository.Schemas.GetAllActive:output_type -> elephant.repository.GetAllActiveSchemasResponse
+	22, // 81: elephant.repository.Workflows.UpdateStatus:output_type -> elephant.repository.UpdateStatusResponse
+	20, // 82: elephant.repository.Workflows.GetStatuses:output_type -> elephant.repository.GetStatusesResponse
+	25, // 83: elephant.repository.Workflows.CreateStatusRule:output_type -> elephant.repository.CreateStatusRuleResponse
+	27, // 84: elephant.repository.Workflows.DeleteStatusRule:output_type -> elephant.repository.DeleteStatusRuleResponse
+	17, // 85: elephant.repository.Workflows.GetStatusRules:output_type -> elephant.repository.GetStatusRulesResponse
+	15, // 86: elephant.repository.Reports.Update:output_type -> elephant.repository.UpdateReportResponse
+	10, // 87: elephant.repository.Reports.Get:output_type -> elephant.repository.GetReportResponse
+	6,  // 88: elephant.repository.Reports.Run:output_type -> elephant.repository.RunReportResponse
+	8,  // 89: elephant.repository.Reports.Test:output_type -> elephant.repository.TestReportResponse
+	62, // 90: elephant.repository.Metrics.RegisterKind:output_type -> elephant.repository.RegisterMetricKindResponse
+	64, // 91: elephant.repository.Metrics.DeleteKind:output_type -> elephant.repository.DeleteMetricKindResponse
+	66, // 92: elephant.repository.Metrics.GetKinds:output_type -> elephant.repository.GetMetricKindsResponse
+	69, // 93: elephant.repository.Metrics.RegisterLabel:output_type -> elephant.repository.RegisterMetricLabelResponse
+	71, // 94: elephant.repository.Metrics.DeleteLabel:output_type -> elephant.repository.DeleteMetricLabelResponse
+	73, // 95: elephant.repository.Metrics.GetLabels:output_type -> elephant.repository.GetMetricLabelsResponse
+	69, // [69:96] is the sub-list for method output_type
+	42, // [42:69] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_rpc_repository_service_proto_init() }
@@ -5679,6 +6043,90 @@ func file_rpc_repository_service_proto_init() {
 				return nil
 			}
 		}
+		file_rpc_repository_service_proto_msgTypes[68].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*RegisterMetricLabelRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_rpc_repository_service_proto_msgTypes[69].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*RegisterMetricLabelResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_rpc_repository_service_proto_msgTypes[70].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*DeleteMetricLabelRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_rpc_repository_service_proto_msgTypes[71].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*DeleteMetricLabelResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_rpc_repository_service_proto_msgTypes[72].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*GetMetricLabelsRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_rpc_repository_service_proto_msgTypes[73].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*GetMetricLabelsResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_rpc_repository_service_proto_msgTypes[74].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MetricLabel); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -5686,7 +6134,7 @@ func file_rpc_repository_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_rpc_repository_service_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   76,
+			NumMessages:   83,
 			NumExtensions: 0,
 			NumServices:   5,
 		},
