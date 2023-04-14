@@ -1043,6 +1043,23 @@ func (err StatusRuleError) Error() string {
 		strings.Join(rules, ", "))
 }
 
+func (s *PGDocStore) GetSchemaVersions(
+	ctx context.Context,
+) (map[string]string, error) {
+	versions, err := s.reader.GetSchemaVersions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from db: %w", err)
+	}
+
+	res := make(map[string]string)
+
+	for _, r := range versions {
+		res[r.Name] = r.Version
+	}
+
+	return res, nil
+}
+
 // RegisterSchema implements DocStore.
 func (s *PGDocStore) RegisterSchema(
 	ctx context.Context, req RegisterSchemaRequest,

@@ -224,6 +224,10 @@ FROM active_schemas AS a
      INNER JOIN document_schema AS s
            ON s.name = a.name AND s.version = a.version;
 
+-- name: GetSchemaVersions :many
+SELECT a.name, a.version
+FROM active_schemas AS a;
+
 -- name: GetActiveStatuses :many
 SELECT name
 FROM status

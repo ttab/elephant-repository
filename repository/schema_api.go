@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/ttab/elephant/revisor"
 	"github.com/ttab/elephant/rpc/repository"
@@ -26,8 +27,43 @@ var _ repository.Schemas = &SchemasService{}
 
 // GetAllActiveSchemas returns the currently active schemas.
 func (a *SchemasService) GetAllActive(
-	ctx context.Context, _ *repository.GetAllActiveSchemasRequest,
+	ctx context.Context, req *repository.GetAllActiveSchemasRequest,
 ) (*repository.GetAllActiveSchemasResponse, error) {
+	if len(req.Known) > 0 {
+		versions, err := a.store.GetSchemaVersions(ctx)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"can't get current versions: %w", err)
+		}
+
+		mismatch := len(req.Known) != len(versions)
+
+		for n := range req.Known {
+			mismatch = mismatch || req.Known[n] != versions[n]
+			if mismatch {
+				break
+			}
+		}
+
+		if !mismatch {
+			ch := make(chan SchemaEvent)
+
+			a.store.OnSchemaUpdate(ctx, ch)
+
+			wait := req.WaitSeconds
+			if wait == 0 || wait > 10 {
+				wait = 10
+			}
+
+			timeout := time.Duration(wait) * time.Second
+
+			select {
+			case <-ch:
+			case <-time.After(timeout):
+			}
+		}
+	}
+
 	schemas, err := a.store.GetActiveSchemas(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(

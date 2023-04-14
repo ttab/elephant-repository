@@ -60,6 +60,8 @@ type SchemaStore interface {
 		ctx context.Context, name, version string,
 	) (*Schema, error)
 	GetActiveSchemas(ctx context.Context) ([]*Schema, error)
+	GetSchemaVersions(ctx context.Context) (map[string]string, error)
+	OnSchemaUpdate(ctx context.Context, ch chan SchemaEvent)
 }
 
 type WorkflowStore interface {

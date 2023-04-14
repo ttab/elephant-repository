@@ -159,6 +159,14 @@ func runServer(c *cli.Context) error {
 			"failed to connect to reporting database: %w", err)
 	}
 
+	if !conf.NoCoreSchema {
+		err = repository.EnsureCoreSchema(c.Context, store)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to ensure core schema: %w", err)
+		}
+	}
+
 	validator, err := repository.NewValidator(
 		c.Context, logger, store)
 	if err != nil {
