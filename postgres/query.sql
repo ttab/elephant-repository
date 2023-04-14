@@ -360,9 +360,9 @@ VALUES (@name);
 
 -- name: DeleteMetricKind :exec
 DELETE FROM metric_kind
-WHERE id = @id;
+WHERE name = @name;
 
 -- name: GetMetricKinds :many
-SELECT id, name
+SELECT name
 FROM metric_kind
 ORDER BY name;

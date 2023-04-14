@@ -130,6 +130,17 @@
       "elephant.repository.DeleteDocumentResponse": {
         "type": "object"
       },
+      "elephant.repository.DeleteMetricKindRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.DeleteMetricKindResponse": {
+        "type": "object"
+      },
       "elephant.repository.DeleteStatusRuleRequest": {
         "properties": {
           "name": {
@@ -577,7 +588,7 @@
           "id": {
             "type": "integer"
           },
-          "mame": {
+          "name": {
             "type": "string"
           }
         },
@@ -591,7 +602,7 @@
         },
         "type": "object"
       },
-      "elephant.repository.RegisterSchemaKindResponse": {
+      "elephant.repository.RegisterMetricKindResponse": {
         "type": "object"
       },
       "elephant.repository.RegisterSchemaRequest": {
@@ -1301,6 +1312,44 @@
         ]
       }
     },
+    "/twirp/elephant.repository.Metrics/DeleteKind": {
+      "post": {
+        "description": "Delete a metric kind",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.DeleteMetricKindRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.DeleteMetricKindResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "DeleteKind",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
     "/twirp/elephant.repository.Metrics/GetKinds": {
       "post": {
         "description": "List all metric kinds",
@@ -1356,7 +1405,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/elephant.repository.RegisterSchemaKindResponse"
+                  "$ref": "#/components/schemas/elephant.repository.RegisterMetricKindResponse"
                 }
               }
             },

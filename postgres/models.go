@@ -119,14 +119,13 @@ type JobLock struct {
 type Metric struct {
 	ID            int64
 	DocumentUuid  pgtype.UUID
-	MetricKindID  int32
+	Kind          pgtype.Text
 	MetricLabelID pgtype.Int4
 	Value         pgtype.Int4
 	Created       pgtype.Timestamptz
 }
 
 type MetricKind struct {
-	ID   int64
 	Name string
 }
 

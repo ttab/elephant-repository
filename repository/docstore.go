@@ -95,7 +95,7 @@ type MetricStore interface {
 		ctx context.Context, name string,
 	) error
 	DeleteMetricKind(
-		ctx context.Context, id int,
+		ctx context.Context, name string,
 	) error
 	GetMetricKinds(
 		ctx context.Context,
@@ -226,7 +226,6 @@ type StatusUpdate struct {
 }
 
 type MetricKind struct {
-	ID   int64
 	Name string
 }
 

@@ -1341,25 +1341,29 @@ func (s *PGDocStore) UpdateReport(
 func (s *PGDocStore) RegisterMetricKind(
 	ctx context.Context, name string,
 ) error {
-	err := s.withTX(ctx, "register metric kind", func(tx pgx.Tx) error {
+	return s.withTX(ctx, "register metric kind", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.RegisterMetricKind(ctx, name)
-		if err != nil {
+		if internal.IsConstraintError(err, "metric_kind_pkey") {
+			return DocStoreErrorf(ErrCodeExists,
+				"metric kind already exists")
+		} else if err != nil {
 			return fmt.Errorf("failed to save to databaase: %w", err)
 		}
 
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (s *PGDocStore) DeleteMetricKind(
-	ctx context.Context, id int,
+	ctx context.Context, name string,
 ) error {
+	err := s.reader.DeleteMetricKind(ctx, name)
+	if err != nil {
+		return fmt.Errorf("failed to delete metric kind: %w", err)
+	}
+
 	return nil
 }
 
@@ -1375,8 +1379,7 @@ func (s *PGDocStore) GetMetricKinds(
 
 	for i := range rows {
 		res[i] = &MetricKind{
-			ID:   rows[i].ID,
-			Name: rows[i].Name,
+			Name: rows[i],
 		}
 	}
 

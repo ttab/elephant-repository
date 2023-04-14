@@ -375,7 +375,7 @@ ALTER TABLE public.job_lock OWNER TO repository;
 CREATE TABLE public.metric (
     id bigint NOT NULL,
     document_uuid uuid,
-    metric_kind_id integer NOT NULL,
+    kind text,
     metric_label_id integer,
     value integer,
     created timestamp with time zone
@@ -403,26 +403,11 @@ ALTER TABLE public.metric ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 --
 
 CREATE TABLE public.metric_kind (
-    id bigint NOT NULL,
     name text NOT NULL
 );
 
 
 ALTER TABLE public.metric_kind OWNER TO repository;
-
---
--- Name: metric_kind_id_seq; Type: SEQUENCE; Schema: public; Owner: repository
---
-
-ALTER TABLE public.metric_kind ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.metric_kind_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
 
 --
 -- Name: metric_label; Type: TABLE; Schema: public; Owner: repository
@@ -643,7 +628,15 @@ ALTER TABLE ONLY public.job_lock
 --
 
 ALTER TABLE ONLY public.metric_kind
-    ADD CONSTRAINT metric_kind_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT metric_kind_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: metric_label metric_label_name_key; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.metric_label
+    ADD CONSTRAINT metric_label_name_key UNIQUE (name);
 
 
 --
@@ -802,11 +795,11 @@ ALTER TABLE ONLY public.metric
 
 
 --
--- Name: metric metric_metric_kind_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: metric metric_kind_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
 --
 
 ALTER TABLE ONLY public.metric
-    ADD CONSTRAINT metric_metric_kind_id_fkey FOREIGN KEY (metric_kind_id) REFERENCES public.metric_kind(id);
+    ADD CONSTRAINT metric_kind_fkey FOREIGN KEY (kind) REFERENCES public.metric_kind(name);
 
 
 --

@@ -64,7 +64,9 @@ service Reports {
 
 service Metrics {
   // Register a metric kind
-  rpc RegisterKind(RegisterMetricKindRequest) returns (RegisterSchemaKindResponse);
+  rpc RegisterKind(RegisterMetricKindRequest) returns (RegisterMetricKindResponse);
+  // Delete a metric kind
+  rpc DeleteKind(DeleteMetricKindRequest) returns (DeleteMetricKindResponse);
   // List all metric kinds
   rpc GetKinds(GetMetricKindsRequest) returns (GetMetricKindsResponse);
 }
@@ -529,7 +531,13 @@ message RegisterMetricKindRequest {
   string name = 1;
 }
 
-message RegisterSchemaKindResponse {}
+message RegisterMetricKindResponse {}
+
+message DeleteMetricKindRequest {
+  string name = 1;
+}
+
+message DeleteMetricKindResponse {}
 
 message GetMetricKindsRequest {}
 
@@ -539,5 +547,5 @@ message GetMetricKindsResponse {
 
 message MetricKind {
   int64 id = 1;
-  string mame = 2;
+  string name = 2;
 }

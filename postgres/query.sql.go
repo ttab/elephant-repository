@@ -165,11 +165,11 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 
 const deleteMetricKind = `-- name: DeleteMetricKind :exec
 DELETE FROM metric_kind
-WHERE id = $1
+WHERE name = $1
 `
 
-func (q *Queries) DeleteMetricKind(ctx context.Context, id int64) error {
-	_, err := q.db.Exec(ctx, deleteMetricKind, id)
+func (q *Queries) DeleteMetricKind(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, deleteMetricKind, name)
 	return err
 }
 
@@ -732,24 +732,24 @@ func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, e
 }
 
 const getMetricKinds = `-- name: GetMetricKinds :many
-SELECT id, name
+SELECT name
 FROM metric_kind
 ORDER BY name
 `
 
-func (q *Queries) GetMetricKinds(ctx context.Context) ([]MetricKind, error) {
+func (q *Queries) GetMetricKinds(ctx context.Context) ([]string, error) {
 	rows, err := q.db.Query(ctx, getMetricKinds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MetricKind
+	var items []string
 	for rows.Next() {
-		var i MetricKind
-		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+		var name string
+		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
-		items = append(items, i)
+		items = append(items, name)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
