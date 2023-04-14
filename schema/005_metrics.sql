@@ -1,12 +1,12 @@
 -- Write your migrate up statements here
 
 create table metric_kind(
-        id int generated always as identity primary key,
+        id bigint generated always as identity primary key,
         name text not null
 );
 
 create table metric_label(
-        id int generated always as identity primary key,
+        id bigint generated always as identity primary key,
         name text not null
 );
 

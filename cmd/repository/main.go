@@ -54,7 +54,7 @@ func main() {
 		}, cmd.BackendFlags()...),
 	}
 
-	var app = cli.App{
+	app := cli.App{
 		Name:  "repository",
 		Usage: "The Elephant repository",
 		Commands: []*cli.Command{
@@ -290,6 +290,7 @@ func runServer(c *cli.Context) error {
 	schemaService := repository.NewSchemasService(store)
 	workflowService := repository.NewWorkflowsService(store)
 	reportsService := repository.NewReportsService(logger, store, reportDB)
+	metricsService := repository.NewMetricsService(store)
 
 	router := httprouter.New()
 
@@ -311,6 +312,7 @@ func runServer(c *cli.Context) error {
 		repository.WithSchemasAPI(schemaService, opts),
 		repository.WithWorkflowsAPI(workflowService, opts),
 		repository.WithReportsAPI(reportsService, opts),
+		repository.WithMetricsAPI(metricsService, opts),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to set up router: %w", err)

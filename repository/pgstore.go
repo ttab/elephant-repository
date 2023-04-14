@@ -1341,7 +1341,6 @@ func (s *PGDocStore) UpdateReport(
 func (s *PGDocStore) RegisterMetricKind(
 	ctx context.Context, name string,
 ) error {
-
 	err := s.withTX(ctx, "register metric kind", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
@@ -1355,6 +1354,12 @@ func (s *PGDocStore) RegisterMetricKind(
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (s *PGDocStore) DeleteMetricKind(
+	ctx context.Context, id int,
+) error {
 	return nil
 }
 

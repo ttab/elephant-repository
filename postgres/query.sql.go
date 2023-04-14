@@ -168,7 +168,7 @@ DELETE FROM metric_kind
 WHERE id = $1
 `
 
-func (q *Queries) DeleteMetricKind(ctx context.Context, id int32) error {
+func (q *Queries) DeleteMetricKind(ctx context.Context, id int64) error {
 	_, err := q.db.Exec(ctx, deleteMetricKind, id)
 	return err
 }

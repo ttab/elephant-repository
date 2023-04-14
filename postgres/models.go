@@ -126,12 +126,12 @@ type Metric struct {
 }
 
 type MetricKind struct {
-	ID   int32
+	ID   int64
 	Name string
 }
 
 type MetricLabel struct {
-	ID   int32
+	ID   int64
 	Name string
 }
 

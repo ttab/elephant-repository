@@ -403,7 +403,7 @@ ALTER TABLE public.metric ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 --
 
 CREATE TABLE public.metric_kind (
-    id integer NOT NULL,
+    id bigint NOT NULL,
     name text NOT NULL
 );
 
@@ -429,7 +429,7 @@ ALTER TABLE public.metric_kind ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY 
 --
 
 CREATE TABLE public.metric_label (
-    id integer NOT NULL,
+    id bigint NOT NULL,
     name text NOT NULL
 );
 

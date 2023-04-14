@@ -89,7 +89,7 @@ type ReportStore interface {
 
 type MetricStore interface {
 	// UpdateMetric(
-	// 	ctx context.Context, 
+	// 	ctx context.Context,
 	// ) error
 	RegisterMetricKind(
 		ctx context.Context, name string,
@@ -223,6 +223,11 @@ type StatusUpdate struct {
 	Name    string
 	Version int64
 	Meta    doc.DataMap
+}
+
+type MetricKind struct {
+	ID   int64
+	Name string
 }
 
 // DocStoreErrorCode TODO: Rename to StoreErrorCode and consistently rename all
