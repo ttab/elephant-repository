@@ -34,7 +34,7 @@ func NewMetricsService(store MetricStore) *MetricsService {
 	}
 }
 
-// GetKinds implements repository.Metrics
+// GetKinds implements repository.Metrics.
 func (m *MetricsService) GetKinds(
 	ctx context.Context,
 	req *repository.GetMetricKindsRequest,
@@ -60,7 +60,7 @@ func (m *MetricsService) GetKinds(
 	return &res, nil
 }
 
-// DeleteKind implements repository.Metrics
+// DeleteKind implements repository.Metrics.
 func (m *MetricsService) DeleteKind(
 	ctx context.Context,
 	req *repository.DeleteMetricKindRequest,
@@ -78,7 +78,7 @@ func (m *MetricsService) DeleteKind(
 	return &repository.DeleteMetricKindResponse{}, nil
 }
 
-// RegisterKind implements repository.Metrics
+// RegisterKind implements repository.Metrics.
 func (m *MetricsService) RegisterKind(
 	ctx context.Context,
 	req *repository.RegisterMetricKindRequest,

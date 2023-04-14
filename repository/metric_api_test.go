@@ -27,6 +27,7 @@ func TestIntegrationMetrics(t *testing.T) {
 		Name: "wordcount",
 	})
 	test.Must(t, err, "register kind")
+
 	if err != nil {
 		test.MustNot(t, err, "fail to register kind")
 	}
