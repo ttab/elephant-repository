@@ -66,3 +66,13 @@ func (d *Document) Mappings() Mappings {
 
 	return m
 }
+
+func (d *Document) Values() map[string][]string {
+	v := make(map[string][]string)
+
+	for k := range d.Fields {
+		v[k] = d.Fields[k].Values
+	}
+
+	return v
+}

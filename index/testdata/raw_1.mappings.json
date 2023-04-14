@@ -1,0 +1,136 @@
+{
+  "properties": {
+    "created": {
+      "type": "date"
+    },
+    "current_version": {
+      "type": "long"
+    },
+    "document.content.core_heading_1.data.text": {
+      "type": "text"
+    },
+    "document.content.core_paragraph.data.text": {
+      "type": "text"
+    },
+    "document.content.core_preamble.data.text": {
+      "type": "text"
+    },
+    "document.content.tt_dateline.data.text": {
+      "type": "text"
+    },
+    "document.content.tt_visual.data.caption": {
+      "type": "text"
+    },
+    "document.content.tt_visual.rel.self.data.credit": {
+      "type": "text"
+    },
+    "document.content.tt_visual.rel.self.data.height": {
+      "type": "long"
+    },
+    "document.content.tt_visual.rel.self.data.hiresScale": {
+      "type": "double"
+    },
+    "document.content.tt_visual.rel.self.data.width": {
+      "type": "long"
+    },
+    "document.content.tt_visual.rel.self.type": {
+      "type": "keyword"
+    },
+    "document.content.tt_visual.rel.self.uri": {
+      "type": "keyword"
+    },
+    "document.content.tt_visual.rel.self.url": {
+      "type": "keyword"
+    },
+    "document.language": {
+      "type": "keyword"
+    },
+    "document.meta.core_newsvalue.data.duration": {
+      "type": "long"
+    },
+    "document.meta.core_newsvalue.data.score": {
+      "type": "long"
+    },
+    "document.meta.core_note.data.text": {
+      "type": "text"
+    },
+    "document.meta.core_note.role": {
+      "type": "keyword"
+    },
+    "document.meta.tt_slugline.value": {
+      "type": "text"
+    },
+    "document.rel.assignment.type": {
+      "type": "keyword"
+    },
+    "document.rel.assignment.uuid": {
+      "type": "keyword"
+    },
+    "document.rel.source.type": {
+      "type": "keyword"
+    },
+    "document.rel.source.uri": {
+      "type": "keyword"
+    },
+    "document.rel.source.uuid": {
+      "type": "keyword"
+    },
+    "document.rel.subject.title": {
+      "type": "text"
+    },
+    "document.rel.subject.type": {
+      "type": "keyword"
+    },
+    "document.rel.subject.uuid": {
+      "type": "keyword"
+    },
+    "document.title": {
+      "type": "text"
+    },
+    "document.type": {
+      "type": "keyword"
+    },
+    "document.uri": {
+      "type": "keyword"
+    },
+    "document.url": {
+      "type": "keyword"
+    },
+    "heads.approved.created": {
+      "type": "date"
+    },
+    "heads.approved.creator": {
+      "type": "keyword"
+    },
+    "heads.approved.id": {
+      "type": "long"
+    },
+    "heads.approved.meta.cause": {
+      "type": "keyword"
+    },
+    "heads.approved.version": {
+      "type": "long"
+    },
+    "heads.usable.created": {
+      "type": "date"
+    },
+    "heads.usable.creator": {
+      "type": "keyword"
+    },
+    "heads.usable.id": {
+      "type": "long"
+    },
+    "heads.usable.meta.cause": {
+      "type": "keyword"
+    },
+    "heads.usable.version": {
+      "type": "long"
+    },
+    "modified": {
+      "type": "date"
+    },
+    "text": {
+      "type": "text"
+    }
+  }
+}

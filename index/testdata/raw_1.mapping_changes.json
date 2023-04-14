@@ -1,0 +1,18 @@
+{
+  "document.content.tt_visual.rel.self.data.height": {
+    "type": "long",
+    "new": true
+  },
+  "document.content.tt_visual.rel.self.data.hiresScale": {
+    "type": "double",
+    "new": true
+  },
+  "document.content.tt_visual.rel.self.data.width": {
+    "type": "long",
+    "new": true
+  },
+  "document.meta.core_newsvalue.data.score": {
+    "type": "long",
+    "new": false
+  }
+}

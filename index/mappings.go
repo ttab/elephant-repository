@@ -41,18 +41,54 @@ type Field struct {
 	Values []string  `json:"values"`
 }
 
+type Mapping struct {
+	Type FieldType `json:"type"`
+}
+
 type Mappings struct {
 	Properties map[string]Mapping `json:"properties"`
+}
+
+type MappingChanges map[string]MappingChange
+
+func (mc MappingChanges) HasNew() bool {
+	for n := range mc {
+		if mc[n].New {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (mc MappingChanges) Superset(mappings Mappings) Mappings {
+	sup := Mappings{
+		Properties: make(map[string]Mapping),
+	}
+
+	for k, v := range mappings.Properties {
+		sup.Properties[k] = v
+	}
+
+	for k := range mc {
+		if !mc[k].New {
+			continue
+		}
+
+		sup.Properties[k] = mc[k].Mapping
+	}
+
+	return sup
 }
 
 type MappingChange struct {
 	Mapping
 
-	New bool
+	New bool `json:"new"`
 }
 
-func (m *Mappings) ChangesFrom(mappings Mappings) map[string]MappingChange {
-	changes := make(map[string]MappingChange)
+func (m *Mappings) ChangesFrom(mappings Mappings) MappingChanges {
+	changes := make(MappingChanges)
 
 	for k, def := range m.Properties {
 		original, ok := mappings.Properties[k]
@@ -75,8 +111,4 @@ func (m *Mappings) ChangesFrom(mappings Mappings) map[string]MappingChange {
 	}
 
 	return changes
-}
-
-type Mapping struct {
-	Type FieldType `json:"type"`
 }
