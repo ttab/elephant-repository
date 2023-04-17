@@ -58,6 +58,14 @@ func (dc DocumentConstraint) Matches(
 		if err != nil {
 			return NoMatch
 		}
+
+		vCtx.coll.CollectValue(ValueAnnotation{
+			Ref: []EntityRef{{
+				RefType: RefTypeAttribute,
+				Name:    k,
+			}},
+			Value: value,
+		})
 	}
 
 	return Matches
@@ -88,6 +96,14 @@ func (dc DocumentConstraint) checkAttributes(
 
 			continue
 		}
+
+		vCtx.coll.CollectValue(ValueAnnotation{
+			Ref: []EntityRef{{
+				RefType: RefTypeAttribute,
+				Name:    k,
+			}},
+			Value: value,
+		})
 	}
 
 	return res

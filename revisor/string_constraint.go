@@ -117,6 +117,8 @@ func (sc *StringConstraint) Requirement() string {
 }
 
 type ValidationContext struct {
+	coll ValueCollector
+
 	TemplateData TemplateValues
 	ValidateHTML func(policyName, value string) error
 }
