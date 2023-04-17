@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/julienschmidt/httprouter"
+	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
@@ -155,6 +157,33 @@ func WithReportsAPI(
 		)
 
 		registerAPI(router, opts, api)
+
+		return nil
+	}
+}
+
+func WithJWKSEndpoint(jwtKey *ecdsa.PrivateKey) RouterOption {
+	return func(router *httprouter.Router) error {
+		key := jwk.NewSpec(jwtKey)
+
+		key.Algorithm = jwt.SigningMethodES384.Alg()
+		key.Use = "sig"
+
+		keySet := jwk.KeySpecSet{
+			Keys: []jwk.KeySpec{*key},
+		}
+
+		payload, err := keySet.MarshalPublicJSON()
+		if err != nil {
+			return fmt.Errorf("failed to create JWKs payload: %w", err)
+		}
+
+		router.GET("/.well-known/jwks.json", httprouter.Handle(func(
+			w http.ResponseWriter, r *http.Request, p httprouter.Params,
+		) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(payload)
+		}))
 
 		return nil
 	}
