@@ -1,4 +1,4 @@
-FROM golang:1.20.2-alpine3.17 AS build
+FROM registry.a.tt.se/docker/golang:1.20.2-alpine3.17 AS build
 
 WORKDIR /usr/src
 
@@ -9,7 +9,7 @@ ADD . ./
 
 RUN go build -o /usr/local/bin/repository ./cmd/repository
 
-FROM alpine:3.17.2
+FROM registry.a.tt.se/docker/alpine:3.17.2
 
 COPY --from=build /usr/local/bin/repository /usr/local/bin/
 
