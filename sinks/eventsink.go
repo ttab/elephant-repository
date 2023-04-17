@@ -186,14 +186,16 @@ func (r *EventForwarder) loop(ctx context.Context) error {
 }
 
 func (r *EventForwarder) runNext(ctx context.Context, pos int64) (int64, error) {
-	aCtx := repo.SetAuthInfo(ctx, &repo.AuthInfo{
+	aCtx, cancel := context.WithCancel(repo.SetAuthInfo(ctx, &repo.AuthInfo{
 		Claims: repo.JWTClaims{
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject: "internal://event-forwarder",
 			},
 			Scope: "superuser doc_read",
 		},
-	})
+	}))
+
+	defer cancel()
 
 	log, err := r.documents.Eventlog(aCtx, &repository.GetEventlogRequest{
 		After:       pos,
