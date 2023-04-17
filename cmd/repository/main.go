@@ -298,6 +298,7 @@ func runServer(c *cli.Context) error {
 
 	err = repository.SetUpRouter(router,
 		repository.WithTokenEndpoint(signingKey, conf.SharedSecret),
+		repository.WithJWKSEndpoint(signingKey),
 		repository.WithDocumentsAPI(docService, opts),
 		repository.WithSchemasAPI(schemaService, opts),
 		repository.WithWorkflowsAPI(workflowService, opts),
