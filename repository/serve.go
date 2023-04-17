@@ -178,7 +178,7 @@ func WithJWKSEndpoint(jwtKey *ecdsa.PrivateKey) RouterOption {
 			return fmt.Errorf("failed to create JWKs payload: %w", err)
 		}
 
-		router.GET("/oauth2/jwks", httprouter.Handle(func(
+		router.GET("/.well-known/jwks.json", httprouter.Handle(func(
 			w http.ResponseWriter, r *http.Request, p httprouter.Params,
 		) {
 			w.Header().Set("Content-Type", "application/json")
