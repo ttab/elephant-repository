@@ -25,7 +25,7 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
         with:
-          image: tonistiigi/binfmt:qemu-v7.0.0
+          image: registry.a.tt.se/docker/tonistiigi/binfmt:qemu-v7.0.0
 
       - name: Create build context
         run: docker context create builders
