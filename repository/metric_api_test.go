@@ -23,6 +23,7 @@ func TestIntegrationMetrics(t *testing.T) {
 
 	ctx := test.Context(t)
 
+	// test kinds
 	_, err := client.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
 		Name: "wordcount",
 	})
@@ -54,4 +55,37 @@ func TestIntegrationMetrics(t *testing.T) {
 	test.EqualMessage(t, &repository.GetMetricKindsResponse{
 		Kinds: []*repository.MetricKind{},
 	}, kinds, "get the empty list of registered metric kinds")
+
+	// test labels
+	_, err = client.RegisterLabel(ctx, &repository.RegisterMetricLabelRequest{
+		Name: "wordcount",
+	})
+	test.Must(t, err, "register label")
+
+	if err != nil {
+		test.MustNot(t, err, "fail to register label")
+	}
+
+	labels, err := client.GetLabels(ctx, &repository.GetMetricLabelsRequest{})
+	test.Must(t, err, "get labels")
+
+	test.EqualMessage(t, &repository.GetMetricLabelsResponse{
+		Labels: []*repository.MetricLabel{
+			{
+				Name: "wordcount",
+			},
+		},
+	}, labels, "get the list of registered metric labels")
+
+	_, err = client.DeleteLabel(ctx, &repository.DeleteMetricLabelRequest{
+		Name: "wordcount",
+	})
+	test.Must(t, err, "delete label")
+
+	labels, err = client.GetLabels(ctx, &repository.GetMetricLabelsRequest{})
+	test.Must(t, err, "get labels")
+
+	test.EqualMessage(t, &repository.GetMetricLabelsResponse{
+		Labels: []*repository.MetricLabel{},
+	}, labels, "get the empty list of registered metric labels")
 }
