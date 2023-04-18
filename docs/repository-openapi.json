@@ -312,6 +312,17 @@
         "type": "object"
       },
       "elephant.repository.GetAllActiveSchemasRequest": {
+        "properties": {
+          "known": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "wait_seconds": {
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "elephant.repository.GetAllActiveSchemasResponse": {
@@ -565,6 +576,7 @@
             "type": "string"
           },
           "cron_timezone": {
+            "description": "(default UTC)",
             "type": "string"
           },
           "generate_sheet": {

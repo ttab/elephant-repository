@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/ttab/elephant/revisor"
 	"github.com/ttab/elephant/rpc/repository"
@@ -26,8 +27,13 @@ var _ repository.Schemas = &SchemasService{}
 
 // GetAllActiveSchemas returns the currently active schemas.
 func (a *SchemasService) GetAllActive(
-	ctx context.Context, _ *repository.GetAllActiveSchemasRequest,
+	ctx context.Context, req *repository.GetAllActiveSchemasRequest,
 ) (*repository.GetAllActiveSchemasResponse, error) {
+	err := a.waitIfSchemasAreUnchanged(ctx, req.Known, req.WaitSeconds)
+	if err != nil {
+		return nil, fmt.Errorf("wait for schema changes: %w", err)
+	}
+
 	schemas, err := a.store.GetActiveSchemas(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -52,6 +58,48 @@ func (a *SchemasService) GetAllActive(
 	}
 
 	return &res, nil
+}
+
+func (a *SchemasService) waitIfSchemasAreUnchanged(
+	ctx context.Context,
+	known map[string]string, waitSeconds int64,
+) error {
+	if len(known) == 0 {
+		return nil
+	}
+
+	versions, err := a.store.GetSchemaVersions(ctx)
+	if err != nil {
+		return fmt.Errorf(
+			"get current versions: %w", err)
+	}
+
+	if len(known) != len(versions) {
+		return nil
+	}
+
+	for n := range known {
+		if known[n] != versions[n] {
+			return nil
+		}
+	}
+
+	ch := make(chan SchemaEvent)
+
+	a.store.OnSchemaUpdate(ctx, ch)
+
+	if waitSeconds == 0 || waitSeconds > 10 {
+		waitSeconds = 10
+	}
+
+	timeout := time.Duration(waitSeconds) * time.Second
+
+	select {
+	case <-ch:
+	case <-time.After(timeout):
+	}
+
+	return nil
 }
 
 // Get retrieves a schema.

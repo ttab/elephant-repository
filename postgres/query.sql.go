@@ -768,6 +768,31 @@ func (q *Queries) GetSchema(ctx context.Context, arg GetSchemaParams) (DocumentS
 	return i, err
 }
 
+const getSchemaVersions = `-- name: GetSchemaVersions :many
+SELECT a.name, a.version
+FROM active_schemas AS a
+`
+
+func (q *Queries) GetSchemaVersions(ctx context.Context) ([]ActiveSchema, error) {
+	rows, err := q.db.Query(ctx, getSchemaVersions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ActiveSchema
+	for rows.Next() {
+		var i ActiveSchema
+		if err := rows.Scan(&i.Name, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSigningKeys = `-- name: GetSigningKeys :many
 SELECT kid, spec FROM signing_keys
 `

@@ -502,7 +502,10 @@ message GetSchemaResponse {
   bytes spec = 2;
 }
 
-message GetAllActiveSchemasRequest {}
+message GetAllActiveSchemasRequest {
+  int64 wait_seconds = 1;
+  map<string, string> known = 2;
+}
 
 message GetAllActiveSchemasResponse {
   repeated Schema schemas = 1;
