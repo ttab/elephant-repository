@@ -105,7 +105,7 @@ func WithSchemasAPI(
 ) RouterOption {
 	return func(router *httprouter.Router) error {
 		opts.Hooks = twirp.ChainHooks(
-			authCheckHook("schema_admin"), opts.Hooks,
+			authCheckHook(""), opts.Hooks,
 		)
 
 		api := repository.NewSchemasServer(

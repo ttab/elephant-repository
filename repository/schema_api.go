@@ -29,6 +29,17 @@ var _ repository.Schemas = &SchemasService{}
 func (a *SchemasService) GetAllActive(
 	ctx context.Context, req *repository.GetAllActiveSchemasRequest,
 ) (*repository.GetAllActiveSchemasResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasAnyScope("schema_read", "schema_admin", "superuser") {
+		return nil, twirp.PermissionDenied.Error(
+			"no schema_read permission")
+	}
+
 	err := a.waitIfSchemasAreUnchanged(ctx, req.Known, req.WaitSeconds)
 	if err != nil {
 		return nil, fmt.Errorf("wait for schema changes: %w", err)
@@ -106,6 +117,17 @@ func (a *SchemasService) waitIfSchemasAreUnchanged(
 func (a *SchemasService) Get(
 	ctx context.Context, req *repository.GetSchemaRequest,
 ) (*repository.GetSchemaResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasAnyScope("schema_read", "schema_admin", "superuser") {
+		return nil, twirp.PermissionDenied.Error(
+			"no schema_read permission")
+	}
+
 	if req.Name == "" {
 		return nil, twirp.RequiredArgumentError("name")
 	}
@@ -133,6 +155,17 @@ func (a *SchemasService) Get(
 func (a *SchemasService) Register(
 	ctx context.Context, req *repository.RegisterSchemaRequest,
 ) (*repository.RegisterSchemaResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasAnyScope("schema_admin", "superuser") {
+		return nil, twirp.PermissionDenied.Error(
+			"no schema_admin permission")
+	}
+
 	if req.Schema == nil {
 		return nil, twirp.RequiredArgumentError("schema")
 	}
@@ -179,6 +212,17 @@ func (a *SchemasService) Register(
 func (a *SchemasService) SetActive(
 	ctx context.Context, req *repository.SetActiveSchemaRequest,
 ) (*repository.SetActiveSchemaResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasAnyScope("schema_admin", "superuser") {
+		return nil, twirp.PermissionDenied.Error(
+			"no schema_admin permission")
+	}
+
 	if req.Name == "" {
 		return nil, twirp.RequiredArgumentError("name")
 	}
