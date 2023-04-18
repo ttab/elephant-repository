@@ -29,39 +29,9 @@ var _ repository.Schemas = &SchemasService{}
 func (a *SchemasService) GetAllActive(
 	ctx context.Context, req *repository.GetAllActiveSchemasRequest,
 ) (*repository.GetAllActiveSchemasResponse, error) {
-	if len(req.Known) > 0 {
-		versions, err := a.store.GetSchemaVersions(ctx)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"can't get current versions: %w", err)
-		}
-
-		mismatch := len(req.Known) != len(versions)
-
-		for n := range req.Known {
-			mismatch = mismatch || req.Known[n] != versions[n]
-			if mismatch {
-				break
-			}
-		}
-
-		if !mismatch {
-			ch := make(chan SchemaEvent)
-
-			a.store.OnSchemaUpdate(ctx, ch)
-
-			wait := req.WaitSeconds
-			if wait == 0 || wait > 10 {
-				wait = 10
-			}
-
-			timeout := time.Duration(wait) * time.Second
-
-			select {
-			case <-ch:
-			case <-time.After(timeout):
-			}
-		}
+	err := a.waitIfSchemasAreUnchanged(ctx, req.Known, req.WaitSeconds)
+	if err != nil {
+		return nil, fmt.Errorf("wait for schema changes: %w", err)
 	}
 
 	schemas, err := a.store.GetActiveSchemas(ctx)
@@ -88,6 +58,48 @@ func (a *SchemasService) GetAllActive(
 	}
 
 	return &res, nil
+}
+
+func (a *SchemasService) waitIfSchemasAreUnchanged(
+	ctx context.Context,
+	known map[string]string, waitSeconds int64,
+) error {
+	if len(known) == 0 {
+		return nil
+	}
+
+	versions, err := a.store.GetSchemaVersions(ctx)
+	if err != nil {
+		return fmt.Errorf(
+			"get current versions: %w", err)
+	}
+
+	if len(known) != len(versions) {
+		return nil
+	}
+
+	for n := range known {
+		if known[n] != versions[n] {
+			return nil
+		}
+	}
+
+	ch := make(chan SchemaEvent)
+
+	a.store.OnSchemaUpdate(ctx, ch)
+
+	if waitSeconds == 0 || waitSeconds > 10 {
+		waitSeconds = 10
+	}
+
+	timeout := time.Duration(waitSeconds) * time.Second
+
+	select {
+	case <-ch:
+	case <-time.After(timeout):
+	}
+
+	return nil
 }
 
 // Get retrieves a schema.
