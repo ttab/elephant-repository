@@ -101,10 +101,8 @@ type RefType string
 
 const (
 	RefTypeBlock     RefType = "block"
-	RefTypeProperty  RefType = "property"
 	RefTypeAttribute RefType = "attribute"
 	RefTypeData      RefType = "data attribute"
-	RefTypeParameter RefType = "parameter"
 )
 
 func (rt RefType) String() string {
@@ -118,6 +116,28 @@ type EntityRef struct {
 	Name      string    `json:"name,omitempty"`
 	Type      string    `json:"type,omitempty"`
 	Rel       string    `json:"rel,omitempty"`
+}
+
+type ValueAnnotation struct {
+	Ref        []EntityRef      `json:"ref"`
+	Constraint StringConstraint `json:"constraint"`
+	Value      string           `json:"value"`
+}
+
+type ValueCollector interface {
+	CollectValue(a ValueAnnotation)
+	With(ref EntityRef) ValueCollector
+}
+
+type ValueDiscarder struct{}
+
+// CollectValue implements ValueCollector.
+func (ValueDiscarder) CollectValue(_ ValueAnnotation) {
+}
+
+// With implements ValueCollector.
+func (ValueDiscarder) With(_ EntityRef) ValueCollector {
+	return ValueDiscarder{}
 }
 
 func (er EntityRef) String() string {
@@ -161,7 +181,19 @@ func (v *Validator) validateHTML(policyName string, value string) error {
 	return policy.Check(value)
 }
 
-func (v *Validator) ValidateDocument(document *doc.Document) []ValidationResult {
+type ValidationOptionFunc func(vc *ValidationContext)
+
+func WithValueCollector(
+	collector ValueCollector,
+) ValidationOptionFunc {
+	return func(vc *ValidationContext) {
+		vc.coll = collector
+	}
+}
+
+func (v *Validator) ValidateDocument(
+	document *doc.Document, opts ...ValidationOptionFunc,
+) []ValidationResult {
 	var res []ValidationResult
 
 	blockConstraints := append([]BlockConstraintSet{}, v.blockConstraints...)
@@ -170,7 +202,12 @@ func (v *Validator) ValidateDocument(document *doc.Document) []ValidationResult 
 	var declared bool
 
 	vCtx := ValidationContext{
+		coll:         ValueDiscarder{},
 		ValidateHTML: v.validateHTML,
+	}
+
+	for i := range opts {
+		opts[i](&vCtx)
 	}
 
 	for i := range v.documents {
@@ -197,7 +234,7 @@ func (v *Validator) ValidateDocument(document *doc.Document) []ValidationResult 
 
 	res = v.validateBlocks(
 		NewDocumentBlocks(document), nil,
-		blockConstraints, res,
+		blockConstraints, res, vCtx.coll,
 	)
 
 	res = validateDocumentAttributes(attributeConstraints, document, res, vCtx)
@@ -217,16 +254,23 @@ func validateDocumentAttributes(
 		for k, check := range constraints[i] {
 			value, ok := documentAttribute(d, k)
 
+			ref := EntityRef{
+				RefType: RefTypeAttribute,
+				Name:    k,
+			}
+
 			err := check.Validate(value, ok, &vCtx)
 			if err != nil {
 				res = append(res, ValidationResult{
-					Entity: []EntityRef{{
-						RefType: RefTypeAttribute,
-						Name:    k,
-					}},
-					Error: err.Error(),
+					Entity: []EntityRef{ref},
+					Error:  err.Error(),
 				})
 			}
+
+			vCtx.coll.CollectValue(ValueAnnotation{
+				Ref:   []EntityRef{ref},
+				Value: value,
+			})
 		}
 	}
 
@@ -236,8 +280,10 @@ func validateDocumentAttributes(
 func (v *Validator) validateBlocks(
 	blocks BlockSource, parent *doc.Block,
 	constraints []BlockConstraintSet, res []ValidationResult,
+	coll ValueCollector,
 ) []ValidationResult {
 	vCtx := ValidationContext{
+		coll:         coll,
 		ValidateHTML: v.validateHTML,
 		TemplateData: TemplateValues{
 			"parent": BlockTemplateValue(parent),
@@ -265,15 +311,24 @@ func (v *Validator) validateBlockSlice(
 	for i := range blocks {
 		vCtx.TemplateData["this"] = BlockTemplateValue(&blocks[i])
 
-		r := v.validateBlock(&blocks[i], vCtx, constraints, kind, matches, nil)
+		entity := EntityRef{
+			RefType:   RefTypeBlock,
+			Index:     i,
+			BlockKind: kind,
+			Type:      blocks[i].Type,
+			Rel:       blocks[i].Rel,
+		}
+
+		childCtx := vCtx
+
+		childCtx.coll = vCtx.coll.With(entity)
+
+		r := v.validateBlock(
+			&blocks[i], childCtx, constraints, kind, matches, nil,
+		)
+
 		for j := range r {
-			r[j].Entity = append(r[j].Entity, EntityRef{
-				RefType:   RefTypeBlock,
-				Index:     i,
-				BlockKind: kind,
-				Type:      blocks[i].Type,
-				Rel:       blocks[i].Rel,
-			})
+			r[j].Entity = append(r[j].Entity, entity)
 		}
 
 		res = append(res, r...)
@@ -378,6 +433,21 @@ func (v *Validator) validateBlock(
 		})
 	}
 
+	for k := range declaredAttributes {
+		value, _ := blockMatchAttribute(b, string(k))
+
+		vCtx.coll.CollectValue(ValueAnnotation{
+			Ref: []EntityRef{{
+				RefType: RefTypeAttribute,
+				Name:    string(k),
+			}},
+			Constraint: StringConstraint{
+				Const: &value,
+			},
+			Value: value,
+		})
+	}
+
 	res = validateBlockAttributes(
 		declaredAttributes,
 		matchedAttributeConstraints, b, vCtx, res)
@@ -385,7 +455,7 @@ func (v *Validator) validateBlock(
 
 	res = v.validateBlocks(
 		NewNestedBlocks(b), b,
-		matchedConstraints, res,
+		matchedConstraints, res, vCtx.coll,
 	)
 
 	return res
@@ -455,16 +525,24 @@ func validateBlockAttributes(
 		for k, check := range constraints[i] {
 			value, ok := blockAttribute(b, k)
 
+			ref := EntityRef{
+				RefType: RefTypeAttribute,
+				Name:    k,
+			}
+
 			err := check.Validate(value, ok, &vCtx)
 			if err != nil {
 				res = append(res, ValidationResult{
-					Entity: []EntityRef{{
-						RefType: RefTypeAttribute,
-						Name:    k,
-					}},
-					Error: err.Error(),
+					Entity: []EntityRef{ref},
+					Error:  err.Error(),
 				})
 			}
+
+			vCtx.coll.CollectValue(ValueAnnotation{
+				Ref:        []EntityRef{ref},
+				Constraint: check,
+				Value:      value,
+			})
 
 			declaredAttributes[blockAttributeKey(k)] = true
 		}
@@ -511,13 +589,15 @@ func validateBlockData(
 
 			known[k] = known[k] || ok
 
+			ref := EntityRef{
+				RefType: RefTypeData,
+				Name:    k,
+			}
+
 			if !ok && !check.Optional {
 				res = append(res, ValidationResult{
-					Entity: []EntityRef{{
-						RefType: RefTypeData,
-						Name:    k,
-					}},
-					Error: "missing required attribute",
+					Entity: []EntityRef{ref},
+					Error:  "missing required attribute",
 				})
 			}
 
@@ -528,13 +608,16 @@ func validateBlockData(
 			err := check.Validate(v, true, &vCtx)
 			if err != nil {
 				res = append(res, ValidationResult{
-					Entity: []EntityRef{{
-						RefType: RefTypeData,
-						Name:    k,
-					}},
-					Error: err.Error(),
+					Entity: []EntityRef{ref},
+					Error:  err.Error(),
 				})
 			}
+
+			vCtx.coll.CollectValue(ValueAnnotation{
+				Ref:        []EntityRef{ref},
+				Constraint: check,
+				Value:      v,
+			})
 		}
 	}
 
