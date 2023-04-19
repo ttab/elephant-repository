@@ -608,10 +608,18 @@
         },
         "type": "object"
       },
+      "elephant.repository.MetricAggregation": {
+        "enum": [
+          "DISCRETE",
+          "SUM",
+          "AVG"
+        ],
+        "type": "string"
+      },
       "elephant.repository.MetricKind": {
         "properties": {
-          "id": {
-            "type": "integer"
+          "aggregation": {
+            "$ref": "#/components/schemas/elephant.repository.MetricAggregation"
           },
           "name": {
             "type": "string"
@@ -632,6 +640,9 @@
       },
       "elephant.repository.RegisterMetricKindRequest": {
         "properties": {
+          "aggregation": {
+            "$ref": "#/components/schemas/elephant.repository.MetricAggregation"
+          },
           "name": {
             "type": "string"
           }
@@ -650,6 +661,26 @@
         "type": "object"
       },
       "elephant.repository.RegisterMetricLabelResponse": {
+        "type": "object"
+      },
+      "elephant.repository.RegisterMetricRequest": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          },
+          "value": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.RegisterMetricResponse": {
         "type": "object"
       },
       "elephant.repository.RegisterSchemaRequest": {
@@ -1582,6 +1613,44 @@
           }
         ],
         "summary": "RegisterLabel",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Metrics/RegisterMetric": {
+      "post": {
+        "description": "Register a data point",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.RegisterMetricRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.RegisterMetricResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "RegisterMetric",
         "tags": [
           "Metrics"
         ]

@@ -355,8 +355,8 @@ ORDER BY id DESC
 LIMIT @count;
 
 -- name: RegisterMetricKind :exec
-INSERT INTO metric_kind(name)
-VALUES (@name);
+INSERT INTO metric_kind(name, aggregation)
+VALUES (@name, @aggregation);
 
 -- name: DeleteMetricKind :exec
 DELETE FROM metric_kind
@@ -379,3 +379,7 @@ WHERE name = @name;
 SELECT name
 FROM metric_label
 ORDER BY name;
+
+-- name: RegisterMetric :exec
+INSERT INTO metric(uuid, kind, label, value)
+VALUES (@uuid, @kind, @label, @value);

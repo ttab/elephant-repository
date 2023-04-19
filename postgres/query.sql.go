@@ -1312,13 +1312,40 @@ func (q *Queries) PingJobLock(ctx context.Context, arg PingJobLockParams) (int64
 	return result.RowsAffected(), nil
 }
 
-const registerMetricKind = `-- name: RegisterMetricKind :exec
-INSERT INTO metric_kind(name)
-VALUES ($1)
+const registerMetric = `-- name: RegisterMetric :exec
+INSERT INTO metric(uuid, kind, label, value)
+VALUES ($1, $2, $3, $4)
 `
 
-func (q *Queries) RegisterMetricKind(ctx context.Context, name string) error {
-	_, err := q.db.Exec(ctx, registerMetricKind, name)
+type RegisterMetricParams struct {
+	Uuid  uuid.UUID
+	Kind  string
+	Label string
+	Value pgtype.Int8
+}
+
+func (q *Queries) RegisterMetric(ctx context.Context, arg RegisterMetricParams) error {
+	_, err := q.db.Exec(ctx, registerMetric,
+		arg.Uuid,
+		arg.Kind,
+		arg.Label,
+		arg.Value,
+	)
+	return err
+}
+
+const registerMetricKind = `-- name: RegisterMetricKind :exec
+INSERT INTO metric_kind(name, aggregation)
+VALUES ($1, $2)
+`
+
+type RegisterMetricKindParams struct {
+	Name        string
+	Aggregation int16
+}
+
+func (q *Queries) RegisterMetricKind(ctx context.Context, arg RegisterMetricKindParams) error {
+	_, err := q.db.Exec(ctx, registerMetricKind, arg.Name, arg.Aggregation)
 	return err
 }
 

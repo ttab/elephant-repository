@@ -1,7 +1,8 @@
 -- Write your migrate up statements here
 
 create table metric_kind(
-        name text primary key not null
+        name text primary key not null,
+        aggregation smallint not null
 );
 
 create table metric_label(
@@ -9,15 +10,11 @@ create table metric_label(
 );
 
 create table metric(
-        id bigint generated always as identity primary key,
-        document_uuid uuid,
-        kind text,
-        label text,
-        value int,
-        created timestamp with time zone,
-        foreign key(document_uuid) references document(uuid),
-        foreign key(kind) references metric_kind(name),
-        foreign key(label) references metric_label(name)
+        uuid uuid references document(uuid) not null,
+        kind text references metric_kind(name) not null,
+        label text references metric_label(name),
+        value bigint not null,
+        primary key(uuid, kind, label)
 );
 
 ---- create above / drop below ----

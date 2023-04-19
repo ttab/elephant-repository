@@ -88,9 +88,6 @@ type ReportStore interface {
 }
 
 type MetricStore interface {
-	// UpdateMetric(
-	// 	ctx context.Context,
-	// ) error
 	RegisterMetricKind(
 		ctx context.Context, name string,
 	) error
@@ -109,6 +106,9 @@ type MetricStore interface {
 	GetMetricLabels(
 		ctx context.Context,
 	) ([]*MetricLabel, error)
+	RegisterMetric(
+		ctx context.Context, metric Metric,
+	) error
 }
 
 type DocumentStatus struct {
@@ -236,6 +236,13 @@ type MetricKind struct {
 
 type MetricLabel struct {
 	Name string
+}
+
+type Metric struct {
+	Uuid  uuid.UUID
+	Kind  string
+	Label string
+	Value int64
 }
 
 // DocStoreErrorCode TODO: Rename to StoreErrorCode and consistently rename all

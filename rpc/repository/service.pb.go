@@ -20,6 +20,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type MetricAggregation int32
+
+const (
+	MetricAggregation_DISCRETE MetricAggregation = 0
+	MetricAggregation_SUM      MetricAggregation = 1
+	MetricAggregation_AVG      MetricAggregation = 2
+)
+
+// Enum value maps for MetricAggregation.
+var (
+	MetricAggregation_name = map[int32]string{
+		0: "DISCRETE",
+		1: "SUM",
+		2: "AVG",
+	}
+	MetricAggregation_value = map[string]int32{
+		"DISCRETE": 0,
+		"SUM":      1,
+		"AVG":      2,
+	}
+)
+
+func (x MetricAggregation) Enum() *MetricAggregation {
+	p := new(MetricAggregation)
+	*p = x
+	return p
+}
+
+func (x MetricAggregation) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (MetricAggregation) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpc_repository_service_proto_enumTypes[0].Descriptor()
+}
+
+func (MetricAggregation) Type() protoreflect.EnumType {
+	return &file_rpc_repository_service_proto_enumTypes[0]
+}
+
+func (x MetricAggregation) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use MetricAggregation.Descriptor instead.
+func (MetricAggregation) EnumDescriptor() ([]byte, []int) {
+	return file_rpc_repository_service_proto_rawDescGZIP(), []int{0}
+}
+
 type GetStatusHistoryRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -3748,7 +3797,8 @@ type RegisterMetricKindRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Name        string            `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Aggregation MetricAggregation `protobuf:"varint,2,opt,name=aggregation,proto3,enum=elephant.repository.MetricAggregation" json:"aggregation,omitempty"`
 }
 
 func (x *RegisterMetricKindRequest) Reset() {
@@ -3788,6 +3838,13 @@ func (x *RegisterMetricKindRequest) GetName() string {
 		return x.Name
 	}
 	return ""
+}
+
+func (x *RegisterMetricKindRequest) GetAggregation() MetricAggregation {
+	if x != nil {
+		return x.Aggregation
+	}
+	return MetricAggregation_DISCRETE
 }
 
 type RegisterMetricKindResponse struct {
@@ -4003,8 +4060,8 @@ type MetricKind struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id   int64  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Name        string            `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Aggregation MetricAggregation `protobuf:"varint,2,opt,name=aggregation,proto3,enum=elephant.repository.MetricAggregation" json:"aggregation,omitempty"`
 }
 
 func (x *MetricKind) Reset() {
@@ -4039,18 +4096,18 @@ func (*MetricKind) Descriptor() ([]byte, []int) {
 	return file_rpc_repository_service_proto_rawDescGZIP(), []int{67}
 }
 
-func (x *MetricKind) GetId() int64 {
-	if x != nil {
-		return x.Id
-	}
-	return 0
-}
-
 func (x *MetricKind) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
+}
+
+func (x *MetricKind) GetAggregation() MetricAggregation {
+	if x != nil {
+		return x.Aggregation
+	}
+	return MetricAggregation_DISCRETE
 }
 
 type RegisterMetricLabelRequest struct {
@@ -4361,6 +4418,115 @@ func (x *MetricLabel) GetName() string {
 		return x.Name
 	}
 	return ""
+}
+
+type RegisterMetricRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Uuid  string `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
+	Kind  string `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Label string `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
+	Value int64  `protobuf:"varint,5,opt,name=value,proto3" json:"value,omitempty"`
+}
+
+func (x *RegisterMetricRequest) Reset() {
+	*x = RegisterMetricRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_rpc_repository_service_proto_msgTypes[75]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *RegisterMetricRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterMetricRequest) ProtoMessage() {}
+
+func (x *RegisterMetricRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_repository_service_proto_msgTypes[75]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterMetricRequest.ProtoReflect.Descriptor instead.
+func (*RegisterMetricRequest) Descriptor() ([]byte, []int) {
+	return file_rpc_repository_service_proto_rawDescGZIP(), []int{75}
+}
+
+func (x *RegisterMetricRequest) GetUuid() string {
+	if x != nil {
+		return x.Uuid
+	}
+	return ""
+}
+
+func (x *RegisterMetricRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *RegisterMetricRequest) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *RegisterMetricRequest) GetValue() int64 {
+	if x != nil {
+		return x.Value
+	}
+	return 0
+}
+
+type RegisterMetricResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *RegisterMetricResponse) Reset() {
+	*x = RegisterMetricResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_rpc_repository_service_proto_msgTypes[76]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *RegisterMetricResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterMetricResponse) ProtoMessage() {}
+
+func (x *RegisterMetricResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_repository_service_proto_msgTypes[76]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterMetricResponse.ProtoReflect.Descriptor instead.
+func (*RegisterMetricResponse) Descriptor() ([]byte, []int) {
+	return file_rpc_repository_service_proto_rawDescGZIP(), []int{76}
 }
 
 var File_rpc_repository_service_proto protoreflect.FileDescriptor
@@ -4803,46 +4969,66 @@ var file_rpc_repository_service_proto_rawDesc = []byte{
 	0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x18, 0x0a, 0x07, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e,
 	0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x12,
 	0x12, 0x0a, 0x04, 0x73, 0x70, 0x65, 0x63, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x73,
-	0x70, 0x65, 0x63, 0x22, 0x2f, 0x0a, 0x19, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d,
+	0x70, 0x65, 0x63, 0x22, 0x79, 0x0a, 0x19, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d,
 	0x65, 0x74, 0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
 	0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04,
-	0x6e, 0x61, 0x6d, 0x65, 0x22, 0x1c, 0x0a, 0x1a, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72,
-	0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
-	0x73, 0x65, 0x22, 0x2d, 0x0a, 0x17, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72,
-	0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a,
-	0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d,
-	0x65, 0x22, 0x1a, 0x0a, 0x18, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72, 0x69,
-	0x63, 0x4b, 0x69, 0x6e, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x17, 0x0a,
-	0x15, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64, 0x73, 0x52,
-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x4f, 0x0a, 0x16, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74,
-	0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
-	0x12, 0x35, 0x0a, 0x05, 0x6b, 0x69, 0x6e, 0x64, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32,
-	0x1f, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73,
-	0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64,
-	0x52, 0x05, 0x6b, 0x69, 0x6e, 0x64, 0x73, 0x22, 0x30, 0x0a, 0x0a, 0x4d, 0x65, 0x74, 0x72, 0x69,
-	0x63, 0x4b, 0x69, 0x6e, 0x64, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28,
-	0x03, 0x52, 0x02, 0x69, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x30, 0x0a, 0x1a, 0x52, 0x65, 0x67,
-	0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c,
+	0x6e, 0x61, 0x6d, 0x65, 0x12, 0x48, 0x0a, 0x0b, 0x61, 0x67, 0x67, 0x72, 0x65, 0x67, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x26, 0x2e, 0x65, 0x6c, 0x65, 0x70,
+	0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e,
+	0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x41, 0x67, 0x67, 0x72, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f,
+	0x6e, 0x52, 0x0b, 0x61, 0x67, 0x67, 0x72, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x1c,
+	0x0a, 0x1a, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63,
+	0x4b, 0x69, 0x6e, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x2d, 0x0a, 0x17,
+	0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64,
 	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18,
-	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x1d, 0x0a, 0x1b, 0x52,
-	0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62,
-	0x65, 0x6c, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x2e, 0x0a, 0x18, 0x44, 0x65,
-	0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x52,
-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x1b, 0x0a, 0x19, 0x44, 0x65,
-	0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x52,
-	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x18, 0x0a, 0x16, 0x47, 0x65, 0x74, 0x4d, 0x65,
-	0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
-	0x74, 0x22, 0x53, 0x0a, 0x17, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61,
-	0x62, 0x65, 0x6c, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x38, 0x0a, 0x06,
-	0x6c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x65,
-	0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f,
-	0x72, 0x79, 0x2e, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x52, 0x06,
-	0x6c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x22, 0x31, 0x0a, 0x0b, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63,
-	0x4c, 0x61, 0x62, 0x65, 0x6c, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28,
-	0x03, 0x52, 0x02, 0x69, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x32, 0xf8, 0x05, 0x0a, 0x09, 0x44, 0x6f,
+	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x1a, 0x0a, 0x18, 0x44,
+	0x65, 0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x17, 0x0a, 0x15, 0x47, 0x65, 0x74, 0x4d, 0x65,
+	0x74, 0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
+	0x22, 0x4f, 0x0a, 0x16, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e,
+	0x64, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x35, 0x0a, 0x05, 0x6b, 0x69,
+	0x6e, 0x64, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1f, 0x2e, 0x65, 0x6c, 0x65, 0x70,
+	0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e,
+	0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64, 0x52, 0x05, 0x6b, 0x69, 0x6e, 0x64,
+	0x73, 0x22, 0x6a, 0x0a, 0x0a, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4b, 0x69, 0x6e, 0x64, 0x12,
+	0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e,
+	0x61, 0x6d, 0x65, 0x12, 0x48, 0x0a, 0x0b, 0x61, 0x67, 0x67, 0x72, 0x65, 0x67, 0x61, 0x74, 0x69,
+	0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x26, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68,
+	0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x4d,
+	0x65, 0x74, 0x72, 0x69, 0x63, 0x41, 0x67, 0x67, 0x72, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+	0x52, 0x0b, 0x61, 0x67, 0x67, 0x72, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x30, 0x0a,
+	0x1a, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c,
+	0x61, 0x62, 0x65, 0x6c, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x6e,
+	0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x22,
+	0x1d, 0x0a, 0x1b, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69,
+	0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x2e,
+	0x0a, 0x18, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61,
+	0x62, 0x65, 0x6c, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61,
+	0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x1b,
+	0x0a, 0x19, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61,
+	0x62, 0x65, 0x6c, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x18, 0x0a, 0x16, 0x47,
+	0x65, 0x74, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x53, 0x0a, 0x17, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74, 0x72,
+	0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x12, 0x38, 0x0a, 0x06, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b,
+	0x32, 0x20, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f,
+	0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62,
+	0x65, 0x6c, 0x52, 0x06, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x22, 0x31, 0x0a, 0x0b, 0x4d, 0x65,
+	0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x02, 0x69, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d,
+	0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x6b, 0x0a,
+	0x15, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x75, 0x75, 0x69, 0x64, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x75, 0x75, 0x69, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x6b, 0x69,
+	0x6e, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6b, 0x69, 0x6e, 0x64, 0x12, 0x14,
+	0x0a, 0x05, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x6c,
+	0x61, 0x62, 0x65, 0x6c, 0x12, 0x14, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x05, 0x20,
+	0x01, 0x28, 0x03, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x22, 0x18, 0x0a, 0x16, 0x52, 0x65,
+	0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x2a, 0x33, 0x0a, 0x11, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x41, 0x67,
+	0x67, 0x72, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x0c, 0x0a, 0x08, 0x44, 0x49, 0x53,
+	0x43, 0x52, 0x45, 0x54, 0x45, 0x10, 0x00, 0x12, 0x07, 0x0a, 0x03, 0x53, 0x55, 0x4d, 0x10, 0x01,
+	0x12, 0x07, 0x0a, 0x03, 0x41, 0x56, 0x47, 0x10, 0x02, 0x32, 0xf8, 0x05, 0x0a, 0x09, 0x44, 0x6f,
 	0x63, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x73, 0x12, 0x58, 0x0a, 0x03, 0x47, 0x65, 0x74, 0x12, 0x27,
 	0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69,
 	0x74, 0x6f, 0x72, 0x79, 0x2e, 0x47, 0x65, 0x74, 0x44, 0x6f, 0x63, 0x75, 0x6d, 0x65, 0x6e, 0x74,
@@ -4973,7 +5159,7 @@ var file_rpc_repository_service_proto_rawDesc = []byte{
 	0x73, 0x74, 0x52, 0x65, 0x70, 0x6f, 0x72, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
 	0x27, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73,
 	0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x54, 0x65, 0x73, 0x74, 0x52, 0x65, 0x70, 0x6f, 0x72, 0x74,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0x94, 0x05, 0x0a, 0x07, 0x4d, 0x65, 0x74,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0xff, 0x05, 0x0a, 0x07, 0x4d, 0x65, 0x74,
 	0x72, 0x69, 0x63, 0x73, 0x12, 0x6f, 0x0a, 0x0c, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72,
 	0x4b, 0x69, 0x6e, 0x64, 0x12, 0x2e, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e,
 	0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x52, 0x65, 0x67, 0x69, 0x73,
@@ -5014,9 +5200,16 @@ var file_rpc_repository_service_proto_rawDesc = []byte{
 	0x74, 0x72, 0x69, 0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
 	0x74, 0x1a, 0x2c, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70,
 	0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74, 0x72, 0x69,
-	0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42,
-	0x12, 0x5a, 0x10, 0x2e, 0x2f, 0x72, 0x70, 0x63, 0x2f, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74,
-	0x6f, 0x72, 0x79, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x63, 0x4c, 0x61, 0x62, 0x65, 0x6c, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12,
+	0x69, 0x0a, 0x0e, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72, 0x69,
+	0x63, 0x12, 0x2a, 0x2e, 0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70,
+	0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x2e, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72,
+	0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2b, 0x2e,
+	0x65, 0x6c, 0x65, 0x70, 0x68, 0x61, 0x6e, 0x74, 0x2e, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74,
+	0x6f, 0x72, 0x79, 0x2e, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x4d, 0x65, 0x74, 0x72,
+	0x69, 0x63, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x12, 0x5a, 0x10, 0x2e, 0x2f,
+	0x72, 0x70, 0x63, 0x2f, 0x72, 0x65, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x6f, 0x72, 0x79, 0x62, 0x06,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -5031,194 +5224,202 @@ func file_rpc_repository_service_proto_rawDescGZIP() []byte {
 	return file_rpc_repository_service_proto_rawDescData
 }
 
-var file_rpc_repository_service_proto_msgTypes = make([]protoimpl.MessageInfo, 83)
+var file_rpc_repository_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_rpc_repository_service_proto_msgTypes = make([]protoimpl.MessageInfo, 85)
 var file_rpc_repository_service_proto_goTypes = []interface{}{
-	(*GetStatusHistoryRequest)(nil),     // 0: elephant.repository.GetStatusHistoryRequest
-	(*GetStatusHistoryReponse)(nil),     // 1: elephant.repository.GetStatusHistoryReponse
-	(*GetEventlogRequest)(nil),          // 2: elephant.repository.GetEventlogRequest
-	(*GetEventlogResponse)(nil),         // 3: elephant.repository.GetEventlogResponse
-	(*EventlogItem)(nil),                // 4: elephant.repository.EventlogItem
-	(*RunReportRequest)(nil),            // 5: elephant.repository.RunReportRequest
-	(*RunReportResponse)(nil),           // 6: elephant.repository.RunReportResponse
-	(*TestReportRequest)(nil),           // 7: elephant.repository.TestReportRequest
-	(*TestReportResponse)(nil),          // 8: elephant.repository.TestReportResponse
-	(*GetReportRequest)(nil),            // 9: elephant.repository.GetReportRequest
-	(*GetReportResponse)(nil),           // 10: elephant.repository.GetReportResponse
-	(*UpdateReportRequest)(nil),         // 11: elephant.repository.UpdateReportRequest
-	(*Report)(nil),                      // 12: elephant.repository.Report
-	(*ReportQuery)(nil),                 // 13: elephant.repository.ReportQuery
-	(*ReportValue)(nil),                 // 14: elephant.repository.ReportValue
-	(*UpdateReportResponse)(nil),        // 15: elephant.repository.UpdateReportResponse
-	(*GetStatusRulesRequest)(nil),       // 16: elephant.repository.GetStatusRulesRequest
-	(*GetStatusRulesResponse)(nil),      // 17: elephant.repository.GetStatusRulesResponse
-	(*GetStatusesRequest)(nil),          // 18: elephant.repository.GetStatusesRequest
-	(*WorkflowStatus)(nil),              // 19: elephant.repository.WorkflowStatus
-	(*GetStatusesResponse)(nil),         // 20: elephant.repository.GetStatusesResponse
-	(*UpdateStatusRequest)(nil),         // 21: elephant.repository.UpdateStatusRequest
-	(*UpdateStatusResponse)(nil),        // 22: elephant.repository.UpdateStatusResponse
-	(*CreateStatusRuleRequest)(nil),     // 23: elephant.repository.CreateStatusRuleRequest
-	(*StatusRule)(nil),                  // 24: elephant.repository.StatusRule
-	(*CreateStatusRuleResponse)(nil),    // 25: elephant.repository.CreateStatusRuleResponse
-	(*DeleteStatusRuleRequest)(nil),     // 26: elephant.repository.DeleteStatusRuleRequest
-	(*DeleteStatusRuleResponse)(nil),    // 27: elephant.repository.DeleteStatusRuleResponse
-	(*GetDocumentRequest)(nil),          // 28: elephant.repository.GetDocumentRequest
-	(*GetDocumentResponse)(nil),         // 29: elephant.repository.GetDocumentResponse
-	(*GetHistoryRequest)(nil),           // 30: elephant.repository.GetHistoryRequest
-	(*GetHistoryResponse)(nil),          // 31: elephant.repository.GetHistoryResponse
-	(*DocumentVersion)(nil),             // 32: elephant.repository.DocumentVersion
-	(*UpdateRequest)(nil),               // 33: elephant.repository.UpdateRequest
-	(*ImportDirective)(nil),             // 34: elephant.repository.ImportDirective
-	(*UpdateResponse)(nil),              // 35: elephant.repository.UpdateResponse
-	(*ValidateRequest)(nil),             // 36: elephant.repository.ValidateRequest
-	(*ValidateResponse)(nil),            // 37: elephant.repository.ValidateResponse
-	(*ValidationResult)(nil),            // 38: elephant.repository.ValidationResult
-	(*EntityRef)(nil),                   // 39: elephant.repository.EntityRef
-	(*StatusUpdate)(nil),                // 40: elephant.repository.StatusUpdate
-	(*UpdatePermissionsRequest)(nil),    // 41: elephant.repository.UpdatePermissionsRequest
-	(*UpdatePermissionsResponse)(nil),   // 42: elephant.repository.UpdatePermissionsResponse
-	(*DeleteDocumentRequest)(nil),       // 43: elephant.repository.DeleteDocumentRequest
-	(*DeleteDocumentResponse)(nil),      // 44: elephant.repository.DeleteDocumentResponse
-	(*GetMetaRequest)(nil),              // 45: elephant.repository.GetMetaRequest
-	(*GetMetaResponse)(nil),             // 46: elephant.repository.GetMetaResponse
-	(*DocumentMeta)(nil),                // 47: elephant.repository.DocumentMeta
-	(*Status)(nil),                      // 48: elephant.repository.Status
-	(*ACLEntry)(nil),                    // 49: elephant.repository.ACLEntry
-	(*Document)(nil),                    // 50: elephant.repository.Document
-	(*Block)(nil),                       // 51: elephant.repository.Block
-	(*RegisterSchemaRequest)(nil),       // 52: elephant.repository.RegisterSchemaRequest
-	(*RegisterSchemaResponse)(nil),      // 53: elephant.repository.RegisterSchemaResponse
-	(*SetActiveSchemaRequest)(nil),      // 54: elephant.repository.SetActiveSchemaRequest
-	(*SetActiveSchemaResponse)(nil),     // 55: elephant.repository.SetActiveSchemaResponse
-	(*GetSchemaRequest)(nil),            // 56: elephant.repository.GetSchemaRequest
-	(*GetSchemaResponse)(nil),           // 57: elephant.repository.GetSchemaResponse
-	(*GetAllActiveSchemasRequest)(nil),  // 58: elephant.repository.GetAllActiveSchemasRequest
-	(*GetAllActiveSchemasResponse)(nil), // 59: elephant.repository.GetAllActiveSchemasResponse
-	(*Schema)(nil),                      // 60: elephant.repository.Schema
-	(*RegisterMetricKindRequest)(nil),   // 61: elephant.repository.RegisterMetricKindRequest
-	(*RegisterMetricKindResponse)(nil),  // 62: elephant.repository.RegisterMetricKindResponse
-	(*DeleteMetricKindRequest)(nil),     // 63: elephant.repository.DeleteMetricKindRequest
-	(*DeleteMetricKindResponse)(nil),    // 64: elephant.repository.DeleteMetricKindResponse
-	(*GetMetricKindsRequest)(nil),       // 65: elephant.repository.GetMetricKindsRequest
-	(*GetMetricKindsResponse)(nil),      // 66: elephant.repository.GetMetricKindsResponse
-	(*MetricKind)(nil),                  // 67: elephant.repository.MetricKind
-	(*RegisterMetricLabelRequest)(nil),  // 68: elephant.repository.RegisterMetricLabelRequest
-	(*RegisterMetricLabelResponse)(nil), // 69: elephant.repository.RegisterMetricLabelResponse
-	(*DeleteMetricLabelRequest)(nil),    // 70: elephant.repository.DeleteMetricLabelRequest
-	(*DeleteMetricLabelResponse)(nil),   // 71: elephant.repository.DeleteMetricLabelResponse
-	(*GetMetricLabelsRequest)(nil),      // 72: elephant.repository.GetMetricLabelsRequest
-	(*GetMetricLabelsResponse)(nil),     // 73: elephant.repository.GetMetricLabelsResponse
-	(*MetricLabel)(nil),                 // 74: elephant.repository.MetricLabel
-	nil,                                 // 75: elephant.repository.DocumentVersion.MetaEntry
-	nil,                                 // 76: elephant.repository.UpdateRequest.MetaEntry
-	nil,                                 // 77: elephant.repository.StatusUpdate.MetaEntry
-	nil,                                 // 78: elephant.repository.DeleteDocumentRequest.MetaEntry
-	nil,                                 // 79: elephant.repository.DocumentMeta.HeadsEntry
-	nil,                                 // 80: elephant.repository.Status.MetaEntry
-	nil,                                 // 81: elephant.repository.Block.DataEntry
-	nil,                                 // 82: elephant.repository.GetAllActiveSchemasRequest.KnownEntry
+	(MetricAggregation)(0),              // 0: elephant.repository.MetricAggregation
+	(*GetStatusHistoryRequest)(nil),     // 1: elephant.repository.GetStatusHistoryRequest
+	(*GetStatusHistoryReponse)(nil),     // 2: elephant.repository.GetStatusHistoryReponse
+	(*GetEventlogRequest)(nil),          // 3: elephant.repository.GetEventlogRequest
+	(*GetEventlogResponse)(nil),         // 4: elephant.repository.GetEventlogResponse
+	(*EventlogItem)(nil),                // 5: elephant.repository.EventlogItem
+	(*RunReportRequest)(nil),            // 6: elephant.repository.RunReportRequest
+	(*RunReportResponse)(nil),           // 7: elephant.repository.RunReportResponse
+	(*TestReportRequest)(nil),           // 8: elephant.repository.TestReportRequest
+	(*TestReportResponse)(nil),          // 9: elephant.repository.TestReportResponse
+	(*GetReportRequest)(nil),            // 10: elephant.repository.GetReportRequest
+	(*GetReportResponse)(nil),           // 11: elephant.repository.GetReportResponse
+	(*UpdateReportRequest)(nil),         // 12: elephant.repository.UpdateReportRequest
+	(*Report)(nil),                      // 13: elephant.repository.Report
+	(*ReportQuery)(nil),                 // 14: elephant.repository.ReportQuery
+	(*ReportValue)(nil),                 // 15: elephant.repository.ReportValue
+	(*UpdateReportResponse)(nil),        // 16: elephant.repository.UpdateReportResponse
+	(*GetStatusRulesRequest)(nil),       // 17: elephant.repository.GetStatusRulesRequest
+	(*GetStatusRulesResponse)(nil),      // 18: elephant.repository.GetStatusRulesResponse
+	(*GetStatusesRequest)(nil),          // 19: elephant.repository.GetStatusesRequest
+	(*WorkflowStatus)(nil),              // 20: elephant.repository.WorkflowStatus
+	(*GetStatusesResponse)(nil),         // 21: elephant.repository.GetStatusesResponse
+	(*UpdateStatusRequest)(nil),         // 22: elephant.repository.UpdateStatusRequest
+	(*UpdateStatusResponse)(nil),        // 23: elephant.repository.UpdateStatusResponse
+	(*CreateStatusRuleRequest)(nil),     // 24: elephant.repository.CreateStatusRuleRequest
+	(*StatusRule)(nil),                  // 25: elephant.repository.StatusRule
+	(*CreateStatusRuleResponse)(nil),    // 26: elephant.repository.CreateStatusRuleResponse
+	(*DeleteStatusRuleRequest)(nil),     // 27: elephant.repository.DeleteStatusRuleRequest
+	(*DeleteStatusRuleResponse)(nil),    // 28: elephant.repository.DeleteStatusRuleResponse
+	(*GetDocumentRequest)(nil),          // 29: elephant.repository.GetDocumentRequest
+	(*GetDocumentResponse)(nil),         // 30: elephant.repository.GetDocumentResponse
+	(*GetHistoryRequest)(nil),           // 31: elephant.repository.GetHistoryRequest
+	(*GetHistoryResponse)(nil),          // 32: elephant.repository.GetHistoryResponse
+	(*DocumentVersion)(nil),             // 33: elephant.repository.DocumentVersion
+	(*UpdateRequest)(nil),               // 34: elephant.repository.UpdateRequest
+	(*ImportDirective)(nil),             // 35: elephant.repository.ImportDirective
+	(*UpdateResponse)(nil),              // 36: elephant.repository.UpdateResponse
+	(*ValidateRequest)(nil),             // 37: elephant.repository.ValidateRequest
+	(*ValidateResponse)(nil),            // 38: elephant.repository.ValidateResponse
+	(*ValidationResult)(nil),            // 39: elephant.repository.ValidationResult
+	(*EntityRef)(nil),                   // 40: elephant.repository.EntityRef
+	(*StatusUpdate)(nil),                // 41: elephant.repository.StatusUpdate
+	(*UpdatePermissionsRequest)(nil),    // 42: elephant.repository.UpdatePermissionsRequest
+	(*UpdatePermissionsResponse)(nil),   // 43: elephant.repository.UpdatePermissionsResponse
+	(*DeleteDocumentRequest)(nil),       // 44: elephant.repository.DeleteDocumentRequest
+	(*DeleteDocumentResponse)(nil),      // 45: elephant.repository.DeleteDocumentResponse
+	(*GetMetaRequest)(nil),              // 46: elephant.repository.GetMetaRequest
+	(*GetMetaResponse)(nil),             // 47: elephant.repository.GetMetaResponse
+	(*DocumentMeta)(nil),                // 48: elephant.repository.DocumentMeta
+	(*Status)(nil),                      // 49: elephant.repository.Status
+	(*ACLEntry)(nil),                    // 50: elephant.repository.ACLEntry
+	(*Document)(nil),                    // 51: elephant.repository.Document
+	(*Block)(nil),                       // 52: elephant.repository.Block
+	(*RegisterSchemaRequest)(nil),       // 53: elephant.repository.RegisterSchemaRequest
+	(*RegisterSchemaResponse)(nil),      // 54: elephant.repository.RegisterSchemaResponse
+	(*SetActiveSchemaRequest)(nil),      // 55: elephant.repository.SetActiveSchemaRequest
+	(*SetActiveSchemaResponse)(nil),     // 56: elephant.repository.SetActiveSchemaResponse
+	(*GetSchemaRequest)(nil),            // 57: elephant.repository.GetSchemaRequest
+	(*GetSchemaResponse)(nil),           // 58: elephant.repository.GetSchemaResponse
+	(*GetAllActiveSchemasRequest)(nil),  // 59: elephant.repository.GetAllActiveSchemasRequest
+	(*GetAllActiveSchemasResponse)(nil), // 60: elephant.repository.GetAllActiveSchemasResponse
+	(*Schema)(nil),                      // 61: elephant.repository.Schema
+	(*RegisterMetricKindRequest)(nil),   // 62: elephant.repository.RegisterMetricKindRequest
+	(*RegisterMetricKindResponse)(nil),  // 63: elephant.repository.RegisterMetricKindResponse
+	(*DeleteMetricKindRequest)(nil),     // 64: elephant.repository.DeleteMetricKindRequest
+	(*DeleteMetricKindResponse)(nil),    // 65: elephant.repository.DeleteMetricKindResponse
+	(*GetMetricKindsRequest)(nil),       // 66: elephant.repository.GetMetricKindsRequest
+	(*GetMetricKindsResponse)(nil),      // 67: elephant.repository.GetMetricKindsResponse
+	(*MetricKind)(nil),                  // 68: elephant.repository.MetricKind
+	(*RegisterMetricLabelRequest)(nil),  // 69: elephant.repository.RegisterMetricLabelRequest
+	(*RegisterMetricLabelResponse)(nil), // 70: elephant.repository.RegisterMetricLabelResponse
+	(*DeleteMetricLabelRequest)(nil),    // 71: elephant.repository.DeleteMetricLabelRequest
+	(*DeleteMetricLabelResponse)(nil),   // 72: elephant.repository.DeleteMetricLabelResponse
+	(*GetMetricLabelsRequest)(nil),      // 73: elephant.repository.GetMetricLabelsRequest
+	(*GetMetricLabelsResponse)(nil),     // 74: elephant.repository.GetMetricLabelsResponse
+	(*MetricLabel)(nil),                 // 75: elephant.repository.MetricLabel
+	(*RegisterMetricRequest)(nil),       // 76: elephant.repository.RegisterMetricRequest
+	(*RegisterMetricResponse)(nil),      // 77: elephant.repository.RegisterMetricResponse
+	nil,                                 // 78: elephant.repository.DocumentVersion.MetaEntry
+	nil,                                 // 79: elephant.repository.UpdateRequest.MetaEntry
+	nil,                                 // 80: elephant.repository.StatusUpdate.MetaEntry
+	nil,                                 // 81: elephant.repository.DeleteDocumentRequest.MetaEntry
+	nil,                                 // 82: elephant.repository.DocumentMeta.HeadsEntry
+	nil,                                 // 83: elephant.repository.Status.MetaEntry
+	nil,                                 // 84: elephant.repository.Block.DataEntry
+	nil,                                 // 85: elephant.repository.GetAllActiveSchemasRequest.KnownEntry
 }
 var file_rpc_repository_service_proto_depIdxs = []int32{
-	48, // 0: elephant.repository.GetStatusHistoryReponse.statuses:type_name -> elephant.repository.Status
-	4,  // 1: elephant.repository.GetEventlogResponse.items:type_name -> elephant.repository.EventlogItem
-	49, // 2: elephant.repository.EventlogItem.acl:type_name -> elephant.repository.ACLEntry
-	12, // 3: elephant.repository.TestReportRequest.report:type_name -> elephant.repository.Report
-	12, // 4: elephant.repository.GetReportResponse.report:type_name -> elephant.repository.Report
-	12, // 5: elephant.repository.UpdateReportRequest.report:type_name -> elephant.repository.Report
-	13, // 6: elephant.repository.Report.queries:type_name -> elephant.repository.ReportQuery
-	14, // 7: elephant.repository.ReportQuery.value_processing:type_name -> elephant.repository.ReportValue
-	24, // 8: elephant.repository.GetStatusRulesResponse.rules:type_name -> elephant.repository.StatusRule
-	19, // 9: elephant.repository.GetStatusesResponse.statuses:type_name -> elephant.repository.WorkflowStatus
-	24, // 10: elephant.repository.CreateStatusRuleRequest.rule:type_name -> elephant.repository.StatusRule
-	50, // 11: elephant.repository.GetDocumentResponse.document:type_name -> elephant.repository.Document
-	32, // 12: elephant.repository.GetHistoryResponse.versions:type_name -> elephant.repository.DocumentVersion
-	75, // 13: elephant.repository.DocumentVersion.meta:type_name -> elephant.repository.DocumentVersion.MetaEntry
-	50, // 14: elephant.repository.UpdateRequest.document:type_name -> elephant.repository.Document
-	76, // 15: elephant.repository.UpdateRequest.meta:type_name -> elephant.repository.UpdateRequest.MetaEntry
-	40, // 16: elephant.repository.UpdateRequest.status:type_name -> elephant.repository.StatusUpdate
-	49, // 17: elephant.repository.UpdateRequest.acl:type_name -> elephant.repository.ACLEntry
-	34, // 18: elephant.repository.UpdateRequest.import_directive:type_name -> elephant.repository.ImportDirective
-	50, // 19: elephant.repository.ValidateRequest.document:type_name -> elephant.repository.Document
-	38, // 20: elephant.repository.ValidateResponse.errors:type_name -> elephant.repository.ValidationResult
-	39, // 21: elephant.repository.ValidationResult.entity:type_name -> elephant.repository.EntityRef
-	77, // 22: elephant.repository.StatusUpdate.meta:type_name -> elephant.repository.StatusUpdate.MetaEntry
-	49, // 23: elephant.repository.UpdatePermissionsRequest.list:type_name -> elephant.repository.ACLEntry
-	78, // 24: elephant.repository.DeleteDocumentRequest.meta:type_name -> elephant.repository.DeleteDocumentRequest.MetaEntry
-	47, // 25: elephant.repository.GetMetaResponse.meta:type_name -> elephant.repository.DocumentMeta
-	79, // 26: elephant.repository.DocumentMeta.heads:type_name -> elephant.repository.DocumentMeta.HeadsEntry
-	49, // 27: elephant.repository.DocumentMeta.acl:type_name -> elephant.repository.ACLEntry
-	80, // 28: elephant.repository.Status.meta:type_name -> elephant.repository.Status.MetaEntry
-	51, // 29: elephant.repository.Document.content:type_name -> elephant.repository.Block
-	51, // 30: elephant.repository.Document.meta:type_name -> elephant.repository.Block
-	51, // 31: elephant.repository.Document.links:type_name -> elephant.repository.Block
-	81, // 32: elephant.repository.Block.data:type_name -> elephant.repository.Block.DataEntry
-	51, // 33: elephant.repository.Block.links:type_name -> elephant.repository.Block
-	51, // 34: elephant.repository.Block.content:type_name -> elephant.repository.Block
-	51, // 35: elephant.repository.Block.meta:type_name -> elephant.repository.Block
-	60, // 36: elephant.repository.RegisterSchemaRequest.schema:type_name -> elephant.repository.Schema
-	82, // 37: elephant.repository.GetAllActiveSchemasRequest.known:type_name -> elephant.repository.GetAllActiveSchemasRequest.KnownEntry
-	60, // 38: elephant.repository.GetAllActiveSchemasResponse.schemas:type_name -> elephant.repository.Schema
-	67, // 39: elephant.repository.GetMetricKindsResponse.kinds:type_name -> elephant.repository.MetricKind
-	74, // 40: elephant.repository.GetMetricLabelsResponse.labels:type_name -> elephant.repository.MetricLabel
-	48, // 41: elephant.repository.DocumentMeta.HeadsEntry.value:type_name -> elephant.repository.Status
-	28, // 42: elephant.repository.Documents.Get:input_type -> elephant.repository.GetDocumentRequest
-	30, // 43: elephant.repository.Documents.GetHistory:input_type -> elephant.repository.GetHistoryRequest
-	33, // 44: elephant.repository.Documents.Update:input_type -> elephant.repository.UpdateRequest
-	36, // 45: elephant.repository.Documents.Validate:input_type -> elephant.repository.ValidateRequest
-	43, // 46: elephant.repository.Documents.Delete:input_type -> elephant.repository.DeleteDocumentRequest
-	45, // 47: elephant.repository.Documents.GetMeta:input_type -> elephant.repository.GetMetaRequest
-	2,  // 48: elephant.repository.Documents.Eventlog:input_type -> elephant.repository.GetEventlogRequest
-	0,  // 49: elephant.repository.Documents.GetStatusHistory:input_type -> elephant.repository.GetStatusHistoryRequest
-	52, // 50: elephant.repository.Schemas.Register:input_type -> elephant.repository.RegisterSchemaRequest
-	54, // 51: elephant.repository.Schemas.SetActive:input_type -> elephant.repository.SetActiveSchemaRequest
-	56, // 52: elephant.repository.Schemas.Get:input_type -> elephant.repository.GetSchemaRequest
-	58, // 53: elephant.repository.Schemas.GetAllActive:input_type -> elephant.repository.GetAllActiveSchemasRequest
-	21, // 54: elephant.repository.Workflows.UpdateStatus:input_type -> elephant.repository.UpdateStatusRequest
-	18, // 55: elephant.repository.Workflows.GetStatuses:input_type -> elephant.repository.GetStatusesRequest
-	23, // 56: elephant.repository.Workflows.CreateStatusRule:input_type -> elephant.repository.CreateStatusRuleRequest
-	26, // 57: elephant.repository.Workflows.DeleteStatusRule:input_type -> elephant.repository.DeleteStatusRuleRequest
-	16, // 58: elephant.repository.Workflows.GetStatusRules:input_type -> elephant.repository.GetStatusRulesRequest
-	11, // 59: elephant.repository.Reports.Update:input_type -> elephant.repository.UpdateReportRequest
-	9,  // 60: elephant.repository.Reports.Get:input_type -> elephant.repository.GetReportRequest
-	5,  // 61: elephant.repository.Reports.Run:input_type -> elephant.repository.RunReportRequest
-	7,  // 62: elephant.repository.Reports.Test:input_type -> elephant.repository.TestReportRequest
-	61, // 63: elephant.repository.Metrics.RegisterKind:input_type -> elephant.repository.RegisterMetricKindRequest
-	63, // 64: elephant.repository.Metrics.DeleteKind:input_type -> elephant.repository.DeleteMetricKindRequest
-	65, // 65: elephant.repository.Metrics.GetKinds:input_type -> elephant.repository.GetMetricKindsRequest
-	68, // 66: elephant.repository.Metrics.RegisterLabel:input_type -> elephant.repository.RegisterMetricLabelRequest
-	70, // 67: elephant.repository.Metrics.DeleteLabel:input_type -> elephant.repository.DeleteMetricLabelRequest
-	72, // 68: elephant.repository.Metrics.GetLabels:input_type -> elephant.repository.GetMetricLabelsRequest
-	29, // 69: elephant.repository.Documents.Get:output_type -> elephant.repository.GetDocumentResponse
-	31, // 70: elephant.repository.Documents.GetHistory:output_type -> elephant.repository.GetHistoryResponse
-	35, // 71: elephant.repository.Documents.Update:output_type -> elephant.repository.UpdateResponse
-	37, // 72: elephant.repository.Documents.Validate:output_type -> elephant.repository.ValidateResponse
-	44, // 73: elephant.repository.Documents.Delete:output_type -> elephant.repository.DeleteDocumentResponse
-	46, // 74: elephant.repository.Documents.GetMeta:output_type -> elephant.repository.GetMetaResponse
-	3,  // 75: elephant.repository.Documents.Eventlog:output_type -> elephant.repository.GetEventlogResponse
-	1,  // 76: elephant.repository.Documents.GetStatusHistory:output_type -> elephant.repository.GetStatusHistoryReponse
-	53, // 77: elephant.repository.Schemas.Register:output_type -> elephant.repository.RegisterSchemaResponse
-	55, // 78: elephant.repository.Schemas.SetActive:output_type -> elephant.repository.SetActiveSchemaResponse
-	57, // 79: elephant.repository.Schemas.Get:output_type -> elephant.repository.GetSchemaResponse
-	59, // 80: elephant.repository.Schemas.GetAllActive:output_type -> elephant.repository.GetAllActiveSchemasResponse
-	22, // 81: elephant.repository.Workflows.UpdateStatus:output_type -> elephant.repository.UpdateStatusResponse
-	20, // 82: elephant.repository.Workflows.GetStatuses:output_type -> elephant.repository.GetStatusesResponse
-	25, // 83: elephant.repository.Workflows.CreateStatusRule:output_type -> elephant.repository.CreateStatusRuleResponse
-	27, // 84: elephant.repository.Workflows.DeleteStatusRule:output_type -> elephant.repository.DeleteStatusRuleResponse
-	17, // 85: elephant.repository.Workflows.GetStatusRules:output_type -> elephant.repository.GetStatusRulesResponse
-	15, // 86: elephant.repository.Reports.Update:output_type -> elephant.repository.UpdateReportResponse
-	10, // 87: elephant.repository.Reports.Get:output_type -> elephant.repository.GetReportResponse
-	6,  // 88: elephant.repository.Reports.Run:output_type -> elephant.repository.RunReportResponse
-	8,  // 89: elephant.repository.Reports.Test:output_type -> elephant.repository.TestReportResponse
-	62, // 90: elephant.repository.Metrics.RegisterKind:output_type -> elephant.repository.RegisterMetricKindResponse
-	64, // 91: elephant.repository.Metrics.DeleteKind:output_type -> elephant.repository.DeleteMetricKindResponse
-	66, // 92: elephant.repository.Metrics.GetKinds:output_type -> elephant.repository.GetMetricKindsResponse
-	69, // 93: elephant.repository.Metrics.RegisterLabel:output_type -> elephant.repository.RegisterMetricLabelResponse
-	71, // 94: elephant.repository.Metrics.DeleteLabel:output_type -> elephant.repository.DeleteMetricLabelResponse
-	73, // 95: elephant.repository.Metrics.GetLabels:output_type -> elephant.repository.GetMetricLabelsResponse
-	69, // [69:96] is the sub-list for method output_type
-	42, // [42:69] is the sub-list for method input_type
-	42, // [42:42] is the sub-list for extension type_name
-	42, // [42:42] is the sub-list for extension extendee
-	0,  // [0:42] is the sub-list for field type_name
+	49, // 0: elephant.repository.GetStatusHistoryReponse.statuses:type_name -> elephant.repository.Status
+	5,  // 1: elephant.repository.GetEventlogResponse.items:type_name -> elephant.repository.EventlogItem
+	50, // 2: elephant.repository.EventlogItem.acl:type_name -> elephant.repository.ACLEntry
+	13, // 3: elephant.repository.TestReportRequest.report:type_name -> elephant.repository.Report
+	13, // 4: elephant.repository.GetReportResponse.report:type_name -> elephant.repository.Report
+	13, // 5: elephant.repository.UpdateReportRequest.report:type_name -> elephant.repository.Report
+	14, // 6: elephant.repository.Report.queries:type_name -> elephant.repository.ReportQuery
+	15, // 7: elephant.repository.ReportQuery.value_processing:type_name -> elephant.repository.ReportValue
+	25, // 8: elephant.repository.GetStatusRulesResponse.rules:type_name -> elephant.repository.StatusRule
+	20, // 9: elephant.repository.GetStatusesResponse.statuses:type_name -> elephant.repository.WorkflowStatus
+	25, // 10: elephant.repository.CreateStatusRuleRequest.rule:type_name -> elephant.repository.StatusRule
+	51, // 11: elephant.repository.GetDocumentResponse.document:type_name -> elephant.repository.Document
+	33, // 12: elephant.repository.GetHistoryResponse.versions:type_name -> elephant.repository.DocumentVersion
+	78, // 13: elephant.repository.DocumentVersion.meta:type_name -> elephant.repository.DocumentVersion.MetaEntry
+	51, // 14: elephant.repository.UpdateRequest.document:type_name -> elephant.repository.Document
+	79, // 15: elephant.repository.UpdateRequest.meta:type_name -> elephant.repository.UpdateRequest.MetaEntry
+	41, // 16: elephant.repository.UpdateRequest.status:type_name -> elephant.repository.StatusUpdate
+	50, // 17: elephant.repository.UpdateRequest.acl:type_name -> elephant.repository.ACLEntry
+	35, // 18: elephant.repository.UpdateRequest.import_directive:type_name -> elephant.repository.ImportDirective
+	51, // 19: elephant.repository.ValidateRequest.document:type_name -> elephant.repository.Document
+	39, // 20: elephant.repository.ValidateResponse.errors:type_name -> elephant.repository.ValidationResult
+	40, // 21: elephant.repository.ValidationResult.entity:type_name -> elephant.repository.EntityRef
+	80, // 22: elephant.repository.StatusUpdate.meta:type_name -> elephant.repository.StatusUpdate.MetaEntry
+	50, // 23: elephant.repository.UpdatePermissionsRequest.list:type_name -> elephant.repository.ACLEntry
+	81, // 24: elephant.repository.DeleteDocumentRequest.meta:type_name -> elephant.repository.DeleteDocumentRequest.MetaEntry
+	48, // 25: elephant.repository.GetMetaResponse.meta:type_name -> elephant.repository.DocumentMeta
+	82, // 26: elephant.repository.DocumentMeta.heads:type_name -> elephant.repository.DocumentMeta.HeadsEntry
+	50, // 27: elephant.repository.DocumentMeta.acl:type_name -> elephant.repository.ACLEntry
+	83, // 28: elephant.repository.Status.meta:type_name -> elephant.repository.Status.MetaEntry
+	52, // 29: elephant.repository.Document.content:type_name -> elephant.repository.Block
+	52, // 30: elephant.repository.Document.meta:type_name -> elephant.repository.Block
+	52, // 31: elephant.repository.Document.links:type_name -> elephant.repository.Block
+	84, // 32: elephant.repository.Block.data:type_name -> elephant.repository.Block.DataEntry
+	52, // 33: elephant.repository.Block.links:type_name -> elephant.repository.Block
+	52, // 34: elephant.repository.Block.content:type_name -> elephant.repository.Block
+	52, // 35: elephant.repository.Block.meta:type_name -> elephant.repository.Block
+	61, // 36: elephant.repository.RegisterSchemaRequest.schema:type_name -> elephant.repository.Schema
+	85, // 37: elephant.repository.GetAllActiveSchemasRequest.known:type_name -> elephant.repository.GetAllActiveSchemasRequest.KnownEntry
+	61, // 38: elephant.repository.GetAllActiveSchemasResponse.schemas:type_name -> elephant.repository.Schema
+	0,  // 39: elephant.repository.RegisterMetricKindRequest.aggregation:type_name -> elephant.repository.MetricAggregation
+	68, // 40: elephant.repository.GetMetricKindsResponse.kinds:type_name -> elephant.repository.MetricKind
+	0,  // 41: elephant.repository.MetricKind.aggregation:type_name -> elephant.repository.MetricAggregation
+	75, // 42: elephant.repository.GetMetricLabelsResponse.labels:type_name -> elephant.repository.MetricLabel
+	49, // 43: elephant.repository.DocumentMeta.HeadsEntry.value:type_name -> elephant.repository.Status
+	29, // 44: elephant.repository.Documents.Get:input_type -> elephant.repository.GetDocumentRequest
+	31, // 45: elephant.repository.Documents.GetHistory:input_type -> elephant.repository.GetHistoryRequest
+	34, // 46: elephant.repository.Documents.Update:input_type -> elephant.repository.UpdateRequest
+	37, // 47: elephant.repository.Documents.Validate:input_type -> elephant.repository.ValidateRequest
+	44, // 48: elephant.repository.Documents.Delete:input_type -> elephant.repository.DeleteDocumentRequest
+	46, // 49: elephant.repository.Documents.GetMeta:input_type -> elephant.repository.GetMetaRequest
+	3,  // 50: elephant.repository.Documents.Eventlog:input_type -> elephant.repository.GetEventlogRequest
+	1,  // 51: elephant.repository.Documents.GetStatusHistory:input_type -> elephant.repository.GetStatusHistoryRequest
+	53, // 52: elephant.repository.Schemas.Register:input_type -> elephant.repository.RegisterSchemaRequest
+	55, // 53: elephant.repository.Schemas.SetActive:input_type -> elephant.repository.SetActiveSchemaRequest
+	57, // 54: elephant.repository.Schemas.Get:input_type -> elephant.repository.GetSchemaRequest
+	59, // 55: elephant.repository.Schemas.GetAllActive:input_type -> elephant.repository.GetAllActiveSchemasRequest
+	22, // 56: elephant.repository.Workflows.UpdateStatus:input_type -> elephant.repository.UpdateStatusRequest
+	19, // 57: elephant.repository.Workflows.GetStatuses:input_type -> elephant.repository.GetStatusesRequest
+	24, // 58: elephant.repository.Workflows.CreateStatusRule:input_type -> elephant.repository.CreateStatusRuleRequest
+	27, // 59: elephant.repository.Workflows.DeleteStatusRule:input_type -> elephant.repository.DeleteStatusRuleRequest
+	17, // 60: elephant.repository.Workflows.GetStatusRules:input_type -> elephant.repository.GetStatusRulesRequest
+	12, // 61: elephant.repository.Reports.Update:input_type -> elephant.repository.UpdateReportRequest
+	10, // 62: elephant.repository.Reports.Get:input_type -> elephant.repository.GetReportRequest
+	6,  // 63: elephant.repository.Reports.Run:input_type -> elephant.repository.RunReportRequest
+	8,  // 64: elephant.repository.Reports.Test:input_type -> elephant.repository.TestReportRequest
+	62, // 65: elephant.repository.Metrics.RegisterKind:input_type -> elephant.repository.RegisterMetricKindRequest
+	64, // 66: elephant.repository.Metrics.DeleteKind:input_type -> elephant.repository.DeleteMetricKindRequest
+	66, // 67: elephant.repository.Metrics.GetKinds:input_type -> elephant.repository.GetMetricKindsRequest
+	69, // 68: elephant.repository.Metrics.RegisterLabel:input_type -> elephant.repository.RegisterMetricLabelRequest
+	71, // 69: elephant.repository.Metrics.DeleteLabel:input_type -> elephant.repository.DeleteMetricLabelRequest
+	73, // 70: elephant.repository.Metrics.GetLabels:input_type -> elephant.repository.GetMetricLabelsRequest
+	76, // 71: elephant.repository.Metrics.RegisterMetric:input_type -> elephant.repository.RegisterMetricRequest
+	30, // 72: elephant.repository.Documents.Get:output_type -> elephant.repository.GetDocumentResponse
+	32, // 73: elephant.repository.Documents.GetHistory:output_type -> elephant.repository.GetHistoryResponse
+	36, // 74: elephant.repository.Documents.Update:output_type -> elephant.repository.UpdateResponse
+	38, // 75: elephant.repository.Documents.Validate:output_type -> elephant.repository.ValidateResponse
+	45, // 76: elephant.repository.Documents.Delete:output_type -> elephant.repository.DeleteDocumentResponse
+	47, // 77: elephant.repository.Documents.GetMeta:output_type -> elephant.repository.GetMetaResponse
+	4,  // 78: elephant.repository.Documents.Eventlog:output_type -> elephant.repository.GetEventlogResponse
+	2,  // 79: elephant.repository.Documents.GetStatusHistory:output_type -> elephant.repository.GetStatusHistoryReponse
+	54, // 80: elephant.repository.Schemas.Register:output_type -> elephant.repository.RegisterSchemaResponse
+	56, // 81: elephant.repository.Schemas.SetActive:output_type -> elephant.repository.SetActiveSchemaResponse
+	58, // 82: elephant.repository.Schemas.Get:output_type -> elephant.repository.GetSchemaResponse
+	60, // 83: elephant.repository.Schemas.GetAllActive:output_type -> elephant.repository.GetAllActiveSchemasResponse
+	23, // 84: elephant.repository.Workflows.UpdateStatus:output_type -> elephant.repository.UpdateStatusResponse
+	21, // 85: elephant.repository.Workflows.GetStatuses:output_type -> elephant.repository.GetStatusesResponse
+	26, // 86: elephant.repository.Workflows.CreateStatusRule:output_type -> elephant.repository.CreateStatusRuleResponse
+	28, // 87: elephant.repository.Workflows.DeleteStatusRule:output_type -> elephant.repository.DeleteStatusRuleResponse
+	18, // 88: elephant.repository.Workflows.GetStatusRules:output_type -> elephant.repository.GetStatusRulesResponse
+	16, // 89: elephant.repository.Reports.Update:output_type -> elephant.repository.UpdateReportResponse
+	11, // 90: elephant.repository.Reports.Get:output_type -> elephant.repository.GetReportResponse
+	7,  // 91: elephant.repository.Reports.Run:output_type -> elephant.repository.RunReportResponse
+	9,  // 92: elephant.repository.Reports.Test:output_type -> elephant.repository.TestReportResponse
+	63, // 93: elephant.repository.Metrics.RegisterKind:output_type -> elephant.repository.RegisterMetricKindResponse
+	65, // 94: elephant.repository.Metrics.DeleteKind:output_type -> elephant.repository.DeleteMetricKindResponse
+	67, // 95: elephant.repository.Metrics.GetKinds:output_type -> elephant.repository.GetMetricKindsResponse
+	70, // 96: elephant.repository.Metrics.RegisterLabel:output_type -> elephant.repository.RegisterMetricLabelResponse
+	72, // 97: elephant.repository.Metrics.DeleteLabel:output_type -> elephant.repository.DeleteMetricLabelResponse
+	74, // 98: elephant.repository.Metrics.GetLabels:output_type -> elephant.repository.GetMetricLabelsResponse
+	77, // 99: elephant.repository.Metrics.RegisterMetric:output_type -> elephant.repository.RegisterMetricResponse
+	72, // [72:100] is the sub-list for method output_type
+	44, // [44:72] is the sub-list for method input_type
+	44, // [44:44] is the sub-list for extension type_name
+	44, // [44:44] is the sub-list for extension extendee
+	0,  // [0:44] is the sub-list for field type_name
 }
 
 func init() { file_rpc_repository_service_proto_init() }
@@ -6127,19 +6328,44 @@ func file_rpc_repository_service_proto_init() {
 				return nil
 			}
 		}
+		file_rpc_repository_service_proto_msgTypes[75].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*RegisterMetricRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_rpc_repository_service_proto_msgTypes[76].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*RegisterMetricResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_rpc_repository_service_proto_rawDesc,
-			NumEnums:      0,
-			NumMessages:   83,
+			NumEnums:      1,
+			NumMessages:   85,
 			NumExtensions: 0,
 			NumServices:   5,
 		},
 		GoTypes:           file_rpc_repository_service_proto_goTypes,
 		DependencyIndexes: file_rpc_repository_service_proto_depIdxs,
+		EnumInfos:         file_rpc_repository_service_proto_enumTypes,
 		MessageInfos:      file_rpc_repository_service_proto_msgTypes,
 	}.Build()
 	File_rpc_repository_service_proto = out.File

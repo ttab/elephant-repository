@@ -155,3 +155,38 @@ func (m *MetricsService) RegisterLabel(
 
 	return &repository.RegisterMetricLabelResponse{}, nil
 }
+
+// RegisterMetric implements repository.Metrics.
+func (m *MetricsService) RegisterMetric(
+	ctx context.Context,
+	req *repository.RegisterMetricRequest,
+) (*repository.RegisterMetricResponse, error) {
+	err := requireAnyScope(ctx, "metrics_admin", "metrics_write")
+	if err != nil {
+		return nil, err
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Kind == "" {
+		return nil, twirp.RequiredArgumentError("kind")
+	}
+
+	err = m.store.RegisterMetric(ctx, Metric{
+		Uuid:  docUUID,
+		Kind:  req.Kind,
+		Label: req.Label,
+		Value: req.Value,
+	})
+	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+		return nil, twirp.FailedPrecondition.Error(err.Error())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
+	return &repository.RegisterMetricResponse{}, nil
+}

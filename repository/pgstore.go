@@ -1344,7 +1344,9 @@ func (s *PGDocStore) RegisterMetricKind(
 	return s.withTX(ctx, "register metric kind", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
-		err := q.RegisterMetricKind(ctx, name)
+		err := q.RegisterMetricKind(ctx, postgres.RegisterMetricKindParams{
+			Name: name,
+		})
 		if internal.IsConstraintError(err, "metric_kind_pkey") {
 			return DocStoreErrorf(ErrCodeExists,
 				"metric kind already exists")
@@ -1432,6 +1434,32 @@ func (s *PGDocStore) GetMetricLabels(
 	}
 
 	return res, nil
+}
+
+// RegisterMetric implements MetricStore.
+func (s *PGDocStore) RegisterMetric(ctx context.Context, metric Metric) error {
+	fmt.Println(metric)
+	return s.withTX(ctx, "register metric", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.RegisterMetric(ctx, postgres.RegisterMetricParams{
+			Uuid:  metric.Uuid,
+			Kind:  metric.Kind,
+			Label: metric.Label,
+			Value: internal.PGBigint(metric.Value),
+		})
+		if internal.IsConstraintError(err, "metric_kind_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "metric kind not found")
+		} else if internal.IsConstraintError(err, "metric_label_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "metric label not found")
+		} else if internal.IsConstraintError(err, "metric_uuid_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
+		} else if err != nil {
+			return fmt.Errorf("failed to save to database: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func (s *PGDocStore) updateACL(

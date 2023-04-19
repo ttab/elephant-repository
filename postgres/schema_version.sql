@@ -21,6 +21,7 @@ SET row_security = off;
 --
 
 INSERT INTO public.schema_version (version) VALUES (4);
+INSERT INTO public.schema_version (version) VALUES (4);
 
 
 --

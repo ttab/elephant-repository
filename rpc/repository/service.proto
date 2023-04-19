@@ -75,6 +75,8 @@ service Metrics {
   rpc DeleteLabel(DeleteMetricLabelRequest) returns (DeleteMetricLabelResponse);
   // List all metric labels
   rpc GetLabels(GetMetricLabelsRequest) returns (GetMetricLabelsResponse);
+  // Register a data point
+  rpc RegisterMetric(RegisterMetricRequest) returns (RegisterMetricResponse);
 }
 
 message GetStatusHistoryRequest {
@@ -535,6 +537,7 @@ message Schema {
 
 message RegisterMetricKindRequest {
   string name = 1;
+  MetricAggregation aggregation = 2; 
 }
 
 message RegisterMetricKindResponse {}
@@ -552,8 +555,14 @@ message GetMetricKindsResponse {
 }
 
 message MetricKind {
-  int64 id = 1;
-  string name = 2;
+  string name = 1;
+  MetricAggregation aggregation = 2;
+}
+
+enum MetricAggregation {
+  DISCRETE = 0;
+  SUM = 1;
+  AVG = 2;
 }
 
 message RegisterMetricLabelRequest {
@@ -578,3 +587,12 @@ message MetricLabel {
   int64 id = 1;
   string name = 2;
 }
+
+message RegisterMetricRequest {
+  string uuid = 1;
+  string kind = 2;
+  string label = 3;
+  int64 value = 5;
+}
+
+message RegisterMetricResponse {}
