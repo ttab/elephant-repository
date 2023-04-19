@@ -192,7 +192,7 @@ func runServer(c *cli.Context) error {
 			log.Debug("setting up replication")
 
 			repl, err := repository.NewPGReplication(
-				log, dbpool, conf.DB,
+				log, dbpool, conf.DB, "eventlogslot",
 				prometheus.DefaultRegisterer)
 			if err != nil {
 				return fmt.Errorf(

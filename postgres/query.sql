@@ -88,7 +88,7 @@ SELECT create_version(
 -- name: CreateStatus :exec
 SELECT create_status(
        @uuid::uuid, @name::varchar(32), @id::bigint, @version::bigint,
-       @created::timestamptz, @creator_uri::text, @meta::jsonb
+       @type::text, @created::timestamptz, @creator_uri::text, @meta::jsonb
 );
 
 -- name: DeleteDocument :exec
@@ -178,8 +178,8 @@ FROM document AS d
 WHERE d.uuid = @uuid;
 
 -- name: InsertACLAuditEntry :exec
-INSERT INTO acl_audit(uuid, updated, updater_uri, state)
-SELECT @uuid::uuid, @updated::timestamptz, @updater_uri::text, json_agg(l)
+INSERT INTO acl_audit(uuid, type, updated, updater_uri, state)
+SELECT @uuid::uuid, @type, @updated::timestamptz, @updater_uri::text, json_agg(l)
 FROM (
        SELECT uri, permissions
        FROM acl

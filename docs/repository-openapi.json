@@ -299,6 +299,9 @@
           "timestamp": {
             "type": "string"
           },
+          "type": {
+            "type": "string"
+          },
           "updater_uri": {
             "type": "string"
           },

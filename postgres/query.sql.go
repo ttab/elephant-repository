@@ -79,7 +79,7 @@ func (q *Queries) ConfigureEventsink(ctx context.Context, arg ConfigureEventsink
 const createStatus = `-- name: CreateStatus :exec
 SELECT create_status(
        $1::uuid, $2::varchar(32), $3::bigint, $4::bigint,
-       $5::timestamptz, $6::text, $7::jsonb
+       $5::text, $6::timestamptz, $7::text, $8::jsonb
 )
 `
 
@@ -88,6 +88,7 @@ type CreateStatusParams struct {
 	Name       string
 	ID         int64
 	Version    int64
+	Type       string
 	Created    pgtype.Timestamptz
 	CreatorUri string
 	Meta       []byte
@@ -99,6 +100,7 @@ func (q *Queries) CreateStatus(ctx context.Context, arg CreateStatusParams) erro
 		arg.Name,
 		arg.ID,
 		arg.Version,
+		arg.Type,
 		arg.Created,
 		arg.CreatorUri,
 		arg.Meta,
@@ -1073,8 +1075,8 @@ func (q *Queries) GranteesWithPermission(ctx context.Context, arg GranteesWithPe
 }
 
 const insertACLAuditEntry = `-- name: InsertACLAuditEntry :exec
-INSERT INTO acl_audit(uuid, updated, updater_uri, state)
-SELECT $1::uuid, $2::timestamptz, $3::text, json_agg(l)
+INSERT INTO acl_audit(uuid, type, updated, updater_uri, state)
+SELECT $1::uuid, $2, $3::timestamptz, $4::text, json_agg(l)
 FROM (
        SELECT uri, permissions
        FROM acl
@@ -1084,12 +1086,18 @@ FROM (
 
 type InsertACLAuditEntryParams struct {
 	Uuid       uuid.UUID
+	Type       pgtype.Text
 	Updated    pgtype.Timestamptz
 	UpdaterUri string
 }
 
 func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEntryParams) error {
-	_, err := q.db.Exec(ctx, insertACLAuditEntry, arg.Uuid, arg.Updated, arg.UpdaterUri)
+	_, err := q.db.Exec(ctx, insertACLAuditEntry,
+		arg.Uuid,
+		arg.Type,
+		arg.Updated,
+		arg.UpdaterUri,
+	)
 	return err
 }
 

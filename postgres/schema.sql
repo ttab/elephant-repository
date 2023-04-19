@@ -46,6 +46,36 @@ $$;
 ALTER FUNCTION public.create_status(uuid uuid, name character varying, current_id bigint, version bigint, created timestamp with time zone, creator_uri text, meta jsonb) OWNER TO repository;
 
 --
+-- Name: create_status(uuid, character varying, bigint, bigint, text, timestamp with time zone, text, jsonb); Type: FUNCTION; Schema: public; Owner: repository
+--
+
+CREATE FUNCTION public.create_status(uuid uuid, name character varying, current_id bigint, version bigint, type text, created timestamp with time zone, creator_uri text, meta jsonb) RETURNS void
+    LANGUAGE sql
+    AS $$
+   insert into status_heads(
+               uuid, name, type, version, current_id, updated, updater_uri
+          )
+          values(
+               uuid, name, type, version, current_id, created, creator_uri
+          )
+          on conflict (uuid, name) do update
+             set updated = create_status.created,
+                 updater_uri = create_status.creator_uri,
+                 current_id = create_status.current_id,
+                 version = create_status.version;
+
+   insert into document_status(
+               uuid, name, id, version, created, creator_uri, meta
+          )
+          values(
+               uuid, name, current_id, version, created, creator_uri, meta
+          );
+$$;
+
+
+ALTER FUNCTION public.create_status(uuid uuid, name character varying, current_id bigint, version bigint, type text, created timestamp with time zone, creator_uri text, meta jsonb) OWNER TO repository;
+
+--
 -- Name: create_version(uuid, bigint, timestamp with time zone, text, jsonb, jsonb); Type: FUNCTION; Schema: public; Owner: repository
 --
 
@@ -126,7 +156,8 @@ CREATE TABLE public.acl_audit (
     updated timestamp with time zone NOT NULL,
     updater_uri text NOT NULL,
     state jsonb NOT NULL,
-    archived boolean DEFAULT false NOT NULL
+    archived boolean DEFAULT false NOT NULL,
+    type text
 );
 
 
@@ -395,7 +426,9 @@ CREATE TABLE public.status_heads (
     name character varying(32) NOT NULL,
     current_id bigint NOT NULL,
     updated timestamp with time zone NOT NULL,
-    updater_uri text NOT NULL
+    updater_uri text NOT NULL,
+    type text,
+    version bigint
 );
 
 ALTER TABLE ONLY public.status_heads REPLICA IDENTITY FULL;

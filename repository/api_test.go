@@ -10,10 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/internal/test"
 	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
+	"google.golang.org/protobuf/testing/protocmp"
 )
 
 func baseDocument(uuid, uri string) *repository.Document {
@@ -35,11 +39,12 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver: true,
+		RunArchiver:   true,
+		RunReplicator: true,
 	})
 
 	client := tc.DocumentsClient(t,
-		test.StandardClaims(t, "doc_read doc_write doc_delete"))
+		test.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
 	ctx := test.Context(t)
 
@@ -137,6 +142,31 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		Version: 1,
 	})
 	test.MustNot(t, err, "expected get of old version to fail after delete")
+
+	var golden repository.GetEventlogResponse
+
+	err = internal.UnmarshalFile(
+		"testdata/TestIntegrationBasicCrud/eventlog.json",
+		&golden)
+	test.Must(t, err, "read golden file for expected eventlog items")
+
+	events, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
+		// One more event than we expect, so that we catch the
+		// unexpected.
+		BatchSize:   int32(len(golden.Items)) + 1,
+		BatchWaitMs: 200,
+	})
+	test.Must(t, err, "get eventlog")
+
+	diff := cmp.Diff(&golden, events,
+		protocmp.Transform(),
+		cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
+			return k == "timestamp"
+		}),
+	)
+	if diff != "" {
+		t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
+	}
 }
 
 func TestIntegrationPasswordGrant(t *testing.T) {
@@ -240,10 +270,12 @@ func TestIntegrationStatus(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
-	tc := testingAPIServer(t, logger, testingServerOptions{})
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunReplicator: true,
+	})
 
 	client := tc.DocumentsClient(t,
-		test.StandardClaims(t, "doc_read doc_write doc_delete"))
+		test.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
 	ctx := test.Context(t)
 
@@ -268,6 +300,14 @@ func TestIntegrationStatus(t *testing.T) {
 	for n := 0; n < numStatuses; n++ {
 		meta := map[string]string{
 			"update_number": strconv.Itoa(n),
+		}
+
+		if n%3 == 0 {
+			docRes, err = client.Update(ctx, &repository.UpdateRequest{
+				Uuid:     docUUID,
+				Document: doc,
+			})
+			test.Must(t, err, "update article")
 		}
 
 		_, err := client.Update(ctx, &repository.UpdateRequest{
@@ -322,6 +362,31 @@ func TestIntegrationStatus(t *testing.T) {
 	for i, s := range fromLastRes.Statuses {
 		test.Equal(t, int64(numStatuses-i-pageSize), s.Id,
 			"expect the %dnth status to have the correct ID", i+1)
+	}
+
+	var golden repository.GetEventlogResponse
+
+	err = internal.UnmarshalFile(
+		"testdata/TestIntegrationStatus/eventlog.json",
+		&golden)
+	test.Must(t, err, "read golden file for expected eventlog items")
+
+	events, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
+		// One more event than we expect, so that we catch the
+		// unexpected.
+		BatchSize:   int32(len(golden.Items)) + 1,
+		BatchWaitMs: 200,
+	})
+	test.Must(t, err, "get eventlog")
+
+	diff := cmp.Diff(&golden, events,
+		protocmp.Transform(),
+		cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
+			return k == "timestamp"
+		}),
+	)
+	if diff != "" {
+		t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
 	}
 }
 
