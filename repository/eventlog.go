@@ -383,6 +383,13 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 
 		evt = e
 	case "delete_record":
+		e, err := parseDeleteMessage(msg)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to parse delete_record table message: %w", err)
+		}
+
+		evt = e
 	case "acl_audit":
 		e, err := parseACLMessage(msg)
 		if err != nil {
@@ -400,6 +407,40 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 	}
 
 	return pr.recordEvent(evt)
+}
+
+func parseDeleteMessage(msg replMessage) (Event, error) {
+	evt := Event{
+		Event: TypeDeleteDocument,
+	}
+
+	docUUID, ok := msg.NewValues["uuid"].([16]uint8)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract uuid")
+	}
+
+	evt.UUID = docUUID
+
+	created, ok := msg.NewValues["created"].(time.Time)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract created time")
+	}
+
+	evt.Timestamp = created
+
+	creator, ok := msg.NewValues["creator_uri"].(string)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract creator_uri")
+	}
+
+	evt.Updater = creator
+
+	docType, ok := msg.NewValues["type"].(string)
+	if ok {
+		evt.Type = docType
+	}
+
+	return evt, nil
 }
 
 func parseACLMessage(msg replMessage) (Event, error) {
