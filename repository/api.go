@@ -113,7 +113,7 @@ func (a *DocumentsService) Eventlog(
 			"no anonymous requests allowed")
 	}
 
-	if !auth.Claims.HasAnyScope("superuser", "read_eventlog") {
+	if !auth.Claims.HasAnyScope("superuser", "eventlog_read") {
 		return nil, twirp.PermissionDenied.Error(
 			"no eventlog read permission")
 	}
