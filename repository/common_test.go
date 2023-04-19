@@ -111,8 +111,9 @@ func (tc *TestContext) SchemasClient(
 }
 
 type testingServerOptions struct {
-	RunArchiver  bool
-	SharedSecret string
+	RunArchiver   bool
+	RunReplicator bool
+	SharedSecret  string
 }
 
 func testingAPIServer(
@@ -164,6 +165,24 @@ func testingAPIServer(
 		test.Must(t, err, "run archiver")
 
 		t.Cleanup(archiver.Stop)
+	}
+
+	if opts.RunReplicator {
+		repl, err := repository.NewPGReplication(
+			logger, dbpool, env.PostgresURI, t.Name(),
+			prometheus.NewRegistry(),
+		)
+		test.Must(t, err, "create replicator")
+
+		go repl.Run(ctx)
+
+		t.Cleanup(repl.Stop)
+
+		select {
+		case <-ctx.Done():
+			t.Fatal("failed to start replicator")
+		case <-repl.Started():
+		}
 	}
 
 	validator, err := repository.NewValidator(

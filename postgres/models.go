@@ -22,6 +22,7 @@ type AclAudit struct {
 	UpdaterUri string
 	State      []byte
 	Archived   bool
+	Type       pgtype.Text
 }
 
 type ActiveSchema struct {
@@ -142,6 +143,8 @@ type StatusHead struct {
 	CurrentID  int64
 	Updated    pgtype.Timestamptz
 	UpdaterUri string
+	Type       pgtype.Text
+	Version    pgtype.Int8
 }
 
 type StatusRule struct {

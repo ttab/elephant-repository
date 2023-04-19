@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,9 +45,14 @@ type Event struct {
 }
 
 type PGReplication struct {
-	pool   *pgxpool.Pool
-	dbURI  string
-	logger *slog.Logger
+	pool     *pgxpool.Pool
+	dbURI    string
+	logger   *slog.Logger
+	slotName string
+
+	cancel  func()
+	started chan struct{}
+	stopped chan struct{}
 
 	restarts prometheus.Counter
 	events   *prometheus.CounterVec
@@ -56,6 +62,7 @@ func NewPGReplication(
 	logger *slog.Logger,
 	pool *pgxpool.Pool,
 	dbURI string,
+	slotName string,
 	metricsRegisterer prometheus.Registerer,
 ) (*PGReplication, error) {
 	if metricsRegisterer == nil {
@@ -87,21 +94,33 @@ func NewPGReplication(
 		pool:     pool,
 		logger:   logger,
 		dbURI:    dbURI,
+		slotName: slotName,
 		restarts: restarts,
 		events:   events,
+		started:  make(chan struct{}),
+		stopped:  make(chan struct{}),
 	}, nil
 }
 
 func (pr *PGReplication) Run(ctx context.Context) {
 	const restartWaitSeconds = 10
 
+	rCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	pr.cancel = cancel
+
+	defer close(pr.stopped)
+
 	for {
-		err := pr.startReplication(ctx)
-		if err != nil {
+		err := pr.startReplication(rCtx)
+		if errors.Is(err, context.Canceled) {
+			return
+		} else if err != nil {
 			pr.restarts.Inc()
 
 			pr.logger.ErrorCtx(
-				ctx, "replication error, restarting",
+				rCtx, "replication error, restarting",
 				internal.LogKeyError, err,
 				internal.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
 			)
@@ -109,9 +128,26 @@ func (pr *PGReplication) Run(ctx context.Context) {
 
 		select {
 		case <-time.After(restartWaitSeconds * time.Second):
-		case <-ctx.Done():
+		case <-rCtx.Done():
 			return
 		}
+	}
+}
+
+func (pr *PGReplication) Started() <-chan struct{} {
+	return pr.started
+}
+
+func (pr *PGReplication) Stop() {
+	if pr.cancel == nil {
+		return
+	}
+
+	pr.cancel()
+
+	select {
+	case <-time.After(10 * time.Second):
+	case <-pr.stopped:
 	}
 }
 
@@ -132,7 +168,15 @@ func (pr *PGReplication) startReplication(
 		return fmt.Errorf("failed to acquire replication lock: %w", err)
 	}
 
-	conn, err := pgconn.Connect(ctx, pr.dbURI+"?replication=database")
+	replConnString, err := internal.SetConnStringVariables(
+		pr.dbURI, url.Values{
+			"replication": []string{"database"},
+		})
+	if err != nil {
+		return fmt.Errorf("failed to create connection string: %w", err)
+	}
+
+	conn, err := pgconn.Connect(ctx, replConnString)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to create replication connection: %w", err)
@@ -147,7 +191,7 @@ func (pr *PGReplication) startReplication(
 
 	if !slotInfo.Exists {
 		_, err = pglogrepl.CreateReplicationSlot(ctx,
-			conn, "eventlogslot", "pgoutput",
+			conn, pr.slotName, "pgoutput",
 			pglogrepl.CreateReplicationSlotOptions{
 				Mode: pglogrepl.LogicalReplication,
 			})
@@ -157,12 +201,18 @@ func (pr *PGReplication) startReplication(
 	}
 
 	err = pglogrepl.StartReplication(
-		ctx, conn, "eventlogslot", 0,
+		ctx, conn, pr.slotName, 0,
 		pglogrepl.StartReplicationOptions{PluginArgs: []string{
 			"proto_version '1'", "publication_names 'eventlog'",
 		}})
 	if err != nil {
 		return fmt.Errorf("failed to start replication: %w", err)
+	}
+
+	select {
+	case <-pr.started:
+	default:
+		close(pr.started)
 	}
 
 	err = pr.replicationLoop(ctx, conn)
@@ -383,6 +433,13 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 
 		evt = e
 	case "delete_record":
+		e, err := parseDeleteMessage(msg)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to parse delete_record table message: %w", err)
+		}
+
+		evt = e
 	case "acl_audit":
 		e, err := parseACLMessage(msg)
 		if err != nil {
@@ -400,6 +457,40 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 	}
 
 	return pr.recordEvent(evt)
+}
+
+func parseDeleteMessage(msg replMessage) (Event, error) {
+	evt := Event{
+		Event: TypeDeleteDocument,
+	}
+
+	docUUID, ok := msg.NewValues["uuid"].([16]uint8)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract uuid")
+	}
+
+	evt.UUID = docUUID
+
+	created, ok := msg.NewValues["created"].(time.Time)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract created time")
+	}
+
+	evt.Timestamp = created
+
+	creator, ok := msg.NewValues["creator_uri"].(string)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract creator_uri")
+	}
+
+	evt.Updater = creator
+
+	docType, ok := msg.NewValues["type"].(string)
+	if ok {
+		evt.Type = docType
+	}
+
+	return evt, nil
 }
 
 func parseACLMessage(msg replMessage) (Event, error) {
@@ -424,6 +515,13 @@ func parseACLMessage(msg replMessage) (Event, error) {
 	updater, ok := msg.NewValues["updater_uri"].(string)
 	if !ok {
 		return Event{}, fmt.Errorf("failed to extract updater_uri")
+	}
+
+	evt.Updater = updater
+
+	docType, ok := msg.NewValues["type"].(string)
+	if ok {
+		evt.Type = docType
 	}
 
 	stateSlice, ok := msg.NewValues["state"].([]interface{})
@@ -464,8 +562,6 @@ func parseACLMessage(msg replMessage) (Event, error) {
 			Permissions: perms,
 		})
 	}
-
-	evt.Updater = updater
 
 	return evt, nil
 }
@@ -510,6 +606,16 @@ func parseStatusHeadsMessage(msg replMessage) (Event, error) {
 	}
 
 	evt.Updater = updater
+
+	docType, ok := msg.NewValues["type"].(string)
+	if ok {
+		evt.Type = docType
+	}
+
+	docVersion, ok := msg.NewValues["version"].(int64)
+	if ok {
+		evt.Version = docVersion
+	}
 
 	name, ok := msg.NewValues["name"].(string)
 	if !ok {

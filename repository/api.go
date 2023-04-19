@@ -113,7 +113,7 @@ func (a *DocumentsService) Eventlog(
 			"no anonymous requests allowed")
 	}
 
-	if !auth.Claims.HasAnyScope("superuser", "read_eventlog") {
+	if !auth.Claims.HasAnyScope("superuser", "eventlog_read") {
 		return nil, twirp.PermissionDenied.Error(
 			"no eventlog read permission")
 	}
@@ -247,6 +247,7 @@ func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
 		ID:        evt.Id,
 		Event:     EventType(evt.Event),
 		UUID:      docUUID,
+		Type:      evt.Type,
 		Timestamp: timestamp,
 		Updater:   evt.UpdaterUri,
 		Version:   evt.Version,
@@ -270,6 +271,7 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		Id:         evt.ID,
 		Event:      string(evt.Event),
 		Uuid:       evt.UUID.String(),
+		Type:       evt.Type,
 		Timestamp:  evt.Timestamp.Format(time.RFC3339),
 		UpdaterUri: evt.Updater,
 		Version:    evt.Version,

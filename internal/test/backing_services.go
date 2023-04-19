@@ -73,8 +73,8 @@ func SetUpBackingServices(t T, skipMigrations bool) Environment {
 
 	ident := pgx.Identifier{t.Name()}.Sanitize()
 
-	_, err = adminConn.Exec(ctx, fmt.Sprintf(
-		"CREATE ROLE %s WITH LOGIN PASSWORD '%s'",
+	_, err = adminConn.Exec(ctx, fmt.Sprintf(`
+CREATE ROLE %s WITH LOGIN PASSWORD '%s' REPLICATION`,
 		ident, t.Name()))
 	if err != nil {
 		t.Fatalf("failed to create user: %v", err)

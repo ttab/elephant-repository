@@ -712,6 +712,8 @@ func (s *PGDocStore) Update(
 		return nil, err
 	}
 
+	docType := info.Info.Type
+
 	up := DocumentUpdate{
 		Version: info.Info.CurrentVersion,
 		Created: update.Updated,
@@ -727,6 +729,8 @@ func (s *PGDocStore) Update(
 				"cannot change the document type from %q",
 				info.Info.Type)
 		}
+
+		docType = update.Document.Type
 
 		err = q.CreateVersion(ctx, postgres.CreateVersionParams{
 			Uuid:         update.UUID,
@@ -800,6 +804,7 @@ func (s *PGDocStore) Update(
 			Name:       stat.Name,
 			ID:         statusID,
 			Version:    status.Version,
+			Type:       docType,
 			Created:    internal.PGTime(up.Created),
 			CreatorUri: up.Creator,
 			Meta:       statusMeta[i],
@@ -817,7 +822,7 @@ func (s *PGDocStore) Update(
 		updateACL = update.DefaultACL
 	}
 
-	err = s.updateACL(ctx, q, update.UUID, updateACL)
+	err = s.updateACL(ctx, q, update.UUID, docType, updateACL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update ACL: %w", err)
 	}
@@ -1335,7 +1340,7 @@ func (s *PGDocStore) UpdateReport(
 
 func (s *PGDocStore) updateACL(
 	ctx context.Context, q *postgres.Queries,
-	docUUID uuid.UUID, updateACL []ACLEntry,
+	docUUID uuid.UUID, docType string, updateACL []ACLEntry,
 ) error {
 	if len(updateACL) == 0 {
 		return nil
@@ -1389,6 +1394,7 @@ func (s *PGDocStore) updateACL(
 
 	err := q.InsertACLAuditEntry(ctx, postgres.InsertACLAuditEntryParams{
 		Uuid:       docUUID,
+		Type:       internal.PGTextOrNull(docType),
 		Updated:    internal.PGTime(time.Now()),
 		UpdaterUri: auth.Claims.Subject,
 	})
