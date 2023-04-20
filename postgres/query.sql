@@ -362,8 +362,13 @@ VALUES (@name, @aggregation);
 DELETE FROM metric_kind
 WHERE name = @name;
 
+-- name: GetMetricKind :one
+SELECT name, aggregation
+FROM metric_kind
+WHERE name = @name;
+
 -- name: GetMetricKinds :many
-SELECT name
+SELECT name, aggregation
 FROM metric_kind
 ORDER BY name;
 
@@ -380,6 +385,14 @@ SELECT name
 FROM metric_label
 ORDER BY name;
 
--- name: RegisterMetric :exec
+-- name: RegisterOrReplaceMetric :exec
 INSERT INTO metric(uuid, kind, label, value)
-VALUES (@uuid, @kind, @label, @value);
+VALUES (@uuid, @kind, @label, @value)
+ON CONFLICT ON CONSTRAINT metric_pkey DO UPDATE 
+SET value = @value;
+
+-- name: RegisterOrIncrementMetric :exec
+INSERT INTO metric(uuid, kind, label, value)
+VALUES (@uuid, @kind, @label, @value)
+ON CONFLICT ON CONSTRAINT metric_pkey DO UPDATE 
+SET value = value + @value;

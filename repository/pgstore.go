@@ -16,6 +16,7 @@ import (
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
 	"github.com/ttab/elephant/revisor"
+	"github.com/ttab/elephant/rpc/repository"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
@@ -1339,13 +1340,14 @@ func (s *PGDocStore) UpdateReport(
 }
 
 func (s *PGDocStore) RegisterMetricKind(
-	ctx context.Context, name string,
+	ctx context.Context, name string, Aggregation repository.MetricAggregation,
 ) error {
 	return s.withTX(ctx, "register metric kind", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.RegisterMetricKind(ctx, postgres.RegisterMetricKindParams{
 			Name: name,
+			Aggregation: int16(Aggregation),
 		})
 		if internal.IsConstraintError(err, "metric_kind_pkey") {
 			return DocStoreErrorf(ErrCodeExists,
@@ -1369,6 +1371,23 @@ func (s *PGDocStore) DeleteMetricKind(
 	return nil
 }
 
+func (s *PGDocStore) GetMetricKind(
+	ctx context.Context, name string,
+) (*MetricKind, error) {
+	kind, err := s.reader.GetMetricKind(ctx, name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, DocStoreErrorf(
+			ErrCodeNotFound, "metric kind not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch metric kind: %w", err)
+	}
+	return &MetricKind{
+		Name:        kind.Name,
+		Aggregation: repository.MetricAggregation(kind.Aggregation),
+	}, nil
+}
+
 func (s *PGDocStore) GetMetricKinds(
 	ctx context.Context,
 ) ([]*MetricKind, error) {
@@ -1381,7 +1400,8 @@ func (s *PGDocStore) GetMetricKinds(
 
 	for i := range rows {
 		res[i] = &MetricKind{
-			Name: rows[i],
+			Name:        rows[i].Name,
+			Aggregation: repository.MetricAggregation(rows[i].Aggregation),
 		}
 	}
 
@@ -1442,19 +1462,22 @@ func (s *PGDocStore) RegisterMetric(ctx context.Context, metric Metric) error {
 	return s.withTX(ctx, "register metric", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
-		err := q.RegisterMetric(ctx, postgres.RegisterMetricParams{
+		err := q.RegisterOrReplaceMetric(ctx, postgres.RegisterOrReplaceMetricParams{
 			Uuid:  metric.Uuid,
 			Kind:  metric.Kind,
 			Label: metric.Label,
-			Value: internal.PGBigint(metric.Value),
+			Value: metric.Value,
 		})
 		if internal.IsConstraintError(err, "metric_kind_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "metric kind not found")
-		} else if internal.IsConstraintError(err, "metric_label_fkey") {
+		}
+		if internal.IsConstraintError(err, "metric_label_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "metric label not found")
-		} else if internal.IsConstraintError(err, "metric_uuid_fkey") {
+		}
+		if internal.IsConstraintError(err, "metric_uuid_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
-		} else if err != nil {
+		}
+		if err != nil {
 			return fmt.Errorf("failed to save to database: %w", err)
 		}
 

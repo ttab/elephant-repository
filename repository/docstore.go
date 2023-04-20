@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/revisor"
+	"github.com/ttab/elephant/rpc/repository"
 )
 
 type DocStore interface {
@@ -89,11 +90,14 @@ type ReportStore interface {
 
 type MetricStore interface {
 	RegisterMetricKind(
-		ctx context.Context, name string,
+		ctx context.Context, name string, aggregation repository.MetricAggregation,
 	) error
 	DeleteMetricKind(
 		ctx context.Context, name string,
 	) error
+	GetMetricKind(
+		ctx context.Context, name string,
+	) (*MetricKind, error)
 	GetMetricKinds(
 		ctx context.Context,
 	) ([]*MetricKind, error)
@@ -231,7 +235,8 @@ type StatusUpdate struct {
 }
 
 type MetricKind struct {
-	Name string
+	Name        string
+	Aggregation repository.MetricAggregation
 }
 
 type MetricLabel struct {

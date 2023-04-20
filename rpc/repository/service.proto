@@ -560,9 +560,9 @@ message MetricKind {
 }
 
 enum MetricAggregation {
-  DISCRETE = 0;
-  SUM = 1;
-  AVG = 2;
+  NONE = 0;
+  REPLACE = 1;
+  INCREMENT = 2;
 }
 
 message RegisterMetricLabelRequest {

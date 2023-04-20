@@ -36,11 +36,14 @@ func (m *MetricsService) GetKinds(
 	}
 
 	for i := range kinds {
+		fmt.Println(kinds[i])
 		res.Kinds = append(res.Kinds, &repository.MetricKind{
-			Name: kinds[i].Name,
+			Name:        kinds[i].Name,
+			Aggregation: kinds[i].Aggregation,
 		})
 	}
 
+	fmt.Println(res.Kinds)
 	return &res, nil
 }
 
@@ -76,7 +79,11 @@ func (m *MetricsService) RegisterKind(
 		return nil, twirp.RequiredArgumentError("name")
 	}
 
-	err = m.store.RegisterMetricKind(ctx, req.Name)
+	if req.Aggregation == 0 {
+		return nil, twirp.RequiredArgumentError("aggregation")
+	}
+
+	err = m.store.RegisterMetricKind(ctx, req.Name, req.Aggregation)
 	if IsDocStoreErrorCode(err, ErrCodeExists) {
 		return nil, twirp.FailedPrecondition.Error(
 			"metric kind already exists")
@@ -174,6 +181,15 @@ func (m *MetricsService) RegisterMetric(
 	if req.Kind == "" {
 		return nil, twirp.RequiredArgumentError("kind")
 	}
+
+	kind, err := m.store.GetMetricKind(ctx, req.Kind)
+	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+		return nil, twirp.FailedPrecondition.Error(err.Error())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get metric kind: %w", err)
+	}
+	fmt.Println(*kind)
 
 	err = m.store.RegisterMetric(ctx, Metric{
 		Uuid:  docUUID,

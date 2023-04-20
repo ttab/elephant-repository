@@ -120,7 +120,7 @@ type Metric struct {
 	Uuid  uuid.UUID
 	Kind  string
 	Label string
-	Value pgtype.Int8
+	Value int64
 }
 
 type MetricKind struct {

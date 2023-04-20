@@ -610,9 +610,9 @@
       },
       "elephant.repository.MetricAggregation": {
         "enum": [
-          "DISCRETE",
-          "SUM",
-          "AVG"
+          "NONE",
+          "REPLACE",
+          "INCREMENT"
         ],
         "type": "string"
       },
