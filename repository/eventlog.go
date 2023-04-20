@@ -55,6 +55,7 @@ type PGReplication struct {
 	stopped chan struct{}
 
 	restarts prometheus.Counter
+	timeouts prometheus.Counter
 	events   *prometheus.CounterVec
 }
 
@@ -79,6 +80,16 @@ func NewPGReplication(
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
 
+	timeouts := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "elephant_replicator_wal_timeouts__total",
+			Help: "Number of times we have timed out waiting for ReceiveMessage.",
+		},
+	)
+	if err := metricsRegisterer.Register(timeouts); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
 	events := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "elephant_replicator_events_total",
@@ -96,6 +107,7 @@ func NewPGReplication(
 		dbURI:    dbURI,
 		slotName: slotName,
 		restarts: restarts,
+		timeouts: timeouts,
 		events:   events,
 		started:  make(chan struct{}),
 		stopped:  make(chan struct{}),
@@ -184,7 +196,7 @@ func (pr *PGReplication) startReplication(
 
 	defer conn.Close(context.Background())
 
-	slotInfo, err := pr.getSlotInfo(ctx, lockTx, "eventlogslot")
+	slotInfo, err := pr.getSlotInfo(ctx, lockTx, pr.slotName)
 	if err != nil {
 		return fmt.Errorf("failed to get slot information: %w", err)
 	}
@@ -256,6 +268,8 @@ func (pr *PGReplication) replicationLoop(
 
 		if err != nil {
 			if pgconn.Timeout(err) {
+				pr.timeouts.Inc()
+
 				continue
 			}
 
