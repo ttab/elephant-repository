@@ -1340,14 +1340,14 @@ func (s *PGDocStore) UpdateReport(
 }
 
 func (s *PGDocStore) RegisterMetricKind(
-	ctx context.Context, name string, Aggregation repository.MetricAggregation,
+	ctx context.Context, name string, aggregation repository.MetricAggregation,
 ) error {
 	return s.withTX(ctx, "register metric kind", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.RegisterMetricKind(ctx, postgres.RegisterMetricKindParams{
-			Name: name,
-			Aggregation: int16(Aggregation),
+			Name:        name,
+			Aggregation: int16(aggregation),
 		})
 		if internal.IsConstraintError(err, "metric_kind_pkey") {
 			return DocStoreErrorf(ErrCodeExists,
@@ -1378,10 +1378,10 @@ func (s *PGDocStore) GetMetricKind(
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, DocStoreErrorf(
 			ErrCodeNotFound, "metric kind not found")
-	}
-	if err != nil {
+	} else if err != nil {
 		return nil, fmt.Errorf("failed to fetch metric kind: %w", err)
 	}
+
 	return &MetricKind{
 		Name:        kind.Name,
 		Aggregation: repository.MetricAggregation(kind.Aggregation),
@@ -1458,7 +1458,6 @@ func (s *PGDocStore) GetMetricLabels(
 
 // RegisterMetric implements MetricStore.
 func (s *PGDocStore) RegisterOrReplaceMetric(ctx context.Context, metric Metric) error {
-	fmt.Println(metric)
 	return s.withTX(ctx, "register metric", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
@@ -1487,7 +1486,6 @@ func (s *PGDocStore) RegisterOrReplaceMetric(ctx context.Context, metric Metric)
 
 // RegisterMetric implements MetricStore.
 func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metric) error {
-	fmt.Println(metric)
 	return s.withTX(ctx, "register metric", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 

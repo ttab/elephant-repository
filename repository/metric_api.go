@@ -21,7 +21,7 @@ func NewMetricsService(store MetricStore) *MetricsService {
 // GetKinds implements repository.Metrics.
 func (m *MetricsService) GetKinds(
 	ctx context.Context,
-	req *repository.GetMetricKindsRequest,
+	_ *repository.GetMetricKindsRequest,
 ) (*repository.GetMetricKindsResponse, error) {
 	err := requireAnyScope(ctx, "metrics_admin") // TODO: correct scope
 	if err != nil {
@@ -95,7 +95,7 @@ func (m *MetricsService) RegisterKind(
 // GetLabels implements repository.Metrics.
 func (m *MetricsService) GetLabels(
 	ctx context.Context,
-	req *repository.GetMetricLabelsRequest,
+	_ *repository.GetMetricLabelsRequest,
 ) (*repository.GetMetricLabelsResponse, error) {
 	err := requireAnyScope(ctx, "metrics_admin") // TODO: correct scope
 	if err != nil {
@@ -183,8 +183,7 @@ func (m *MetricsService) RegisterMetric(
 	kind, err := m.store.GetMetricKind(ctx, req.Kind)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, twirp.FailedPrecondition.Error(err.Error())
-	}
-	if err != nil {
+	} else if err != nil {
 		return nil, fmt.Errorf("failed to get metric kind: %w", err)
 	}
 
@@ -196,7 +195,6 @@ func (m *MetricsService) RegisterMetric(
 			Label: req.Label,
 			Value: req.Value,
 		})
-		break
 
 	case repository.MetricAggregation_INCREMENT:
 		err = m.store.RegisterOrIncrementMetric(ctx, Metric{
@@ -205,16 +203,14 @@ func (m *MetricsService) RegisterMetric(
 			Label: req.Label,
 			Value: req.Value,
 		})
-		break
 
-	default:
+	case repository.MetricAggregation_NONE:
 		return nil, fmt.Errorf("unknown metric kind aggregation: %v", kind.Aggregation)
 	}
 
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, twirp.FailedPrecondition.Error(err.Error())
-	}
-	if err != nil {
+	} else if err != nil {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
 
