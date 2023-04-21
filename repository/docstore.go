@@ -110,7 +110,10 @@ type MetricStore interface {
 	GetMetricLabels(
 		ctx context.Context,
 	) ([]*MetricLabel, error)
-	RegisterMetric(
+	RegisterOrReplaceMetric(
+		ctx context.Context, metric Metric,
+	) error
+	RegisterOrIncrementMetric(
 		ctx context.Context, metric Metric,
 	) error
 }

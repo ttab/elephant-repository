@@ -36,14 +36,12 @@ func (m *MetricsService) GetKinds(
 	}
 
 	for i := range kinds {
-		fmt.Println(kinds[i])
 		res.Kinds = append(res.Kinds, &repository.MetricKind{
 			Name:        kinds[i].Name,
 			Aggregation: kinds[i].Aggregation,
 		})
 	}
 
-	fmt.Println(res.Kinds)
 	return &res, nil
 }
 
@@ -189,14 +187,30 @@ func (m *MetricsService) RegisterMetric(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metric kind: %w", err)
 	}
-	fmt.Println(*kind)
 
-	err = m.store.RegisterMetric(ctx, Metric{
-		Uuid:  docUUID,
-		Kind:  req.Kind,
-		Label: req.Label,
-		Value: req.Value,
-	})
+	switch kind.Aggregation {
+	case repository.MetricAggregation_REPLACE:
+		err = m.store.RegisterOrReplaceMetric(ctx, Metric{
+			Uuid:  docUUID,
+			Kind:  req.Kind,
+			Label: req.Label,
+			Value: req.Value,
+		})
+		break
+
+	case repository.MetricAggregation_INCREMENT:
+		err = m.store.RegisterOrIncrementMetric(ctx, Metric{
+			Uuid:  docUUID,
+			Kind:  req.Kind,
+			Label: req.Label,
+			Value: req.Value,
+		})
+		break
+
+	default:
+		return nil, fmt.Errorf("unknown metric kind aggregation: %v", kind.Aggregation)
+	}
+
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, twirp.FailedPrecondition.Error(err.Error())
 	}

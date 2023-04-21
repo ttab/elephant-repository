@@ -395,4 +395,4 @@ SET value = @value;
 INSERT INTO metric(uuid, kind, label, value)
 VALUES (@uuid, @kind, @label, @value)
 ON CONFLICT ON CONSTRAINT metric_pkey DO UPDATE 
-SET value = value + @value;
+SET value = metric.value + @value;

@@ -26,6 +26,7 @@ func TestIntegrationMetrics(t *testing.T) {
 	// test kinds
 	_, err := client.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
 		Name: "wordcount",
+    Aggregation: repository.MetricAggregation_REPLACE,
 	})
 	test.Must(t, err, "register kind")
 
@@ -40,6 +41,7 @@ func TestIntegrationMetrics(t *testing.T) {
 		Kinds: []*repository.MetricKind{
 			{
 				Name: "wordcount",
+        Aggregation: repository.MetricAggregation_REPLACE,
 			},
 		},
 	}, kinds, "get the list of registered metric kinds")

@@ -1354,7 +1354,7 @@ const registerOrIncrementMetric = `-- name: RegisterOrIncrementMetric :exec
 INSERT INTO metric(uuid, kind, label, value)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT ON CONSTRAINT metric_pkey DO UPDATE 
-SET value = value + $4
+SET value = metric.value + $4
 `
 
 type RegisterOrIncrementMetricParams struct {

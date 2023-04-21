@@ -1457,12 +1457,41 @@ func (s *PGDocStore) GetMetricLabels(
 }
 
 // RegisterMetric implements MetricStore.
-func (s *PGDocStore) RegisterMetric(ctx context.Context, metric Metric) error {
+func (s *PGDocStore) RegisterOrReplaceMetric(ctx context.Context, metric Metric) error {
 	fmt.Println(metric)
 	return s.withTX(ctx, "register metric", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.RegisterOrReplaceMetric(ctx, postgres.RegisterOrReplaceMetricParams{
+			Uuid:  metric.Uuid,
+			Kind:  metric.Kind,
+			Label: metric.Label,
+			Value: metric.Value,
+		})
+		if internal.IsConstraintError(err, "metric_kind_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "metric kind not found")
+		}
+		if internal.IsConstraintError(err, "metric_label_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "metric label not found")
+		}
+		if internal.IsConstraintError(err, "metric_uuid_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
+		}
+		if err != nil {
+			return fmt.Errorf("failed to save to database: %w", err)
+		}
+
+		return nil
+	})
+}
+
+// RegisterMetric implements MetricStore.
+func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metric) error {
+	fmt.Println(metric)
+	return s.withTX(ctx, "register metric", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.RegisterOrIncrementMetric(ctx, postgres.RegisterOrIncrementMetricParams{
 			Uuid:  metric.Uuid,
 			Kind:  metric.Kind,
 			Label: metric.Label,
