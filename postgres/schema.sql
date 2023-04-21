@@ -769,7 +769,7 @@ ALTER TABLE ONLY public.metric
 --
 
 ALTER TABLE ONLY public.metric
-    ADD CONSTRAINT metric_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid);
+    ADD CONSTRAINT metric_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
 
 
 --

@@ -10,11 +10,12 @@ create table metric_label(
 );
 
 create table metric(
-        uuid uuid references document(uuid) not null,
+        uuid uuid,
         kind text references metric_kind(name) not null,
-        label text references metric_label(name),
+        label text references metric_label(name) not null,
         value bigint not null,
-        primary key(uuid, kind, label)
+        primary key(uuid, kind, label),
+        foreign key(uuid) references document(uuid) on delete cascade
 );
 
 ---- create above / drop below ----
