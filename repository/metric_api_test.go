@@ -48,21 +48,10 @@ func TestIntegrationMetrics(t *testing.T) {
 		},
 	}, kinds, "get the list of registered metric kinds")
 
-	_, err = client.DeleteKind(ctx, &repository.DeleteMetricKindRequest{
-		Name: "wordcount",
-	})
-	test.Must(t, err, "delete kind")
-
-	kinds, err = client.GetKinds(ctx, &repository.GetMetricKindsRequest{})
-	test.Must(t, err, "get kinds")
-
-	test.EqualMessage(t, &repository.GetMetricKindsResponse{
-		Kinds: []*repository.MetricKind{},
-	}, kinds, "get the empty list of registered metric kinds")
-
 	// test labels
 	_, err = client.RegisterLabel(ctx, &repository.RegisterMetricLabelRequest{
 		Name: "default",
+		Kind: "wordcount",
 	})
 	test.Must(t, err, "register label")
 
@@ -77,12 +66,14 @@ func TestIntegrationMetrics(t *testing.T) {
 		Labels: []*repository.MetricLabel{
 			{
 				Name: "default",
+				Kind: "wordcount",
 			},
 		},
 	}, labels, "get the list of registered metric labels")
 
 	_, err = client.DeleteLabel(ctx, &repository.DeleteMetricLabelRequest{
 		Name: "default",
+		Kind: "wordcount",
 	})
 	test.Must(t, err, "delete label")
 
@@ -92,6 +83,18 @@ func TestIntegrationMetrics(t *testing.T) {
 	test.EqualMessage(t, &repository.GetMetricLabelsResponse{
 		Labels: []*repository.MetricLabel{},
 	}, labels, "get the empty list of registered metric labels")
+
+	_, err = client.DeleteKind(ctx, &repository.DeleteMetricKindRequest{
+		Name: "wordcount",
+	})
+	test.Must(t, err, "delete kind")
+
+	kinds, err = client.GetKinds(ctx, &repository.GetMetricKindsRequest{})
+	test.Must(t, err, "get kinds")
+
+	test.EqualMessage(t, &repository.GetMetricKindsResponse{
+		Kinds: []*repository.MetricKind{},
+	}, kinds, "get the empty list of registered metric kinds")
 
 	// test register metric
 	_, err = documentsClient.Update(ctx, &repository.UpdateRequest{
@@ -111,8 +114,21 @@ func TestIntegrationMetrics(t *testing.T) {
 
 	_, err = client.RegisterLabel(ctx, &repository.RegisterMetricLabelRequest{
 		Name: "default",
+		Kind: "wordcount",
 	})
 	test.Must(t, err, "refreate test label")
+
+	_, err = client.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
+		Name:        "revision",
+		Aggregation: repository.MetricAggregation_REPLACE,
+	})
+	test.Must(t, err, "recreate test kind")
+
+	_, err = client.RegisterLabel(ctx, &repository.RegisterMetricLabelRequest{
+		Name: "feature",
+		Kind: "revision",
+	})
+	test.Must(t, err, "recreate test label")
 
 	_, err = client.RegisterMetric(ctx, &repository.RegisterMetricRequest{
 		Uuid:  "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
@@ -120,11 +136,20 @@ func TestIntegrationMetrics(t *testing.T) {
 		Label: "default",
 		Value: 123,
 	})
-	test.Must(t, err, "regsister the metric")
+	test.Must(t, err, "register the metric")
+
+	_, err = client.RegisterMetric(ctx, &repository.RegisterMetricRequest{
+		Uuid:  "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
+		Kind:  "revision",
+		Label: "default",
+		Value: 2,
+	})
+	test.MustNot(t, err, "register a metric with an illegal kind/label combo")
 
 	// test delete label
 	_, err = client.DeleteLabel(ctx, &repository.DeleteMetricLabelRequest{
 		Name: "default",
+		Kind: "wordcount",
 	})
 	test.MustNot(t, err, "delete label in use")
 

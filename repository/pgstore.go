@@ -1415,13 +1415,17 @@ func (s *PGDocStore) RegisterMetricLabel(
 		q := postgres.New(tx)
 
 		err := q.RegisterMetricLabel(ctx, postgres.RegisterMetricLabelParams{
-      Name: name,
-      Kind: kind,
-    })
+			Name: name,
+			Kind: kind,
+		})
 		if internal.IsConstraintError(err, "metric_label_pkey") {
 			return DocStoreErrorf(ErrCodeExists,
 				"metric label already exists")
-		} else if err != nil {
+		}
+		if internal.IsConstraintError(err, "metric_label_kind_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "metric kind not found")
+		}
+		if err != nil {
 			return fmt.Errorf("failed to save to databaase: %w", err)
 		}
 
@@ -1433,9 +1437,9 @@ func (s *PGDocStore) DeleteMetricLabel(
 	ctx context.Context, name string, kind string,
 ) error {
 	err := s.reader.DeleteMetricLabel(ctx, postgres.DeleteMetricLabelParams{
-    Name: name,
-    Kind: kind,
-  })
+		Name: name,
+		Kind: kind,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to delete metric label: %w", err)
 	}
@@ -1456,7 +1460,7 @@ func (s *PGDocStore) GetMetricLabels(
 	for i := range rows {
 		res[i] = &MetricLabel{
 			Name: rows[i].Name,
-      Kind: rows[i].Kind,
+			Kind: rows[i].Kind,
 		}
 	}
 
@@ -1479,6 +1483,9 @@ func (s *PGDocStore) RegisterOrReplaceMetric(ctx context.Context, metric Metric)
 		}
 		if internal.IsConstraintError(err, "metric_label_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "metric label not found")
+		}
+		if internal.IsConstraintError(err, "metric_label_kind_match") {
+			return DocStoreErrorf(ErrCodeNotFound, "label does not apply to kind")
 		}
 		if internal.IsConstraintError(err, "metric_uuid_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
@@ -1507,6 +1514,9 @@ func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metri
 		}
 		if internal.IsConstraintError(err, "metric_label_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "metric label not found")
+		}
+		if internal.IsConstraintError(err, "metric_label_kind_match") {
+			return DocStoreErrorf(ErrCodeNotFound, "label does not apply to kind")
 		}
 		if internal.IsConstraintError(err, "metric_uuid_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")

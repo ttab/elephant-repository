@@ -244,7 +244,7 @@ type MetricKind struct {
 
 type MetricLabel struct {
 	Name string
-  Kind string
+	Kind string
 }
 
 type Metric struct {

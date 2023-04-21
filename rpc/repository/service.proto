@@ -567,12 +567,14 @@ enum MetricAggregation {
 
 message RegisterMetricLabelRequest {
   string name = 1;
+  string kind = 2;
 }
 
 message RegisterMetricLabelResponse {}
 
 message DeleteMetricLabelRequest {
   string name = 1;
+  string kind = 2;
 }
 
 message DeleteMetricLabelResponse {}
@@ -584,8 +586,8 @@ message GetMetricLabelsResponse {
 }
 
 message MetricLabel {
-  int64 id = 1;
-  string name = 2;
+  string name = 1;
+  string kind = 2;
 }
 
 message RegisterMetricRequest {

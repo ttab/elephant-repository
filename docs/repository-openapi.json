@@ -143,6 +143,9 @@
       },
       "elephant.repository.DeleteMetricLabelRequest": {
         "properties": {
+          "kind": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           }
@@ -629,8 +632,8 @@
       },
       "elephant.repository.MetricLabel": {
         "properties": {
-          "id": {
-            "type": "integer"
+          "kind": {
+            "type": "string"
           },
           "name": {
             "type": "string"
@@ -654,6 +657,9 @@
       },
       "elephant.repository.RegisterMetricLabelRequest": {
         "properties": {
+          "kind": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           }

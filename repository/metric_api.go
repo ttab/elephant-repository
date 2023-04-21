@@ -112,6 +112,7 @@ func (m *MetricsService) GetLabels(
 	for i := range labels {
 		res.Labels = append(res.Labels, &repository.MetricLabel{
 			Name: labels[i].Name,
+			Kind: labels[i].Kind,
 		})
 	}
 
@@ -128,7 +129,7 @@ func (m *MetricsService) DeleteLabel(
 		return nil, err
 	}
 
-	err = m.store.DeleteMetricLabel(ctx, req.Name)
+	err = m.store.DeleteMetricLabel(ctx, req.Name, req.Kind)
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete metric label: %w", err)
 	}
@@ -150,7 +151,7 @@ func (m *MetricsService) RegisterLabel(
 		return nil, twirp.RequiredArgumentError("name")
 	}
 
-	err = m.store.RegisterMetricLabel(ctx, req.Name)
+	err = m.store.RegisterMetricLabel(ctx, req.Name, req.Kind)
 	if IsDocStoreErrorCode(err, ErrCodeExists) {
 		return nil, twirp.FailedPrecondition.Error(
 			"metric label already exists")
