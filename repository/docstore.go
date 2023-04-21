@@ -247,7 +247,7 @@ type MetricLabel struct {
 }
 
 type Metric struct {
-	Uuid  uuid.UUID
+	UUID  uuid.UUID
 	Kind  string
 	Label string
 	Value int64

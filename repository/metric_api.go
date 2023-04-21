@@ -190,7 +190,7 @@ func (m *MetricsService) RegisterMetric(
 	switch kind.Aggregation {
 	case repository.MetricAggregation_REPLACE:
 		err = m.store.RegisterOrReplaceMetric(ctx, Metric{
-			Uuid:  docUUID,
+			UUID:  docUUID,
 			Kind:  req.Kind,
 			Label: req.Label,
 			Value: req.Value,
@@ -198,7 +198,7 @@ func (m *MetricsService) RegisterMetric(
 
 	case repository.MetricAggregation_INCREMENT:
 		err = m.store.RegisterOrIncrementMetric(ctx, Metric{
-			Uuid:  docUUID,
+			UUID:  docUUID,
 			Kind:  req.Kind,
 			Label: req.Label,
 			Value: req.Value,

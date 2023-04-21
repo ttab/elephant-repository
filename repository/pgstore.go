@@ -1462,7 +1462,7 @@ func (s *PGDocStore) RegisterOrReplaceMetric(ctx context.Context, metric Metric)
 		q := postgres.New(tx)
 
 		err := q.RegisterOrReplaceMetric(ctx, postgres.RegisterOrReplaceMetricParams{
-			Uuid:  metric.Uuid,
+			Uuid:  metric.UUID,
 			Kind:  metric.Kind,
 			Label: metric.Label,
 			Value: metric.Value,
@@ -1490,7 +1490,7 @@ func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metri
 		q := postgres.New(tx)
 
 		err := q.RegisterOrIncrementMetric(ctx, postgres.RegisterOrIncrementMetricParams{
-			Uuid:  metric.Uuid,
+			Uuid:  metric.UUID,
 			Kind:  metric.Kind,
 			Label: metric.Label,
 			Value: metric.Value,
