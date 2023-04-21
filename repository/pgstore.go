@@ -1409,12 +1409,15 @@ func (s *PGDocStore) GetMetricKinds(
 }
 
 func (s *PGDocStore) RegisterMetricLabel(
-	ctx context.Context, name string,
+	ctx context.Context, name string, kind string,
 ) error {
 	return s.withTX(ctx, "register metric label", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
-		err := q.RegisterMetricLabel(ctx, name)
+		err := q.RegisterMetricLabel(ctx, postgres.RegisterMetricLabelParams{
+      Name: name,
+      Kind: kind,
+    })
 		if internal.IsConstraintError(err, "metric_label_pkey") {
 			return DocStoreErrorf(ErrCodeExists,
 				"metric label already exists")
@@ -1427,9 +1430,12 @@ func (s *PGDocStore) RegisterMetricLabel(
 }
 
 func (s *PGDocStore) DeleteMetricLabel(
-	ctx context.Context, name string,
+	ctx context.Context, name string, kind string,
 ) error {
-	err := s.reader.DeleteMetricLabel(ctx, name)
+	err := s.reader.DeleteMetricLabel(ctx, postgres.DeleteMetricLabelParams{
+    Name: name,
+    Kind: kind,
+  })
 	if err != nil {
 		return fmt.Errorf("failed to delete metric label: %w", err)
 	}
@@ -1449,7 +1455,8 @@ func (s *PGDocStore) GetMetricLabels(
 
 	for i := range rows {
 		res[i] = &MetricLabel{
-			Name: rows[i],
+			Name: rows[i].Name,
+      Kind: rows[i].Kind,
 		}
 	}
 

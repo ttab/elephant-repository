@@ -373,15 +373,15 @@ FROM metric_kind
 ORDER BY name;
 
 -- name: RegisterMetricLabel :exec
-INSERT INTO metric_label(name)
-VALUES (@name);
+INSERT INTO metric_label(name, kind)
+VALUES (@name, @kind);
 
 -- name: DeleteMetricLabel :exec
 DELETE FROM metric_label
-WHERE name = @name;
+WHERE name = @name AND kind = @kind;
 
 -- name: GetMetricLabels :many
-SELECT name
+SELECT name, kind
 FROM metric_label
 ORDER BY name;
 

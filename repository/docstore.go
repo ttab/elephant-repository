@@ -102,10 +102,10 @@ type MetricStore interface {
 		ctx context.Context,
 	) ([]*MetricKind, error)
 	RegisterMetricLabel(
-		ctx context.Context, name string,
+		ctx context.Context, name string, kind string,
 	) error
 	DeleteMetricLabel(
-		ctx context.Context, name string,
+		ctx context.Context, name string, kind string,
 	) error
 	GetMetricLabels(
 		ctx context.Context,
@@ -244,6 +244,7 @@ type MetricKind struct {
 
 type MetricLabel struct {
 	Name string
+  Kind string
 }
 
 type Metric struct {

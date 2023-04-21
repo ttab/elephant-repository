@@ -175,11 +175,16 @@ func (q *Queries) DeleteMetricKind(ctx context.Context, name string) error {
 
 const deleteMetricLabel = `-- name: DeleteMetricLabel :exec
 DELETE FROM metric_label
-WHERE name = $1
+WHERE name = $1 AND kind = $2
 `
 
-func (q *Queries) DeleteMetricLabel(ctx context.Context, name string) error {
-	_, err := q.db.Exec(ctx, deleteMetricLabel, name)
+type DeleteMetricLabelParams struct {
+	Name string
+	Kind string
+}
+
+func (q *Queries) DeleteMetricLabel(ctx context.Context, arg DeleteMetricLabelParams) error {
+	_, err := q.db.Exec(ctx, deleteMetricLabel, arg.Name, arg.Kind)
 	return err
 }
 
@@ -781,24 +786,24 @@ func (q *Queries) GetMetricKinds(ctx context.Context) ([]MetricKind, error) {
 }
 
 const getMetricLabels = `-- name: GetMetricLabels :many
-SELECT name
+SELECT name, kind
 FROM metric_label
 ORDER BY name
 `
 
-func (q *Queries) GetMetricLabels(ctx context.Context) ([]string, error) {
+func (q *Queries) GetMetricLabels(ctx context.Context) ([]MetricLabel, error) {
 	rows, err := q.db.Query(ctx, getMetricLabels)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []MetricLabel
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var i MetricLabel
+		if err := rows.Scan(&i.Name, &i.Kind); err != nil {
 			return nil, err
 		}
-		items = append(items, name)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1341,12 +1346,17 @@ func (q *Queries) RegisterMetricKind(ctx context.Context, arg RegisterMetricKind
 }
 
 const registerMetricLabel = `-- name: RegisterMetricLabel :exec
-INSERT INTO metric_label(name)
-VALUES ($1)
+INSERT INTO metric_label(name, kind)
+VALUES ($1, $2)
 `
 
-func (q *Queries) RegisterMetricLabel(ctx context.Context, name string) error {
-	_, err := q.db.Exec(ctx, registerMetricLabel, name)
+type RegisterMetricLabelParams struct {
+	Name string
+	Kind string
+}
+
+func (q *Queries) RegisterMetricLabel(ctx context.Context, arg RegisterMetricLabelParams) error {
+	_, err := q.db.Exec(ctx, registerMetricLabel, arg.Name, arg.Kind)
 	return err
 }
 

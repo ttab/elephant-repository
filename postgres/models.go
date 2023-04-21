@@ -130,6 +130,7 @@ type MetricKind struct {
 
 type MetricLabel struct {
 	Name string
+	Kind string
 }
 
 type Report struct {

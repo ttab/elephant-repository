@@ -6,16 +6,21 @@ create table metric_kind(
 );
 
 create table metric_label(
-        name text primary key not null
+        name text,
+        kind text,
+        primary key(name, kind),
+        foreign key(kind) references metric_kind(name) on delete cascade
 );
 
 create table metric(
         uuid uuid,
-        kind text references metric_kind(name) not null,
-        label text references metric_label(name) not null,
+        kind text,
+        label text,
         value bigint not null,
         primary key(uuid, kind, label),
-        foreign key(uuid) references document(uuid) on delete cascade
+        foreign key(uuid) references document(uuid) on delete cascade,
+        foreign key(kind) references metric_kind(name),
+        foreign key(label, kind) references metric_label(name, kind)
 );
 
 ---- create above / drop below ----
