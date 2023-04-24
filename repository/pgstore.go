@@ -16,7 +16,6 @@ import (
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
 	"github.com/ttab/elephant/revisor"
-	"github.com/ttab/elephant/rpc/repository"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
@@ -1340,7 +1339,7 @@ func (s *PGDocStore) UpdateReport(
 }
 
 func (s *PGDocStore) RegisterMetricKind(
-	ctx context.Context, name string, aggregation repository.MetricAggregation,
+	ctx context.Context, name string, aggregation Aggregation,
 ) error {
 	return s.withTX(ctx, "register metric kind", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
@@ -1384,7 +1383,7 @@ func (s *PGDocStore) GetMetricKind(
 
 	return &MetricKind{
 		Name:        kind.Name,
-		Aggregation: repository.MetricAggregation(kind.Aggregation),
+		Aggregation: Aggregation(kind.Aggregation),
 	}, nil
 }
 
@@ -1401,7 +1400,7 @@ func (s *PGDocStore) GetMetricKinds(
 	for i := range rows {
 		res[i] = &MetricKind{
 			Name:        rows[i].Name,
-			Aggregation: repository.MetricAggregation(rows[i].Aggregation),
+			Aggregation: Aggregation(rows[i].Aggregation),
 		}
 	}
 

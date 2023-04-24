@@ -38,7 +38,7 @@ func (m *MetricsService) GetKinds(
 	for i := range kinds {
 		res.Kinds = append(res.Kinds, &repository.MetricKind{
 			Name:        kinds[i].Name,
-			Aggregation: kinds[i].Aggregation,
+			Aggregation: repository.MetricAggregation(kinds[i].Aggregation),
 		})
 	}
 
@@ -81,7 +81,7 @@ func (m *MetricsService) RegisterKind(
 		return nil, twirp.RequiredArgumentError("aggregation")
 	}
 
-	err = m.store.RegisterMetricKind(ctx, req.Name, req.Aggregation)
+	err = m.store.RegisterMetricKind(ctx, req.Name, Aggregation(req.Aggregation))
 	if IsDocStoreErrorCode(err, ErrCodeExists) {
 		return nil, twirp.FailedPrecondition.Error(
 			"metric kind already exists")
@@ -189,7 +189,7 @@ func (m *MetricsService) RegisterMetric(
 	}
 
 	switch kind.Aggregation {
-	case repository.MetricAggregation_REPLACE:
+	case AggregationREPLACE:
 		err = m.store.RegisterOrReplaceMetric(ctx, Metric{
 			UUID:  docUUID,
 			Kind:  req.Kind,
@@ -197,7 +197,7 @@ func (m *MetricsService) RegisterMetric(
 			Value: req.Value,
 		})
 
-	case repository.MetricAggregation_INCREMENT:
+	case AggregationINCREMENT:
 		err = m.store.RegisterOrIncrementMetric(ctx, Metric{
 			UUID:  docUUID,
 			Kind:  req.Kind,
@@ -205,7 +205,7 @@ func (m *MetricsService) RegisterMetric(
 			Value: req.Value,
 		})
 
-	case repository.MetricAggregation_NONE:
+	case AggregationNONE:
 		return nil, fmt.Errorf("unknown metric kind aggregation: %v", kind.Aggregation)
 	}
 

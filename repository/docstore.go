@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/revisor"
-	"github.com/ttab/elephant/rpc/repository"
 )
 
 type DocStore interface {
@@ -90,7 +89,7 @@ type ReportStore interface {
 
 type MetricStore interface {
 	RegisterMetricKind(
-		ctx context.Context, name string, aggregation repository.MetricAggregation,
+		ctx context.Context, name string, aggregation Aggregation,
 	) error
 	DeleteMetricKind(
 		ctx context.Context, name string,
@@ -237,9 +236,17 @@ type StatusUpdate struct {
 	Meta    doc.DataMap
 }
 
+type Aggregation int16
+
+const (
+	AggregationNONE      = 0
+	AggregationREPLACE   = 1
+	AggregationINCREMENT = 2
+)
+
 type MetricKind struct {
 	Name        string
-	Aggregation repository.MetricAggregation
+	Aggregation Aggregation
 }
 
 type MetricLabel struct {
