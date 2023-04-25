@@ -624,6 +624,12 @@
           "aggregation": {
             "$ref": "#/components/schemas/elephant.repository.MetricAggregation"
           },
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/elephant.repository.MetricLabel"
+            },
+            "type": "array"
+          },
           "name": {
             "type": "string"
           }
@@ -632,9 +638,6 @@
       },
       "elephant.repository.MetricLabel": {
         "properties": {
-          "kind": {
-            "type": "string"
-          },
           "name": {
             "type": "string"
           }
@@ -1505,44 +1508,6 @@
           }
         ],
         "summary": "GetKinds",
-        "tags": [
-          "Metrics"
-        ]
-      }
-    },
-    "/twirp/elephant.repository.Metrics/GetLabels": {
-      "post": {
-        "description": "List all metric labels",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/elephant.repository.GetMetricLabelsRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/elephant.repository.GetMetricLabelsResponse"
-                }
-              }
-            },
-            "description": "Method response"
-          },
-          "default": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "GetLabels",
         "tags": [
           "Metrics"
         ]

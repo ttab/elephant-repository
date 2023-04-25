@@ -747,34 +747,48 @@ func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, e
 }
 
 const getMetricKind = `-- name: GetMetricKind :one
-SELECT name, aggregation
-FROM metric_kind
-WHERE name = $1
+SELECT k.name, aggregation, l.name as label
+FROM metric_kind as k, metric_label as l
+WHERE k.name = $1
+  AND k.name = l.kind
 `
 
-func (q *Queries) GetMetricKind(ctx context.Context, name string) (MetricKind, error) {
+type GetMetricKindRow struct {
+	Name        string
+	Aggregation int16
+	Label       string
+}
+
+func (q *Queries) GetMetricKind(ctx context.Context, name string) (GetMetricKindRow, error) {
 	row := q.db.QueryRow(ctx, getMetricKind, name)
-	var i MetricKind
-	err := row.Scan(&i.Name, &i.Aggregation)
+	var i GetMetricKindRow
+	err := row.Scan(&i.Name, &i.Aggregation, &i.Label)
 	return i, err
 }
 
 const getMetricKinds = `-- name: GetMetricKinds :many
-SELECT name, aggregation
-FROM metric_kind
-ORDER BY name
+SELECT k.name, aggregation, l.name as label
+FROM metric_kind as k
+LEFT JOIN metric_label as l ON k.name = l.kind
+ORDER BY k.name, l.name
 `
 
-func (q *Queries) GetMetricKinds(ctx context.Context) ([]MetricKind, error) {
+type GetMetricKindsRow struct {
+	Name        string
+	Aggregation int16
+	Label       pgtype.Text
+}
+
+func (q *Queries) GetMetricKinds(ctx context.Context) ([]GetMetricKindsRow, error) {
 	rows, err := q.db.Query(ctx, getMetricKinds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MetricKind
+	var items []GetMetricKindsRow
 	for rows.Next() {
-		var i MetricKind
-		if err := rows.Scan(&i.Name, &i.Aggregation); err != nil {
+		var i GetMetricKindsRow
+		if err := rows.Scan(&i.Name, &i.Aggregation, &i.Label); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

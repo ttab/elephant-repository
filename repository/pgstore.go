@@ -1395,12 +1395,21 @@ func (s *PGDocStore) GetMetricKinds(
 		return nil, fmt.Errorf("failed to fetch metric kinds: %w", err)
 	}
 
-	res := make([]*MetricKind, len(rows))
+	res := make([]*MetricKind, 0)
+	current := &MetricKind{}
 
 	for i := range rows {
-		res[i] = &MetricKind{
-			Name:        rows[i].Name,
-			Aggregation: Aggregation(rows[i].Aggregation),
+		if current.Name != rows[i].Name {
+			current = &MetricKind{
+				Name:        rows[i].Name,
+				Aggregation: Aggregation(rows[i].Aggregation),
+				Labels:      []MetricLabel{},
+			}
+			res = append(res, current)
+		}
+
+		if rows[i].Label.Valid {
+			current.Labels = append(current.Labels, MetricLabel{Name: rows[i].Label.String})
 		}
 	}
 
@@ -1459,7 +1468,6 @@ func (s *PGDocStore) GetMetricLabels(
 	for i := range rows {
 		res[i] = &MetricLabel{
 			Name: rows[i].Name,
-			Kind: rows[i].Kind,
 		}
 	}
 

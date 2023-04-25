@@ -247,11 +247,11 @@ const (
 type MetricKind struct {
 	Name        string
 	Aggregation Aggregation
+	Labels      []MetricLabel
 }
 
 type MetricLabel struct {
 	Name string
-	Kind string
 }
 
 type Metric struct {

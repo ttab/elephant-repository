@@ -36,10 +36,17 @@ func (m *MetricsService) GetKinds(
 	}
 
 	for i := range kinds {
-		res.Kinds = append(res.Kinds, &repository.MetricKind{
+		fmt.Println(kinds[i])
+		kind := repository.MetricKind{
 			Name:        kinds[i].Name,
 			Aggregation: repository.MetricAggregation(kinds[i].Aggregation),
-		})
+			Labels:      []*repository.MetricLabel{},
+		}
+		for j := range kinds[i].Labels {
+			kind.Labels = append(kind.Labels, &repository.MetricLabel{Name: kinds[i].Labels[j].Name})
+		}
+
+		res.Kinds = append(res.Kinds, &kind)
 	}
 
 	return &res, nil
@@ -112,7 +119,6 @@ func (m *MetricsService) GetLabels(
 	for i := range labels {
 		res.Labels = append(res.Labels, &repository.MetricLabel{
 			Name: labels[i].Name,
-			Kind: labels[i].Kind,
 		})
 	}
 

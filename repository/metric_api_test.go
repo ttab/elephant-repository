@@ -32,9 +32,11 @@ func TestIntegrationMetrics(t *testing.T) {
 	})
 	test.Must(t, err, "register kind")
 
-	if err != nil {
-		test.MustNot(t, err, "fail to register kind")
-	}
+	_, err = client.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
+		Name:        "revisions",
+		Aggregation: repository.MetricAggregation_INCREMENT,
+	})
+	test.Must(t, err, "register kind")
 
 	kinds, err := client.GetKinds(ctx, &repository.GetMetricKindsRequest{})
 	test.Must(t, err, "get kinds")
@@ -42,8 +44,14 @@ func TestIntegrationMetrics(t *testing.T) {
 	test.EqualMessage(t, &repository.GetMetricKindsResponse{
 		Kinds: []*repository.MetricKind{
 			{
+				Name:        "revisions",
+				Aggregation: repository.MetricAggregation_INCREMENT,
+				Labels:      []*repository.MetricLabel{},
+			},
+			{
 				Name:        "wordcount",
 				Aggregation: repository.MetricAggregation_REPLACE,
+				Labels:      []*repository.MetricLabel{},
 			},
 		},
 	}, kinds, "get the list of registered metric kinds")
@@ -55,21 +63,36 @@ func TestIntegrationMetrics(t *testing.T) {
 	})
 	test.Must(t, err, "register label")
 
-	if err != nil {
-		test.MustNot(t, err, "fail to register label")
-	}
+	_, err = client.RegisterLabel(ctx, &repository.RegisterMetricLabelRequest{
+		Name: "extra",
+		Kind: "wordcount",
+	})
+	test.Must(t, err, "register label")
 
-	labels, err := client.GetLabels(ctx, &repository.GetMetricLabelsRequest{})
-	test.Must(t, err, "get labels")
+	kinds, err = client.GetKinds(ctx, &repository.GetMetricKindsRequest{})
+	test.Must(t, err, "get kinds")
 
-	test.EqualMessage(t, &repository.GetMetricLabelsResponse{
-		Labels: []*repository.MetricLabel{
+	test.EqualMessage(t, &repository.GetMetricKindsResponse{
+		Kinds: []*repository.MetricKind{
 			{
-				Name: "default",
-				Kind: "wordcount",
+				Name:        "revisions",
+				Aggregation: repository.MetricAggregation_INCREMENT,
+				Labels:      []*repository.MetricLabel{},
+			},
+			{
+				Name:        "wordcount",
+				Aggregation: repository.MetricAggregation_REPLACE,
+				Labels: []*repository.MetricLabel{
+					{
+						Name: "default",
+					},
+					{
+						Name: "extra",
+					},
+				},
 			},
 		},
-	}, labels, "get the list of registered metric labels")
+	}, kinds, "get the list of registered metric kinds and their labels")
 
 	_, err = client.DeleteLabel(ctx, &repository.DeleteMetricLabelRequest{
 		Name: "default",
@@ -77,12 +100,27 @@ func TestIntegrationMetrics(t *testing.T) {
 	})
 	test.Must(t, err, "delete label")
 
-	labels, err = client.GetLabels(ctx, &repository.GetMetricLabelsRequest{})
-	test.Must(t, err, "get labels")
+	kinds, err = client.GetKinds(ctx, &repository.GetMetricKindsRequest{})
+	test.Must(t, err, "get kinds")
 
-	test.EqualMessage(t, &repository.GetMetricLabelsResponse{
-		Labels: []*repository.MetricLabel{},
-	}, labels, "get the empty list of registered metric labels")
+	test.EqualMessage(t, &repository.GetMetricKindsResponse{
+		Kinds: []*repository.MetricKind{
+			{
+				Name:        "revisions",
+				Aggregation: repository.MetricAggregation_INCREMENT,
+				Labels:      []*repository.MetricLabel{},
+			},
+			{
+				Name:        "wordcount",
+				Aggregation: repository.MetricAggregation_REPLACE,
+				Labels: []*repository.MetricLabel{
+					{
+						Name: "extra",
+					},
+				},
+			},
+		},
+	}, kinds, "get the list of registered metric kinds and their labels mninus the deleted")
 
 	_, err = client.DeleteKind(ctx, &repository.DeleteMetricKindRequest{
 		Name: "wordcount",
@@ -93,8 +131,14 @@ func TestIntegrationMetrics(t *testing.T) {
 	test.Must(t, err, "get kinds")
 
 	test.EqualMessage(t, &repository.GetMetricKindsResponse{
-		Kinds: []*repository.MetricKind{},
-	}, kinds, "get the empty list of registered metric kinds")
+		Kinds: []*repository.MetricKind{
+			{
+				Name:        "revisions",
+				Aggregation: repository.MetricAggregation_INCREMENT,
+				Labels:      []*repository.MetricLabel{},
+			},
+		},
+	}, kinds, "get the list of registered metric kinds minus deleted")
 
 	// test register metric
 	_, err = documentsClient.Update(ctx, &repository.UpdateRequest{

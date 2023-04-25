@@ -766,11 +766,11 @@ ALTER TABLE ONLY public.metric_label
 
 
 --
--- Name: metric metric_label_kind_fkey1; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: metric metric_label_kind_match; Type: FK CONSTRAINT; Schema: public; Owner: repository
 --
 
 ALTER TABLE ONLY public.metric
-    ADD CONSTRAINT metric_label_kind_fkey1 FOREIGN KEY (label, kind) REFERENCES public.metric_label(name, kind);
+    ADD CONSTRAINT metric_label_kind_match FOREIGN KEY (label, kind) REFERENCES public.metric_label(name, kind);
 
 
 --
