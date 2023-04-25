@@ -36,7 +36,6 @@ func (m *MetricsService) GetKinds(
 	}
 
 	for i := range kinds {
-		fmt.Println(kinds[i])
 		kind := repository.MetricKind{
 			Name:        kinds[i].Name,
 			Aggregation: repository.MetricAggregation(kinds[i].Aggregation),
