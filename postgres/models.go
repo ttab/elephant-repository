@@ -128,11 +128,6 @@ type MetricKind struct {
 	Aggregation int16
 }
 
-type MetricLabel struct {
-	Name string
-	Kind string
-}
-
 type Report struct {
 	Name          string
 	Enabled       bool

@@ -5,13 +5,6 @@ create table metric_kind(
         aggregation smallint not null
 );
 
-create table metric_label(
-        name text,
-        kind text,
-        primary key(name, kind),
-        foreign key(kind) references metric_kind(name) on delete cascade
-);
-
 create table metric(
         uuid uuid,
         kind text,
@@ -19,15 +12,12 @@ create table metric(
         value bigint not null,
         primary key(uuid, kind, label),
         foreign key(uuid) references document(uuid) on delete cascade,
-        foreign key(kind) references metric_kind(name) on delete cascade,
-        constraint metric_label_kind_match foreign key(label, kind) references metric_label(name, kind)
+        foreign key(kind) references metric_kind(name) on delete cascade
 );
 
 ---- create above / drop below ----
 
 drop table metric;
-
-drop table metric_label;
 
 drop table metric_kind;
 

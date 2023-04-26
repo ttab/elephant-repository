@@ -1396,79 +1396,12 @@ func (s *PGDocStore) GetMetricKinds(
 	}
 
 	res := make([]*MetricKind, 0)
-	current := &MetricKind{}
 
 	for i := range rows {
-		if current.Name != rows[i].Name {
-			current = &MetricKind{
-				Name:        rows[i].Name,
-				Aggregation: Aggregation(rows[i].Aggregation),
-				Labels:      []MetricLabel{},
-			}
-			res = append(res, current)
-		}
-
-		if rows[i].Label.Valid {
-			current.Labels = append(current.Labels, MetricLabel{Name: rows[i].Label.String})
-		}
-	}
-
-	return res, nil
-}
-
-func (s *PGDocStore) RegisterMetricLabel(
-	ctx context.Context, name string, kind string,
-) error {
-	return s.withTX(ctx, "register metric label", func(tx pgx.Tx) error {
-		q := postgres.New(tx)
-
-		err := q.RegisterMetricLabel(ctx, postgres.RegisterMetricLabelParams{
-			Name: name,
-			Kind: kind,
+		res = append(res, &MetricKind{
+			Name:        rows[i].Name,
+			Aggregation: Aggregation(rows[i].Aggregation),
 		})
-		if internal.IsConstraintError(err, "metric_label_pkey") {
-			return DocStoreErrorf(ErrCodeExists,
-				"metric label already exists")
-		}
-		if internal.IsConstraintError(err, "metric_label_kind_fkey") {
-			return DocStoreErrorf(ErrCodeNotFound, "metric kind not found")
-		}
-		if err != nil {
-			return fmt.Errorf("failed to save to databaase: %w", err)
-		}
-
-		return nil
-	})
-}
-
-func (s *PGDocStore) DeleteMetricLabel(
-	ctx context.Context, name string, kind string,
-) error {
-	err := s.reader.DeleteMetricLabel(ctx, postgres.DeleteMetricLabelParams{
-		Name: name,
-		Kind: kind,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to delete metric label: %w", err)
-	}
-
-	return nil
-}
-
-func (s *PGDocStore) GetMetricLabels(
-	ctx context.Context,
-) ([]*MetricLabel, error) {
-	rows, err := s.reader.GetMetricLabels(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch metric labels: %w", err)
-	}
-
-	res := make([]*MetricLabel, len(rows))
-
-	for i := range rows {
-		res[i] = &MetricLabel{
-			Name: rows[i].Name,
-		}
 	}
 
 	return res, nil

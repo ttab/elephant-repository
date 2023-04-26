@@ -36,16 +36,10 @@ func (m *MetricsService) GetKinds(
 	}
 
 	for i := range kinds {
-		kind := repository.MetricKind{
+		res.Kinds = append(res.Kinds, &repository.MetricKind{
 			Name:        kinds[i].Name,
 			Aggregation: repository.MetricAggregation(kinds[i].Aggregation),
-			Labels:      []*repository.MetricLabel{},
-		}
-		for j := range kinds[i].Labels {
-			kind.Labels = append(kind.Labels, &repository.MetricLabel{Name: kinds[i].Labels[j].Name})
-		}
-
-		res.Kinds = append(res.Kinds, &kind)
+		})
 	}
 
 	return &res, nil
@@ -96,75 +90,6 @@ func (m *MetricsService) RegisterKind(
 	}
 
 	return &repository.RegisterMetricKindResponse{}, nil
-}
-
-// GetLabels implements repository.Metrics.
-func (m *MetricsService) GetLabels(
-	ctx context.Context,
-	_ *repository.GetMetricLabelsRequest,
-) (*repository.GetMetricLabelsResponse, error) {
-	err := requireAnyScope(ctx, "metrics_admin") // TODO: correct scope
-	if err != nil {
-		return nil, err
-	}
-
-	var res repository.GetMetricLabelsResponse
-
-	labels, err := m.store.GetMetricLabels(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get metric labels: %w", err)
-	}
-
-	for i := range labels {
-		res.Labels = append(res.Labels, &repository.MetricLabel{
-			Name: labels[i].Name,
-		})
-	}
-
-	return &res, nil
-}
-
-// DeleteLabel implements repository.Metrics.
-func (m *MetricsService) DeleteLabel(
-	ctx context.Context,
-	req *repository.DeleteMetricLabelRequest,
-) (*repository.DeleteMetricLabelResponse, error) {
-	err := requireAnyScope(ctx, "metrics_admin")
-	if err != nil {
-		return nil, err
-	}
-
-	err = m.store.DeleteMetricLabel(ctx, req.Name, req.Kind)
-	if err != nil {
-		return nil, fmt.Errorf("failed to delete metric label: %w", err)
-	}
-
-	return &repository.DeleteMetricLabelResponse{}, nil
-}
-
-// RegisterLabel implements repository.Metrics.
-func (m *MetricsService) RegisterLabel(
-	ctx context.Context,
-	req *repository.RegisterMetricLabelRequest,
-) (*repository.RegisterMetricLabelResponse, error) {
-	err := requireAnyScope(ctx, "metrics_admin")
-	if err != nil {
-		return nil, err
-	}
-
-	if req.Name == "" {
-		return nil, twirp.RequiredArgumentError("name")
-	}
-
-	err = m.store.RegisterMetricLabel(ctx, req.Name, req.Kind)
-	if IsDocStoreErrorCode(err, ErrCodeExists) {
-		return nil, twirp.FailedPrecondition.Error(
-			"metric label already exists")
-	} else if err != nil {
-		return nil, fmt.Errorf("failed to register metric label: %w", err)
-	}
-
-	return &repository.RegisterMetricLabelResponse{}, nil
 }
 
 // RegisterMetric implements repository.Metrics.

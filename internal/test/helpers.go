@@ -29,7 +29,7 @@ func MustNot(t TestingT, err error, format string, a ...any) {
 	t.Helper()
 
 	if err == nil {
-		t.Fatalf(format, a...)
+		t.Fatalf("failed: %s", fmt.Sprintf(format, a...))
 	}
 
 	if testing.Verbose() {

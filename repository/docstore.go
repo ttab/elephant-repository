@@ -100,15 +100,6 @@ type MetricStore interface {
 	GetMetricKinds(
 		ctx context.Context,
 	) ([]*MetricKind, error)
-	RegisterMetricLabel(
-		ctx context.Context, name string, kind string,
-	) error
-	DeleteMetricLabel(
-		ctx context.Context, name string, kind string,
-	) error
-	GetMetricLabels(
-		ctx context.Context,
-	) ([]*MetricLabel, error)
 	RegisterOrReplaceMetric(
 		ctx context.Context, metric Metric,
 	) error
@@ -247,11 +238,6 @@ const (
 type MetricKind struct {
 	Name        string
 	Aggregation Aggregation
-	Labels      []MetricLabel
-}
-
-type MetricLabel struct {
-	Name string
 }
 
 type Metric struct {

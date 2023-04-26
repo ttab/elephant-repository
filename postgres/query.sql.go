@@ -173,21 +173,6 @@ func (q *Queries) DeleteMetricKind(ctx context.Context, name string) error {
 	return err
 }
 
-const deleteMetricLabel = `-- name: DeleteMetricLabel :exec
-DELETE FROM metric_label
-WHERE name = $1 AND kind = $2
-`
-
-type DeleteMetricLabelParams struct {
-	Name string
-	Kind string
-}
-
-func (q *Queries) DeleteMetricLabel(ctx context.Context, arg DeleteMetricLabelParams) error {
-	_, err := q.db.Exec(ctx, deleteMetricLabel, arg.Name, arg.Kind)
-	return err
-}
-
 const deleteStatusRule = `-- name: DeleteStatusRule :exec
 DELETE FROM status_rule WHERE name = $1
 `
@@ -747,74 +732,34 @@ func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, e
 }
 
 const getMetricKind = `-- name: GetMetricKind :one
-SELECT k.name, aggregation, l.name as label
-FROM metric_kind as k, metric_label as l
-WHERE k.name = $1
-  AND k.name = l.kind
+SELECT name, aggregation
+FROM metric_kind 
+WHERE name = $1
 `
 
-type GetMetricKindRow struct {
-	Name        string
-	Aggregation int16
-	Label       string
-}
-
-func (q *Queries) GetMetricKind(ctx context.Context, name string) (GetMetricKindRow, error) {
+func (q *Queries) GetMetricKind(ctx context.Context, name string) (MetricKind, error) {
 	row := q.db.QueryRow(ctx, getMetricKind, name)
-	var i GetMetricKindRow
-	err := row.Scan(&i.Name, &i.Aggregation, &i.Label)
+	var i MetricKind
+	err := row.Scan(&i.Name, &i.Aggregation)
 	return i, err
 }
 
 const getMetricKinds = `-- name: GetMetricKinds :many
-SELECT k.name, aggregation, l.name as label
-FROM metric_kind as k
-LEFT JOIN metric_label as l ON k.name = l.kind
-ORDER BY k.name, l.name
+SELECT name, aggregation
+FROM metric_kind 
+ORDER BY name
 `
 
-type GetMetricKindsRow struct {
-	Name        string
-	Aggregation int16
-	Label       pgtype.Text
-}
-
-func (q *Queries) GetMetricKinds(ctx context.Context) ([]GetMetricKindsRow, error) {
+func (q *Queries) GetMetricKinds(ctx context.Context) ([]MetricKind, error) {
 	rows, err := q.db.Query(ctx, getMetricKinds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetMetricKindsRow
+	var items []MetricKind
 	for rows.Next() {
-		var i GetMetricKindsRow
-		if err := rows.Scan(&i.Name, &i.Aggregation, &i.Label); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getMetricLabels = `-- name: GetMetricLabels :many
-SELECT name, kind
-FROM metric_label
-ORDER BY name
-`
-
-func (q *Queries) GetMetricLabels(ctx context.Context) ([]MetricLabel, error) {
-	rows, err := q.db.Query(ctx, getMetricLabels)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []MetricLabel
-	for rows.Next() {
-		var i MetricLabel
-		if err := rows.Scan(&i.Name, &i.Kind); err != nil {
+		var i MetricKind
+		if err := rows.Scan(&i.Name, &i.Aggregation); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1356,21 +1301,6 @@ type RegisterMetricKindParams struct {
 
 func (q *Queries) RegisterMetricKind(ctx context.Context, arg RegisterMetricKindParams) error {
 	_, err := q.db.Exec(ctx, registerMetricKind, arg.Name, arg.Aggregation)
-	return err
-}
-
-const registerMetricLabel = `-- name: RegisterMetricLabel :exec
-INSERT INTO metric_label(name, kind)
-VALUES ($1, $2)
-`
-
-type RegisterMetricLabelParams struct {
-	Name string
-	Kind string
-}
-
-func (q *Queries) RegisterMetricLabel(ctx context.Context, arg RegisterMetricLabelParams) error {
-	_, err := q.db.Exec(ctx, registerMetricLabel, arg.Name, arg.Kind)
 	return err
 }
 

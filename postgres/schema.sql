@@ -395,18 +395,6 @@ CREATE TABLE public.metric_kind (
 ALTER TABLE public.metric_kind OWNER TO repository;
 
 --
--- Name: metric_label; Type: TABLE; Schema: public; Owner: repository
---
-
-CREATE TABLE public.metric_label (
-    name text NOT NULL,
-    kind text NOT NULL
-);
-
-
-ALTER TABLE public.metric_label OWNER TO repository;
-
---
 -- Name: report; Type: TABLE; Schema: public; Owner: repository
 --
 
@@ -603,14 +591,6 @@ ALTER TABLE ONLY public.metric_kind
 
 
 --
--- Name: metric_label metric_label_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
---
-
-ALTER TABLE ONLY public.metric_label
-    ADD CONSTRAINT metric_label_pkey PRIMARY KEY (name, kind);
-
-
---
 -- Name: metric metric_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -755,22 +735,6 @@ ALTER TABLE ONLY public.document_version
 
 ALTER TABLE ONLY public.metric
     ADD CONSTRAINT metric_kind_fkey FOREIGN KEY (kind) REFERENCES public.metric_kind(name) ON DELETE CASCADE;
-
-
---
--- Name: metric_label metric_label_kind_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
---
-
-ALTER TABLE ONLY public.metric_label
-    ADD CONSTRAINT metric_label_kind_fkey FOREIGN KEY (kind) REFERENCES public.metric_kind(name) ON DELETE CASCADE;
-
-
---
--- Name: metric metric_label_kind_match; Type: FK CONSTRAINT; Schema: public; Owner: repository
---
-
-ALTER TABLE ONLY public.metric
-    ADD CONSTRAINT metric_label_kind_match FOREIGN KEY (label, kind) REFERENCES public.metric_label(name, kind);
 
 
 --

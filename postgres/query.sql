@@ -363,28 +363,13 @@ DELETE FROM metric_kind
 WHERE name = @name;
 
 -- name: GetMetricKind :one
-SELECT k.name, aggregation, l.name as label
-FROM metric_kind as k, metric_label as l
-WHERE k.name = @name
-  AND k.name = l.kind;
+SELECT name, aggregation
+FROM metric_kind 
+WHERE name = @name;
 
 -- name: GetMetricKinds :many
-SELECT k.name, aggregation, l.name as label
-FROM metric_kind as k
-LEFT JOIN metric_label as l ON k.name = l.kind
-ORDER BY k.name, l.name;
-
--- name: RegisterMetricLabel :exec
-INSERT INTO metric_label(name, kind)
-VALUES (@name, @kind);
-
--- name: DeleteMetricLabel :exec
-DELETE FROM metric_label
-WHERE name = @name AND kind = @kind;
-
--- name: GetMetricLabels :many
-SELECT name, kind
-FROM metric_label
+SELECT name, aggregation
+FROM metric_kind 
 ORDER BY name;
 
 -- name: RegisterOrReplaceMetric :exec
