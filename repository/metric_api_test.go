@@ -201,5 +201,5 @@ func TestIntegrationMetrics(t *testing.T) {
 	_, err = client.DeleteKind(ctx, &repository.DeleteMetricKindRequest{
 		Name: "wordcount",
 	})
-	test.MustNot(t, err, "delete kind in use")
+	test.Must(t, err, "delete kind in use")
 }
