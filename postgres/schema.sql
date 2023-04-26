@@ -754,7 +754,7 @@ ALTER TABLE ONLY public.document_version
 --
 
 ALTER TABLE ONLY public.metric
-    ADD CONSTRAINT metric_kind_fkey FOREIGN KEY (kind) REFERENCES public.metric_kind(name);
+    ADD CONSTRAINT metric_kind_fkey FOREIGN KEY (kind) REFERENCES public.metric_kind(name) ON DELETE CASCADE;
 
 
 --

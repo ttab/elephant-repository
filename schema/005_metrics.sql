@@ -19,7 +19,7 @@ create table metric(
         value bigint not null,
         primary key(uuid, kind, label),
         foreign key(uuid) references document(uuid) on delete cascade,
-        foreign key(kind) references metric_kind(name),
+        foreign key(kind) references metric_kind(name) on delete cascade,
         constraint metric_label_kind_match foreign key(label, kind) references metric_label(name, kind)
 );
 
