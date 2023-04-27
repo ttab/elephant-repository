@@ -115,7 +115,7 @@ func (m *MetricsService) RegisterMetric(
 	ctx context.Context,
 	req *repository.RegisterMetricRequest,
 ) (*repository.RegisterMetricResponse, error) {
-	err := requireAnyScope(ctx, "metrics_admin", "metrics_write")
+	err := requireAnyScope(ctx, "metrics_admin", "metrics_write", "metrics_write:"+req.Kind)
 	if err != nil {
 		return nil, err
 	}
