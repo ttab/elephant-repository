@@ -1,12 +1,25 @@
 package repository_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ttab/elephant/internal/test"
+	repo "github.com/ttab/elephant/repository"
 	"github.com/ttab/elephant/rpc/repository"
 	"golang.org/x/exp/slog"
 )
+
+func TestValidateLabel(t *testing.T) {
+	err := repo.ValidateLabel("Panda123.-_~")
+	test.Must(t, err, "validate simple string ")
+
+	err = repo.ValidateLabel("panda(123)cub")
+	test.MustNot(t, err, "validate invalid chars")
+
+	err = repo.ValidateLabel(strings.Repeat("a", 1000))
+	test.MustNot(t, err, "validate too long strings")
+}
 
 func TestIntegrationMetrics(t *testing.T) {
 	if testing.Short() {

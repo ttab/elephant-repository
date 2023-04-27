@@ -3,10 +3,28 @@ package repository
 import (
 	context "context"
 	"fmt"
+	"regexp"
 
 	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
 )
+
+var (
+	LabelMaxlen = 64
+	LabelChars  = regexp.MustCompile(`^[-_\.~[:alnum:]]*$`)
+)
+
+func ValidateLabel(label string) error {
+	if len(label) > LabelMaxlen {
+		return fmt.Errorf("label too long")
+	}
+
+	if !LabelChars.MatchString(label) {
+		return fmt.Errorf("label contains invalid characters")
+	}
+
+	return nil
+}
 
 type MetricsService struct {
 	store MetricStore
@@ -109,6 +127,11 @@ func (m *MetricsService) RegisterMetric(
 
 	if req.Kind == "" {
 		return nil, twirp.RequiredArgumentError("kind")
+	}
+
+	err = ValidateLabel(req.Label)
+	if err != nil {
+		return nil, twirp.InvalidArgument.Errorf("invalid argument: %w", err)
 	}
 
 	kind, err := m.store.GetMetricKind(ctx, req.Kind)
