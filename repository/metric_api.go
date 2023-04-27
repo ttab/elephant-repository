@@ -26,6 +26,32 @@ func ValidateLabel(label string) error {
 	return nil
 }
 
+func ToAggregation(ma repository.MetricAggregation) (Aggregation, error) {
+	switch ma {
+	case repository.MetricAggregation_NONE:
+		return AggregationNone, nil
+	case repository.MetricAggregation_REPLACE:
+		return AggregationReplace, nil
+	case repository.MetricAggregation_INCREMENT:
+		return AggregationIncrement, nil
+	}
+
+	return AggregationNone, fmt.Errorf("unknown MetricAggregation %v", ma)
+}
+
+func ToMetricAggregation(a Aggregation) (repository.MetricAggregation, error) {
+	switch a {
+	case AggregationNone:
+		return repository.MetricAggregation_NONE, nil
+	case AggregationReplace:
+		return repository.MetricAggregation_REPLACE, nil
+	case AggregationIncrement:
+		return repository.MetricAggregation_INCREMENT, nil
+	}
+
+	return repository.MetricAggregation_NONE, fmt.Errorf("unknown Aggregation %v", a)
+}
+
 type MetricsService struct {
 	store MetricStore
 }
@@ -54,9 +80,14 @@ func (m *MetricsService) GetKinds(
 	}
 
 	for i := range kinds {
+		agg, err := ToMetricAggregation((kinds[i].Aggregation))
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode aggregation: %w", err)
+		}
+
 		res.Kinds = append(res.Kinds, &repository.MetricKind{
 			Name:        kinds[i].Name,
-			Aggregation: repository.MetricAggregation(kinds[i].Aggregation),
+			Aggregation: agg,
 		})
 	}
 
@@ -99,7 +130,12 @@ func (m *MetricsService) RegisterKind(
 		return nil, twirp.RequiredArgumentError("aggregation")
 	}
 
-	err = m.store.RegisterMetricKind(ctx, req.Name, Aggregation(req.Aggregation))
+	agg, err := ToAggregation(req.Aggregation)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode aggregation: %w", err)
+	}
+
+	err = m.store.RegisterMetricKind(ctx, req.Name, agg)
 	if IsDocStoreErrorCode(err, ErrCodeExists) {
 		return nil, twirp.FailedPrecondition.Error(
 			"metric kind already exists")
@@ -142,7 +178,7 @@ func (m *MetricsService) RegisterMetric(
 	}
 
 	switch kind.Aggregation {
-	case AggregationREPLACE:
+	case AggregationReplace:
 		err = m.store.RegisterOrReplaceMetric(ctx, Metric{
 			UUID:  docUUID,
 			Kind:  req.Kind,
@@ -150,7 +186,7 @@ func (m *MetricsService) RegisterMetric(
 			Value: req.Value,
 		})
 
-	case AggregationINCREMENT:
+	case AggregationIncrement:
 		err = m.store.RegisterOrIncrementMetric(ctx, Metric{
 			UUID:  docUUID,
 			Kind:  req.Kind,
@@ -158,7 +194,7 @@ func (m *MetricsService) RegisterMetric(
 			Value: req.Value,
 		})
 
-	case AggregationNONE:
+	case AggregationNone:
 		return nil, fmt.Errorf("unknown metric kind aggregation: %v", kind.Aggregation)
 	}
 

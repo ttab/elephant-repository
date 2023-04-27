@@ -230,9 +230,9 @@ type StatusUpdate struct {
 type Aggregation int16
 
 const (
-	AggregationNONE      = 0
-	AggregationREPLACE   = 1
-	AggregationINCREMENT = 2
+	AggregationNone      Aggregation = 0
+	AggregationReplace   Aggregation = 1
+	AggregationIncrement Aggregation = 2
 )
 
 type MetricKind struct {
