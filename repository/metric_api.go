@@ -67,7 +67,7 @@ func (m *MetricsService) GetKinds(
 	ctx context.Context,
 	_ *repository.GetMetricKindsRequest,
 ) (*repository.GetMetricKindsResponse, error) {
-	err := requireAnyScope(ctx, "metrics_admin") // TODO: correct scope
+	err := requireAnyScope(ctx, "metrics_admin")
 	if err != nil {
 		return nil, err
 	}
