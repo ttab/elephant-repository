@@ -163,6 +163,16 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 	return err
 }
 
+const deleteMetricKind = `-- name: DeleteMetricKind :exec
+DELETE FROM metric_kind
+WHERE name = $1
+`
+
+func (q *Queries) DeleteMetricKind(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, deleteMetricKind, name)
+	return err
+}
+
 const deleteStatusRule = `-- name: DeleteStatusRule :exec
 DELETE FROM status_rule WHERE name = $1
 `
@@ -721,6 +731,45 @@ func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, e
 	return i, err
 }
 
+const getMetricKind = `-- name: GetMetricKind :one
+SELECT name, aggregation
+FROM metric_kind 
+WHERE name = $1
+`
+
+func (q *Queries) GetMetricKind(ctx context.Context, name string) (MetricKind, error) {
+	row := q.db.QueryRow(ctx, getMetricKind, name)
+	var i MetricKind
+	err := row.Scan(&i.Name, &i.Aggregation)
+	return i, err
+}
+
+const getMetricKinds = `-- name: GetMetricKinds :many
+SELECT name, aggregation
+FROM metric_kind 
+ORDER BY name
+`
+
+func (q *Queries) GetMetricKinds(ctx context.Context) ([]MetricKind, error) {
+	rows, err := q.db.Query(ctx, getMetricKinds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MetricKind
+	for rows.Next() {
+		var i MetricKind
+		if err := rows.Scan(&i.Name, &i.Aggregation); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getNextReportDueTime = `-- name: GetNextReportDueTime :one
 SELECT MIN(next_execution)::timestamptz
 FROM report
@@ -1238,6 +1287,69 @@ func (q *Queries) PingJobLock(ctx context.Context, arg PingJobLockParams) (int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const registerMetricKind = `-- name: RegisterMetricKind :exec
+INSERT INTO metric_kind(name, aggregation)
+VALUES ($1, $2)
+`
+
+type RegisterMetricKindParams struct {
+	Name        string
+	Aggregation int16
+}
+
+func (q *Queries) RegisterMetricKind(ctx context.Context, arg RegisterMetricKindParams) error {
+	_, err := q.db.Exec(ctx, registerMetricKind, arg.Name, arg.Aggregation)
+	return err
+}
+
+const registerOrIncrementMetric = `-- name: RegisterOrIncrementMetric :exec
+INSERT INTO metric(uuid, kind, label, value)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT ON CONSTRAINT metric_pkey DO UPDATE 
+SET value = metric.value + $4
+`
+
+type RegisterOrIncrementMetricParams struct {
+	Uuid  uuid.UUID
+	Kind  string
+	Label string
+	Value int64
+}
+
+func (q *Queries) RegisterOrIncrementMetric(ctx context.Context, arg RegisterOrIncrementMetricParams) error {
+	_, err := q.db.Exec(ctx, registerOrIncrementMetric,
+		arg.Uuid,
+		arg.Kind,
+		arg.Label,
+		arg.Value,
+	)
+	return err
+}
+
+const registerOrReplaceMetric = `-- name: RegisterOrReplaceMetric :exec
+INSERT INTO metric(uuid, kind, label, value)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT ON CONSTRAINT metric_pkey DO UPDATE 
+SET value = $4
+`
+
+type RegisterOrReplaceMetricParams struct {
+	Uuid  uuid.UUID
+	Kind  string
+	Label string
+	Value int64
+}
+
+func (q *Queries) RegisterOrReplaceMetric(ctx context.Context, arg RegisterOrReplaceMetricParams) error {
+	_, err := q.db.Exec(ctx, registerOrReplaceMetric,
+		arg.Uuid,
+		arg.Kind,
+		arg.Label,
+		arg.Value,
+	)
+	return err
 }
 
 const registerSchema = `-- name: RegisterSchema :exec

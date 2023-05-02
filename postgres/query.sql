@@ -353,3 +353,33 @@ WHERE uuid = @uuid AND name = @name
       AND (@before::bigint = 0 OR id < @before::bigint)
 ORDER BY id DESC
 LIMIT @count;
+
+-- name: RegisterMetricKind :exec
+INSERT INTO metric_kind(name, aggregation)
+VALUES (@name, @aggregation);
+
+-- name: DeleteMetricKind :exec
+DELETE FROM metric_kind
+WHERE name = @name;
+
+-- name: GetMetricKind :one
+SELECT name, aggregation
+FROM metric_kind 
+WHERE name = @name;
+
+-- name: GetMetricKinds :many
+SELECT name, aggregation
+FROM metric_kind 
+ORDER BY name;
+
+-- name: RegisterOrReplaceMetric :exec
+INSERT INTO metric(uuid, kind, label, value)
+VALUES (@uuid, @kind, @label, @value)
+ON CONFLICT ON CONSTRAINT metric_pkey DO UPDATE 
+SET value = @value;
+
+-- name: RegisterOrIncrementMetric :exec
+INSERT INTO metric(uuid, kind, label, value)
+VALUES (@uuid, @kind, @label, @value)
+ON CONFLICT ON CONSTRAINT metric_pkey DO UPDATE 
+SET value = metric.value + @value;

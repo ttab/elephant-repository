@@ -130,6 +130,17 @@
       "elephant.repository.DeleteDocumentResponse": {
         "type": "object"
       },
+      "elephant.repository.DeleteMetricKindRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.DeleteMetricKindResponse": {
+        "type": "object"
+      },
       "elephant.repository.DeleteStatusRuleRequest": {
         "properties": {
           "name": {
@@ -444,6 +455,20 @@
         },
         "type": "object"
       },
+      "elephant.repository.GetMetricKindsRequest": {
+        "type": "object"
+      },
+      "elephant.repository.GetMetricKindsResponse": {
+        "properties": {
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/elephant.repository.MetricKind"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "elephant.repository.GetReportRequest": {
         "properties": {
           "name": {
@@ -556,6 +581,59 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "elephant.repository.MetricAggregation": {
+        "enum": [
+          "NONE",
+          "REPLACE",
+          "INCREMENT"
+        ],
+        "type": "string"
+      },
+      "elephant.repository.MetricKind": {
+        "properties": {
+          "aggregation": {
+            "$ref": "#/components/schemas/elephant.repository.MetricAggregation"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.RegisterMetricKindRequest": {
+        "properties": {
+          "aggregation": {
+            "$ref": "#/components/schemas/elephant.repository.MetricAggregation"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.RegisterMetricKindResponse": {
+        "type": "object"
+      },
+      "elephant.repository.RegisterMetricRequest": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          },
+          "value": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "elephant.repository.RegisterMetricResponse": {
         "type": "object"
       },
       "elephant.repository.RegisterSchemaRequest": {
@@ -1265,6 +1343,158 @@
         ]
       }
     },
+    "/twirp/elephant.repository.Metrics/DeleteKind": {
+      "post": {
+        "description": "Delete a metric kind",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.DeleteMetricKindRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.DeleteMetricKindResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "DeleteKind",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Metrics/GetKinds": {
+      "post": {
+        "description": "List all metric kinds",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.GetMetricKindsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.GetMetricKindsResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "GetKinds",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Metrics/RegisterKind": {
+      "post": {
+        "description": "Register a metric kind",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.RegisterMetricKindRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.RegisterMetricKindResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "RegisterKind",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
+    "/twirp/elephant.repository.Metrics/RegisterMetric": {
+      "post": {
+        "description": "Register a data point",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/elephant.repository.RegisterMetricRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/elephant.repository.RegisterMetricResponse"
+                }
+              }
+            },
+            "description": "Method response"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "RegisterMetric",
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
     "/twirp/elephant.repository.Reports/Get": {
       "post": {
         "description": "Get a report.",
@@ -1772,6 +2002,9 @@
     },
     {
       "name": "Reports"
+    },
+    {
+      "name": "Metrics"
     }
   ]
 }

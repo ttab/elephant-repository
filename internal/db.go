@@ -42,6 +42,13 @@ func PGTextOrNull(s string) pgtype.Text {
 	}
 }
 
+func PGBigint(n int64) pgtype.Int8 {
+	return pgtype.Int8{
+		Int64: n,
+		Valid: true,
+	}
+}
+
 func PGBigintOrNull(n int64) pgtype.Int8 {
 	if n == 0 {
 		return pgtype.Int8{}

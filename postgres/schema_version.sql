@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 15.1 (Debian 15.1-1.pgdg110+1)
--- Dumped by pg_dump version 15.1 (Debian 15.1-1.pgdg110+1)
+-- Dumped from database version 15.2 (Debian 15.2-1.pgdg110+1)
+-- Dumped by pg_dump version 15.2 (Debian 15.2-1.pgdg110+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -20,7 +20,8 @@ SET row_security = off;
 -- Data for Name: schema_version; Type: TABLE DATA; Schema: public; Owner: repository
 --
 
-INSERT INTO public.schema_version (version) VALUES (4);
+INSERT INTO public.schema_version (version) VALUES (5);
+INSERT INTO public.schema_version (version) VALUES (5);
 
 
 --

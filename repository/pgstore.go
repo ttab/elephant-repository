@@ -1338,6 +1338,137 @@ func (s *PGDocStore) UpdateReport(
 	return nextExec, nil
 }
 
+func (s *PGDocStore) RegisterMetricKind(
+	ctx context.Context, name string, aggregation Aggregation,
+) error {
+	return s.withTX(ctx, "register metric kind", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.RegisterMetricKind(ctx, postgres.RegisterMetricKindParams{
+			Name:        name,
+			Aggregation: int16(aggregation),
+		})
+		if internal.IsConstraintError(err, "metric_kind_pkey") {
+			return DocStoreErrorf(ErrCodeExists,
+				"metric kind already exists")
+		} else if err != nil {
+			return fmt.Errorf("failed to save to databaase: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (s *PGDocStore) DeleteMetricKind(
+	ctx context.Context, name string,
+) error {
+	err := s.reader.DeleteMetricKind(ctx, name)
+	if err != nil {
+		return fmt.Errorf("failed to delete metric kind: %w", err)
+	}
+
+	return nil
+}
+
+func (s *PGDocStore) GetMetricKind(
+	ctx context.Context, name string,
+) (*MetricKind, error) {
+	kind, err := s.reader.GetMetricKind(ctx, name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, DocStoreErrorf(
+			ErrCodeNotFound, "metric kind not found")
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to fetch metric kind: %w", err)
+	}
+
+	return &MetricKind{
+		Name:        kind.Name,
+		Aggregation: Aggregation(kind.Aggregation),
+	}, nil
+}
+
+func (s *PGDocStore) GetMetricKinds(
+	ctx context.Context,
+) ([]*MetricKind, error) {
+	rows, err := s.reader.GetMetricKinds(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch metric kinds: %w", err)
+	}
+
+	res := make([]*MetricKind, 0)
+
+	for i := range rows {
+		res = append(res, &MetricKind{
+			Name:        rows[i].Name,
+			Aggregation: Aggregation(rows[i].Aggregation),
+		})
+	}
+
+	return res, nil
+}
+
+// RegisterMetric implements MetricStore.
+func (s *PGDocStore) RegisterOrReplaceMetric(ctx context.Context, metric Metric) error {
+	return s.withTX(ctx, "register metric", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.RegisterOrReplaceMetric(ctx, postgres.RegisterOrReplaceMetricParams{
+			Uuid:  metric.UUID,
+			Kind:  metric.Kind,
+			Label: metric.Label,
+			Value: metric.Value,
+		})
+		if internal.IsConstraintError(err, "metric_kind_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "metric kind not found")
+		}
+		if internal.IsConstraintError(err, "metric_label_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "metric label not found")
+		}
+		if internal.IsConstraintError(err, "metric_label_kind_match") {
+			return DocStoreErrorf(ErrCodeNotFound, "label does not apply to kind")
+		}
+		if internal.IsConstraintError(err, "metric_uuid_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
+		}
+		if err != nil {
+			return fmt.Errorf("failed to save to database: %w", err)
+		}
+
+		return nil
+	})
+}
+
+// RegisterMetric implements MetricStore.
+func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metric) error {
+	return s.withTX(ctx, "register metric", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.RegisterOrIncrementMetric(ctx, postgres.RegisterOrIncrementMetricParams{
+			Uuid:  metric.UUID,
+			Kind:  metric.Kind,
+			Label: metric.Label,
+			Value: metric.Value,
+		})
+		if internal.IsConstraintError(err, "metric_kind_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "metric kind not found")
+		}
+		if internal.IsConstraintError(err, "metric_label_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "metric label not found")
+		}
+		if internal.IsConstraintError(err, "metric_label_kind_match") {
+			return DocStoreErrorf(ErrCodeNotFound, "label does not apply to kind")
+		}
+		if internal.IsConstraintError(err, "metric_uuid_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
+		}
+		if err != nil {
+			return fmt.Errorf("failed to save to database: %w", err)
+		}
+
+		return nil
+	})
+}
+
 func (s *PGDocStore) updateACL(
 	ctx context.Context, q *postgres.Queries,
 	docUUID uuid.UUID, docType string, updateACL []ACLEntry,

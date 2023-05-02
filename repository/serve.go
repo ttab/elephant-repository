@@ -189,6 +189,27 @@ func WithJWKSEndpoint(jwtKey *ecdsa.PrivateKey) RouterOption {
 	}
 }
 
+func WithMetricsAPI(
+	service repository.Metrics,
+	opts ServerOptions,
+) RouterOption {
+	return func(router *httprouter.Router) error {
+		opts.Hooks = twirp.ChainHooks(
+			authCheckHook(""), opts.Hooks,
+		)
+
+		api := repository.NewMetricsServer(
+			service,
+			twirp.WithServerJSONSkipDefaults(true),
+			twirp.WithServerHooks(opts.Hooks),
+		)
+
+		registerAPI(router, opts, api)
+
+		return nil
+	}
+}
+
 func WithTokenEndpoint(
 	jwtKey *ecdsa.PrivateKey, sharedSecret string,
 ) RouterOption {

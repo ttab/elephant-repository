@@ -34,23 +34,23 @@ type DeleteRecord struct {
 	ID         int64
 	Uuid       uuid.UUID
 	Uri        string
+	Type       string
 	Version    int64
 	Created    pgtype.Timestamptz
 	CreatorUri string
 	Meta       []byte
-	Type       string
 }
 
 type Document struct {
 	Uuid           uuid.UUID
 	Uri            string
+	Type           string
 	Created        pgtype.Timestamptz
 	CreatorUri     string
 	Updated        pgtype.Timestamptz
 	UpdaterUri     string
 	CurrentVersion int64
 	Deleting       bool
-	Type           string
 }
 
 type DocumentLink struct {
@@ -114,6 +114,18 @@ type JobLock struct {
 	Holder    string
 	Touched   pgtype.Timestamptz
 	Iteration int64
+}
+
+type Metric struct {
+	Uuid  uuid.UUID
+	Kind  string
+	Label string
+	Value int64
+}
+
+type MetricKind struct {
+	Name        string
+	Aggregation int16
 }
 
 type Report struct {

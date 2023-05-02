@@ -87,6 +87,27 @@ type ReportStore interface {
 	) (*StoredReport, error)
 }
 
+type MetricStore interface {
+	RegisterMetricKind(
+		ctx context.Context, name string, aggregation Aggregation,
+	) error
+	DeleteMetricKind(
+		ctx context.Context, name string,
+	) error
+	GetMetricKind(
+		ctx context.Context, name string,
+	) (*MetricKind, error)
+	GetMetricKinds(
+		ctx context.Context,
+	) ([]*MetricKind, error)
+	RegisterOrReplaceMetric(
+		ctx context.Context, metric Metric,
+	) error
+	RegisterOrIncrementMetric(
+		ctx context.Context, metric Metric,
+	) error
+}
+
 type DocumentStatus struct {
 	Name     string
 	Disabled bool
@@ -204,6 +225,26 @@ type StatusUpdate struct {
 	Name    string
 	Version int64
 	Meta    doc.DataMap
+}
+
+type Aggregation int16
+
+const (
+	AggregationNone      Aggregation = 0
+	AggregationReplace   Aggregation = 1
+	AggregationIncrement Aggregation = 2
+)
+
+type MetricKind struct {
+	Name        string
+	Aggregation Aggregation
+}
+
+type Metric struct {
+	UUID  uuid.UUID
+	Kind  string
+	Label string
+	Value int64
 }
 
 // DocStoreErrorCode TODO: Rename to StoreErrorCode and consistently rename all

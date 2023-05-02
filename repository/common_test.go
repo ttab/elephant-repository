@@ -45,7 +45,8 @@ func (tc *TestContext) DocumentsClient(
 				r.Header.Set("Authorization", "Bearer "+token)
 
 				return ctx, nil
-			}}))
+			},
+		}))
 
 	return docClient
 }
@@ -65,7 +66,8 @@ func (tc *TestContext) WorkflowsClient(
 				r.Header.Set("Authorization", "Bearer "+token)
 
 				return ctx, nil
-			}}))
+			},
+		}))
 
 	return workflowsClient
 }
@@ -85,7 +87,8 @@ func (tc *TestContext) ReportsClient(
 				r.Header.Set("Authorization", "Bearer "+token)
 
 				return ctx, nil
-			}}))
+			},
+		}))
 
 	return reportsClient
 }
@@ -105,9 +108,31 @@ func (tc *TestContext) SchemasClient(
 				r.Header.Set("Authorization", "Bearer "+token)
 
 				return ctx, nil
-			}}))
+			},
+		}))
 
 	return schemasClient
+}
+
+func (tc *TestContext) MetricsClient(
+	t *testing.T, claims repository.JWTClaims,
+) rpc.Metrics {
+	t.Helper()
+
+	token, err := test.AccessKey(tc.SigningKey, claims)
+	test.Must(t, err, "create access key")
+
+	metricsClient := rpc.NewMetricsProtobufClient(
+		tc.Server.URL, tc.Server.Client(),
+		twirp.WithClientHooks(&twirp.ClientHooks{
+			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
+				r.Header.Set("Authorization", "Bearer "+token)
+
+				return ctx, nil
+			},
+		}))
+
+	return metricsClient
 }
 
 type testingServerOptions struct {
@@ -196,6 +221,7 @@ func testingAPIServer(
 	schemaService := repository.NewSchemasService(store)
 	workflowService := repository.NewWorkflowsService(store)
 	reportsService := repository.NewReportsService(logger, store, reportingPool)
+	metricsService := repository.NewMetricsService(store)
 
 	router := httprouter.New()
 
@@ -212,6 +238,7 @@ func testingAPIServer(
 		repository.WithSchemasAPI(schemaService, srvOpts),
 		repository.WithWorkflowsAPI(workflowService, srvOpts),
 		repository.WithReportsAPI(reportsService, srvOpts),
+		repository.WithMetricsAPI(metricsService, srvOpts),
 	)
 	test.Must(t, err, "set up router")
 
