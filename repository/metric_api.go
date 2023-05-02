@@ -9,18 +9,18 @@ import (
 	"github.com/twitchtv/twirp"
 )
 
-var (
-	LabelMaxlen = 64
-	LabelChars  = regexp.MustCompile(`^[-_\.~[:alnum:]]*$`)
-)
+const labelMaxlen = 64
+
+var nonLabelChars = regexp.MustCompile(`[^_[:alnum:]]`)
 
 func ValidateLabel(label string) error {
-	if len(label) > LabelMaxlen {
+	if len(label) > labelMaxlen {
 		return fmt.Errorf("label too long")
 	}
 
-	if !LabelChars.MatchString(label) {
-		return fmt.Errorf("label contains invalid characters")
+	nlc := nonLabelChars.FindString(label)
+	if nlc != "" {
+		return fmt.Errorf("unsupported character %q in label", nlc)
 	}
 
 	return nil

@@ -11,7 +11,7 @@ import (
 )
 
 func TestValidateLabel(t *testing.T) {
-	err := repo.ValidateLabel("Panda123.-_~")
+	err := repo.ValidateLabel("Panda_123")
 	test.Must(t, err, "validate simple string ")
 
 	err = repo.ValidateLabel("panda(123)cub")
