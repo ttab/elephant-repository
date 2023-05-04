@@ -306,8 +306,8 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 
 	recordID, err := q.InsertDeleteRecord(ctx,
 		postgres.InsertDeleteRecordParams{
-			Uuid:       req.UUID,
-			Uri:        info.Info.Uri,
+			UUID:       req.UUID,
+			URI:        info.Info.URI,
 			Type:       info.Info.Type,
 			Version:    info.Info.CurrentVersion,
 			Created:    internal.PGTime(req.Updated),
@@ -319,8 +319,8 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 	}
 
 	err = q.DeleteDocument(ctx, postgres.DeleteDocumentParams{
-		Uuid:     req.UUID,
-		Uri:      info.Info.Uri,
+		UUID:     req.UUID,
+		URI:      info.Info.URI,
 		RecordID: recordID,
 	})
 	if err != nil {
@@ -350,7 +350,7 @@ func (s *PGDocStore) GetDocument(
 	} else {
 		data, err = s.reader.GetDocumentVersionData(ctx,
 			postgres.GetDocumentVersionDataParams{
-				Uuid:    uuid,
+				UUID:    uuid,
 				Version: version,
 			})
 	}
@@ -391,7 +391,7 @@ func (s *PGDocStore) GetEventlog(
 		e := Event{
 			ID:        res[i].ID,
 			Event:     EventType(res[i].Event),
-			UUID:      res[i].Uuid,
+			UUID:      res[i].UUID,
 			Timestamp: res[i].Timestamp.Time,
 			Updater:   res[i].Updater.String,
 			Type:      res[i].Type.String,
@@ -441,7 +441,7 @@ func (s *PGDocStore) GetVersion(
 	ctx context.Context, uuid uuid.UUID, version int64,
 ) (DocumentUpdate, error) {
 	v, err := s.reader.GetVersion(ctx, postgres.GetVersionParams{
-		Uuid:    uuid,
+		UUID:    uuid,
 		Version: version,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -475,7 +475,7 @@ func (s *PGDocStore) GetVersionHistory(
 	before int64, count int,
 ) ([]DocumentUpdate, error) {
 	history, err := s.reader.GetVersions(ctx, postgres.GetVersionsParams{
-		Uuid:   uuid,
+		UUID:   uuid,
 		Before: before,
 		Count:  int32(count),
 	})
@@ -512,7 +512,7 @@ func (s *PGDocStore) GetStatusHistory(
 	name string, before int64, count int,
 ) ([]Status, error) {
 	history, err := s.reader.GetStatusVersions(ctx, postgres.GetStatusVersionsParams{
-		Uuid:   uuid,
+		UUID:   uuid,
 		Name:   name,
 		Before: before,
 		Count:  int32(count),
@@ -583,7 +583,7 @@ func (s *PGDocStore) GetDocumentMeta(
 
 	for _, a := range acl {
 		meta.ACL = append(meta.ACL, ACLEntry{
-			URI:         a.Uri,
+			URI:         a.URI,
 			Permissions: a.Permissions,
 		})
 	}
@@ -630,8 +630,8 @@ func (s *PGDocStore) CheckPermission(
 ) (CheckPermissionResult, error) {
 	access, err := s.reader.CheckPermission(ctx,
 		postgres.CheckPermissionParams{
-			Uuid:       req.UUID,
-			Uri:        req.GranteeURIs,
+			UUID:       req.UUID,
+			URI:        req.GranteeURIs,
 			Permission: string(req.Permission),
 		})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -733,7 +733,7 @@ func (s *PGDocStore) Update(
 		docType = update.Document.Type
 
 		err = q.CreateVersion(ctx, postgres.CreateVersionParams{
-			Uuid:         update.UUID,
+			UUID:         update.UUID,
 			Version:      up.Version,
 			Created:      internal.PGTime(up.Created),
 			CreatorUri:   up.Creator,
@@ -800,7 +800,7 @@ func (s *PGDocStore) Update(
 		}
 
 		err = q.CreateStatus(ctx, postgres.CreateStatusParams{
-			Uuid:       update.UUID,
+			UUID:       update.UUID,
 			Name:       stat.Name,
 			ID:         statusID,
 			Version:    status.Version,
@@ -880,7 +880,7 @@ func (s *PGDocStore) loadDocument(
 ) (*doc.Document, doc.DataMap, error) {
 	docV, err := q.GetFullVersion(ctx,
 		postgres.GetFullVersionParams{
-			Uuid:    uuid,
+			UUID:    uuid,
 			Version: version,
 		})
 	if err != nil {
@@ -1413,7 +1413,7 @@ func (s *PGDocStore) RegisterOrReplaceMetric(ctx context.Context, metric Metric)
 		q := postgres.New(tx)
 
 		err := q.RegisterOrReplaceMetric(ctx, postgres.RegisterOrReplaceMetricParams{
-			Uuid:  metric.UUID,
+			UUID:  metric.UUID,
 			Kind:  metric.Kind,
 			Label: metric.Label,
 			Value: metric.Value,
@@ -1444,7 +1444,7 @@ func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metri
 		q := postgres.New(tx)
 
 		err := q.RegisterOrIncrementMetric(ctx, postgres.RegisterOrIncrementMetricParams{
-			Uuid:  metric.UUID,
+			UUID:  metric.UUID,
 			Kind:  metric.Kind,
 			Label: metric.Label,
 			Value: metric.Value,
@@ -1489,8 +1489,8 @@ func (s *PGDocStore) updateACL(
 	for _, acl := range updateACL {
 		if len(acl.Permissions) == 0 {
 			err := q.DropACL(ctx, postgres.DropACLParams{
-				Uuid: docUUID,
-				Uri:  acl.URI,
+				UUID: docUUID,
+				URI:  acl.URI,
 			})
 			if err != nil {
 				return fmt.Errorf(
@@ -1502,8 +1502,8 @@ func (s *PGDocStore) updateACL(
 		}
 
 		acls = append(acls, postgres.ACLUpdateParams{
-			Uuid:        docUUID,
-			Uri:         acl.URI,
+			UUID:        docUUID,
+			URI:         acl.URI,
 			Permissions: acl.Permissions,
 		})
 	}
@@ -1524,7 +1524,7 @@ func (s *PGDocStore) updateACL(
 	}
 
 	err := q.InsertACLAuditEntry(ctx, postgres.InsertACLAuditEntryParams{
-		Uuid:       docUUID,
+		UUID:       docUUID,
 		Type:       internal.PGTextOrNull(docType),
 		Updated:    internal.PGTime(time.Now()),
 		UpdaterUri: auth.Claims.Subject,

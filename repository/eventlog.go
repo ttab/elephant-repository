@@ -729,7 +729,7 @@ func (pr *PGReplication) recordEvent(evt Event) error {
 
 	row := postgres.InsertIntoEventLogParams{
 		Event:     string(evt.Event),
-		Uuid:      evt.UUID,
+		UUID:      evt.UUID,
 		Timestamp: internal.PGTime(evt.Timestamp),
 		Updater:   internal.PGTextOrNull(evt.Updater),
 		Type:      internal.PGTextOrNull(evt.Type),

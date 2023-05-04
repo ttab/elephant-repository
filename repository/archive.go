@@ -333,9 +333,9 @@ func (a *Archiver) processDeletes(
 		return false, fmt.Errorf("failed to get pending deletions: %w", err)
 	}
 
-	prefix := fmt.Sprintf("documents/%s/", deleteOrder.Uuid)
+	prefix := fmt.Sprintf("documents/%s/", deleteOrder.UUID)
 	dstPrefix := fmt.Sprintf("deleted/%s/%d/",
-		deleteOrder.Uuid, deleteOrder.DeleteRecordID)
+		deleteOrder.UUID, deleteOrder.DeleteRecordID)
 
 	paginator := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
 		Bucket: aws.String(a.bucket),
@@ -385,7 +385,7 @@ func (a *Archiver) processDeletes(
 		return false, fmt.Errorf("failed to move all document objects: %w", err)
 	}
 
-	count, err := q.FinaliseDelete(ctx, deleteOrder.Uuid)
+	count, err := q.FinaliseDelete(ctx, deleteOrder.UUID)
 	if err != nil {
 		return false, fmt.Errorf("failed to finalise delete: %w", err)
 	}
@@ -463,7 +463,7 @@ func (a *Archiver) archiveDocumentVersions(
 	}
 
 	dv := ArchivedDocumentVersion{
-		UUID:            unarchived.Uuid,
+		UUID:            unarchived.UUID,
 		Version:         unarchived.Version,
 		Created:         unarchived.Created.Time,
 		CreatorURI:      unarchived.CreatorUri,
@@ -494,7 +494,7 @@ func (a *Archiver) archiveDocumentVersions(
 	key := fmt.Sprintf("documents/%s/versions/%d.json", dv.UUID, dv.Version)
 
 	err = q.SetDocumentVersionAsArchived(ctx, postgres.SetDocumentVersionAsArchivedParams{
-		Uuid:      dv.UUID,
+		UUID:      dv.UUID,
 		Version:   dv.Version,
 		Signature: signature.String(),
 	})
@@ -587,7 +587,7 @@ func (a *Archiver) archiveDocumentStatuses(
 	}
 
 	ds := ArchivedDocumentStatus{
-		UUID:             unarchived.Uuid,
+		UUID:             unarchived.UUID,
 		Name:             unarchived.Name,
 		ID:               unarchived.ID,
 		Version:          unarchived.Version,
@@ -621,7 +621,7 @@ func (a *Archiver) archiveDocumentStatuses(
 		ds.UUID, ds.Name, ds.ID)
 
 	err = q.SetDocumentStatusAsArchived(ctx, postgres.SetDocumentStatusAsArchivedParams{
-		Uuid:      ds.UUID,
+		UUID:      ds.UUID,
 		ID:        ds.ID,
 		Signature: signature.String(),
 	})

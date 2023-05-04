@@ -51,4 +51,4 @@ postgres/schema.sql postgres/schema_version.sql:
 	./dump-postgres-schema.sh
 
 postgres/query.sql.go: bin/sqlc postgres/schema.sql postgres/query.sql
-	./bin/sqlc --experimental generate
+	./bin/sqlc generate
