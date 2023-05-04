@@ -83,7 +83,7 @@ func NewTwirpMetricsHooks(opts ...TwirpMetricOptionFunc) (*twirp.ServerHooks, er
 
 	var hooks twirp.ServerHooks
 
-	var reqStartTimestampKey = new(int)
+	reqStartTimestampKey := new(int)
 
 	hooks.RequestReceived = func(ctx context.Context) (context.Context, error) {
 		return context.WithValue(ctx, reqStartTimestampKey, time.Now()), nil

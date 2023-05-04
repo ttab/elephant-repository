@@ -73,8 +73,8 @@ func TestArchiveSignature_GenerateAndVerify(t *testing.T) {
 	keys := getTestKeys(t)
 
 	keySelection := map[string]time.Time{
-		"1": time.Date(2023, 02, 10, 00, 00, 00, 00, time.UTC),
-		"2": time.Date(2023, 03, 10, 00, 00, 00, 00, time.UTC),
+		"1": time.Date(2023, 2, 10, 0, 0, 0, 0, time.UTC),
+		"2": time.Date(2023, 3, 10, 0, 0, 0, 0, time.UTC),
 	}
 
 	for kid, t0 := range keySelection {
@@ -124,7 +124,7 @@ func TestArchiveSignature_ParseAndDetectBadSignature(t *testing.T) {
 
 func FuzzArchiveSignatureParsing(f *testing.F) {
 	keys := getTestKeys(f)
-	time := time.Date(2023, 02, 10, 00, 00, 00, 00, time.UTC)
+	time := time.Date(2023, 2, 10, 0, 0, 0, 0, time.UTC)
 
 	key := keys.CurrentKey(time)
 	test.NotNil(f, key, "get current key")

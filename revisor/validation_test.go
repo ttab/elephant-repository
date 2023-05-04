@@ -96,9 +96,7 @@ func FuzzValidationConstraints(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, constraintData []byte) {
-		var (
-			constraints revisor.ConstraintSet
-		)
+		var constraints revisor.ConstraintSet
 
 		if !(decodeBytes(t, constraintData, &constraints)) {
 			return

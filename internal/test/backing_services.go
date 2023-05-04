@@ -245,7 +245,6 @@ func (bs *BackingServices) bootstrapMinio() error {
 	err = bs.pool.Retry(func() error {
 		_, err := client.ListBuckets(
 			context.Background(), &s3.ListBucketsInput{})
-
 		if err != nil {
 			log.Println(err.Error())
 
