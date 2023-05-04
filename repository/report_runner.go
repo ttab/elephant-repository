@@ -87,7 +87,13 @@ func (r *ReportRunner) Run(ctx context.Context) {
 	r.cancel = cancel
 	r.stopped = make(chan struct{})
 
-	go r.run(ctx)
+	r.run(ctx)
+}
+
+func (r *ReportRunner) Stop() {
+	r.cancel()
+
+	<-r.stopped
 }
 
 func (r *ReportRunner) run(ctx context.Context) {

@@ -77,6 +77,7 @@ func runServer(c *cli.Context) error {
 	)
 
 	logger := internal.SetUpLogger(logLevel, os.Stdout)
+	grace := internal.NewGracefulShutdown(logger, 20*time.Second)
 
 	paramSource := internal.NewLazySSM()
 
@@ -206,24 +207,40 @@ func runServer(c *cli.Context) error {
 			// spawned.
 			go repl.Run(c.Context)
 
+			go func() {
+				<-grace.ShouldStop()
+				repl.Stop()
+				logger.Info("stopped replication")
+			}()
+
 			return nil
 		})
 	}
 
 	if !conf.NoReporter {
-		reporter, err := repository.NewReportRunner(repository.ReportRunnerOptions{
-			Logger:            logger,
-			S3:                s3Client,
-			Bucket:            conf.ReportBucket,
-			ReportQueryer:     reportDB,
-			DB:                dbpool,
-			MetricsRegisterer: prometheus.DefaultRegisterer,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create report runner: %w", err)
-		}
+		group.Go(func() error {
+			reporter, err := repository.NewReportRunner(repository.ReportRunnerOptions{
+				Logger:            logger,
+				S3:                s3Client,
+				Bucket:            conf.ReportBucket,
+				ReportQueryer:     reportDB,
+				DB:                dbpool,
+				MetricsRegisterer: prometheus.DefaultRegisterer,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create report runner: %w", err)
+			}
 
-		reporter.Run(c.Context)
+			go reporter.Run(c.Context)
+
+			go func() {
+				<-grace.ShouldStop()
+				reporter.Stop()
+				logger.Info("stopped reporter")
+			}()
+
+			return nil
+		})
 	}
 
 	if !conf.NoArchiver {
@@ -232,8 +249,19 @@ func runServer(c *cli.Context) error {
 		logger.Debug("starting archiver")
 
 		group.Go(func() error {
-			return startArchiver(c.Context, gCtx,
+			archiver, err := startArchiver(c.Context, gCtx,
 				log, conf, dbpool)
+			if err != nil {
+				return err
+			}
+
+			go func() {
+				<-grace.ShouldStop()
+				archiver.Stop()
+				logger.Info("stopped archiver")
+			}()
+
+			return nil
 		})
 	}
 
@@ -279,7 +307,13 @@ func runServer(c *cli.Context) error {
 				"failed to create eventsink forwarder: %w", err)
 		}
 
-		forwarder.Run(c.Context)
+		go forwarder.Run(c.Context)
+
+		go func() {
+			<-grace.ShouldStop()
+			forwarder.Stop()
+			logger.Info("stopped eventsink")
+		}()
 	}
 
 	err = group.Wait()
@@ -409,7 +443,7 @@ func runServer(c *cli.Context) error {
 		return nil
 	})
 
-	serverGroup, gCtx := errgroup.WithContext(c.Context)
+	serverGroup, gCtx := errgroup.WithContext(grace.CancelOnQuit(c.Context))
 
 	serverGroup.Go(func() error {
 		logger.Debug("starting API server")
@@ -446,10 +480,10 @@ func runServer(c *cli.Context) error {
 func startArchiver(
 	ctx context.Context, setupCtx context.Context, logger *slog.Logger,
 	conf cmd.BackendConfig, dbpool *pgxpool.Pool,
-) error {
+) (*repository.Archiver, error) {
 	aS3, err := repository.S3Client(setupCtx, conf.S3Options)
 	if err != nil {
-		return fmt.Errorf("failed to create S3 client: %w", err)
+		return nil, fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
 	archiver, err := repository.NewArchiver(repository.ArchiverOptions{
@@ -459,13 +493,13 @@ func startArchiver(
 		DB:     dbpool,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create archiver: %w", err)
+		return nil, fmt.Errorf("failed to create archiver: %w", err)
 	}
 
 	err = archiver.Run(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to run archiver: %w", err)
+		return nil, fmt.Errorf("failed to run archiver: %w", err)
 	}
 
-	return nil
+	return archiver, nil
 }

@@ -92,6 +92,7 @@ func NewEventForwarder(opts EventForwarderOptions) (*EventForwarder, error) {
 	}
 
 	return &EventForwarder{
+		stopped:   make(chan struct{}),
 		logger:    opts.Logger,
 		db:        opts.DB,
 		restarts:  restarts,
@@ -107,9 +108,13 @@ func (r *EventForwarder) Run(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	r.cancel = cancel
-	r.stopped = make(chan struct{})
 
-	go r.run(ctx)
+	r.run(ctx)
+}
+
+func (r *EventForwarder) Stop() {
+	r.cancel()
+	<-r.stopped
 }
 
 func (r *EventForwarder) run(ctx context.Context) {
