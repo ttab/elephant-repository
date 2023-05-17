@@ -7,15 +7,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/internal"
-	"github.com/ttab/elephant/revisor"
 	"github.com/ttab/elephant/rpc/repository"
+	"github.com/ttab/newsdoc"
+	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 )
 
 type DocumentValidator interface {
-	ValidateDocument(document *doc.Document) []revisor.ValidationResult
+	ValidateDocument(document *newsdoc.Document) []revisor.ValidationResult
 }
 
 type WorkflowProvider interface {
@@ -864,7 +864,7 @@ func RPCToStatusUpdate(update []*repository.StatusUpdate) []StatusUpdate {
 	return out
 }
 
-func DocumentToRPC(d *doc.Document) *repository.Document {
+func DocumentToRPC(d *newsdoc.Document) *repository.Document {
 	if d == nil {
 		return nil
 	}
@@ -882,7 +882,7 @@ func DocumentToRPC(d *doc.Document) *repository.Document {
 	}
 }
 
-func BlocksToRPC(blocks []doc.Block) []*repository.Block {
+func BlocksToRPC(blocks []newsdoc.Block) []*repository.Block {
 	var res []*repository.Block
 
 	// Not allocating up-front to avoid turning nil into [].
@@ -902,7 +902,7 @@ func BlocksToRPC(blocks []doc.Block) []*repository.Block {
 			Role:        b.Role,
 			Name:        b.Name,
 			Value:       b.Value,
-			ContentType: b.ContentType,
+			Contenttype: b.Contenttype,
 			Links:       BlocksToRPC(b.Links),
 			Content:     BlocksToRPC(b.Content),
 			Meta:        BlocksToRPC(b.Meta),
@@ -922,12 +922,12 @@ func BlocksToRPC(blocks []doc.Block) []*repository.Block {
 	return res
 }
 
-func RPCToDocument(rpcDoc *repository.Document) *doc.Document {
+func RPCToDocument(rpcDoc *repository.Document) *newsdoc.Document {
 	if rpcDoc == nil {
 		return nil
 	}
 
-	return &doc.Document{
+	return &newsdoc.Document{
 		UUID:     rpcDoc.Uuid,
 		Type:     rpcDoc.Type,
 		URI:      rpcDoc.Uri,
@@ -940,12 +940,12 @@ func RPCToDocument(rpcDoc *repository.Document) *doc.Document {
 	}
 }
 
-func RPCToBlocks(blocks []*repository.Block) []doc.Block {
-	var res []doc.Block
+func RPCToBlocks(blocks []*repository.Block) []newsdoc.Block {
+	var res []newsdoc.Block
 
 	// Not allocating up-front to avoid turning nil into [].
 	if len(blocks) > 0 {
-		res = make([]doc.Block, len(blocks))
+		res = make([]newsdoc.Block, len(blocks))
 	}
 
 	for i, rb := range blocks {
@@ -953,7 +953,7 @@ func RPCToBlocks(blocks []*repository.Block) []doc.Block {
 			continue
 		}
 
-		b := doc.Block{
+		b := newsdoc.Block{
 			ID:          rb.Id,
 			UUID:        rb.Uuid,
 			URI:         rb.Uri,
@@ -964,7 +964,7 @@ func RPCToBlocks(blocks []*repository.Block) []doc.Block {
 			Role:        rb.Role,
 			Name:        rb.Name,
 			Value:       rb.Value,
-			ContentType: rb.ContentType,
+			Contenttype: rb.Contenttype,
 			Links:       RPCToBlocks(rb.Links),
 			Content:     RPCToBlocks(rb.Content),
 			Meta:        RPCToBlocks(rb.Meta),
@@ -972,7 +972,7 @@ func RPCToBlocks(blocks []*repository.Block) []doc.Block {
 
 		for k, v := range rb.Data {
 			if b.Data == nil {
-				b.Data = make(doc.DataMap)
+				b.Data = make(newsdoc.DataMap)
 			}
 
 			b.Data[k] = v

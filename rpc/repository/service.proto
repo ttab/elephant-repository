@@ -91,11 +91,11 @@ message GetEventlogRequest {
   // After specifies the event ID after which to start returning events.
   int64 after = 1;
   // Wait is the maximum time to wait for new events. Defaults to 2000.
-  int32 waitMs = 2;
+  int32 wait_ms = 2;
   // BatchSize is the number of events we want in the response. Defaults to 10.
-  int32 batchSize = 3;
+  int32 batch_size = 3;
   // BatchWaitMs is the maximum time we wait for a batch to be filled. Defaults to 200.
-  int32 batchWaitMs = 4;
+  int32 batch_wait_ms = 4;
 }
 
 message GetEventlogResponse {
@@ -293,8 +293,8 @@ message UpdateRequest {
 // ImportDirective can be used to preserve timestamps and authorship information
 // from originating systems.
 message ImportDirective {
-  string originallyCreated = 1;
-  string originalCreator = 2;
+  string originally_created = 1;
+  string original_creator = 2;
 }
 
 // UpdateResponse describes the result of an update request.
@@ -384,7 +384,7 @@ message DocumentMeta {
   // affected the document.
   string modified = 2;
   // CurrentVersion is the last written vrsion of the document.
-  int64 currentVersion = 3;
+  int64 current_version = 3;
   // Heads are the last statuses.
   map<string, Status> heads = 4;
   // ACL is an ACL list controlling access to the document.
@@ -411,40 +411,41 @@ message ACLEntry {
   repeated string permissions = 2;
 }
 
-// Document is the content
+// Document is a NewsDoc document.
 message Document {
-  // UUID is a unique ID for the document, this can be a random v4
-  // UUID, or a URI-derived v5 UUID.
+  // UUID is a unique ID for the document, this can for example be a
+  // random v4 UUID, or a URI-derived v5 UUID.
   string uuid = 1;
   // Type is the content type of the document.
   string type = 2;
-  // URI identifies the document (in a more human-readable way than
-  // the UUID)
+  // URI identifies the document (in a more human-readable way than the
+  // UUID).
   string uri = 3;
-  // URL is the browseable location of the document (if any)
+  // URL is the browseable location of the document (if any).
   string url = 4;
-  // Title is the title of the document, often used as the headline
-  // when the document is displayed.
+  // Title is the title of the document, can be used as the document name,
+  // or the headline when the document is displayed.
   string title = 5;
-  // Content is the content of the documen, this is essentially what
-  // gets rendered on the page when you view a document.
+  // Content is the content of the document, this is essentially what gets
+  // rendered on the page when you view a document.
   repeated Block content = 6;
-  // Meta is the metadata for a document, this could be stuff like
-  // open graph tags and content profile information.
+  // Meta is the metadata for a document, this could be things like
+  // teasers, open graph data, newsvalues.
   repeated Block meta = 7;
-  // Links are links to other resources and entities. This could be
-  // links to categories and subject for the document, or authors.
+  // Links are links to other resources and entities. This could be links
+  // to topics, categories and subjects for the document, or credited
+  // authors.
   repeated Block links = 8;
   // Language is the language used in the document as an IETF language
   // tag. F.ex. "en", "en-UK", "es", or "sv-SE".
   string language = 9;
 }
 
-// Block is the building block for data embedded in documents. It is
-// used for both content, links and metadata. Blocks have can be
-// nested, but that's nothing to strive for, keep it simple.
+// Block is the building block for data embedded in documents. It is used for
+// both content, links and metadata. Blocks have can be nested, but that's
+// nothing to strive for, keep it simple.
 message Block {
-  // ID is the block ID
+  // ID is the block ID,
   string id = 1;
   // UUID is used to reference another Document in a block.
   string uuid = 2;
@@ -457,12 +458,12 @@ message Block {
   // Title is the title/headline of the block, typically used in the
   // presentation of the block.
   string title = 6;
-  // Data contains block data
+  // Data contains block data.
   map<string, string> data = 7;
-  // Relationship describes the relationship to the document/parent
-  // entity
+  // Rel describes the relationship to the document/parent entity.
   string rel = 8;
-  // Role is used for nuancing and qualifying relationships.
+  // Role is used either as an alternative to rel, or for nuancing the
+  // relationship.
   string role = 9;
   // Name is a name for the block. An alternative to "rel" when
   // relationship is a term that doesn't fit.
@@ -470,9 +471,9 @@ message Block {
   // Value is a value for the block. Useful when we want to store a
   // primitive value.
   string value = 11;
-  // ContentType is used to describe the content type of the
-  // block/linked entity if it differs from the type of the block.
-  string contentType = 12;
+  // ContentType is used to describe the content type of the block/linked
+  // entity if it differs from the type of the block.
+  string contenttype = 12;
   // Links are used to link to other resources and documents.
   repeated Block links = 13;
   // Content is used to embed content blocks.

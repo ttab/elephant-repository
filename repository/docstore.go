@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ttab/elephant/doc"
-	"github.com/ttab/elephant/revisor"
+	"github.com/ttab/newsdoc"
+	"github.com/ttab/revisor"
 )
 
 type DocStore interface {
@@ -17,7 +17,7 @@ type DocStore interface {
 		ctx context.Context, uuid uuid.UUID) (*DocumentMeta, error)
 	GetDocument(
 		ctx context.Context, uuid uuid.UUID, version int64,
-	) (*doc.Document, error)
+	) (*newsdoc.Document, error)
 	GetVersion(
 		ctx context.Context, uuid uuid.UUID, version int64,
 	) (DocumentUpdate, error)
@@ -176,11 +176,11 @@ type UpdateRequest struct {
 	UUID       uuid.UUID
 	Updated    time.Time
 	Updater    string
-	Meta       doc.DataMap
+	Meta       newsdoc.DataMap
 	ACL        []ACLEntry
 	DefaultACL []ACLEntry
 	Status     []StatusUpdate
-	Document   *doc.Document
+	Document   *newsdoc.Document
 	IfMatch    int64
 }
 
@@ -188,7 +188,7 @@ type DeleteRequest struct {
 	UUID    uuid.UUID
 	Updated time.Time
 	Updater string
-	Meta    doc.DataMap
+	Meta    newsdoc.DataMap
 	IfMatch int64
 }
 
@@ -210,7 +210,7 @@ type DocumentUpdate struct {
 	Version int64
 	Creator string
 	Created time.Time
-	Meta    doc.DataMap
+	Meta    newsdoc.DataMap
 }
 
 type Status struct {
@@ -218,13 +218,13 @@ type Status struct {
 	Version int64
 	Creator string
 	Created time.Time
-	Meta    doc.DataMap
+	Meta    newsdoc.DataMap
 }
 
 type StatusUpdate struct {
 	Name    string
 	Version int64
-	Meta    doc.DataMap
+	Meta    newsdoc.DataMap
 }
 
 type Aggregation int16

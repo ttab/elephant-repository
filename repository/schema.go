@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/ttab/elephant/revisor"
-	"github.com/ttab/elephant/revisor/constraints"
+	"github.com/ttab/revisor"
+	"github.com/ttab/revisor/constraints"
 )
 
 func EnsureCoreSchema(ctx context.Context, store SchemaStore) error {

@@ -8,8 +8,8 @@ import (
 
 	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
-	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/internal"
+	"github.com/ttab/newsdoc"
 	"golang.org/x/exp/slices"
 	"golang.org/x/exp/slog"
 )
@@ -132,8 +132,8 @@ type StatusRuleInput struct {
 	Name        string
 	Status      Status
 	Update      DocumentUpdate
-	Document    doc.Document
-	VersionMeta doc.DataMap
+	Document    newsdoc.Document
+	VersionMeta newsdoc.DataMap
 	Heads       map[string]Status
 	User        JWTClaims
 }

@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/internal"
-	"github.com/ttab/elephant/revisor"
+	"github.com/ttab/newsdoc"
+	"github.com/ttab/revisor"
 	"golang.org/x/exp/slog"
 )
 
@@ -89,7 +89,7 @@ func (v *Validator) loadSchemas(ctx context.Context, loader SchemaLoader) error 
 	return nil
 }
 
-func (v *Validator) ValidateDocument(document *doc.Document) []revisor.ValidationResult {
+func (v *Validator) ValidateDocument(document *newsdoc.Document) []revisor.ValidationResult {
 	v.m.RLock()
 	val := v.val
 	v.m.RUnlock()
