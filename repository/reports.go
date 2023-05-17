@@ -179,6 +179,13 @@ func GenerateReport(
 			}
 		}
 
+		err = rows.Err()
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed during report execution of %q: %w",
+				query.Name, err)
+		}
+
 		for name, rep := range reporters {
 			err := rep.QueryDone()
 			if err != nil {
