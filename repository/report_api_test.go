@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant/internal/test"
-	"github.com/ttab/elephant/rpc/repository"
 	"golang.org/x/exp/slog"
 )
 

@@ -2,7 +2,7 @@
 
 ![Image](docs/elephant.png?raw=true)
 
-Executable entrypoints in cmd/docformat and cmd/repository.
+Executable entrypoints in cmd/repository.
 
 Revisor is documented separately in the [revisor package](revisor/README.md).
 
@@ -33,9 +33,7 @@ go run ./cmd/repository run
 
 ## Calling the API
 
-The API is defined in [service.proto](rpc/repository/service.proto).
-
-Run `make proto` to re-generate code based on the protobuf declaration. This will run in a local docker image (to avoid a dep on local protoc), so it'll take some time to build the first time, but should be quick after that.
+The API is defined in [service.proto](https://github.com/ttab/elephant-api/blob/main/repository/service.proto).
 
 ### Retrieving a token
 

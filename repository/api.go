@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant/internal"
-	"github.com/ttab/elephant/rpc/repository"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"

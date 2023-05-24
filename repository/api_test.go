@@ -12,9 +12,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/internal/test"
-	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
 	"google.golang.org/protobuf/testing/protocmp"

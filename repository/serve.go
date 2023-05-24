@@ -15,8 +15,8 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/julienschmidt/httprouter"
 	"github.com/rakutentech/jwk-go/jwk"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant/internal"
-	"github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
 )
 

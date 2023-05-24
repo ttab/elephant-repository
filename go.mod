@@ -26,6 +26,7 @@ require (
 	github.com/ory/dockertest/v3 v3.10.0
 	github.com/prometheus/client_golang v1.15.1
 	github.com/rakutentech/jwk-go v1.1.2
+	github.com/ttab/elephant-api v0.2.0
 	github.com/ttab/newsdoc v0.2.0
 	github.com/ttab/revisor v0.3.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
@@ -113,7 +114,7 @@ require (
 	github.com/richardlehane/msoleps v1.0.3 // indirect
 	github.com/rivo/uniseg v0.4.3 // indirect
 	github.com/riza-io/grpc-go v0.1.0 // indirect
-	github.com/rogpeppe/go-internal v1.9.0 // indirect
+	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect

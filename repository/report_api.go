@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/adhocore/gronx"
-	"github.com/ttab/elephant/rpc/repository"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
 )

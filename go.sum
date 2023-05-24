@@ -279,8 +279,8 @@ github.com/rivo/uniseg v0.4.3/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUc
 github.com/riza-io/grpc-go v0.1.0 h1:qm0j1YT0mqvtaGQ4A+sFe5odQSEE2OGnXGjTJAzQdUM=
 github.com/riza-io/grpc-go v0.1.0/go.mod h1:2bDvR9KkKC3KhtlSHfR3dAXjUMT86kg4UfWFyVGWqi8=
 github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTEfhy4qGm1nDQc=
-github.com/rogpeppe/go-internal v1.9.0 h1:73kH8U+JUqXU8lRuOHeVHaa/SZPifC7BkcraZVejAe8=
-github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
+github.com/rogpeppe/go-internal v1.10.0 h1:TMyTOH3F/DB16zRVcYyreMH6GnZZrwQVAoYjRBZyWFQ=
+github.com/rogpeppe/go-internal v1.10.0/go.mod h1:UQnix2H7Ngw/k4C5ijL5+65zddjncjaFoBhdsK/akog=
 github.com/russross/blackfriday/v2 v2.0.1/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/russross/blackfriday/v2 v2.1.0 h1:JIOH55/0cWyOuilr9/qlrm0BSXldqnqwMsf35Ld67mk=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
@@ -312,6 +312,8 @@ github.com/stretchr/testify v1.7.4/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
 github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKsk=
 github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635/go.mod h1:hkRG7XYTFWNJGYcbNJQlaLq0fg1yr4J4t/NcTQtrfww=
+github.com/ttab/elephant-api v0.2.0 h1:ZE2y+OcrrxjxGdmmrDUWjSbKqlHuEKMURaNS+DKCRmg=
+github.com/ttab/elephant-api v0.2.0/go.mod h1:a7DYNXVOK32MZBJ9/kU1wyVov7v0Dkbbn/pfSSigWh0=
 github.com/ttab/newsdoc v0.2.0 h1:Eil8ug9x19M/Brt4BybnGJvchqWmBQGkHv073N46+LE=
 github.com/ttab/newsdoc v0.2.0/go.mod h1:VQu5cqcIHLryGiN/0ogMVTJy8l76wz6iylPz9F+I7bM=
 github.com/ttab/revisor v0.3.0 h1:WCMEKsll5PDBvWOogh5cM8mM5uuWYu4+i+qWnUc2u/c=

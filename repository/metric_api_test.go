@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant/internal/test"
 	repo "github.com/ttab/elephant/repository"
-	"github.com/ttab/elephant/rpc/repository"
 	"golang.org/x/exp/slog"
 )
 

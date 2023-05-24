@@ -13,9 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
+	rpc "github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant/internal/test"
 	"github.com/ttab/elephant/repository"
-	rpc "github.com/ttab/elephant/rpc/repository"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
 )
