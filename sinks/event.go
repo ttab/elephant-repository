@@ -3,8 +3,8 @@ package sinks
 import (
 	"regexp"
 
-	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/repository"
+	"github.com/ttab/newsdoc"
 	"golang.org/x/exp/slices"
 )
 
@@ -28,9 +28,9 @@ type DocumentDetail struct {
 }
 
 type DocumentMeta struct {
-	Role  string      `json:"role,omitempty"`
-	Value string      `json:"value,omitempty"`
-	Data  doc.DataMap `json:"data,omitempty"`
+	Role  string          `json:"role,omitempty"`
+	Value string          `json:"value,omitempty"`
+	Data  newsdoc.DataMap `json:"data,omitempty"`
 }
 
 type DocumentLink struct {
@@ -43,7 +43,7 @@ type DocumentLink struct {
 
 var nonAlphaNum = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
 
-func DetailFromDocument(d *doc.Document) *DocumentDetail {
+func DetailFromDocument(d *newsdoc.Document) *DocumentDetail {
 	if d == nil {
 		return nil
 	}
@@ -91,7 +91,7 @@ func DetailFromDocument(d *doc.Document) *DocumentDetail {
 			}
 
 			if dm.Data == nil {
-				dm.Data = make(doc.DataMap)
+				dm.Data = make(newsdoc.DataMap)
 			}
 
 			dm.Data[k] = v

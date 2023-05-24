@@ -12,10 +12,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
-	"github.com/ttab/elephant/revisor"
+	"github.com/ttab/newsdoc"
+	"github.com/ttab/revisor"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
@@ -339,7 +339,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 // GetDocument implements DocStore.
 func (s *PGDocStore) GetDocument(
 	ctx context.Context, uuid uuid.UUID, version int64,
-) (*doc.Document, error) {
+) (*newsdoc.Document, error) {
 	var (
 		err  error
 		data []byte
@@ -363,7 +363,7 @@ func (s *PGDocStore) GetDocument(
 
 	// TODO: check for nil data after pruning has been implemented.
 
-	var d doc.Document
+	var d newsdoc.Document
 
 	err = json.Unmarshal(data, &d)
 	if err != nil {
@@ -842,7 +842,7 @@ func (s *PGDocStore) Update(
 func (s *PGDocStore) buildStatusRuleInput(
 	ctx context.Context, q *postgres.Queries,
 	uuid uuid.UUID, name string, status Status, up DocumentUpdate,
-	d *doc.Document, versionMeta doc.DataMap, statusHeads map[string]Status,
+	d *newsdoc.Document, versionMeta newsdoc.DataMap, statusHeads map[string]Status,
 ) (StatusRuleInput, error) {
 	input := StatusRuleInput{
 		Name:   name,
@@ -877,7 +877,7 @@ func (s *PGDocStore) buildStatusRuleInput(
 func (s *PGDocStore) loadDocument(
 	ctx context.Context, q *postgres.Queries,
 	uuid uuid.UUID, version int64,
-) (*doc.Document, doc.DataMap, error) {
+) (*newsdoc.Document, newsdoc.DataMap, error) {
 	docV, err := q.GetFullVersion(ctx,
 		postgres.GetFullVersionParams{
 			UUID:    uuid,
@@ -897,7 +897,7 @@ func (s *PGDocStore) loadDocument(
 	// here? If a new status is created that refers to a previouly pruned
 	// version we would probably like for it to be available later.
 
-	var d doc.Document
+	var d newsdoc.Document
 
 	err = json.Unmarshal(docV.DocumentData, &d)
 	if err != nil {
@@ -905,7 +905,7 @@ func (s *PGDocStore) loadDocument(
 			"failed to parse stored document: %w", err)
 	}
 
-	meta := make(doc.DataMap)
+	meta := make(newsdoc.DataMap)
 
 	if docV.Meta != nil {
 		err = json.Unmarshal(docV.Meta, &meta)

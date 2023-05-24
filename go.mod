@@ -9,10 +9,9 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.18.0
 	github.com/aws/aws-sdk-go-v2/config v1.18.22
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.21
-	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.19.1
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.33.0
-	github.com/aws/aws-sdk-go-v2/service/ssm v1.36.3
-	github.com/gobwas/glob v0.2.3
+	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.19.2
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.33.1
+	github.com/aws/aws-sdk-go-v2/service/ssm v1.36.4
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
@@ -27,13 +26,14 @@ require (
 	github.com/ory/dockertest/v3 v3.10.0
 	github.com/prometheus/client_golang v1.15.1
 	github.com/rakutentech/jwk-go v1.1.2
+	github.com/ttab/newsdoc v0.2.0
+	github.com/ttab/revisor v0.3.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.25.3
 	github.com/xuri/excelize/v2 v2.7.1
 	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53
 	golang.org/x/mod v0.10.0
-	golang.org/x/net v0.9.0
-	golang.org/x/sync v0.1.0
+	golang.org/x/sync v0.2.0
 	google.golang.org/protobuf v1.30.0
 )
 
@@ -74,6 +74,7 @@ require (
 	github.com/getkin/kin-openapi v0.98.0 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/swag v0.22.3 // indirect
+	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
@@ -130,7 +131,8 @@ require (
 	go.uber.org/multierr v1.7.0 // indirect
 	go.uber.org/zap v1.19.1 // indirect
 	golang.org/x/crypto v0.8.0 // indirect
-	golang.org/x/sys v0.7.0 // indirect
+	golang.org/x/net v0.10.0 // indirect
+	golang.org/x/sys v0.8.0 // indirect
 	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/tools v0.7.0 // indirect
 	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f // indirect

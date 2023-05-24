@@ -1,8 +1,8 @@
 package internal
 
-import "github.com/ttab/elephant/doc"
+import "github.com/ttab/newsdoc"
 
-func GetData(data doc.DataMap, key string) string {
+func GetData(data newsdoc.DataMap, key string) string {
 	if data == nil {
 		return ""
 	}

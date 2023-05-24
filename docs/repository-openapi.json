@@ -28,7 +28,7 @@
             },
             "type": "array"
           },
-          "contentType": {
+          "contenttype": {
             "description": "ContentType is used to describe the content type of the block/linked entity if it differs from the type of the block.",
             "type": "string"
           },
@@ -36,11 +36,11 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Data contains block data",
+            "description": "Data contains block data.",
             "type": "object"
           },
           "id": {
-            "description": "ID is the block ID",
+            "description": "ID is the block ID,",
             "type": "string"
           },
           "links": {
@@ -62,11 +62,11 @@
             "type": "string"
           },
           "rel": {
-            "description": "Relationship describes the relationship to the document/parent entity",
+            "description": "Rel describes the relationship to the document/parent entity.",
             "type": "string"
           },
           "role": {
-            "description": "Role is used for nuancing and qualifying relationships.",
+            "description": "Role is used either as an alternative to rel, or for nuancing the relationship.",
             "type": "string"
           },
           "title": {
@@ -153,10 +153,10 @@
         "type": "object"
       },
       "elephant.repository.Document": {
-        "description": "Document is the content",
+        "description": "Document is a NewsDoc document.",
         "properties": {
           "content": {
-            "description": "Content is the content of the documen, this is essentially what gets rendered on the page when you view a document.",
+            "description": "Content is the content of the document, this is essentially what gets rendered on the page when you view a document.",
             "items": {
               "$ref": "#/components/schemas/elephant.repository.Block"
             },
@@ -167,21 +167,21 @@
             "type": "string"
           },
           "links": {
-            "description": "Links are links to other resources and entities. This could be links to categories and subject for the document, or authors.",
+            "description": "Links are links to other resources and entities. This could be links to topics, categories and subjects for the document, or credited authors.",
             "items": {
               "$ref": "#/components/schemas/elephant.repository.Block"
             },
             "type": "array"
           },
           "meta": {
-            "description": "Meta is the metadata for a document, this could be stuff like open graph tags and content profile information.",
+            "description": "Meta is the metadata for a document, this could be things like teasers, open graph data, newsvalues.",
             "items": {
               "$ref": "#/components/schemas/elephant.repository.Block"
             },
             "type": "array"
           },
           "title": {
-            "description": "Title is the title of the document, often used as the headline when the document is displayed.",
+            "description": "Title is the title of the document, can be used as the document name, or the headline when the document is displayed.",
             "type": "string"
           },
           "type": {
@@ -189,15 +189,15 @@
             "type": "string"
           },
           "uri": {
-            "description": "URI identifies the document (in a more human-readable way than the UUID)",
+            "description": "URI identifies the document (in a more human-readable way than the UUID).",
             "type": "string"
           },
           "url": {
-            "description": "URL is the browseable location of the document (if any)",
+            "description": "URL is the browseable location of the document (if any).",
             "type": "string"
           },
           "uuid": {
-            "description": "UUID is a unique ID for the document, this can be a random v4 UUID, or a URI-derived v5 UUID.",
+            "description": "UUID is a unique ID for the document, this can for example be a random v4 UUID, or a URI-derived v5 UUID.",
             "type": "string"
           }
         },
@@ -216,7 +216,7 @@
             "description": "Created timestamp is the RFC3339 timestamp for when the document was created.",
             "type": "string"
           },
-          "currentVersion": {
+          "current_version": {
             "description": "CurrentVersion is the last written vrsion of the document.",
             "type": "integer"
           },
@@ -388,15 +388,15 @@
             "description": "After specifies the event ID after which to start returning events.",
             "type": "integer"
           },
-          "batchSize": {
+          "batch_size": {
             "description": "BatchSize is the number of events we want in the response. Defaults to 10.",
             "type": "integer"
           },
-          "batchWaitMs": {
+          "batch_wait_ms": {
             "description": "BatchWaitMs is the maximum time we wait for a batch to be filled. Defaults to 200.",
             "type": "integer"
           },
-          "waitMs": {
+          "wait_ms": {
             "description": "Wait is the maximum time to wait for new events. Defaults to 2000.",
             "type": "integer"
           }
@@ -574,10 +574,10 @@
       "elephant.repository.ImportDirective": {
         "description": "ImportDirective can be used to preserve timestamps and authorship information from originating systems.",
         "properties": {
-          "originalCreator": {
+          "original_creator": {
             "type": "string"
           },
-          "originallyCreated": {
+          "originally_created": {
             "type": "string"
           }
         },
