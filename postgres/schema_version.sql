@@ -20,7 +20,7 @@ SET row_security = off;
 -- Data for Name: schema_version; Type: TABLE DATA; Schema: public; Owner: repository
 --
 
-INSERT INTO public.schema_version (version) VALUES (5);
+INSERT INTO public.schema_version (version) VALUES (6);
 
 
 --

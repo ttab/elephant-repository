@@ -940,7 +940,6 @@ func (a *DocumentsService) Lock(
 func (a *DocumentsService) Unlock(
 	_ context.Context, _ *repository.UnlockRequest,
 ) (*repository.UnlockResponse, error) {
-
 	panic("not implemented") 
 }
 

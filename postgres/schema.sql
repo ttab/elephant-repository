@@ -369,6 +369,22 @@ CREATE TABLE public.job_lock (
 ALTER TABLE public.job_lock OWNER TO repository;
 
 --
+-- Name: lock; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.lock (
+    uuid uuid NOT NULL,
+    created timestamp with time zone NOT NULL,
+    expires timestamp with time zone NOT NULL,
+    uri character varying,
+    app character varying,
+    comment character varying
+);
+
+
+ALTER TABLE public.lock OWNER TO repository;
+
+--
 -- Name: metric; Type: TABLE; Schema: public; Owner: repository
 --
 
@@ -583,6 +599,14 @@ ALTER TABLE ONLY public.job_lock
 
 
 --
+-- Name: lock lock_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.lock
+    ADD CONSTRAINT lock_pkey PRIMARY KEY (uuid);
+
+
+--
 -- Name: metric_kind metric_kind_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -730,6 +754,14 @@ ALTER TABLE ONLY public.document_version
 
 
 --
+-- Name: lock lock_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.lock
+    ADD CONSTRAINT lock_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
 -- Name: metric metric_kind_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -788,6 +820,69 @@ ALTER PUBLICATION eventlog ADD TABLE ONLY public.document;
 --
 
 ALTER PUBLICATION eventlog ADD TABLE ONLY public.status_heads;
+
+
+--
+-- Name: TABLE acl; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.acl TO reporting;
+
+
+--
+-- Name: TABLE acl_audit; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.acl_audit TO reporting;
+
+
+--
+-- Name: TABLE delete_record; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.delete_record TO reporting;
+
+
+--
+-- Name: TABLE document; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document TO reporting;
+
+
+--
+-- Name: TABLE document_status; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document_status TO reporting;
+
+
+--
+-- Name: TABLE document_version; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document_version TO reporting;
+
+
+--
+-- Name: TABLE status; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status TO reporting;
+
+
+--
+-- Name: TABLE status_heads; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status_heads TO reporting;
+
+
+--
+-- Name: TABLE status_rule; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status_rule TO reporting;
 
 
 --
