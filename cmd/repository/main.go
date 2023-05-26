@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -22,11 +23,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/internal/cmd"
 	"github.com/ttab/elephant/postgres"
 	"github.com/ttab/elephant/repository"
 	"github.com/ttab/elephant/sinks"
+	"github.com/ttab/elephantine"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
@@ -64,7 +65,7 @@ func main() {
 
 	if err := app.Run(os.Args); err != nil {
 		slog.Error("failed to run server",
-			internal.LogKeyError, err)
+			elephantine.LogKeyError, err)
 		os.Exit(1)
 	}
 }
@@ -76,12 +77,11 @@ func runServer(c *cli.Context) error {
 		logLevel    = c.String("log-level")
 	)
 
-	logger := internal.SetUpLogger(logLevel, os.Stdout)
-	grace := internal.NewGracefulShutdown(logger, 20*time.Second)
+	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
+	grace := elephantine.NewGracefulShutdown(logger, 20*time.Second)
+	paramSource := elephantine.NewLazySSM()
 
-	paramSource := internal.NewLazySSM()
-
-	conf, err := cmd.BackendConfigFromContext(c, paramSource.GetValue)
+	conf, err := cmd.BackendConfigFromContext(c, paramSource.GetParameterValue)
 	if err != nil {
 		return fmt.Errorf("failed to read configuration: %w", err)
 	}
@@ -112,6 +112,33 @@ func runServer(c *cli.Context) error {
 		}
 
 		signingKey = key
+	}
+
+	instrument, err := elephantine.NewHTTPClientIntrumentation(prometheus.DefaultRegisterer)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to set up HTTP client instrumentation: %w", err)
+	}
+
+	s3Conf := conf.S3Options
+
+	s3Conf.HTTPClient = &http.Client{
+		Timeout: 1 * time.Minute,
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
+
+	err = instrument.Client("s3", s3Conf.HTTPClient)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to instrument S3 HTTP client: %w", err)
 	}
 
 	s3Client, err := repository.S3Client(c.Context, conf.S3Options)
@@ -188,7 +215,7 @@ func runServer(c *cli.Context) error {
 
 	if !conf.NoReplicator {
 		group.Go(func() error {
-			log := logger.With(internal.LogKeyComponent, "replicator")
+			log := logger.With(elephantine.LogKeyComponent, "replicator")
 
 			log.Debug("setting up replication")
 
@@ -244,7 +271,7 @@ func runServer(c *cli.Context) error {
 	}
 
 	if !conf.NoArchiver {
-		log := logger.With(internal.LogKeyComponent, "archiver")
+		log := logger.With(elephantine.LogKeyComponent, "archiver")
 
 		logger.Debug("starting archiver")
 
@@ -278,7 +305,7 @@ func runServer(c *cli.Context) error {
 			client := eventbridge.NewFromConfig(conf)
 
 			sink = sinks.NewEventBridge(client, sinks.EventBridgeOptions{
-				Logger: logger.With(internal.LogKeyComponent, "eventsink"),
+				Logger: logger.With(elephantine.LogKeyComponent, "eventsink"),
 			})
 
 			q := postgres.New(dbpool)
@@ -295,7 +322,7 @@ func runServer(c *cli.Context) error {
 		}
 
 		forwarder, err := sinks.NewEventForwarder(sinks.EventForwarderOptions{
-			Logger:            logger.With(internal.LogKeyComponent, "event-forwarder"),
+			Logger:            logger.With(elephantine.LogKeyComponent, "event-forwarder"),
 			DB:                dbpool,
 			Documents:         docService,
 			MetricsRegisterer: prometheus.DefaultRegisterer,
@@ -332,7 +359,7 @@ func runServer(c *cli.Context) error {
 
 	opts.SetJWTValidation(signingKey)
 
-	metrics, err := internal.NewTwirpMetricsHooks()
+	metrics, err := elephantine.NewTwirpMetricsHooks()
 	if err != nil {
 		return fmt.Errorf("failed to create twirp metrics hook: %w", err)
 	}
@@ -352,7 +379,7 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to set up router: %w", err)
 	}
 
-	healthServer := internal.NewHealthServer(profileAddr)
+	healthServer := elephantine.NewHealthServer(profileAddr)
 
 	healthServer.AddReadyFunction("s3", func(ctx context.Context) error {
 		testUUID := uuid.New()

@@ -13,8 +13,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
+	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/pg"
 	"golang.org/x/exp/slog"
 )
 
@@ -112,8 +113,8 @@ func (r *ReportRunner) run(ctx context.Context) {
 
 			r.logger.ErrorCtx(
 				ctx, "reporter error, restarting",
-				internal.LogKeyError, err,
-				internal.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
+				elephantine.LogKeyError, err,
+				elephantine.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
 			)
 		}
 
@@ -146,7 +147,7 @@ func (r *ReportRunner) loop(ctx context.Context) error {
 		}
 
 		r.logger.Debug("waiting for next report run",
-			internal.LogKeyDelay, wait.Seconds())
+			elephantine.LogKeyDelay, wait.Seconds())
 
 		select {
 		case <-time.After(wait):
@@ -163,7 +164,7 @@ func (r *ReportRunner) runNext(ctx context.Context) error {
 			"failed to begin transaction: %w", err)
 	}
 
-	defer internal.SafeRollback(ctx, r.logger, tx,
+	defer pg.SafeRollback(ctx, r.logger, tx,
 		"report run")
 
 	q := postgres.New(tx)
@@ -238,7 +239,7 @@ func (r *ReportRunner) runNext(ctx context.Context) error {
 
 	err = q.SetNextReportExecution(ctx, postgres.SetNextReportExecutionParams{
 		Name:          report.Name,
-		NextExecution: internal.PGTime(nextExecution),
+		NextExecution: pg.Time(nextExecution),
 	})
 	if err != nil {
 		return fmt.Errorf(

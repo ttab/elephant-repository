@@ -14,8 +14,10 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	rpc "github.com/ttab/elephant-api/repository"
-	"github.com/ttab/elephant/internal/test"
+	itest "github.com/ttab/elephant/internal/test"
 	"github.com/ttab/elephant/repository"
+	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/test"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
 )
@@ -27,7 +29,7 @@ type TestContext struct {
 	Documents        rpc.Documents
 	Schemas          rpc.Schemas
 	Workflows        rpc.Workflows
-	Env              test.Environment
+	Env              itest.Environment
 }
 
 func (tc *TestContext) DocumentsClient(
@@ -35,7 +37,7 @@ func (tc *TestContext) DocumentsClient(
 ) rpc.Documents {
 	t.Helper()
 
-	token, err := test.AccessKey(tc.SigningKey, claims)
+	token, err := itest.AccessKey(tc.SigningKey, claims)
 	test.Must(t, err, "create access key")
 
 	docClient := rpc.NewDocumentsProtobufClient(
@@ -56,7 +58,7 @@ func (tc *TestContext) WorkflowsClient(
 ) rpc.Workflows {
 	t.Helper()
 
-	token, err := test.AccessKey(tc.SigningKey, claims)
+	token, err := itest.AccessKey(tc.SigningKey, claims)
 	test.Must(t, err, "create access key")
 
 	workflowsClient := rpc.NewWorkflowsProtobufClient(
@@ -77,7 +79,7 @@ func (tc *TestContext) ReportsClient(
 ) rpc.Reports {
 	t.Helper()
 
-	token, err := test.AccessKey(tc.SigningKey, claims)
+	token, err := itest.AccessKey(tc.SigningKey, claims)
 	test.Must(t, err, "create access key")
 
 	reportsClient := rpc.NewReportsProtobufClient(
@@ -98,7 +100,7 @@ func (tc *TestContext) SchemasClient(
 ) rpc.Schemas {
 	t.Helper()
 
-	token, err := test.AccessKey(tc.SigningKey, claims)
+	token, err := itest.AccessKey(tc.SigningKey, claims)
 	test.Must(t, err, "create access key")
 
 	schemasClient := rpc.NewSchemasProtobufClient(
@@ -119,7 +121,7 @@ func (tc *TestContext) MetricsClient(
 ) rpc.Metrics {
 	t.Helper()
 
-	token, err := test.AccessKey(tc.SigningKey, claims)
+	token, err := itest.AccessKey(tc.SigningKey, claims)
 	test.Must(t, err, "create access key")
 
 	metricsClient := rpc.NewMetricsProtobufClient(
@@ -146,7 +148,12 @@ func testingAPIServer(
 ) TestContext {
 	t.Helper()
 
-	env := test.SetUpBackingServices(t, false)
+	reg := prometheus.NewRegistry()
+
+	instrumentation, err := elephantine.NewHTTPClientIntrumentation(reg)
+	test.Must(t, err, "set up HTTP client instrumentation")
+
+	env := itest.SetUpBackingServices(t, instrumentation, false)
 	ctx := test.Context(t)
 
 	dbpool, err := pgxpool.New(ctx, env.PostgresURI)
@@ -182,7 +189,7 @@ func testingAPIServer(
 			S3:                env.S3,
 			Bucket:            env.Bucket,
 			DB:                dbpool,
-			MetricsRegisterer: prometheus.NewRegistry(),
+			MetricsRegisterer: reg,
 		})
 		test.Must(t, err, "create archiver")
 
@@ -225,7 +232,7 @@ func testingAPIServer(
 
 	router := httprouter.New()
 
-	jwtKey, err := test.NewSigningKey()
+	jwtKey, err := itest.NewSigningKey()
 	test.Must(t, err, "create signing key")
 
 	var srvOpts repository.ServerOptions
@@ -260,7 +267,7 @@ func testingAPIServer(
 func TestMain(m *testing.M) {
 	exitVal := m.Run()
 
-	err := test.PurgeBackingServices()
+	err := itest.PurgeBackingServices()
 	if err != nil {
 		fmt.Fprintf(os.Stderr,
 			"failed to clean up backend services: %v\n", err)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/ttab/elephant/repository"
 	"github.com/ttab/elephant/schema"
+	"github.com/ttab/elephantine"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -39,35 +41,36 @@ type T interface {
 	Fatalf(format string, args ...any)
 }
 
-func SetUpBackingServices(t T, skipMigrations bool) Environment {
+func SetUpBackingServices(
+	t T,
+	instrument *elephantine.HTTPClientInstrumentation,
+	skipMigrations bool,
+) Environment {
 	t.Helper()
 
 	ctx := context.Background()
 
 	bs, err := GetBackingServices()
-	if err != nil {
-		t.Fatalf("failed to get backing services: %v", err)
-	}
+	must(t, err, "get backing services")
 
-	s3Client, err := bs.getS3Client()
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
+	var client http.Client
+
+	err = instrument.Client("s3", &client)
+	must(t, err, "instrument s3 http client")
+
+	s3Client, err := bs.getS3Client(&client)
+	must(t, err, "get S3 client")
 
 	bucket := strings.ToLower(t.Name())
 
 	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
 		Bucket: aws.String(bucket),
 	})
-	if err != nil {
-		t.Fatalf("failed to create bucket: %v", err)
-	}
+	must(t, err, "create bucket")
 
 	adminConn, err := pgx.Connect(ctx,
 		bs.getPostgresURI("elephant", "elephant"))
-	if err != nil {
-		t.Fatalf("failed to get postgres admin connection: %v", err)
-	}
+	must(t, err, "open postgres admin connection")
 
 	defer adminConn.Close(ctx)
 
@@ -76,15 +79,11 @@ func SetUpBackingServices(t T, skipMigrations bool) Environment {
 	_, err = adminConn.Exec(ctx, fmt.Sprintf(`
 CREATE ROLE %s WITH LOGIN PASSWORD '%s' REPLICATION`,
 		ident, t.Name()))
-	if err != nil {
-		t.Fatalf("failed to create user: %v", err)
-	}
+	must(t, err, "create user")
 
 	_, err = adminConn.Exec(ctx,
 		"CREATE DATABASE "+ident+" WITH OWNER "+ident)
-	if err != nil {
-		t.Fatalf("failed to create database: %v", err)
-	}
+	must(t, err, "create database")
 
 	reportingRole := pgx.Identifier{t.Name() + "Reporting"}.Sanitize()
 	reportingUser := pgx.Identifier{t.Name() + "ReportingUser"}.Sanitize()
@@ -92,9 +91,7 @@ CREATE ROLE %s WITH LOGIN PASSWORD '%s' REPLICATION`,
 	_, err = adminConn.Exec(ctx, fmt.Sprintf(
 		"CREATE ROLE %s",
 		reportingRole))
-	if err != nil {
-		t.Fatalf("failed to create reporting role: %v", err)
-	}
+	must(t, err, "create reporting role")
 
 	_, err = adminConn.Exec(ctx, fmt.Sprintf(
 		`
@@ -102,9 +99,7 @@ CREATE ROLE %[1]s
 WITH LOGIN PASSWORD '%[2]s'
 IN ROLE %[3]s`,
 		reportingUser, t.Name()+"ReportingUser", reportingRole))
-	if err != nil {
-		t.Fatalf("failed to create reporting user: %v", err)
-	}
+	must(t, err, "create reporting user")
 
 	env := Environment{
 		S3:          s3Client,
@@ -116,27 +111,19 @@ IN ROLE %[3]s`,
 	}
 
 	conn, err := pgx.Connect(ctx, env.PostgresURI)
-	if err != nil {
-		t.Fatalf("failed to create connection for user: %v", err)
-	}
+	must(t, err, "open postgres user connection")
 
 	defer conn.Close(ctx)
 
 	m, err := migrate.NewMigrator(ctx, conn, "schema_vesion")
-	if err != nil {
-		t.Fatalf("failed to create migrator: %v", err)
-	}
+	must(t, err, "create migrator")
 
 	err = m.LoadMigrations(schema.Migrations)
-	if err != nil {
-		t.Fatalf("failed to load migrations: %v", err)
-	}
+	must(t, err, "create load migrations")
 
 	if !skipMigrations {
 		err = m.Migrate(ctx)
-		if err != nil {
-			t.Fatalf("failed to migrate to current DB schema: %v", err)
-		}
+		must(t, err, "migrate to current DB schema")
 
 		_, err = conn.Exec(ctx, fmt.Sprintf(`
 GRANT SELECT
@@ -146,14 +133,20 @@ ON TABLE
    acl, acl_audit
 TO %s`,
 			reportingRole))
-		if err != nil {
-			t.Fatalf("failed to grant reporting role permissions: %v", err)
-		}
+		must(t, err, "failed to grant reporting role permissions")
 	}
 
 	env.Migrator = m
 
 	return env
+}
+
+func must(t T, err error, action string) {
+	t.Helper()
+
+	if err != nil {
+		t.Fatalf("failed: %s: %v", action, err)
+	}
 }
 
 func PurgeBackingServices() error {
@@ -237,7 +230,7 @@ func (bs *BackingServices) bootstrapMinio() error {
 	// even if in-process cleanup fails.
 	_ = res.Expire(3600)
 
-	client, err := bs.getS3Client()
+	client, err := bs.getS3Client(http.DefaultClient)
 	if err != nil {
 		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
@@ -260,19 +253,20 @@ func (bs *BackingServices) bootstrapMinio() error {
 	return nil
 }
 
-func (bs *BackingServices) getS3Client() (*s3.Client, error) {
-	client, err := repository.S3Client(context.Background(),
+func (bs *BackingServices) getS3Client(client *http.Client) (*s3.Client, error) {
+	svc, err := repository.S3Client(context.Background(),
 		repository.S3Options{
 			Endpoint: fmt.Sprintf("http://localhost:%s/",
 				bs.minio.GetPort("9000/tcp")),
 			AccessKeyID:     "minioadmin",
 			AccessKeySecret: "minioadmin",
+			HTTPClient:      client,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
-	return client, nil
+	return svc, nil
 }
 
 func (bs *BackingServices) getPostgresURI(user, database string) string {

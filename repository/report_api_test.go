@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/ttab/elephant-api/repository"
-	"github.com/ttab/elephant/internal/test"
+	itest "github.com/ttab/elephant/internal/test"
+	"github.com/ttab/elephantine/test"
 	"golang.org/x/exp/slog"
 )
 
@@ -24,7 +25,7 @@ func TestIntegrationReporting(t *testing.T) {
 	})
 
 	client := tc.ReportsClient(t,
-		test.StandardClaims(t, "report_admin"))
+		itest.StandardClaims(t, "report_admin"))
 
 	const (
 		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
@@ -32,7 +33,7 @@ func TestIntegrationReporting(t *testing.T) {
 	)
 
 	docClient := tc.DocumentsClient(t,
-		test.StandardClaims(t, "doc_write"))
+		itest.StandardClaims(t, "doc_write"))
 
 	doc := baseDocument(docUUID, docURI)
 

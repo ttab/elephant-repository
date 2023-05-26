@@ -16,8 +16,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
+	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/pg"
 	"golang.org/x/exp/slog"
 )
 
@@ -133,8 +134,8 @@ func (pr *PGReplication) Run(ctx context.Context) {
 
 			pr.logger.ErrorCtx(
 				rCtx, "replication error, restarting",
-				internal.LogKeyError, err,
-				internal.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
+				elephantine.LogKeyError, err,
+				elephantine.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
 			)
 		}
 
@@ -171,7 +172,7 @@ func (pr *PGReplication) startReplication(
 		return fmt.Errorf("failed to begin locking transaction: %w", err)
 	}
 
-	defer internal.SafeRollback(ctx, pr.logger, lockTx, "replication lock")
+	defer pg.SafeRollback(ctx, pr.logger, lockTx, "replication lock")
 
 	lockQueries := postgres.New(lockTx)
 
@@ -180,7 +181,7 @@ func (pr *PGReplication) startReplication(
 		return fmt.Errorf("failed to acquire replication lock: %w", err)
 	}
 
-	replConnString, err := internal.SetConnStringVariables(
+	replConnString, err := pg.SetConnStringVariables(
 		pr.dbURI, url.Values{
 			"replication": []string{"database"},
 		})
@@ -286,7 +287,7 @@ func (pr *PGReplication) replicationLoop(
 		msg, ok := rawMsg.(*pgproto3.CopyData)
 		if !ok {
 			pr.logger.Error("received unexpected message",
-				internal.LogKeyMessage, fmt.Sprintf("%T", rawMsg))
+				elephantine.LogKeyMessage, fmt.Sprintf("%T", rawMsg))
 
 			continue
 		}
@@ -725,17 +726,17 @@ func (pr *PGReplication) recordEvent(evt Event) error {
 		return fmt.Errorf("failed to start transaction: %w", err)
 	}
 
-	defer internal.SafeRollback(ctx, pr.logger, tx, "eventlog insert")
+	defer pg.SafeRollback(ctx, pr.logger, tx, "eventlog insert")
 
 	row := postgres.InsertIntoEventLogParams{
 		Event:     string(evt.Event),
 		UUID:      evt.UUID,
-		Timestamp: internal.PGTime(evt.Timestamp),
-		Updater:   internal.PGTextOrNull(evt.Updater),
-		Type:      internal.PGTextOrNull(evt.Type),
-		Version:   internal.PGBigintOrNull(evt.Version),
-		Status:    internal.PGTextOrNull(evt.Status),
-		StatusID:  internal.PGBigintOrNull(evt.StatusID),
+		Timestamp: pg.Time(evt.Timestamp),
+		Updater:   pg.TextOrNull(evt.Updater),
+		Type:      pg.TextOrNull(evt.Type),
+		Version:   pg.BigintOrNull(evt.Version),
+		Status:    pg.TextOrNull(evt.Status),
+		StatusID:  pg.BigintOrNull(evt.StatusID),
 	}
 
 	if evt.ACL != nil {

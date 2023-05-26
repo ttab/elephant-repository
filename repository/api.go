@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ttab/elephant-api/repository"
-	"github.com/ttab/elephant/internal"
+	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
@@ -307,7 +307,7 @@ func (a *DocumentsService) Delete(
 	}
 
 	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
-	if internal.IsTwirpErrorCode(err, twirp.NotFound) {
+	if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
 		// Treat a delete of a document that doesn't exist as ok.
 		return &repository.DeleteDocumentResponse{}, nil
 	} else if err != nil {
@@ -704,7 +704,7 @@ func (a *DocumentsService) Update(
 	// Check for ACL write permission, but allow the write if no document is
 	// found, as we want to allow the creation of new documents.
 	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
-	if err != nil && !internal.IsTwirpErrorCode(err, twirp.NotFound) {
+	if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
 		return nil, err
 	}
 

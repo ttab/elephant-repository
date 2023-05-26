@@ -8,7 +8,7 @@ import (
 
 	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
-	"github.com/ttab/elephant/internal"
+	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
 	"golang.org/x/exp/slices"
 	"golang.org/x/exp/slog"
@@ -63,8 +63,8 @@ func (w *Workflows) reloadLoop(
 		if err != nil {
 			// TODO: add handler that reacts to LogKeyCountMetric
 			logger.ErrorCtx(ctx, "failed to refresh workfows",
-				internal.LogKeyError, err,
-				internal.LogKeyCountMetric, "elephant_workflow_refresh_failure_count")
+				elephantine.LogKeyError, err,
+				elephantine.LogKeyCountMetric, "elephant_workflow_refresh_failure_count")
 		}
 	}
 }

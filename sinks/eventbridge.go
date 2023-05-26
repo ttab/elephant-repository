@@ -9,8 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
-	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/repository"
+	"github.com/ttab/elephantine"
 	"golang.org/x/exp/slog"
 )
 
@@ -86,8 +86,8 @@ func (eb *EventBridge) SendEvents(
 				}
 
 				eb.logger.Error("event rejected",
-					internal.LogKeyEventID, batch[i].EventID,
-					internal.LogKeyError, fmt.Sprintf(
+					elephantine.LogKeyEventID, batch[i].EventID,
+					elephantine.LogKeyError, fmt.Sprintf(
 						"%s: %s",
 						*res.ErrorCode, msg))
 
@@ -167,8 +167,8 @@ func (eb *EventBridge) eventBridgeBatch(
 
 		if size > EventBridgeSizeLimit {
 			eb.logger.Error("skipping oversized event",
-				internal.LogKeyEventID, evt.Event.ID,
-				internal.LogKeyEventType, evt.Event.Type,
+				elephantine.LogKeyEventID, evt.Event.ID,
+				elephantine.LogKeyEventType, evt.Event.Type,
 			)
 
 			incr(evt.Event.Type, "message_size")

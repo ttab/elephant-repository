@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
-	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
+	"github.com/ttab/elephantine"
 	"golang.org/x/exp/slog"
 )
 
@@ -93,8 +93,8 @@ func pgNotify[T any](
 	message, err := json.Marshal(payload)
 	if err != nil {
 		logger.ErrorCtx(ctx, "failed to marshal payload for notification",
-			internal.LogKeyError, err,
-			internal.LogKeyChannel, channel)
+			elephantine.LogKeyError, err,
+			elephantine.LogKeyChannel, channel)
 	}
 
 	err = q.Notify(ctx, postgres.NotifyParams{
@@ -103,8 +103,8 @@ func pgNotify[T any](
 	})
 	if err != nil {
 		logger.ErrorCtx(ctx, "failed to marshal payload for notification",
-			internal.LogKeyError, err,
-			internal.LogKeyChannel, channel,
-			internal.LogKeyMessage, json.RawMessage(message))
+			elephantine.LogKeyError, err,
+			elephantine.LogKeyChannel, channel,
+			elephantine.LogKeyMessage, json.RawMessage(message))
 	}
 }
