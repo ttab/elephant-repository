@@ -917,3 +917,57 @@ func TestIntegrationACL(t *testing.T) {
 		}, adminP,
 		"expected the permissions response to reflect that admin gains access through scopes")
 }
+
+func TestDocumentLocking(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+	ctx := test.Context(t)
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	client := tc.DocumentsClient(t,
+		test.StandardClaims(t, "doc_read doc_write"))
+
+	const (
+		docUUID = "88f13bde-1a84-4151-8f2d-aaee3ae57c05"
+		docURI  = "article://test/123"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	_, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.Must(t, err, "create test article")
+
+	lock, err := client.Lock(ctx, &repository.LockRequest{
+		Uuid: docUUID,
+		Ttl:  5000,
+	})
+	test.Must(t, err, "lock the document")
+
+	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "fetch document meta")
+	test.NotNil(t, meta.Meta.Lock, "document should have a lock")
+
+	_, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid:  docUUID,
+		Ttl:   5000,
+		Token: lock.Token,
+	})
+	test.Must(t, err, "update an existing lock")
+
+	_, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid:  docUUID,
+		Ttl:   5000,
+		Token: "another token",
+	})
+	test.MustNot(t, err, "steal an existing lock")
+}

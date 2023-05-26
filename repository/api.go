@@ -932,6 +932,10 @@ func (a *DocumentsService) Lock(
 		return nil, twirp.RequiredArgumentError("uuid")
 	}
 
+	if req.Ttl == 0 {
+		return nil, twirp.RequiredArgumentError("ttl")
+	}
+
 	var res repository.LockResponse
 
 	return &res, nil
@@ -940,7 +944,7 @@ func (a *DocumentsService) Lock(
 func (a *DocumentsService) Unlock(
 	_ context.Context, _ *repository.UnlockRequest,
 ) (*repository.UnlockResponse, error) {
-	panic("not implemented") 
+	panic("not implemented")
 }
 
 func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {
