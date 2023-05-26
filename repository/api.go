@@ -925,6 +925,25 @@ func (a *DocumentsService) Validate(
 	return &res, nil
 }
 
+func (a *DocumentsService) Lock(
+	_ context.Context, req *repository.LockRequest,
+) (*repository.LockResponse, error) {
+	if req.Uuid == "" {
+		return nil, twirp.RequiredArgumentError("uuid")
+	}
+
+	var res repository.LockResponse
+
+	return &res, nil
+}
+
+func (a *DocumentsService) Unlock(
+	_ context.Context, _ *repository.UnlockRequest,
+) (*repository.UnlockResponse, error) {
+
+	panic("not implemented") 
+}
+
 func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {
 	var out []*repository.EntityRef
 
