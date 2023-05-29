@@ -1088,15 +1088,28 @@ func (s *PGDocStore) GetSchemaVersions(
 }
 
 func (s *PGDocStore) Lock(ctx context.Context, uuid uuid.UUID, ttl int32, token string) error {
-	expires := time.Now().Add(time.Millisecond * time.Duration(ttl))
+	now := time.Now()
+	expires := now.Add(time.Millisecond * time.Duration(ttl))
 
 	err := s.withTX(ctx, "document locking", func(tx pgx.Tx) error {
-		err := s.reader.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
+		info, err := s.reader.GetDocumentLock(ctx, uuid)
+
+		if errors.Is(err, pgx.ErrNoRows) {
+			// return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
+		} else if err != nil {
+			return fmt.Errorf("could not read document: %w", err)
+		}
+		fmt.Println(info)
+
+		err = s.reader.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
 			UUID:    uuid,
 			Token:   token,
+			Created: internal.PGTime(now),
 			Expires: internal.PGTime(expires),
 		})
-		if err != nil {
+		if internal.IsConstraintError(err, "lock_uuid_fkey") {
+			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
+		} else if err != nil {
 			return fmt.Errorf("failed to insert document lock: %w", err)
 		}
 

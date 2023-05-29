@@ -195,6 +195,7 @@ type ACLEntry struct {
 }
 
 type Lock struct {
+	Token   string
 	URI     string
 	Created time.Time
 	Expires time.Time

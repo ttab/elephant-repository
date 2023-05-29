@@ -260,10 +260,15 @@ DELETE FROM status_rule WHERE name = $1;
 
 -- name: InsertDocumentLock :exec
 INSERT INTO lock(
-  uuid, token, created, expires
+  uuid, token, created, expires, uri, app, comment
 ) VALUES(
-  @uuid, @token, now(), @expires
+  @uuid, @token, @created, @expires, @uri, @app, @comment
 );
+
+-- name: GetDocumentLock :one
+SELECT uuid, token, created, expires, uri, app, comment
+FROM lock 
+WHERE uuid = @uuid;
 
 -- name: UpdateReport :exec
 INSERT INTO report(

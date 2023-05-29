@@ -441,6 +441,27 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, argUuid uuid.UUID) (GetDo
 	return i, err
 }
 
+const getDocumentLock = `-- name: GetDocumentLock :one
+SELECT uuid, token, created, expires, uri, app, comment
+FROM lock 
+WHERE uuid = $1
+`
+
+func (q *Queries) GetDocumentLock(ctx context.Context, argUuid uuid.UUID) (Lock, error) {
+	row := q.db.QueryRow(ctx, getDocumentLock, argUuid)
+	var i Lock
+	err := row.Scan(
+		&i.UUID,
+		&i.Token,
+		&i.Created,
+		&i.Expires,
+		&i.URI,
+		&i.App,
+		&i.Comment,
+	)
+	return i, err
+}
+
 const getDocumentStatusForArchiving = `-- name: GetDocumentStatusForArchiving :one
 SELECT
         s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
@@ -1199,20 +1220,32 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 
 const insertDocumentLock = `-- name: InsertDocumentLock :exec
 INSERT INTO lock(
-  uuid, token, created, expires
+  uuid, token, created, expires, uri, app, comment
 ) VALUES(
-  $1, $2, now(), $3
+  $1, $2, $3, $4, $5, $6, $7
 )
 `
 
 type InsertDocumentLockParams struct {
 	UUID    uuid.UUID
 	Token   string
+	Created pgtype.Timestamptz
 	Expires pgtype.Timestamptz
+	URI     pgtype.Text
+	App     pgtype.Text
+	Comment pgtype.Text
 }
 
 func (q *Queries) InsertDocumentLock(ctx context.Context, arg InsertDocumentLockParams) error {
-	_, err := q.db.Exec(ctx, insertDocumentLock, arg.UUID, arg.Token, arg.Expires)
+	_, err := q.db.Exec(ctx, insertDocumentLock,
+		arg.UUID,
+		arg.Token,
+		arg.Created,
+		arg.Expires,
+		arg.URI,
+		arg.App,
+		arg.Comment,
+	)
 	return err
 }
 
