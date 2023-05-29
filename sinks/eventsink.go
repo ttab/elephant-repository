@@ -8,9 +8,10 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/ttab/elephant/internal"
+	"github.com/ttab/elephant-api/repository"
 	repo "github.com/ttab/elephant/repository"
-	"github.com/ttab/elephant/rpc/repository"
+	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/pg"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
 )
@@ -132,12 +133,12 @@ func (r *EventForwarder) run(ctx context.Context) {
 			return
 		}
 
-		jobLock, err := internal.NewJobLock(
+		jobLock, err := pg.NewJobLock(
 			r.db, r.logger, "forwarder",
 			10*time.Second, 1*time.Minute, 20*time.Second, 5*time.Second)
 		if err != nil {
 			r.logger.ErrorCtx(ctx, "failed to create job lock",
-				internal.LogKeyError, err)
+				elephantine.LogKeyError, err)
 
 			continue
 		}
@@ -150,8 +151,8 @@ func (r *EventForwarder) run(ctx context.Context) {
 
 			r.logger.ErrorCtx(
 				ctx, "sink error, restarting",
-				internal.LogKeyError, err,
-				internal.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
+				elephantine.LogKeyError, err,
+				elephantine.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
 			)
 		}
 	}
@@ -218,8 +219,8 @@ func (r *EventForwarder) runNext(ctx context.Context, pos int64) (int64, error) 
 		event, err := repo.RPCToEvent(item)
 		if err != nil {
 			r.logger.Error("invalid eventlog item",
-				internal.LogKeyError, err,
-				internal.LogKeyEventID, item.Id)
+				elephantine.LogKeyError, err,
+				elephantine.LogKeyEventID, item.Id)
 
 			events[i] = EventDetail{
 				Event: repo.Event{
@@ -284,15 +285,15 @@ func (r *EventForwarder) enrichEvent(
 	})
 
 	switch {
-	case internal.IsTwirpErrorCode(err, twirp.NotFound):
+	case elephantine.IsTwirpErrorCode(err, twirp.NotFound):
 		// TODO: This raises the question if we need some other way to
 		// get to the data for decoration purposes, as we will fail to
 		// emit an update event for a document if it was deleted before
 		// we got to it. This might also be fine, the end result is a
 		// delete after all.
 		r.logger.Error("document has been deleted",
-			internal.LogKeyError, err,
-			internal.LogKeyEventID, detail.Event.ID)
+			elephantine.LogKeyError, err,
+			elephantine.LogKeyEventID, detail.Event.ID)
 
 		r.skips.WithLabelValues(
 			r.sink.SinkName(), string(detail.Event.Event), "deleted",

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ttab/elephant/rpc/repository"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/mod/semver"

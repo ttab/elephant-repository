@@ -15,8 +15,9 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/julienschmidt/httprouter"
 	"github.com/rakutentech/jwk-go/jwk"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant/internal"
-	"github.com/ttab/elephant/rpc/repository"
+	"github.com/ttab/elephantine"
 	"github.com/twitchtv/twirp"
 )
 
@@ -35,14 +36,20 @@ func SetUpRouter(
 }
 
 func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
+	var handler http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+		ctx := elephantine.WithLogMetadata(r.Context())
+
+		h.ServeHTTP(w, r.WithContext(ctx))
+	}
+
 	server := http.Server{
 		Addr:              addr,
-		Handler:           h,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	//nolint:wrapcheck
-	return internal.ListenAndServeContext(ctx, &server)
+	return elephantine.ListenAndServeContext(ctx, &server)
 }
 
 type ServerOptions struct {
@@ -62,12 +69,18 @@ func (so *ServerOptions) SetJWTValidation(jwtKey *ecdsa.PrivateKey) {
 			r.Header.Get("Authorization"))
 		if err != nil && !errors.Is(err, ErrNoAuthorization) {
 			// TODO: Move the response part to a hook instead?
-			return internal.HTTPErrorf(http.StatusUnauthorized,
+			return elephantine.HTTPErrorf(http.StatusUnauthorized,
 				"invalid authorization method: %v", err)
 		}
 
 		if auth != nil {
-			r = r.WithContext(SetAuthInfo(r.Context(), auth))
+			ctx := SetAuthInfo(r.Context(), auth)
+
+			elephantine.SetLogMetadata(ctx,
+				elephantine.LogKeySubject, auth.Claims.Subject,
+			)
+
+			r = r.WithContext(ctx)
 		}
 
 		next.ServeHTTP(w, r)
@@ -219,7 +232,7 @@ func WithTokenEndpoint(
 		) error {
 			err := r.ParseForm()
 			if err != nil {
-				return internal.HTTPErrorf(http.StatusBadRequest,
+				return elephantine.HTTPErrorf(http.StatusBadRequest,
 					"invalid form data: %v", err)
 			}
 
@@ -229,38 +242,38 @@ func WithTokenEndpoint(
 			case "password":
 			case "refresh_token":
 				if form.Get("refresh_token") == "" {
-					return internal.HTTPErrorf(http.StatusBadRequest,
+					return elephantine.HTTPErrorf(http.StatusBadRequest,
 						"missing 'refresh_token'")
 				}
 
 				rData, err := base64.RawStdEncoding.DecodeString(
 					form.Get("refresh_token"))
 				if err != nil {
-					return internal.HTTPErrorf(http.StatusBadRequest,
+					return elephantine.HTTPErrorf(http.StatusBadRequest,
 						"invalid refresh token: %v", err)
 				}
 
 				f, err := url.ParseQuery(string(rData))
 				if err != nil {
-					return internal.HTTPErrorf(http.StatusBadRequest,
+					return elephantine.HTTPErrorf(http.StatusBadRequest,
 						"invalid refresh contents: %v", err)
 				}
 
 				form = f
 			default:
-				return internal.HTTPErrorf(http.StatusBadRequest,
+				return elephantine.HTTPErrorf(http.StatusBadRequest,
 					"we only support the \"password\" and \"refresh_token\" grant_type")
 			}
 
 			username := form.Get("username")
 			if username == "" {
-				return internal.HTTPErrorf(http.StatusBadRequest,
+				return elephantine.HTTPErrorf(http.StatusBadRequest,
 					"missing 'username'")
 			}
 
 			password := form.Get("password")
 			if password != sharedSecret {
-				return internal.HTTPErrorf(http.StatusUnauthorized,
+				return elephantine.HTTPErrorf(http.StatusUnauthorized,
 					"invalid password")
 			}
 
@@ -268,7 +281,7 @@ func WithTokenEndpoint(
 
 			name, uriPart, ok := strings.Cut(username, " <")
 			if !ok || !strings.HasSuffix(uriPart, ">") {
-				return internal.HTTPErrorf(http.StatusBadRequest,
+				return elephantine.HTTPErrorf(http.StatusBadRequest,
 					"username must be in the format \"Name <some://sub/uri>\"")
 			}
 
@@ -296,7 +309,7 @@ func WithTokenEndpoint(
 
 			ss, err := token.SignedString(jwtKey)
 			if err != nil {
-				return internal.HTTPErrorf(http.StatusInternalServerError,
+				return elephantine.HTTPErrorf(http.StatusInternalServerError,
 					"failed to sign JWT token")
 			}
 
@@ -311,7 +324,7 @@ func WithTokenEndpoint(
 				ExpiresIn: int(expiresIn.Seconds()),
 			})
 			if err != nil {
-				return internal.HTTPErrorf(http.StatusInternalServerError,
+				return elephantine.HTTPErrorf(http.StatusInternalServerError,
 					"failed encode token response")
 			}
 

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ttab/elephant/internal/test"
 	"github.com/ttab/elephant/repository"
+	"github.com/ttab/elephantine/test"
 )
 
 const testKeys = `

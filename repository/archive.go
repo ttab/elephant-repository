@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	mrand "math/rand"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -26,8 +27,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rakutentech/jwk-go/jwk"
-	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
+	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/pg"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
@@ -37,6 +39,7 @@ type S3Options struct {
 	AccessKeyID     string
 	AccessKeySecret string
 	DisableHTTPS    bool
+	HTTPClient      *http.Client
 }
 
 func S3Client(
@@ -77,6 +80,10 @@ func S3Client(
 
 		options = append(options,
 			config.WithCredentialsProvider(creds))
+	}
+
+	if opts.HTTPClient != nil {
+		options = append(options, config.WithHTTPClient(opts.HTTPClient))
 	}
 
 	cfg, err := config.LoadDefaultConfig(ctx, options...)
@@ -210,8 +217,8 @@ func (a *Archiver) run(ctx context.Context) {
 			a.restarts.Inc()
 
 			a.logger.ErrorCtx(ctx, "archiver error, restarting",
-				internal.LogKeyError, err,
-				internal.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
+				elephantine.LogKeyError, err,
+				elephantine.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
 			)
 		}
 
@@ -321,7 +328,7 @@ func (a *Archiver) processDeletes(
 		return false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer internal.SafeRollback(ctx, a.logger, tx,
+	defer pg.SafeRollback(ctx, a.logger, tx,
 		"document version archiving")
 
 	q := postgres.New(tx)
@@ -448,7 +455,7 @@ func (a *Archiver) archiveDocumentVersions(
 		return false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer internal.SafeRollback(ctx, a.logger, tx,
+	defer pg.SafeRollback(ctx, a.logger, tx,
 		"document version archiving")
 
 	q := postgres.New(tx)
@@ -538,9 +545,9 @@ func (a *Archiver) archiveDocumentVersions(
 		if cErr != nil {
 			a.logger.ErrorCtx(ctx,
 				"failed to clean up archive object after commit failed",
-				internal.LogKeyError, cErr,
-				internal.LogKeyBucket, a.bucket,
-				internal.LogKeyObjectKey, key)
+				elephantine.LogKeyError, cErr,
+				elephantine.LogKeyBucket, a.bucket,
+				elephantine.LogKeyObjectKey, key)
 		}
 
 		return false, fmt.Errorf("failed to commit transaction: %w", err)
@@ -569,7 +576,7 @@ func (a *Archiver) archiveDocumentStatuses(
 		return false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer internal.SafeRollback(ctx, a.logger, tx,
+	defer pg.SafeRollback(ctx, a.logger, tx,
 		"document version archiving")
 
 	q := postgres.New(tx)
@@ -666,9 +673,9 @@ func (a *Archiver) archiveDocumentStatuses(
 		if cErr != nil {
 			a.logger.ErrorCtx(ctx,
 				"failed to clean up archive object after commit failed",
-				internal.LogKeyError, cErr,
-				internal.LogKeyBucket, a.bucket,
-				internal.LogKeyObjectKey, key)
+				elephantine.LogKeyError, cErr,
+				elephantine.LogKeyBucket, a.bucket,
+				elephantine.LogKeyObjectKey, key)
 		}
 
 		return false, fmt.Errorf("failed to commit transaction: %w", err)
@@ -683,7 +690,7 @@ func (a *Archiver) ensureSigningKeys(ctx context.Context) error {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer internal.SafeRollback(ctx, a.logger, tx, "signing keys")
+	defer pg.SafeRollback(ctx, a.logger, tx, "signing keys")
 
 	q := postgres.New(tx)
 

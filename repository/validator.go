@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ttab/elephant/internal"
+	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"golang.org/x/exp/slog"
@@ -58,8 +58,8 @@ func (v *Validator) reloadLoop(
 		if err != nil {
 			// TODO: add handler that reacts to LogKeyCountMetric
 			logger.ErrorCtx(ctx, "failed to refresh schemas",
-				internal.LogKeyError, err,
-				internal.LogKeyCountMetric, "elephant_schema_refresh_failure_count")
+				elephantine.LogKeyError, err,
+				elephantine.LogKeyCountMetric, "elephant_schema_refresh_failure_count")
 		}
 	}
 }

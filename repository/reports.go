@@ -8,7 +8,7 @@ import (
 
 	"github.com/adhocore/gronx"
 	"github.com/jackc/pgx/v5"
-	"github.com/ttab/elephant/internal"
+	"github.com/ttab/elephantine"
 	"golang.org/x/exp/slog"
 )
 
@@ -88,7 +88,7 @@ func GenerateReport(
 			if err := spreadsheet.File.Close(); err != nil {
 				logger.ErrorCtx(ctx,
 					"failed to close spreadsheet",
-					internal.LogKeyError, err,
+					elephantine.LogKeyError, err,
 				)
 			}
 		}()

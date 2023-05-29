@@ -4,9 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ttab/elephant/internal/test"
+	"github.com/ttab/elephant-api/repository"
+	itest "github.com/ttab/elephant/internal/test"
 	repo "github.com/ttab/elephant/repository"
-	"github.com/ttab/elephant/rpc/repository"
+	"github.com/ttab/elephantine/test"
 	"golang.org/x/exp/slog"
 )
 
@@ -32,9 +33,9 @@ func TestIntegrationMetrics(t *testing.T) {
 
 	tc := testingAPIServer(t, logger, testingServerOptions{})
 
-	client := tc.MetricsClient(t, test.StandardClaims(t, "metrics_admin"))
+	client := tc.MetricsClient(t, itest.StandardClaims(t, "metrics_admin"))
 
-	documentsClient := tc.DocumentsClient(t, test.StandardClaims(t, "doc_write"))
+	documentsClient := tc.DocumentsClient(t, itest.StandardClaims(t, "doc_write"))
 
 	ctx := test.Context(t)
 
@@ -100,7 +101,7 @@ func TestIntegrationMetrics(t *testing.T) {
 	})
 	test.Must(t, err, "create test document")
 
-	client = tc.MetricsClient(t, test.StandardClaims(t, "metrics_write"))
+	client = tc.MetricsClient(t, itest.StandardClaims(t, "metrics_write"))
 
 	_, err = client.RegisterMetric(ctx, &repository.RegisterMetricRequest{
 		Uuid:  "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
@@ -110,7 +111,7 @@ func TestIntegrationMetrics(t *testing.T) {
 	})
 	test.Must(t, err, "register the metric")
 
-	client = tc.MetricsClient(t, test.StandardClaims(t, "metrics_write:wordcount"))
+	client = tc.MetricsClient(t, itest.StandardClaims(t, "metrics_write:wordcount"))
 
 	_, err = client.RegisterMetric(ctx, &repository.RegisterMetricRequest{
 		Uuid:  "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
@@ -120,7 +121,7 @@ func TestIntegrationMetrics(t *testing.T) {
 	})
 	test.Must(t, err, "register the metric")
 
-	client = tc.MetricsClient(t, test.StandardClaims(t, "metrics_write:revisions"))
+	client = tc.MetricsClient(t, itest.StandardClaims(t, "metrics_write:revisions"))
 
 	_, err = client.RegisterMetric(ctx, &repository.RegisterMetricRequest{
 		Uuid:  "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
@@ -130,7 +131,7 @@ func TestIntegrationMetrics(t *testing.T) {
 	})
 	test.MustNot(t, err, "register the metric")
 
-	client = tc.MetricsClient(t, test.StandardClaims(t, "metrics_admin"))
+	client = tc.MetricsClient(t, itest.StandardClaims(t, "metrics_admin"))
 
 	// test delete kind
 	_, err = client.DeleteKind(ctx, &repository.DeleteMetricKindRequest{

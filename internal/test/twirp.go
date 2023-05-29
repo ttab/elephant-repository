@@ -4,11 +4,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ttab/elephantine/test"
 	"github.com/twitchtv/twirp"
 )
 
 func IsTwirpError(
-	t TestingT, err error, code twirp.ErrorCode,
+	t test.TestingT, err error, code twirp.ErrorCode,
 ) {
 	t.Helper()
 

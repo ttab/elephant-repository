@@ -12,9 +12,10 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/ttab/elephant/internal"
-	"github.com/ttab/elephant/internal/test"
-	"github.com/ttab/elephant/rpc/repository"
+	"github.com/ttab/elephant-api/repository"
+	itest "github.com/ttab/elephant/internal/test"
+	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/test"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -44,7 +45,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	})
 
 	client := tc.DocumentsClient(t,
-		test.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
+		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
 	ctx := test.Context(t)
 
@@ -145,7 +146,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	var golden repository.GetEventlogResponse
 
-	err = internal.UnmarshalFile(
+	err = elephantine.UnmarshalFile(
 		"testdata/TestIntegrationBasicCrud/eventlog.json",
 		&golden)
 	test.Must(t, err, "read golden file for expected eventlog items")
@@ -275,7 +276,7 @@ func TestIntegrationStatus(t *testing.T) {
 	})
 
 	client := tc.DocumentsClient(t,
-		test.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
+		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
 	ctx := test.Context(t)
 
@@ -366,7 +367,7 @@ func TestIntegrationStatus(t *testing.T) {
 
 	var golden repository.GetEventlogResponse
 
-	err = internal.UnmarshalFile(
+	err = elephantine.UnmarshalFile(
 		"testdata/TestIntegrationStatus/eventlog.json",
 		&golden)
 	test.Must(t, err, "read golden file for expected eventlog items")
@@ -402,7 +403,7 @@ func TestIntegrationDeleteTimeout(t *testing.T) {
 	tc := testingAPIServer(t, logger, testingServerOptions{})
 
 	client := tc.DocumentsClient(t,
-		test.StandardClaims(t, "doc_read doc_write doc_delete"))
+		itest.StandardClaims(t, "doc_read doc_write doc_delete"))
 
 	ctx := test.Context(t)
 
@@ -439,7 +440,7 @@ func TestIntegrationStatuses(t *testing.T) {
 	tc := testingAPIServer(t, logger, testingServerOptions{})
 
 	untrustedWorkflowClient := tc.WorkflowsClient(t,
-		test.StandardClaims(t, "doc_read"))
+		itest.StandardClaims(t, "doc_read"))
 
 	_, err := untrustedWorkflowClient.UpdateStatus(ctx,
 		&repository.UpdateStatusRequest{
@@ -449,7 +450,7 @@ func TestIntegrationStatuses(t *testing.T) {
 		"be able to create statues without 'workflow_admin' scope")
 
 	workflowClient := tc.WorkflowsClient(t,
-		test.StandardClaims(t, "workflow_admin"))
+		itest.StandardClaims(t, "workflow_admin"))
 
 	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
 		Name: "usable",
@@ -481,7 +482,7 @@ func TestIntegrationStatuses(t *testing.T) {
 	}
 
 	client := tc.DocumentsClient(t,
-		test.StandardClaims(t, "doc_read doc_write doc_delete"))
+		itest.StandardClaims(t, "doc_read doc_write doc_delete"))
 
 	const (
 		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
@@ -564,7 +565,7 @@ func TestIntegrationStatusRules(t *testing.T) {
 	tc := testingAPIServer(t, logger, testingServerOptions{})
 
 	workflowClient := tc.WorkflowsClient(t,
-		test.StandardClaims(t, "workflow_admin"))
+		itest.StandardClaims(t, "workflow_admin"))
 
 	const (
 		approvalName       = "must-be-approved"
@@ -643,10 +644,10 @@ or Heads.approved_legal.Version == Status.Version`,
 	}
 
 	client := tc.DocumentsClient(t,
-		test.StandardClaims(t, "doc_read doc_write doc_delete"))
+		itest.StandardClaims(t, "doc_read doc_write doc_delete"))
 
 	editorClient := tc.DocumentsClient(t,
-		test.StandardClaims(t, "doc_read doc_write doc_delete publish"))
+		itest.StandardClaims(t, "doc_read doc_write doc_delete publish"))
 
 	const (
 		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
@@ -774,9 +775,9 @@ func TestIntegrationACL(t *testing.T) {
 	tc := testingAPIServer(t, logger, testingServerOptions{})
 
 	client := tc.DocumentsClient(t,
-		test.StandardClaims(t, "doc_read doc_write doc_delete"))
+		itest.StandardClaims(t, "doc_read doc_write doc_delete"))
 
-	otherClaims := test.StandardClaims(t,
+	otherClaims := itest.StandardClaims(t,
 		"doc_read doc_write doc_delete",
 		"unit://some/group")
 

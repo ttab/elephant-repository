@@ -12,8 +12,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/ttab/elephant/internal"
 	"github.com/ttab/elephant/postgres"
+	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"golang.org/x/exp/slog"
@@ -129,7 +130,7 @@ func (s *PGDocStore) RunListener(ctx context.Context) {
 		} else if err != nil {
 			s.logger.ErrorCtx(
 				ctx, "failed to run notification listener",
-				internal.LogKeyError, err,
+				elephantine.LogKeyError, err,
 			)
 		}
 
@@ -261,7 +262,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer internal.SafeRollback(ctx, s.logger, tx, "document delete")
+	defer pg.SafeRollback(ctx, s.logger, tx, "document delete")
 
 	q := postgres.New(tx)
 
@@ -310,7 +311,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 			URI:        info.Info.URI,
 			Type:       info.Info.Type,
 			Version:    info.Info.CurrentVersion,
-			Created:    internal.PGTime(req.Updated),
+			Created:    pg.Time(req.Updated),
 			CreatorUri: req.Updater,
 			Meta:       metaJSON,
 		})
@@ -703,7 +704,7 @@ func (s *PGDocStore) Update(
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer internal.SafeRollback(ctx, s.logger, tx, "document update")
+	defer pg.SafeRollback(ctx, s.logger, tx, "document update")
 
 	q := postgres.New(tx)
 
@@ -735,7 +736,7 @@ func (s *PGDocStore) Update(
 		err = q.CreateVersion(ctx, postgres.CreateVersionParams{
 			UUID:         update.UUID,
 			Version:      up.Version,
-			Created:      internal.PGTime(up.Created),
+			Created:      pg.Time(up.Created),
 			CreatorUri:   up.Creator,
 			Meta:         metaJSON,
 			DocumentData: docJSON,
@@ -805,7 +806,7 @@ func (s *PGDocStore) Update(
 			ID:         statusID,
 			Version:    status.Version,
 			Type:       docType,
-			Created:    internal.PGTime(up.Created),
+			Created:    pg.Time(up.Created),
 			CreatorUri: up.Creator,
 			Meta:       statusMeta[i],
 		})
@@ -1082,7 +1083,7 @@ func (s *PGDocStore) RegisterSchema(
 			Version: req.Version,
 			Spec:    spec,
 		})
-		if internal.IsConstraintError(err, "document_schema_pkey") {
+		if pg.IsConstraintError(err, "document_schema_pkey") {
 			return DocStoreErrorf(ErrCodeExists,
 				"schema version already exists")
 		} else if err != nil {
@@ -1147,7 +1148,7 @@ func (s *PGDocStore) withTX(
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer internal.SafeRollback(ctx, s.logger, tx, name)
+	defer pg.SafeRollback(ctx, s.logger, tx, name)
 
 	err = fn(tx)
 	if err != nil {
@@ -1171,7 +1172,7 @@ func (s *PGDocStore) DeactivateSchema(ctx context.Context, name string) error {
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer internal.SafeRollback(ctx, s.logger, tx, "schema deactivation")
+	defer pg.SafeRollback(ctx, s.logger, tx, "schema deactivation")
 
 	q := postgres.New(tx)
 
@@ -1322,7 +1323,7 @@ func (s *PGDocStore) UpdateReport(
 		err := q.UpdateReport(ctx, postgres.UpdateReportParams{
 			Name:          report.Name,
 			Enabled:       enabled,
-			NextExecution: internal.PGTime(nextExec),
+			NextExecution: pg.Time(nextExec),
 			Spec:          spec,
 		})
 		if err != nil {
@@ -1348,7 +1349,7 @@ func (s *PGDocStore) RegisterMetricKind(
 			Name:        name,
 			Aggregation: int16(aggregation),
 		})
-		if internal.IsConstraintError(err, "metric_kind_pkey") {
+		if pg.IsConstraintError(err, "metric_kind_pkey") {
 			return DocStoreErrorf(ErrCodeExists,
 				"metric kind already exists")
 		} else if err != nil {
@@ -1418,16 +1419,16 @@ func (s *PGDocStore) RegisterOrReplaceMetric(ctx context.Context, metric Metric)
 			Label: metric.Label,
 			Value: metric.Value,
 		})
-		if internal.IsConstraintError(err, "metric_kind_fkey") {
+		if pg.IsConstraintError(err, "metric_kind_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "metric kind not found")
 		}
-		if internal.IsConstraintError(err, "metric_label_fkey") {
+		if pg.IsConstraintError(err, "metric_label_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "metric label not found")
 		}
-		if internal.IsConstraintError(err, "metric_label_kind_match") {
+		if pg.IsConstraintError(err, "metric_label_kind_match") {
 			return DocStoreErrorf(ErrCodeNotFound, "label does not apply to kind")
 		}
-		if internal.IsConstraintError(err, "metric_uuid_fkey") {
+		if pg.IsConstraintError(err, "metric_uuid_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
 		}
 		if err != nil {
@@ -1449,16 +1450,16 @@ func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metri
 			Label: metric.Label,
 			Value: metric.Value,
 		})
-		if internal.IsConstraintError(err, "metric_kind_fkey") {
+		if pg.IsConstraintError(err, "metric_kind_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "metric kind not found")
 		}
-		if internal.IsConstraintError(err, "metric_label_fkey") {
+		if pg.IsConstraintError(err, "metric_label_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "metric label not found")
 		}
-		if internal.IsConstraintError(err, "metric_label_kind_match") {
+		if pg.IsConstraintError(err, "metric_label_kind_match") {
 			return DocStoreErrorf(ErrCodeNotFound, "label does not apply to kind")
 		}
-		if internal.IsConstraintError(err, "metric_uuid_fkey") {
+		if pg.IsConstraintError(err, "metric_uuid_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
 		}
 		if err != nil {
@@ -1525,8 +1526,8 @@ func (s *PGDocStore) updateACL(
 
 	err := q.InsertACLAuditEntry(ctx, postgres.InsertACLAuditEntryParams{
 		UUID:       docUUID,
-		Type:       internal.PGTextOrNull(docType),
-		Updated:    internal.PGTime(time.Now()),
+		Type:       pg.TextOrNull(docType),
+		Updated:    pg.Time(time.Now()),
 		UpdaterUri: auth.Claims.Subject,
 	})
 	if err != nil {

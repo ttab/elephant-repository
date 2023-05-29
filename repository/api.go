@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ttab/elephant/internal"
-	"github.com/ttab/elephant/rpc/repository"
+	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
@@ -48,6 +48,10 @@ var _ repository.Documents = &DocumentsService{}
 func (a *DocumentsService) GetStatusHistory(
 	ctx context.Context, req *repository.GetStatusHistoryRequest,
 ) (*repository.GetStatusHistoryReponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(
@@ -285,6 +289,10 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 func (a *DocumentsService) Delete(
 	ctx context.Context, req *repository.DeleteDocumentRequest,
 ) (*repository.DeleteDocumentResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(
@@ -307,7 +315,7 @@ func (a *DocumentsService) Delete(
 	}
 
 	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
-	if internal.IsTwirpErrorCode(err, twirp.NotFound) {
+	if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
 		// Treat a delete of a document that doesn't exist as ok.
 		return &repository.DeleteDocumentResponse{}, nil
 	} else if err != nil {
@@ -341,6 +349,10 @@ func (a *DocumentsService) Delete(
 func (a *DocumentsService) Get(
 	ctx context.Context, req *repository.GetDocumentRequest,
 ) (*repository.GetDocumentResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(
@@ -430,6 +442,10 @@ func (a *DocumentsService) Get(
 func (a *DocumentsService) GetHistory(
 	ctx context.Context, req *repository.GetHistoryRequest,
 ) (*repository.GetHistoryResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(
@@ -513,6 +529,10 @@ func (a *DocumentsService) accessCheck(
 func (a *DocumentsService) GetMeta(
 	ctx context.Context, req *repository.GetMetaRequest,
 ) (*repository.GetMetaResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(
@@ -592,6 +612,10 @@ func validateRequiredUUIDParam(v string) (uuid.UUID, error) {
 func (a *DocumentsService) Update(
 	ctx context.Context, req *repository.UpdateRequest,
 ) (*repository.UpdateResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(
@@ -704,7 +728,7 @@ func (a *DocumentsService) Update(
 	// Check for ACL write permission, but allow the write if no document is
 	// found, as we want to allow the creation of new documents.
 	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
-	if err != nil && !internal.IsTwirpErrorCode(err, twirp.NotFound) {
+	if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
 		return nil, err
 	}
 
