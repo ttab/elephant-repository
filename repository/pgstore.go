@@ -568,6 +568,13 @@ func (s *PGDocStore) GetDocumentMeta(
 		CurrentVersion: info.CurrentVersion,
 		Statuses:       make(map[string]Status),
 		Deleting:       info.Deleting,
+		Lock: Lock{
+			URI:     info.LockUri.String,
+			Created: info.Created.Time,
+			Expires: info.LockExpires.Time,
+			App:     info.LockApp.String,
+			Comment: info.LockComment.String,
+		},
 	}
 
 	heads, err := s.getFullDocumentHeads(ctx, s.reader, uuid)
@@ -1078,6 +1085,28 @@ func (s *PGDocStore) GetSchemaVersions(
 	}
 
 	return res, nil
+}
+
+func (s *PGDocStore) Lock(ctx context.Context, uuid uuid.UUID, ttl int32, token string) error {
+	expires := time.Now().Add(time.Millisecond * time.Duration(ttl))
+
+	err := s.withTX(ctx, "document locking", func(tx pgx.Tx) error {
+		err := s.reader.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
+			UUID:    uuid,
+			Token:   token,
+			Expires: internal.PGTime(expires),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to insert document lock: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // RegisterSchema implements DocStore.

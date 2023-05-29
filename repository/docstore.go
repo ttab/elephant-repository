@@ -46,6 +46,9 @@ type DocStore interface {
 	GetDocumentACL(
 		ctx context.Context, uuid uuid.UUID,
 	) ([]ACLEntry, error)
+	Lock(
+		ctx context.Context, uuid uuid.UUID, ttl int32, token string,
+	) error
 }
 
 type SchemaStore interface {
@@ -183,11 +186,20 @@ type DocumentMeta struct {
 	ACL            []ACLEntry
 	Statuses       map[string]Status
 	Deleting       bool
+	Lock           Lock
 }
 
 type ACLEntry struct {
 	URI         string   `json:"uri"`
 	Permissions []string `json:"permissions"`
+}
+
+type Lock struct {
+	URI     string
+	Created time.Time
+	Expires time.Time
+	App     string
+	Comment string
 }
 
 type DocumentUpdate struct {

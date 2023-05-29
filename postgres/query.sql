@@ -56,10 +56,12 @@ WHERE uuid = @UUID AND version = @version;
 
 -- name: GetDocumentInfo :one
 SELECT
-        uuid, uri, created, creator_uri, updated, updater_uri, current_version,
-        deleting
-FROM document
-WHERE uuid = $1;
+        d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
+        deleting, l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
+        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment
+FROM document as d 
+LEFT JOIN lock as l ON d.uuid = l.uuid 
+WHERE d.uuid = $1;
 
 -- name: GetDocumentData :one
 SELECT v.document_data
@@ -255,6 +257,13 @@ INSERT INTO status_rule(
 
 -- name: DeleteStatusRule :exec
 DELETE FROM status_rule WHERE name = $1;
+
+-- name: InsertDocumentLock :exec
+INSERT INTO lock(
+  uuid, token, created, expires
+) VALUES(
+  @uuid, @token, now(), @expires
+);
 
 -- name: UpdateReport :exec
 INSERT INTO report(

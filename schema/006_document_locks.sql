@@ -2,6 +2,7 @@
 
 create table lock(
   uuid uuid primary key not null,
+  token varchar not null,
   created timestamptz not null,
   expires timestamptz not null,
   uri varchar,

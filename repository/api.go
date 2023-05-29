@@ -666,6 +666,16 @@ func (a *DocumentsService) GetMeta(
 		})
 	}
 
+	if meta.Lock.Expires != (time.Time{}) {
+		resp.Lock = &repository.Lock{
+			Uri:     meta.Lock.URI,
+			Created: meta.Lock.Created.Format(time.RFC3339),
+			Expires: meta.Lock.Expires.Format(time.RFC3339),
+			App:     meta.Lock.App,
+			Comment: meta.Lock.Comment,
+		}
+	}
+
 	return &repository.GetMetaResponse{
 		Meta: &resp,
 	}, nil
@@ -926,14 +936,35 @@ func (a *DocumentsService) Validate(
 }
 
 func (a *DocumentsService) Lock(
-	_ context.Context, req *repository.LockRequest,
+	ctx context.Context, req *repository.LockRequest,
 ) (*repository.LockResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("doc_write") {
+		return nil, twirp.PermissionDenied.Error(
+			"no read permission")
+	}
+
 	if req.Uuid == "" {
 		return nil, twirp.RequiredArgumentError("uuid")
 	}
 
+	uuid, err := uuid.Parse(req.Uuid)
+	if err != nil {
+		return nil, fmt.Errorf("invalid document UUID: %w", err)
+	}
+
 	if req.Ttl == 0 {
 		return nil, twirp.RequiredArgumentError("ttl")
+	}
+
+	err = a.store.Lock(ctx, uuid, req.Ttl, req.Token)
+	if err != nil {
+		return nil, fmt.Errorf("could not obtain lock: %w", err)
 	}
 
 	var res repository.LockResponse

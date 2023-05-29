@@ -374,6 +374,7 @@ ALTER TABLE public.job_lock OWNER TO repository;
 
 CREATE TABLE public.lock (
     uuid uuid NOT NULL,
+    token character varying NOT NULL,
     created timestamp with time zone NOT NULL,
     expires timestamp with time zone NOT NULL,
     uri character varying,

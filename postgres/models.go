@@ -116,6 +116,16 @@ type JobLock struct {
 	Iteration int64
 }
 
+type Lock struct {
+	UUID    uuid.UUID
+	Token   string
+	Created pgtype.Timestamptz
+	Expires pgtype.Timestamptz
+	URI     pgtype.Text
+	App     pgtype.Text
+	Comment pgtype.Text
+}
+
 type Metric struct {
 	UUID  uuid.UUID
 	Kind  string

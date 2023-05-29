@@ -394,10 +394,12 @@ func (q *Queries) GetDocumentHeads(ctx context.Context, argUuid uuid.UUID) ([]Ge
 
 const getDocumentInfo = `-- name: GetDocumentInfo :one
 SELECT
-        uuid, uri, created, creator_uri, updated, updater_uri, current_version,
-        deleting
-FROM document
-WHERE uuid = $1
+        d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
+        deleting, l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
+        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment
+FROM document as d 
+LEFT JOIN lock as l ON d.uuid = l.uuid 
+WHERE d.uuid = $1
 `
 
 type GetDocumentInfoRow struct {
@@ -409,6 +411,12 @@ type GetDocumentInfoRow struct {
 	UpdaterUri     string
 	CurrentVersion int64
 	Deleting       bool
+	LockUuid       pgtype.UUID
+	LockUri        pgtype.Text
+	LockCreated    pgtype.Timestamptz
+	LockExpires    pgtype.Timestamptz
+	LockApp        pgtype.Text
+	LockComment    pgtype.Text
 }
 
 func (q *Queries) GetDocumentInfo(ctx context.Context, argUuid uuid.UUID) (GetDocumentInfoRow, error) {
@@ -423,6 +431,12 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, argUuid uuid.UUID) (GetDo
 		&i.UpdaterUri,
 		&i.CurrentVersion,
 		&i.Deleting,
+		&i.LockUuid,
+		&i.LockUri,
+		&i.LockCreated,
+		&i.LockExpires,
+		&i.LockApp,
+		&i.LockComment,
 	)
 	return i, err
 }
@@ -1181,6 +1195,25 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const insertDocumentLock = `-- name: InsertDocumentLock :exec
+INSERT INTO lock(
+  uuid, token, created, expires
+) VALUES(
+  $1, $2, now(), $3
+)
+`
+
+type InsertDocumentLockParams struct {
+	UUID    uuid.UUID
+	Token   string
+	Expires pgtype.Timestamptz
+}
+
+func (q *Queries) InsertDocumentLock(ctx context.Context, arg InsertDocumentLockParams) error {
+	_, err := q.db.Exec(ctx, insertDocumentLock, arg.UUID, arg.Token, arg.Expires)
+	return err
 }
 
 const insertIntoEventLog = `-- name: InsertIntoEventLog :one
