@@ -28,6 +28,7 @@ import (
 	"github.com/ttab/elephant/repository"
 	"github.com/ttab/elephant/sinks"
 	"github.com/ttab/elephantine"
+	"github.com/twitchtv/twirp"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
@@ -364,7 +365,17 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to create twirp metrics hook: %w", err)
 	}
 
-	opts.Hooks = metrics
+	opts.Hooks = twirp.ChainHooks(
+		elephantine.LoggingHooks(logger, func(ctx context.Context) string {
+			auth, ok := repository.GetAuthInfo(ctx)
+			if !ok {
+				return ""
+			}
+
+			return auth.Claims.Scope
+		}),
+		metrics,
+	)
 
 	err = repository.SetUpRouter(router,
 		repository.WithTokenEndpoint(signingKey, conf.SharedSecret),

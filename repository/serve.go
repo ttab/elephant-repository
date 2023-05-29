@@ -36,9 +36,15 @@ func SetUpRouter(
 }
 
 func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
+	var handler http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+		ctx := elephantine.WithLogMetadata(r.Context())
+
+		h.ServeHTTP(w, r.WithContext(ctx))
+	}
+
 	server := http.Server{
 		Addr:              addr,
-		Handler:           h,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -68,7 +74,13 @@ func (so *ServerOptions) SetJWTValidation(jwtKey *ecdsa.PrivateKey) {
 		}
 
 		if auth != nil {
-			r = r.WithContext(SetAuthInfo(r.Context(), auth))
+			ctx := SetAuthInfo(r.Context(), auth)
+
+			elephantine.SetLogMetadata(ctx,
+				elephantine.LogKeySubject, auth.Claims.Subject,
+			)
+
+			r = r.WithContext(ctx)
 		}
 
 		next.ServeHTTP(w, r)

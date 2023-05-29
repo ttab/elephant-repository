@@ -48,6 +48,10 @@ var _ repository.Documents = &DocumentsService{}
 func (a *DocumentsService) GetStatusHistory(
 	ctx context.Context, req *repository.GetStatusHistoryRequest,
 ) (*repository.GetStatusHistoryReponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(
@@ -285,6 +289,10 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 func (a *DocumentsService) Delete(
 	ctx context.Context, req *repository.DeleteDocumentRequest,
 ) (*repository.DeleteDocumentResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(
@@ -341,6 +349,10 @@ func (a *DocumentsService) Delete(
 func (a *DocumentsService) Get(
 	ctx context.Context, req *repository.GetDocumentRequest,
 ) (*repository.GetDocumentResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(
@@ -430,6 +442,10 @@ func (a *DocumentsService) Get(
 func (a *DocumentsService) GetHistory(
 	ctx context.Context, req *repository.GetHistoryRequest,
 ) (*repository.GetHistoryResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(
@@ -513,6 +529,10 @@ func (a *DocumentsService) accessCheck(
 func (a *DocumentsService) GetMeta(
 	ctx context.Context, req *repository.GetMetaRequest,
 ) (*repository.GetMetaResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(
@@ -592,6 +612,10 @@ func validateRequiredUUIDParam(v string) (uuid.UUID, error) {
 func (a *DocumentsService) Update(
 	ctx context.Context, req *repository.UpdateRequest,
 ) (*repository.UpdateResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, ok := GetAuthInfo(ctx)
 	if !ok {
 		return nil, twirp.Unauthenticated.Error(

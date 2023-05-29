@@ -237,6 +237,15 @@ func testingAPIServer(
 
 	var srvOpts repository.ServerOptions
 
+	srvOpts.Hooks = elephantine.LoggingHooks(logger, func(ctx context.Context) string {
+		auth, ok := repository.GetAuthInfo(ctx)
+		if !ok {
+			return ""
+		}
+
+		return auth.Claims.Scope
+	})
+
 	srvOpts.SetJWTValidation(jwtKey)
 
 	err = repository.SetUpRouter(router,
