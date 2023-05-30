@@ -1515,6 +1515,22 @@ func (q *Queries) StealJobLock(ctx context.Context, arg StealJobLockParams) (int
 	return result.RowsAffected(), nil
 }
 
+const updateDocumentLock = `-- name: UpdateDocumentLock :exec
+UPDATE lock
+SET expires = $1
+WHERE uuid = $2
+`
+
+type UpdateDocumentLockParams struct {
+	Expires pgtype.Timestamptz
+	UUID    uuid.UUID
+}
+
+func (q *Queries) UpdateDocumentLock(ctx context.Context, arg UpdateDocumentLockParams) error {
+	_, err := q.db.Exec(ctx, updateDocumentLock, arg.Expires, arg.UUID)
+	return err
+}
+
 const updateEventsinkPosition = `-- name: UpdateEventsinkPosition :exec
 UPDATE eventsink SET position = $1 WHERE name = $2
 `

@@ -266,6 +266,11 @@ INSERT INTO lock(
   @uuid, @token, @created, @expires, @uri, @app, @comment
 );
 
+-- name: UpdateDocumentLock :exec
+UPDATE lock
+SET expires = @expires
+WHERE uuid = @uuid;
+
 -- name: UpdateReport :exec
 INSERT INTO report(
        name, enabled, next_execution, spec

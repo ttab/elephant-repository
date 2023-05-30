@@ -1091,7 +1091,11 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 	now := time.Now()
 	expires := now.Add(time.Millisecond * time.Duration(req.TTL))
 
-	var res LockResult
+	res := LockResult{
+		Created: now,
+		Expires: expires,
+	}
+
 	err := s.withTX(ctx, "document locking", func(tx pgx.Tx) error {
 		info, err := s.reader.GetDocumentInfo(ctx, req.UUID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1105,7 +1109,13 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 				return DocStoreErrorf(NoErrCode, "invalid lock token")
 			}
 
-			// update expired
+			err = s.reader.UpdateDocumentLock(ctx, postgres.UpdateDocumentLockParams{
+				UUID:    req.UUID,
+				Expires: internal.PGTime(expires),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to extend lock expiration: %w", err)
+			}
 		} else {
 			token := uuid.NewString()
 			err = s.reader.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
@@ -1118,11 +1128,7 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 				return fmt.Errorf("failed to insert document lock: %w", err)
 			}
 
-			res = LockResult{
-				Token:   token,
-				Created: now,
-				Expires: expires,
-			}
+			res.Token = token
 		}
 
 		return nil
