@@ -367,7 +367,7 @@ func runServer(c *cli.Context) error {
 
 	opts.Hooks = twirp.ChainHooks(
 		elephantine.LoggingHooks(logger, func(ctx context.Context) string {
-			auth, ok := repository.GetAuthInfo(ctx)
+			auth, ok := elephantine.GetAuthInfo(ctx)
 			if !ok {
 				return ""
 			}

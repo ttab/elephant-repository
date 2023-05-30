@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/ttab/elephant/repository"
+	"github.com/ttab/elephantine"
 )
 
 func NewSigningKey() (*ecdsa.PrivateKey, error) {
@@ -22,10 +22,10 @@ func NewSigningKey() (*ecdsa.PrivateKey, error) {
 	return jwtKey, nil
 }
 
-func StandardClaims(t *testing.T, scope string, units ...string) repository.JWTClaims {
+func StandardClaims(t *testing.T, scope string, units ...string) elephantine.JWTClaims {
 	t.Helper()
 
-	return repository.JWTClaims{
+	return elephantine.JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(
 				time.Now().Add(10 * time.Minute)),
@@ -38,7 +38,7 @@ func StandardClaims(t *testing.T, scope string, units ...string) repository.JWTC
 	}
 }
 
-func AccessKey(key *ecdsa.PrivateKey, claims repository.JWTClaims) (string, error) {
+func AccessKey(key *ecdsa.PrivateKey, claims elephantine.JWTClaims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodES384, claims)
 
 	ss, err := token.SignedString(key)

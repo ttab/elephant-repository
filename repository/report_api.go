@@ -34,7 +34,7 @@ var _ repository.Reports = &ReportsService{}
 func (s *ReportsService) Update(
 	ctx context.Context, req *repository.UpdateReportRequest,
 ) (*repository.UpdateReportResponse, error) {
-	err := requireAnyScope(ctx, "report_admin")
+	_, err := RequireAnyScope(ctx, ScopeReportAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (s *ReportsService) Update(
 func (s *ReportsService) Get(
 	ctx context.Context, req *repository.GetReportRequest,
 ) (*repository.GetReportResponse, error) {
-	err := requireAnyScope(ctx, "report_admin")
+	_, err := RequireAnyScope(ctx, ScopeReportAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,7 @@ func ReportFromRPC(r *repository.Report) (Report, error) {
 func (s *ReportsService) Run(
 	ctx context.Context, req *repository.RunReportRequest,
 ) (*repository.RunReportResponse, error) {
-	err := requireAnyScope(ctx, "report_admin", "report_run")
+	_, err := RequireAnyScope(ctx, ScopeReportAdmin, ScopeReportRun)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +239,7 @@ func (s *ReportsService) Run(
 func (s *ReportsService) Test(
 	ctx context.Context, req *repository.TestReportRequest,
 ) (*repository.TestReportResponse, error) {
-	err := requireAnyScope(ctx, "report_admin")
+	_, err := RequireAnyScope(ctx, ScopeReportAdmin)
 	if err != nil {
 		return nil, err
 	}

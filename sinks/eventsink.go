@@ -192,8 +192,8 @@ func (r *EventForwarder) loop(ctx context.Context) error {
 }
 
 func (r *EventForwarder) runNext(ctx context.Context, pos int64) (int64, error) {
-	aCtx, cancel := context.WithCancel(repo.SetAuthInfo(ctx, &repo.AuthInfo{
-		Claims: repo.JWTClaims{
+	aCtx, cancel := context.WithCancel(elephantine.SetAuthInfo(ctx, &elephantine.AuthInfo{
+		Claims: elephantine.JWTClaims{
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject: "internal://event-forwarder",
 			},

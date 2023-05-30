@@ -785,6 +785,11 @@ func TestIntegrationACL(t *testing.T) {
 
 	otherClient := tc.DocumentsClient(t, otherClaims)
 
+	adminClaims := itest.StandardClaims(t, "doc_admin", "unit://some/group")
+	adminClaims.Subject = "user://test/admin-user"
+
+	adminClient := tc.DocumentsClient(t, adminClaims)
+
 	const (
 		docUUID  = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
 		docURI   = "article://test/123"
@@ -819,10 +824,31 @@ func TestIntegrationACL(t *testing.T) {
 	})
 	test.MustNot(t, err, "didn't expect the other user to have read access")
 
+	otherP1, err := otherClient.GetPermissions(ctx, &repository.GetPermissionsRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "get other users permissions for document one")
+
+	test.EqualMessage(t, &repository.GetPermissionsResponse{}, otherP1,
+		"expected the permissions response to verify that the other user doesn't have access")
+
 	_, err = otherClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: doc2UUID,
 	})
 	test.Must(t, err, "expected the other user to have access to document two")
+
+	otherP2, err := otherClient.GetPermissions(ctx, &repository.GetPermissionsRequest{
+		Uuid: doc2UUID,
+	})
+	test.Must(t, err, "get other users permissions for document two")
+
+	test.EqualMessage(t,
+		&repository.GetPermissionsResponse{
+			Permissions: map[string]string{
+				"r": otherClaims.Subject,
+			},
+		}, otherP2,
+		"expected the permissions response to verify that the other user has read access")
 
 	doc2.Title = "A better title, clearly"
 
@@ -849,6 +875,25 @@ func TestIntegrationACL(t *testing.T) {
 	})
 	test.Must(t, err, "expected other user to be able to read document one after ACL update")
 
+	_, err = otherClient.Get(ctx, &repository.GetDocumentRequest{
+		Uuid: doc2UUID,
+	})
+	test.Must(t, err, "expected the other user to have access to document two")
+
+	otherP3, err := otherClient.GetPermissions(ctx, &repository.GetPermissionsRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "get other users permissions for document one")
+
+	test.EqualMessage(t,
+		&repository.GetPermissionsResponse{
+			Permissions: map[string]string{
+				"r": "unit://some/group",
+				"w": "unit://some/group",
+			},
+		}, otherP3,
+		"expected the permissions response to verify that the other user has read/write access")
+
 	doc.Title = "The first doc is the best doc"
 
 	_, err = otherClient.Update(ctx, &repository.UpdateRequest{
@@ -856,4 +901,18 @@ func TestIntegrationACL(t *testing.T) {
 		Document: doc,
 	})
 	test.Must(t, err, "expected other user to be able to update document one after ACL update")
+
+	adminP, err := adminClient.GetPermissions(ctx, &repository.GetPermissionsRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "get admin users permissions for document one")
+
+	test.EqualMessage(t,
+		&repository.GetPermissionsResponse{
+			Permissions: map[string]string{
+				"r": "scope://doc_admin",
+				"w": "scope://doc_admin",
+			},
+		}, adminP,
+		"expected the permissions response to reflect that admin gains access through scopes")
 }

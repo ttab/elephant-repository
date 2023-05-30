@@ -577,19 +577,34 @@ func (s *PGDocStore) GetDocumentMeta(
 
 	meta.Statuses = heads
 
-	acl, err := s.reader.GetDocumentACL(ctx, uuid)
+	acl, err := s.GetDocumentACL(ctx, uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	meta.ACL = acl
+
+	return &meta, nil
+}
+
+func (s *PGDocStore) GetDocumentACL(
+	ctx context.Context, uuid uuid.UUID,
+) ([]ACLEntry, error) {
+	aclResult, err := s.reader.GetDocumentACL(ctx, uuid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch document ACL: %w", err)
 	}
 
-	for _, a := range acl {
-		meta.ACL = append(meta.ACL, ACLEntry{
+	var acl []ACLEntry
+
+	for _, a := range aclResult {
+		acl = append(acl, ACLEntry{
 			URI:         a.URI,
 			Permissions: a.Permissions,
 		})
 	}
 
-	return &meta, nil
+	return acl, nil
 }
 
 func (s *PGDocStore) getFullDocumentHeads(
@@ -852,7 +867,7 @@ func (s *PGDocStore) buildStatusRuleInput(
 		Heads:  statusHeads,
 	}
 
-	auth, ok := GetAuthInfo(ctx)
+	auth, ok := elephantine.GetAuthInfo(ctx)
 	if ok {
 		input.User = auth.Claims
 	}
@@ -1478,7 +1493,7 @@ func (s *PGDocStore) updateACL(
 		return nil
 	}
 
-	auth, ok := GetAuthInfo(ctx)
+	auth, ok := elephantine.GetAuthInfo(ctx)
 	if !ok {
 		return errors.New("unauthenticated context")
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
+	"golang.org/x/exp/slices"
 )
 
 type DocumentValidator interface {
@@ -52,15 +53,11 @@ func (a *DocumentsService) GetStatusHistory(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("doc_read") {
-		return nil, twirp.PermissionDenied.Error(
-			"no read permission")
+	auth, err := RequireAnyScope(ctx,
+		ScopeSuperuser, ScopeDocumentAdmin,
+		ScopeDocumentReadAll, ScopeDocumentRead)
+	if err != nil {
+		return nil, err
 	}
 
 	docUUID, err := validateRequiredUUIDParam(req.Uuid)
@@ -107,19 +104,117 @@ func (a *DocumentsService) GetStatusHistory(
 	return &res, nil
 }
 
+// GetPermissions returns the permissions you have for the document.
+func (a *DocumentsService) GetPermissions(
+	ctx context.Context, req *repository.GetPermissionsRequest,
+) (*repository.GetPermissionsResponse, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeSuperuser, ScopeDocumentAdmin,
+		ScopeDocumentReadAll, ScopeDocumentRead,
+		ScopeDocumentWrite, ScopeDocumentDelete,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := repository.GetPermissionsResponse{
+		Permissions: make(map[string]string),
+	}
+
+	allSet := func(permissions ...Permission) bool {
+		for _, p := range permissions {
+			_, ok := resp.Permissions[string(p)]
+			if !ok {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	elevated := map[Permission][]string{
+		ReadPermission:  {ScopeSuperuser, ScopeDocumentReadAll, ScopeDocumentAdmin},
+		WritePermission: {ScopeSuperuser, ScopeDocumentAdmin},
+	}
+
+	for permission, scopes := range elevated {
+		for _, s := range scopes {
+			if !auth.Claims.HasScope(s) {
+				continue
+			}
+
+			resp.Permissions[string(permission)] = "scope://" + s
+
+			break
+		}
+	}
+
+	// Return early if elevated privileges already granted us the needed
+	// permissions.
+	if allSet(ReadPermission, WritePermission) {
+		return &resp, nil
+	}
+
+	acl, err := a.store.GetDocumentACL(ctx, docUUID)
+	if err != nil {
+		return nil, twirp.InternalErrorf("failed to read document ACL: %w", err)
+	}
+
+	subs := []string{auth.Claims.Subject}
+	subs = append(subs, auth.Claims.Units...)
+
+	for _, sub := range subs {
+		perms := aclPermissions(sub, acl)
+		for _, perm := range perms {
+			if allSet(perm) {
+				continue
+			}
+
+			resp.Permissions[string(perm)] = sub
+		}
+
+		if allSet(ReadPermission, WritePermission) {
+			break
+		}
+	}
+
+	return &resp, nil
+}
+
+func aclPermissions(sub string, acl []ACLEntry) []Permission {
+	var perms []Permission
+
+	for _, e := range acl {
+		if e.URI != sub {
+			continue
+		}
+
+		for _, p := range e.Permissions {
+			perm := Permission(p)
+
+			if slices.Contains(perms, perm) {
+				continue
+			}
+
+			perms = append(perms, perm)
+		}
+	}
+
+	return perms
+}
+
 // Eventlog returns document update events, optionally waiting for new events.
 func (a *DocumentsService) Eventlog(
 	ctx context.Context, req *repository.GetEventlogRequest,
 ) (*repository.GetEventlogResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasAnyScope("superuser", "eventlog_read") {
-		return nil, twirp.PermissionDenied.Error(
-			"no eventlog read permission")
+	_, err := RequireAnyScope(ctx, ScopeSuperuser, ScopeEventlogRead)
+	if err != nil {
+		return nil, err
 	}
 
 	var (
@@ -293,15 +388,9 @@ func (a *DocumentsService) Delete(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("doc_delete") {
-		return nil, twirp.PermissionDenied.Error(
-			"no delete permission")
+	auth, err := RequireAnyScope(ctx, ScopeSuperuser, ScopeDocumentDelete)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.IfMatch < -1 {
@@ -353,15 +442,9 @@ func (a *DocumentsService) Get(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("doc_read") {
-		return nil, twirp.PermissionDenied.Error(
-			"no read permission")
+	auth, err := RequireAnyScope(ctx, ScopeSuperuser, ScopeDocumentRead)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.Version < 0 {
@@ -446,15 +529,9 @@ func (a *DocumentsService) GetHistory(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("doc_read") {
-		return nil, twirp.PermissionDenied.Error(
-			"no read permission")
+	auth, err := RequireAnyScope(ctx, ScopeSuperuser, ScopeDocumentRead)
+	if err != nil {
+		return nil, err
 	}
 
 	docUUID, err := validateRequiredUUIDParam(req.Uuid)
@@ -495,10 +572,14 @@ func (a *DocumentsService) GetHistory(
 
 func (a *DocumentsService) accessCheck(
 	ctx context.Context,
-	auth *AuthInfo, docUUID uuid.UUID,
+	auth *elephantine.AuthInfo, docUUID uuid.UUID,
 	permission Permission,
 ) error {
-	if auth.Claims.HasScope("superuser") {
+	if auth.Claims.HasAnyScope(ScopeSuperuser, ScopeDocumentAdmin) {
+		return nil
+	}
+
+	if permission == ReadPermission && auth.Claims.HasScope(ScopeDocumentReadAll) {
 		return nil
 	}
 
@@ -533,15 +614,9 @@ func (a *DocumentsService) GetMeta(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("doc_read") {
-		return nil, twirp.PermissionDenied.Error(
-			"no read permission")
+	auth, err := RequireAnyScope(ctx, ScopeSuperuser, ScopeDocumentRead)
+	if err != nil {
+		return nil, err
 	}
 
 	docUUID, err := validateRequiredUUIDParam(req.Uuid)
@@ -616,15 +691,10 @@ func (a *DocumentsService) Update(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("doc_write") {
-		return nil, twirp.PermissionDenied.Error(
-			"no write permission")
+	auth, err := RequireAnyScope(ctx,
+		ScopeSuperuser, ScopeDocumentAdmin, ScopeDocumentWrite)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.ImportDirective != nil && !auth.Claims.HasScope("import_directive") {
