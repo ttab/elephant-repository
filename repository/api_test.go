@@ -951,7 +951,7 @@ func TestDocumentLocking(t *testing.T) {
 	})
 	test.Must(t, err, "create test article")
 
-	_, err = client.Lock(ctx, &repository.LockRequest{
+	lock, err := client.Lock(ctx, &repository.LockRequest{
 		Uuid: docUUID,
 		Ttl:  5000,
 	})
@@ -963,7 +963,7 @@ func TestDocumentLocking(t *testing.T) {
 	test.Must(t, err, "fetch document meta")
 	test.NotNil(t, meta.Meta.Lock, "document should have a lock")
 
-	lock, err := client.Lock(ctx, &repository.LockRequest{
+	_, err = client.Lock(ctx, &repository.LockRequest{
 		Uuid:  docUUID,
 		Ttl:   5000,
 		Token: "another token",

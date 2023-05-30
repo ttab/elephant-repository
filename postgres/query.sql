@@ -58,7 +58,8 @@ WHERE uuid = @UUID AND version = @version;
 SELECT
         d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
         deleting, l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
-        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment
+        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
+        l.token as lock_token
 FROM document as d 
 LEFT JOIN lock as l ON d.uuid = l.uuid 
 WHERE d.uuid = $1;
@@ -264,11 +265,6 @@ INSERT INTO lock(
 ) VALUES(
   @uuid, @token, @created, @expires, @uri, @app, @comment
 );
-
--- name: GetDocumentLock :one
-SELECT uuid, token, created, expires, uri, app, comment
-FROM lock 
-WHERE uuid = @uuid;
 
 -- name: UpdateReport :exec
 INSERT INTO report(

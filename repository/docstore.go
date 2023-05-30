@@ -47,8 +47,8 @@ type DocStore interface {
 		ctx context.Context, uuid uuid.UUID,
 	) ([]ACLEntry, error)
 	Lock(
-		ctx context.Context, uuid uuid.UUID, ttl int32, token string,
-	) error
+		ctx context.Context, req LockRequest,
+	) (LockResult, error)
 }
 
 type SchemaStore interface {
@@ -201,6 +201,21 @@ type Lock struct {
 	Expires time.Time
 	App     string
 	Comment string
+}
+
+type LockRequest struct {
+	UUID    uuid.UUID
+	URI     string
+	TTL     int32
+	App     string
+	Comment string
+	Token   string
+}
+
+type LockResult struct {
+	Token   string
+	Created time.Time
+	Expires time.Time
 }
 
 type DocumentUpdate struct {

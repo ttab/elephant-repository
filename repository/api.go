@@ -946,7 +946,7 @@ func (a *DocumentsService) Lock(
 
 	if !auth.Claims.HasScope("doc_write") {
 		return nil, twirp.PermissionDenied.Error(
-			"no read permission")
+			"no write permission")
 	}
 
 	if req.Uuid == "" {
@@ -962,14 +962,18 @@ func (a *DocumentsService) Lock(
 		return nil, twirp.RequiredArgumentError("ttl")
 	}
 
-	err = a.store.Lock(ctx, uuid, req.Ttl, req.Token)
+	lock, err := a.store.Lock(ctx, LockRequest{
+		UUID:  uuid,
+		TTL:   req.Ttl,
+		Token: req.Token,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("could not obtain lock: %w", err)
 	}
 
-	var res repository.LockResponse
-
-	return &res, nil
+	return &repository.LockResponse{
+		Token: lock.Token,
+	}, nil
 }
 
 func (a *DocumentsService) Unlock(

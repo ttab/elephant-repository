@@ -396,7 +396,8 @@ const getDocumentInfo = `-- name: GetDocumentInfo :one
 SELECT
         d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
         deleting, l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
-        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment
+        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
+        l.token as lock_token
 FROM document as d 
 LEFT JOIN lock as l ON d.uuid = l.uuid 
 WHERE d.uuid = $1
@@ -417,6 +418,7 @@ type GetDocumentInfoRow struct {
 	LockExpires    pgtype.Timestamptz
 	LockApp        pgtype.Text
 	LockComment    pgtype.Text
+	LockToken      pgtype.Text
 }
 
 func (q *Queries) GetDocumentInfo(ctx context.Context, argUuid uuid.UUID) (GetDocumentInfoRow, error) {
@@ -437,27 +439,7 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, argUuid uuid.UUID) (GetDo
 		&i.LockExpires,
 		&i.LockApp,
 		&i.LockComment,
-	)
-	return i, err
-}
-
-const getDocumentLock = `-- name: GetDocumentLock :one
-SELECT uuid, token, created, expires, uri, app, comment
-FROM lock 
-WHERE uuid = $1
-`
-
-func (q *Queries) GetDocumentLock(ctx context.Context, argUuid uuid.UUID) (Lock, error) {
-	row := q.db.QueryRow(ctx, getDocumentLock, argUuid)
-	var i Lock
-	err := row.Scan(
-		&i.UUID,
-		&i.Token,
-		&i.Created,
-		&i.Expires,
-		&i.URI,
-		&i.App,
-		&i.Comment,
+		&i.LockToken,
 	)
 	return i, err
 }

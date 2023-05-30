@@ -1087,39 +1087,51 @@ func (s *PGDocStore) GetSchemaVersions(
 	return res, nil
 }
 
-func (s *PGDocStore) Lock(ctx context.Context, uuid uuid.UUID, ttl int32, token string) error {
+func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, error) {
 	now := time.Now()
-	expires := now.Add(time.Millisecond * time.Duration(ttl))
+	expires := now.Add(time.Millisecond * time.Duration(req.TTL))
 
+	var res LockResult
 	err := s.withTX(ctx, "document locking", func(tx pgx.Tx) error {
-		info, err := s.reader.GetDocumentLock(ctx, uuid)
-
+		info, err := s.reader.GetDocumentInfo(ctx, req.UUID)
 		if errors.Is(err, pgx.ErrNoRows) {
-			// return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
+			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
 		} else if err != nil {
 			return fmt.Errorf("could not read document: %w", err)
 		}
-		fmt.Println(info)
 
-		err = s.reader.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
-			UUID:    uuid,
-			Token:   token,
-			Created: internal.PGTime(now),
-			Expires: internal.PGTime(expires),
-		})
-		if internal.IsConstraintError(err, "lock_uuid_fkey") {
-			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
-		} else if err != nil {
-			return fmt.Errorf("failed to insert document lock: %w", err)
+		if info.LockToken.Valid {
+			if info.LockToken.String != req.Token {
+				return DocStoreErrorf(NoErrCode, "invalid lock token")
+			}
+
+			// update expired
+		} else {
+			token := uuid.NewString()
+			err = s.reader.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
+				UUID:    req.UUID,
+				Token:   token,
+				Created: internal.PGTime(now),
+				Expires: internal.PGTime(expires),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to insert document lock: %w", err)
+			}
+
+			res = LockResult{
+				Token:   token,
+				Created: now,
+				Expires: expires,
+			}
 		}
 
 		return nil
 	})
 	if err != nil {
-		return err
+		return LockResult{}, err
 	}
 
-	return nil
+	return res, nil
 }
 
 // RegisterSchema implements DocStore.
