@@ -3,12 +3,12 @@ module github.com/ttab/elephant
 go 1.20
 
 require (
-	github.com/Masterminds/semver/v3 v3.2.0
+	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/adhocore/gronx v1.6.2
 	github.com/antonmedv/expr v1.12.5
 	github.com/aws/aws-sdk-go-v2 v1.18.0
 	github.com/aws/aws-sdk-go-v2/config v1.18.22
-	github.com/aws/aws-sdk-go-v2/credentials v1.13.21
+	github.com/aws/aws-sdk-go-v2/credentials v1.13.24
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.19.2
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.33.1
 	github.com/golang-jwt/jwt/v4 v4.5.0
@@ -23,12 +23,12 @@ require (
 	github.com/ory/dockertest/v3 v3.10.0
 	github.com/prometheus/client_golang v1.15.1
 	github.com/rakutentech/jwk-go v1.1.2
-	github.com/ttab/elephant-api v0.3.1-0.20230530073729-1a550e5c0937
+	github.com/ttab/elephant-api v0.4.0
 	github.com/ttab/elephantine v0.6.0
 	github.com/ttab/newsdoc v0.3.0
 	github.com/ttab/revisor v0.3.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	github.com/urfave/cli/v2 v2.25.3
+	github.com/urfave/cli/v2 v2.25.5
 	github.com/xuri/excelize/v2 v2.7.1
 	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53
 	golang.org/x/mod v0.10.0
@@ -54,9 +54,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.9.27 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.14.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.36.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.12.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.14.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.18.10 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.12.10 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.14.10 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.19.0 // indirect
 	github.com/aws/smithy-go v1.13.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytecodealliance/wasmtime-go/v8 v8.0.0 // indirect
