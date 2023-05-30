@@ -135,7 +135,7 @@ type StatusRuleInput struct {
 	Document    newsdoc.Document
 	VersionMeta newsdoc.DataMap
 	Heads       map[string]Status
-	User        JWTClaims
+	User        elephantine.JWTClaims
 }
 
 type StatusRuleViolation struct {

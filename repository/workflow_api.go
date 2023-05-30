@@ -26,6 +26,11 @@ var _ repository.Workflows = &WorkflowsService{}
 func (s *WorkflowsService) CreateStatusRule(
 	ctx context.Context, req *repository.CreateStatusRuleRequest,
 ) (*repository.CreateStatusRuleResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeWorkflowAdmin)
+	if err != nil {
+		return nil, err
+	}
+
 	if req.Rule == nil {
 		return nil, twirp.RequiredArgumentError("rule")
 	}
@@ -50,7 +55,7 @@ func (s *WorkflowsService) CreateStatusRule(
 		return nil, twirp.RequiredArgumentError("rule.for_types")
 	}
 
-	_, err := expr.Compile(req.Rule.Expression,
+	_, err = expr.Compile(req.Rule.Expression,
 		expr.Env(StatusRuleInput{}),
 		expr.AsBool(),
 	)
@@ -78,11 +83,16 @@ func (s *WorkflowsService) CreateStatusRule(
 func (s *WorkflowsService) DeleteStatusRule(
 	ctx context.Context, req *repository.DeleteStatusRuleRequest,
 ) (*repository.DeleteStatusRuleResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeWorkflowAdmin)
+	if err != nil {
+		return nil, err
+	}
+
 	if req.Name == "" {
 		return nil, twirp.RequiredArgumentError("name")
 	}
 
-	err := s.store.DeleteStatusRule(ctx, req.Name)
+	err = s.store.DeleteStatusRule(ctx, req.Name)
 	if err != nil {
 		return nil, twirp.InternalErrorf("failed to delete rule: %v", err)
 	}
@@ -94,11 +104,16 @@ func (s *WorkflowsService) DeleteStatusRule(
 func (s *WorkflowsService) UpdateStatus(
 	ctx context.Context, req *repository.UpdateStatusRequest,
 ) (*repository.UpdateStatusResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeWorkflowAdmin)
+	if err != nil {
+		return nil, err
+	}
+
 	if req.Name == "" {
 		return nil, twirp.RequiredArgumentError("name")
 	}
 
-	err := s.store.UpdateStatus(ctx, UpdateStatusRequest{
+	err = s.store.UpdateStatus(ctx, UpdateStatusRequest{
 		Name:     req.Name,
 		Disabled: req.Disabled,
 	})
@@ -114,6 +129,11 @@ func (s *WorkflowsService) UpdateStatus(
 func (s *WorkflowsService) GetStatusRules(
 	ctx context.Context, _ *repository.GetStatusRulesRequest,
 ) (*repository.GetStatusRulesResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeWorkflowAdmin)
+	if err != nil {
+		return nil, err
+	}
+
 	res, err := s.store.GetStatusRules(ctx)
 	if err != nil {
 		return nil, twirp.InternalErrorf(
@@ -142,6 +162,11 @@ func (s *WorkflowsService) GetStatusRules(
 func (s *WorkflowsService) GetStatuses(
 	ctx context.Context, _ *repository.GetStatusesRequest,
 ) (*repository.GetStatusesResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeWorkflowAdmin)
+	if err != nil {
+		return nil, err
+	}
+
 	res, err := s.store.GetStatuses(ctx)
 	if err != nil {
 		return nil, twirp.InternalErrorf(

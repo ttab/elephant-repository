@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,6 +43,9 @@ type DocStore interface {
 		ctx context.Context, uuid uuid.UUID,
 		name string, before int64, count int,
 	) ([]Status, error)
+	GetDocumentACL(
+		ctx context.Context, uuid uuid.UUID,
+	) ([]ACLEntry, error)
 }
 
 type SchemaStore interface {
@@ -138,24 +140,6 @@ type RegisterSchemaRequest struct {
 	Version       string
 	Specification revisor.ConstraintSet
 	Activate      bool
-}
-
-type Permission string
-
-const (
-	ReadPermission  Permission = "r"
-	WritePermission Permission = "w"
-)
-
-func (p Permission) Name() string {
-	switch p {
-	case ReadPermission:
-		return "read"
-	case WritePermission:
-		return "write"
-	}
-
-	return strconv.Quote(string(p))
 }
 
 type CheckPermissionRequest struct {

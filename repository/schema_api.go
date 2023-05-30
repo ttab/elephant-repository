@@ -29,18 +29,13 @@ var _ repository.Schemas = &SchemasService{}
 func (a *SchemasService) GetAllActive(
 	ctx context.Context, req *repository.GetAllActiveSchemasRequest,
 ) (*repository.GetAllActiveSchemasResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
+	_, err := RequireAnyScope(ctx,
+		ScopeSuperuser, ScopeSchemaAdmin, ScopeSchemaRead)
+	if err != nil {
+		return nil, err
 	}
 
-	if !auth.Claims.HasAnyScope("schema_read", "schema_admin", "superuser") {
-		return nil, twirp.PermissionDenied.Error(
-			"no schema_read permission")
-	}
-
-	err := a.waitIfSchemasAreUnchanged(ctx, req.Known, req.WaitSeconds)
+	err = a.waitIfSchemasAreUnchanged(ctx, req.Known, req.WaitSeconds)
 	if err != nil {
 		return nil, fmt.Errorf("wait for schema changes: %w", err)
 	}
@@ -117,15 +112,10 @@ func (a *SchemasService) waitIfSchemasAreUnchanged(
 func (a *SchemasService) Get(
 	ctx context.Context, req *repository.GetSchemaRequest,
 ) (*repository.GetSchemaResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasAnyScope("schema_read", "schema_admin", "superuser") {
-		return nil, twirp.PermissionDenied.Error(
-			"no schema_read permission")
+	_, err := RequireAnyScope(ctx,
+		ScopeSuperuser, ScopeSchemaAdmin, ScopeSchemaRead)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.Name == "" {
@@ -155,15 +145,10 @@ func (a *SchemasService) Get(
 func (a *SchemasService) Register(
 	ctx context.Context, req *repository.RegisterSchemaRequest,
 ) (*repository.RegisterSchemaResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasAnyScope("schema_admin", "superuser") {
-		return nil, twirp.PermissionDenied.Error(
-			"no schema_admin permission")
+	_, err := RequireAnyScope(ctx,
+		ScopeSuperuser, ScopeSchemaAdmin)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.Schema == nil {
@@ -186,7 +171,7 @@ func (a *SchemasService) Register(
 
 	var spec revisor.ConstraintSet
 
-	err := json.Unmarshal([]byte(req.Schema.Spec), &spec)
+	err = json.Unmarshal([]byte(req.Schema.Spec), &spec)
 	if err != nil {
 		return nil, twirp.InvalidArgument.Errorf(
 			"invalid schema: %w", err)
@@ -212,15 +197,10 @@ func (a *SchemasService) Register(
 func (a *SchemasService) SetActive(
 	ctx context.Context, req *repository.SetActiveSchemaRequest,
 ) (*repository.SetActiveSchemaResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasAnyScope("schema_admin", "superuser") {
-		return nil, twirp.PermissionDenied.Error(
-			"no schema_admin permission")
+	_, err := RequireAnyScope(ctx,
+		ScopeSuperuser, ScopeSchemaAdmin)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.Name == "" {

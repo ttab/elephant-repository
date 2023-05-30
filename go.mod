@@ -18,15 +18,14 @@ require (
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/jackc/tern/v2 v2.1.0
 	github.com/jedib0t/go-pretty/v6 v6.4.6
-	github.com/jellydator/ttlcache/v3 v3.0.1
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/kyleconroy/sqlc v1.18.0
 	github.com/ory/dockertest/v3 v3.10.0
 	github.com/prometheus/client_golang v1.15.1
 	github.com/rakutentech/jwk-go v1.1.2
-	github.com/ttab/elephant-api v0.2.0
-	github.com/ttab/elephantine v0.5.0
-	github.com/ttab/newsdoc v0.2.0
+	github.com/ttab/elephant-api v0.3.1-0.20230530073729-1a550e5c0937
+	github.com/ttab/elephantine v0.6.0
+	github.com/ttab/newsdoc v0.3.0
 	github.com/ttab/revisor v0.3.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.25.3
@@ -83,6 +82,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
 	github.com/jackc/puddle/v2 v2.2.0 // indirect
+	github.com/jellydator/ttlcache/v3 v3.0.1 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect

@@ -65,16 +65,16 @@ func (so *ServerOptions) SetJWTValidation(jwtKey *ecdsa.PrivateKey) {
 	so.AuthMiddleware = func(
 		w http.ResponseWriter, r *http.Request, next http.Handler,
 	) error {
-		auth, err := AuthInfoFromHeader(&jwtKey.PublicKey,
+		auth, err := elephantine.AuthInfoFromHeader(&jwtKey.PublicKey,
 			r.Header.Get("Authorization"))
-		if err != nil && !errors.Is(err, ErrNoAuthorization) {
+		if err != nil && !errors.Is(err, elephantine.ErrNoAuthorization) {
 			// TODO: Move the response part to a hook instead?
 			return elephantine.HTTPErrorf(http.StatusUnauthorized,
 				"invalid authorization method: %v", err)
 		}
 
 		if auth != nil {
-			ctx := SetAuthInfo(r.Context(), auth)
+			ctx := elephantine.SetAuthInfo(r.Context(), auth)
 
 			elephantine.SetLogMetadata(ctx,
 				elephantine.LogKeySubject, auth.Claims.Subject,
@@ -96,10 +96,6 @@ func WithDocumentsAPI(
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		opts.Hooks = twirp.ChainHooks(
-			authCheckHook(""), opts.Hooks,
-		)
-
 		api := repository.NewDocumentsServer(
 			service,
 			twirp.WithServerJSONSkipDefaults(true),
@@ -117,10 +113,6 @@ func WithSchemasAPI(
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		opts.Hooks = twirp.ChainHooks(
-			authCheckHook(""), opts.Hooks,
-		)
-
 		api := repository.NewSchemasServer(
 			service,
 			twirp.WithServerJSONSkipDefaults(true),
@@ -138,10 +130,6 @@ func WithWorkflowsAPI(
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		opts.Hooks = twirp.ChainHooks(
-			authCheckHook("workflow_admin"), opts.Hooks,
-		)
-
 		api := repository.NewWorkflowsServer(
 			service,
 			twirp.WithServerJSONSkipDefaults(true),
@@ -159,10 +147,6 @@ func WithReportsAPI(
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		opts.Hooks = twirp.ChainHooks(
-			authCheckHook(""), opts.Hooks,
-		)
-
 		api := repository.NewReportsServer(
 			service,
 			twirp.WithServerJSONSkipDefaults(true),
@@ -207,10 +191,6 @@ func WithMetricsAPI(
 	opts ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		opts.Hooks = twirp.ChainHooks(
-			authCheckHook(""), opts.Hooks,
-		)
-
 		api := repository.NewMetricsServer(
 			service,
 			twirp.WithServerJSONSkipDefaults(true),
@@ -290,7 +270,7 @@ func WithTokenEndpoint(
 
 			sub, units, _ := strings.Cut(subURI, ", ")
 
-			claims := JWTClaims{
+			claims := elephantine.JWTClaims{
 				RegisteredClaims: jwt.RegisteredClaims{
 					ExpiresAt: jwt.NewNumericDate(
 						time.Now().Add(expiresIn)),
@@ -333,44 +313,6 @@ func WithTokenEndpoint(
 
 		return nil
 	}
-}
-
-func authCheckHook(scope string) *twirp.ServerHooks {
-	return &twirp.ServerHooks{
-		RequestRouted: func(
-			ctx context.Context,
-		) (context.Context, error) {
-			// Require auth for all methods
-			auth, ok := GetAuthInfo(ctx)
-			if !ok {
-				return ctx, twirp.Unauthenticated.Error(
-					"no anonymous access allowed")
-			}
-
-			if scope != "" && !auth.Claims.HasScope(scope) {
-				return ctx, twirp.PermissionDenied.Errorf(
-					"the scope %q is required", scope)
-			}
-
-			return ctx, nil
-		},
-	}
-}
-
-func requireAnyScope(ctx context.Context, scopes ...string) error {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return twirp.Unauthenticated.Error(
-			"no anonymous access allowed")
-	}
-
-	if !auth.Claims.HasAnyScope(scopes...) {
-		return twirp.PermissionDenied.Errorf(
-			"one of the the scopes %s is required",
-			strings.Join(scopes, ", "))
-	}
-
-	return nil
 }
 
 type apiServerForRouter interface {

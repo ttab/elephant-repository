@@ -67,7 +67,7 @@ func (m *MetricsService) GetKinds(
 	ctx context.Context,
 	_ *repository.GetMetricKindsRequest,
 ) (*repository.GetMetricKindsResponse, error) {
-	err := requireAnyScope(ctx, "metrics_admin")
+	_, err := RequireAnyScope(ctx, ScopeMetricsAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (m *MetricsService) DeleteKind(
 	ctx context.Context,
 	req *repository.DeleteMetricKindRequest,
 ) (*repository.DeleteMetricKindResponse, error) {
-	err := requireAnyScope(ctx, "metrics_admin")
+	_, err := RequireAnyScope(ctx, ScopeMetricsAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func (m *MetricsService) RegisterKind(
 	ctx context.Context,
 	req *repository.RegisterMetricKindRequest,
 ) (*repository.RegisterMetricKindResponse, error) {
-	err := requireAnyScope(ctx, "metrics_admin")
+	_, err := RequireAnyScope(ctx, ScopeMetricsAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,10 @@ func (m *MetricsService) RegisterMetric(
 	ctx context.Context,
 	req *repository.RegisterMetricRequest,
 ) (*repository.RegisterMetricResponse, error) {
-	err := requireAnyScope(ctx, "metrics_admin", "metrics_write", "metrics_write:"+req.Kind)
+	_, err := RequireAnyScope(ctx,
+		ScopeMetricsAdmin, ScopeMetricsWrite,
+		Subscope("metrics_write", req.Kind),
+	)
 	if err != nil {
 		return nil, err
 	}

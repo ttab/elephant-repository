@@ -33,7 +33,7 @@ type TestContext struct {
 }
 
 func (tc *TestContext) DocumentsClient(
-	t *testing.T, claims repository.JWTClaims,
+	t *testing.T, claims elephantine.JWTClaims,
 ) rpc.Documents {
 	t.Helper()
 
@@ -54,7 +54,7 @@ func (tc *TestContext) DocumentsClient(
 }
 
 func (tc *TestContext) WorkflowsClient(
-	t *testing.T, claims repository.JWTClaims,
+	t *testing.T, claims elephantine.JWTClaims,
 ) rpc.Workflows {
 	t.Helper()
 
@@ -75,7 +75,7 @@ func (tc *TestContext) WorkflowsClient(
 }
 
 func (tc *TestContext) ReportsClient(
-	t *testing.T, claims repository.JWTClaims,
+	t *testing.T, claims elephantine.JWTClaims,
 ) rpc.Reports {
 	t.Helper()
 
@@ -96,7 +96,7 @@ func (tc *TestContext) ReportsClient(
 }
 
 func (tc *TestContext) SchemasClient(
-	t *testing.T, claims repository.JWTClaims,
+	t *testing.T, claims elephantine.JWTClaims,
 ) rpc.Schemas {
 	t.Helper()
 
@@ -117,7 +117,7 @@ func (tc *TestContext) SchemasClient(
 }
 
 func (tc *TestContext) MetricsClient(
-	t *testing.T, claims repository.JWTClaims,
+	t *testing.T, claims elephantine.JWTClaims,
 ) rpc.Metrics {
 	t.Helper()
 
@@ -238,7 +238,7 @@ func testingAPIServer(
 	var srvOpts repository.ServerOptions
 
 	srvOpts.Hooks = elephantine.LoggingHooks(logger, func(ctx context.Context) string {
-		auth, ok := repository.GetAuthInfo(ctx)
+		auth, ok := elephantine.GetAuthInfo(ctx)
 		if !ok {
 			return ""
 		}
