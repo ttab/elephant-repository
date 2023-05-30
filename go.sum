@@ -294,8 +294,8 @@ github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKs
 github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635/go.mod h1:hkRG7XYTFWNJGYcbNJQlaLq0fg1yr4J4t/NcTQtrfww=
 github.com/ttab/elephant-api v0.2.0 h1:ZE2y+OcrrxjxGdmmrDUWjSbKqlHuEKMURaNS+DKCRmg=
 github.com/ttab/elephant-api v0.2.0/go.mod h1:a7DYNXVOK32MZBJ9/kU1wyVov7v0Dkbbn/pfSSigWh0=
-github.com/ttab/elephantine v0.5.0 h1:eYegGG7a1uFbonpZ3T/YPIwMYxfp8tTbgeI5MBqNFAc=
-github.com/ttab/elephantine v0.5.0/go.mod h1:pDpWD/IUXDLH1wPBA4IPnsOmEbOBFNPl5ycDLNoIDEY=
+github.com/ttab/elephantine v0.6.0 h1:nq/WqBJm25D5PZbRwkqw/6zEQlPW1igNAVIBAhdSGBM=
+github.com/ttab/elephantine v0.6.0/go.mod h1:zmA+jo1Lpd8OcdLYL4jkWNWcA+ZxoXVVJ0pCLdmRPqk=
 github.com/ttab/newsdoc v0.2.0 h1:Eil8ug9x19M/Brt4BybnGJvchqWmBQGkHv073N46+LE=
 github.com/ttab/newsdoc v0.2.0/go.mod h1:VQu5cqcIHLryGiN/0ogMVTJy8l76wz6iylPz9F+I7bM=
 github.com/ttab/revisor v0.3.0 h1:WCMEKsll5PDBvWOogh5cM8mM5uuWYu4+i+qWnUc2u/c=
