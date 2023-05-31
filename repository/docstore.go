@@ -272,6 +272,7 @@ const (
 	ErrCodeExists             DocStoreErrorCode = "exists"
 	ErrCodePermissionDenied   DocStoreErrorCode = "permission-denied"
 	ErrCodeFailedPrecondition DocStoreErrorCode = "failed-precondition"
+	ErrCodeDocumentLock       DocStoreErrorCode = "document-lock"
 )
 
 type DocStoreError struct {

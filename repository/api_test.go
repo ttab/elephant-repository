@@ -941,7 +941,7 @@ func TestDocumentLocking(t *testing.T) {
 
 	_, err := client.Lock(ctx, &repository.LockRequest{
 		Uuid: docUUID,
-		Ttl:  5000,
+		Ttl:  500,
 	})
 	test.MustNot(t, err, "lock non-existing article")
 
@@ -953,7 +953,7 @@ func TestDocumentLocking(t *testing.T) {
 
 	lock, err := client.Lock(ctx, &repository.LockRequest{
 		Uuid: docUUID,
-		Ttl:  5000,
+		Ttl:  500,
 	})
 	test.Must(t, err, "lock the document")
 
@@ -965,21 +965,36 @@ func TestDocumentLocking(t *testing.T) {
 
 	_, err = client.Lock(ctx, &repository.LockRequest{
 		Uuid: docUUID,
-		Ttl:  5000,
+		Ttl:  500,
 	})
 	test.MustNot(t, err, "re-lock the document")
 
 	_, err = client.Lock(ctx, &repository.LockRequest{
 		Uuid:  docUUID,
-		Ttl:   5000,
+		Ttl:   500,
 		Token: "another token",
 	})
 	test.MustNot(t, err, "steal an existing lock")
 
 	_, err = client.Lock(ctx, &repository.LockRequest{
 		Uuid:  docUUID,
-		Ttl:   5000,
+		Ttl:   1,
 		Token: lock.Token,
 	})
 	test.Must(t, err, "update an existing lock")
+
+	time.Sleep(time.Millisecond * 100)
+
+	_, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid:  docUUID,
+		Ttl:   500,
+		Token: lock.Token,
+	})
+	test.MustNot(t, err, "re-lock an expired lock")
+
+	_, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid: docUUID,
+		Ttl:  500,
+	})
+	test.Must(t, err, "create a new lock")
 }

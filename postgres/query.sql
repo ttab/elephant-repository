@@ -271,6 +271,10 @@ UPDATE lock
 SET expires = @expires
 WHERE uuid = @uuid;
 
+-- name: DeleteExpiredLocks :exec
+DELETE FROM lock
+WHERE expires < @now;
+
 -- name: UpdateReport :exec
 INSERT INTO report(
        name, enabled, next_execution, spec

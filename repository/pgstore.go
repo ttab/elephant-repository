@@ -1097,6 +1097,11 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 	}
 
 	err := s.withTX(ctx, "document locking", func(tx pgx.Tx) error {
+		err := s.reader.DeleteExpiredLocks(ctx, internal.PGTime(now))
+		if err != nil {
+			return fmt.Errorf("could not delete expired locks: %w", err)
+		}
+
 		info, err := s.reader.GetDocumentInfo(ctx, req.UUID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
@@ -1106,7 +1111,7 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 
 		if info.LockToken.Valid {
 			if info.LockToken.String != req.Token {
-				return DocStoreErrorf(NoErrCode, "invalid lock token")
+				return DocStoreErrorf(ErrCodeDocumentLock, "invalid lock token")
 			}
 
 			err = s.reader.UpdateDocumentLock(ctx, postgres.UpdateDocumentLockParams{
@@ -1117,6 +1122,10 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 				return fmt.Errorf("failed to extend lock expiration: %w", err)
 			}
 		} else {
+			if req.Token != "" {
+				return DocStoreErrorf(ErrCodeDocumentLock, "invalid lock token")
+			}
+
 			token := uuid.NewString()
 			err = s.reader.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
 				UUID:    req.UUID,

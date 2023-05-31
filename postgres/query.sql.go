@@ -163,6 +163,16 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 	return err
 }
 
+const deleteExpiredLocks = `-- name: DeleteExpiredLocks :exec
+DELETE FROM lock
+WHERE expires < $1
+`
+
+func (q *Queries) DeleteExpiredLocks(ctx context.Context, now pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteExpiredLocks, now)
+	return err
+}
+
 const deleteMetricKind = `-- name: DeleteMetricKind :exec
 DELETE FROM metric_kind
 WHERE name = $1
