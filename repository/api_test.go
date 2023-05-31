@@ -972,7 +972,7 @@ func TestDocumentLocking(t *testing.T) {
 	_, err = client.Lock(ctx, &repository.LockRequest{
 		Uuid:  docUUID,
 		Ttl:   500,
-		Token: "another token",
+		Token: "4ab0330e-7cd7-4a75-b1f9-5ee8b098e333",
 	})
 	test.MustNot(t, err, "steal an existing lock")
 
@@ -997,4 +997,21 @@ func TestDocumentLocking(t *testing.T) {
 		Ttl:  500,
 	})
 	test.Must(t, err, "create a new lock")
+
+	meta, err = client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "fetch document meta")
+	test.NotNil(t, meta.Meta.Lock, "document should have a lock")
+
+	_, err = client.Unlock(ctx, &repository.UnlockRequest{
+		Uuid: docUUID,
+	})
+	test.MustNot(t, err, "unlock a document without a token")
+
+	_, err = client.Unlock(ctx, &repository.UnlockRequest{
+		Uuid:  docUUID,
+		Token: "4ab0330e-7cd7-4a75-b1f9-5ee8b098e333",
+	})
+	test.MustNot(t, err, "unlock a document without a token")
 }
