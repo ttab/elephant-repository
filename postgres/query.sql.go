@@ -163,13 +163,13 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 	return err
 }
 
-const deleteExpiredLocks = `-- name: DeleteExpiredLocks :exec
-DELETE FROM lock
+const deleteExpiredDocumentLocks = `-- name: DeleteExpiredDocumentLocks :exec
+DELETE FROM document_lock
 WHERE expires < $1
 `
 
-func (q *Queries) DeleteExpiredLocks(ctx context.Context, now pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, deleteExpiredLocks, now)
+func (q *Queries) DeleteExpiredDocumentLocks(ctx context.Context, now pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteExpiredDocumentLocks, now)
 	return err
 }
 
@@ -409,7 +409,7 @@ SELECT
         l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
         l.token as lock_token
 FROM document as d 
-LEFT JOIN lock as l ON d.uuid = l.uuid 
+LEFT JOIN document_lock as l ON d.uuid = l.uuid 
 WHERE d.uuid = $1
 `
 
@@ -1211,7 +1211,7 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 }
 
 const insertDocumentLock = `-- name: InsertDocumentLock :exec
-INSERT INTO lock(
+INSERT INTO document_lock(
   uuid, token, created, expires, uri, app, comment
 ) VALUES(
   $1, $2, $3, $4, $5, $6, $7
@@ -1526,7 +1526,7 @@ func (q *Queries) StealJobLock(ctx context.Context, arg StealJobLockParams) (int
 }
 
 const updateDocumentLock = `-- name: UpdateDocumentLock :exec
-UPDATE lock
+UPDATE document_lock
 SET expires = $1
 WHERE uuid = $2
 `

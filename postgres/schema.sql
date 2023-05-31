@@ -258,6 +258,23 @@ CREATE TABLE public.document_link (
 ALTER TABLE public.document_link OWNER TO repository;
 
 --
+-- Name: document_lock; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.document_lock (
+    uuid uuid NOT NULL,
+    token text NOT NULL,
+    created timestamp with time zone NOT NULL,
+    expires timestamp with time zone NOT NULL,
+    uri text,
+    app text,
+    comment text
+);
+
+
+ALTER TABLE public.document_lock OWNER TO repository;
+
+--
 -- Name: document_schema; Type: TABLE; Schema: public; Owner: repository
 --
 
@@ -367,23 +384,6 @@ CREATE TABLE public.job_lock (
 
 
 ALTER TABLE public.job_lock OWNER TO repository;
-
---
--- Name: lock; Type: TABLE; Schema: public; Owner: repository
---
-
-CREATE TABLE public.lock (
-    uuid uuid NOT NULL,
-    token text NOT NULL,
-    created timestamp with time zone NOT NULL,
-    expires timestamp with time zone NOT NULL,
-    uri text,
-    app text,
-    comment text
-);
-
-
-ALTER TABLE public.lock OWNER TO repository;
 
 --
 -- Name: metric; Type: TABLE; Schema: public; Owner: repository
@@ -536,6 +536,14 @@ ALTER TABLE ONLY public.document_link
 
 
 --
+-- Name: document_lock document_lock_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.document_lock
+    ADD CONSTRAINT document_lock_pkey PRIMARY KEY (uuid);
+
+
+--
 -- Name: document document_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -597,14 +605,6 @@ ALTER TABLE ONLY public.eventsink
 
 ALTER TABLE ONLY public.job_lock
     ADD CONSTRAINT job_lock_pkey PRIMARY KEY (name);
-
-
---
--- Name: lock lock_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
---
-
-ALTER TABLE ONLY public.lock
-    ADD CONSTRAINT lock_pkey PRIMARY KEY (uuid);
 
 
 --
@@ -739,6 +739,14 @@ ALTER TABLE ONLY public.document_link
 
 
 --
+-- Name: document_lock document_lock_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.document_lock
+    ADD CONSTRAINT document_lock_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
 -- Name: document_status document_status_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -752,14 +760,6 @@ ALTER TABLE ONLY public.document_status
 
 ALTER TABLE ONLY public.document_version
     ADD CONSTRAINT document_version_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
-
-
---
--- Name: lock lock_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
---
-
-ALTER TABLE ONLY public.lock
-    ADD CONSTRAINT lock_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
 
 
 --

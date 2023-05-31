@@ -1,6 +1,6 @@
 -- Write your migrate up statements here
 
-create table lock(
+create table document_lock(
   uuid uuid primary key not null,
   token text not null,
   created timestamptz not null,
@@ -12,7 +12,7 @@ create table lock(
 );
 ---- create above / drop below ----
 
-drop table lock;
+drop table document_lock;
 
 -- Write your migrate down statements here. If this migration is irreversible
 -- Then delete the separator line above.

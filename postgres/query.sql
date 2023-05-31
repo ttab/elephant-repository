@@ -61,7 +61,7 @@ SELECT
         l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
         l.token as lock_token
 FROM document as d 
-LEFT JOIN lock as l ON d.uuid = l.uuid 
+LEFT JOIN document_lock as l ON d.uuid = l.uuid 
 WHERE d.uuid = $1;
 
 -- name: GetDocumentData :one
@@ -260,19 +260,19 @@ INSERT INTO status_rule(
 DELETE FROM status_rule WHERE name = $1;
 
 -- name: InsertDocumentLock :exec
-INSERT INTO lock(
+INSERT INTO document_lock(
   uuid, token, created, expires, uri, app, comment
 ) VALUES(
   @uuid, @token, @created, @expires, @uri, @app, @comment
 );
 
 -- name: UpdateDocumentLock :exec
-UPDATE lock
+UPDATE document_lock
 SET expires = @expires
 WHERE uuid = @uuid;
 
--- name: DeleteExpiredLocks :exec
-DELETE FROM lock
+-- name: DeleteExpiredDocumentLocks :exec
+DELETE FROM document_lock
 WHERE expires < @now;
 
 -- name: UpdateReport :exec
