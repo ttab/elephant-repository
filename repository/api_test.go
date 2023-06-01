@@ -930,7 +930,7 @@ func TestDocumentLocking(t *testing.T) {
 	tc := testingAPIServer(t, logger, testingServerOptions{})
 
 	client := tc.DocumentsClient(t,
-		test.StandardClaims(t, "doc_read doc_write"))
+		itest.StandardClaims(t, "doc_read doc_write"))
 
 	const (
 		docUUID = "88f13bde-1a84-4151-8f2d-aaee3ae57c05"

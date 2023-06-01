@@ -1097,7 +1097,7 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 	}
 
 	err := s.withTX(ctx, "document locking", func(tx pgx.Tx) error {
-		err := s.reader.DeleteExpiredDocumentLocks(ctx, internal.PGTime(now))
+		err := s.reader.DeleteExpiredDocumentLocks(ctx, pg.Time(now))
 		if err != nil {
 			return fmt.Errorf("could not delete expired locks: %w", err)
 		}
@@ -1106,16 +1106,16 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 		err = s.reader.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
 			UUID:    req.UUID,
 			Token:   token,
-			Created: internal.PGTime(now),
-			Expires: internal.PGTime(expires),
-			URI:     internal.PGTextOrNull(req.URI),
-			App:     internal.PGTextOrNull(req.App),
-			Comment: internal.PGTextOrNull(req.Comment),
+			Created: pg.Time(now),
+			Expires: pg.Time(expires),
+			URI:     pg.TextOrNull(req.URI),
+			App:     pg.TextOrNull(req.App),
+			Comment: pg.TextOrNull(req.Comment),
 		})
-		if internal.IsConstraintError(err, "document_lock_uuid_fkey") {
+		if pg.IsConstraintError(err, "document_lock_uuid_fkey") {
 			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
 		}
-		if internal.IsConstraintError(err, "document_lock_pkey") {
+		if pg.IsConstraintError(err, "document_lock_pkey") {
 			return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
 		}
 		if err != nil {
@@ -1143,7 +1143,7 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 	}
 
 	err := s.withTX(ctx, "document locking", func(tx pgx.Tx) error {
-		err := s.reader.DeleteExpiredDocumentLocks(ctx, internal.PGTime(now))
+		err := s.reader.DeleteExpiredDocumentLocks(ctx, pg.Time(now))
 		if err != nil {
 			return fmt.Errorf("could not delete expired locks: %w", err)
 		}
@@ -1165,7 +1165,7 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 
 		err = s.reader.UpdateDocumentLock(ctx, postgres.UpdateDocumentLockParams{
 			UUID:    req.UUID,
-			Expires: internal.PGTime(expires),
+			Expires: pg.Time(expires),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to extend lock: %w", err)

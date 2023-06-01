@@ -938,24 +938,19 @@ func (a *DocumentsService) Validate(
 func (a *DocumentsService) Lock(
 	ctx context.Context, req *repository.LockRequest,
 ) (*repository.LockResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("doc_write") {
-		return nil, twirp.PermissionDenied.Error(
-			"no write permission")
-	}
-
-	if req.Uuid == "" {
-		return nil, twirp.RequiredArgumentError("uuid")
-	}
-
-	uuid, err := uuid.Parse(req.Uuid)
+	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
 	if err != nil {
-		return nil, fmt.Errorf("invalid document UUID: %w", err)
+		return nil, err
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.Ttl == 0 {
@@ -963,7 +958,7 @@ func (a *DocumentsService) Lock(
 	}
 
 	lock, err := a.store.Lock(ctx, LockRequest{
-		UUID:    uuid,
+		UUID:    docUUID,
 		TTL:     req.Ttl,
 		URI:     req.Uri,
 		App:     req.App,
@@ -982,24 +977,19 @@ func (a *DocumentsService) Lock(
 func (a *DocumentsService) ExtendLock(
 	ctx context.Context, req *repository.ExtendLockRequest,
 ) (*repository.LockResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error(
-			"no anonymous requests allowed")
-	}
-
-	if !auth.Claims.HasScope("doc_write") {
-		return nil, twirp.PermissionDenied.Error(
-			"no write permission")
-	}
-
-	if req.Uuid == "" {
-		return nil, twirp.RequiredArgumentError("uuid")
-	}
-
-	uuid, err := uuid.Parse(req.Uuid)
+	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
 	if err != nil {
-		return nil, fmt.Errorf("invalid document UUID: %w", err)
+		return nil, err
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.Ttl == 0 {
@@ -1011,7 +1001,7 @@ func (a *DocumentsService) ExtendLock(
 	}
 
 	lock, err := a.store.UpdateLock(ctx, UpdateLockRequest{
-		UUID:  uuid,
+		UUID:  docUUID,
 		TTL:   req.Ttl,
 		Token: req.Token,
 	})
@@ -1027,30 +1017,26 @@ func (a *DocumentsService) ExtendLock(
 func (a *DocumentsService) Unlock(
 	ctx context.Context, req *repository.UnlockRequest,
 ) (*repository.UnlockResponse, error) {
-	auth, ok := GetAuthInfo(ctx)
-	if !ok {
-		return nil, twirp.Unauthenticated.Error("no anonymous requests allowed")
+	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
+	if err != nil {
+		return nil, err
 	}
 
-	if !auth.Claims.HasScope("doc_write") {
-		return nil, twirp.PermissionDenied.Error(
-			"no write permission")
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
 	}
 
-	if req.Uuid == "" {
-		return nil, twirp.RequiredArgumentError("uuid")
+	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.Token == "" {
 		return nil, twirp.RequiredArgumentError("token")
 	}
 
-	uuid, err := uuid.Parse(req.Uuid)
-	if err != nil {
-		return nil, fmt.Errorf("invalid document UUID: %w", err)
-	}
-
-	err = a.store.Unlock(ctx, uuid, req.Token)
+	err = a.store.Unlock(ctx, docUUID, req.Token)
 	if err != nil {
 		return nil, fmt.Errorf("could not unlock document: %w", err)
 	}
