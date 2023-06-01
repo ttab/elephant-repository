@@ -569,6 +569,7 @@ func (s *PGDocStore) GetDocumentMeta(
 		Statuses:       make(map[string]Status),
 		Deleting:       info.Deleting,
 		Lock: Lock{
+			Token:   info.LockToken.String,
 			URI:     info.LockUri.String,
 			Created: info.Created.Time,
 			Expires: info.LockExpires.Time,

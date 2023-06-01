@@ -1015,6 +1015,19 @@ func TestDocumentLocking(t *testing.T) {
 	test.Must(t, err, "fetch document meta")
 	test.NotNil(t, meta.Meta.Lock, "document should have a lock")
 
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.MustNot(t, err, "update a locked document")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:      docUUID,
+		Document:  doc,
+		LockToken: lock.Token,
+	})
+	test.Must(t, err, "update a locked document with the correct token")
+
 	_, err = client.Unlock(ctx, &repository.UnlockRequest{
 		Uuid: docUUID,
 	})

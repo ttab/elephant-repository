@@ -607,6 +607,27 @@ func (a *DocumentsService) accessCheck(
 	return nil
 }
 
+func (a *DocumentsService) lockCheck(
+	ctx context.Context,
+	docUUID uuid.UUID,
+	token string,
+) error {
+	meta, err := a.store.GetDocumentMeta(ctx, docUUID)
+	if err != nil {
+		if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+			return nil
+		}
+
+		return fmt.Errorf("failed to fetch document meta: %w", err)
+	}
+
+	if meta.Lock.Token != token {
+		return twirp.InvalidArgumentError("lockToken", "invalid lock token")
+	}
+
+	return nil
+}
+
 // GetMeta implements repository.Documents.
 func (a *DocumentsService) GetMeta(
 	ctx context.Context, req *repository.GetMetaRequest,
@@ -810,6 +831,11 @@ func (a *DocumentsService) Update(
 	// found, as we want to allow the creation of new documents.
 	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
 	if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
+		return nil, err
+	}
+
+	err = a.lockCheck(ctx, docUUID, req.LockToken)
+	if err != nil {
 		return nil, err
 	}
 
