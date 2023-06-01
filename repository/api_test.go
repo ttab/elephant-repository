@@ -927,10 +927,12 @@ func TestDocumentLocking(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	ctx := test.Context(t)
-	tc := testingAPIServer(t, logger, testingServerOptions{})
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunArchiver: true,
+	})
 
 	client := tc.DocumentsClient(t,
-		itest.StandardClaims(t, "doc_read doc_write"))
+		itest.StandardClaims(t, "doc_read doc_write doc_delete"))
 
 	const (
 		docUUID = "88f13bde-1a84-4151-8f2d-aaee3ae57c05"
@@ -1053,4 +1055,21 @@ func TestDocumentLocking(t *testing.T) {
 	if meta.Meta.Lock != nil {
 		t.Fatalf("expected lock deleted, got: %v", meta.Meta.Lock)
 	}
+
+	lock, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid: docUUID,
+		Ttl:  500,
+	})
+	test.Must(t, err, "create a new lock")
+
+	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
+		Uuid: docUUID,
+	})
+	test.MustNot(t, err, "delete a locked document")
+
+	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
+		Uuid:      docUUID,
+		LockToken: lock.Token,
+	})
+	test.Must(t, err, "delete a locked document with the correct token")
 }

@@ -412,6 +412,11 @@ func (a *DocumentsService) Delete(
 		return nil, err
 	}
 
+	err = a.lockCheck(ctx, docUUID, req.LockToken)
+	if err != nil {
+		return nil, err
+	}
+
 	err = a.store.Delete(ctx, DeleteRequest{
 		UUID:    docUUID,
 		Updated: time.Now(),
