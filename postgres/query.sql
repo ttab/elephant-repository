@@ -275,6 +275,11 @@ WHERE uuid = @uuid;
 DELETE FROM document_lock
 WHERE expires < @now;
 
+-- name: DeleteDocumentLock :execrows
+DELETE FROM document_lock
+WHERE uuid = @uuid
+  AND token = @token;  
+
 -- name: UpdateReport :exec
 INSERT INTO report(
        name, enabled, next_execution, spec

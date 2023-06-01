@@ -163,6 +163,25 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 	return err
 }
 
+const deleteDocumentLock = `-- name: DeleteDocumentLock :execrows
+DELETE FROM document_lock
+WHERE uuid = $1
+  AND token = $2
+`
+
+type DeleteDocumentLockParams struct {
+	UUID  uuid.UUID
+	Token string
+}
+
+func (q *Queries) DeleteDocumentLock(ctx context.Context, arg DeleteDocumentLockParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteDocumentLock, arg.UUID, arg.Token)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteExpiredDocumentLocks = `-- name: DeleteExpiredDocumentLocks :exec
 DELETE FROM document_lock
 WHERE expires < $1

@@ -1151,6 +1151,26 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 	return res, nil
 }
 
+func (s *PGDocStore) Unlock(ctx context.Context, uuid uuid.UUID, token string) error {
+	err := s.withTX(ctx, "document unlocking", func(tx pgx.Tx) error {
+		deleted, err := s.reader.DeleteDocumentLock(ctx, postgres.DeleteDocumentLockParams{
+			UUID:  uuid,
+			Token: token,
+		})
+		if err != nil {
+			return fmt.Errorf("could not delete lock: %w", err)
+		}
+
+		if deleted == 0 {
+			return DocStoreErrorf(ErrCodeDeleteLock, "failed to release lock")
+		}
+
+		return nil
+	})
+
+	return err
+}
+
 // RegisterSchema implements DocStore.
 func (s *PGDocStore) RegisterSchema(
 	ctx context.Context, req RegisterSchemaRequest,

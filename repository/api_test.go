@@ -992,7 +992,7 @@ func TestDocumentLocking(t *testing.T) {
 	})
 	test.MustNot(t, err, "re-lock an expired lock")
 
-	_, err = client.Lock(ctx, &repository.LockRequest{
+	lock, err = client.Lock(ctx, &repository.LockRequest{
 		Uuid: docUUID,
 		Ttl:  500,
 	})
@@ -1013,5 +1013,20 @@ func TestDocumentLocking(t *testing.T) {
 		Uuid:  docUUID,
 		Token: "4ab0330e-7cd7-4a75-b1f9-5ee8b098e333",
 	})
-	test.MustNot(t, err, "unlock a document without a token")
+	test.MustNot(t, err, "unlock a document with the wrong token")
+
+	_, err = client.Unlock(ctx, &repository.UnlockRequest{
+		Uuid:  docUUID,
+		Token: lock.Token,
+	})
+	test.Must(t, err, "unlock the document with the correct token")
+
+	meta, err = client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "fetch document meta")
+
+	if meta.Meta.Lock != nil {
+		t.Fatalf("expected lock deleted, got: %v", meta.Meta.Lock)
+	}
 }

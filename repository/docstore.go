@@ -49,6 +49,9 @@ type DocStore interface {
 	Lock(
 		ctx context.Context, req LockRequest,
 	) (LockResult, error)
+	Unlock(
+		ctx context.Context, uuid uuid.UUID, token string,
+	) error
 }
 
 type SchemaStore interface {

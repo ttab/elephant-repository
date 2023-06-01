@@ -977,9 +977,37 @@ func (a *DocumentsService) Lock(
 }
 
 func (a *DocumentsService) Unlock(
-	_ context.Context, _ *repository.UnlockRequest,
+	ctx context.Context, req *repository.UnlockRequest,
 ) (*repository.UnlockResponse, error) {
-	panic("not implemented")
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error("no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("doc_write") {
+		return nil, twirp.PermissionDenied.Error(
+			"no write permission")
+	}
+
+	if req.Uuid == "" {
+		return nil, twirp.RequiredArgumentError("uuid")
+	}
+
+	if req.Token == "" {
+		return nil, twirp.RequiredArgumentError("token")
+	}
+
+	uuid, err := uuid.Parse(req.Uuid)
+	if err != nil {
+		return nil, fmt.Errorf("invalid document UUID: %w", err)
+	}
+
+	err = a.store.Unlock(ctx, uuid, req.Token)
+	if err != nil {
+		return nil, fmt.Errorf("could not unlock document: %w", err)
+	}
+
+	return &repository.UnlockResponse{}, nil
 }
 
 func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {
