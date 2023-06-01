@@ -49,6 +49,9 @@ type DocStore interface {
 	Lock(
 		ctx context.Context, req LockRequest,
 	) (LockResult, error)
+	UpdateLock(
+		ctx context.Context, req UpdateLockRequest,
+	) (LockResult, error)
 	Unlock(
 		ctx context.Context, uuid uuid.UUID, token string,
 	) error
@@ -212,13 +215,18 @@ type LockRequest struct {
 	TTL     int32
 	App     string
 	Comment string
-	Token   string
 }
 
 type LockResult struct {
 	Token   string
 	Created time.Time
 	Expires time.Time
+}
+
+type UpdateLockRequest struct {
+	UUID  uuid.UUID
+	TTL   int32
+	Token string
 }
 
 type DocumentUpdate struct {

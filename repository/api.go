@@ -965,10 +965,55 @@ func (a *DocumentsService) Lock(
 	lock, err := a.store.Lock(ctx, LockRequest{
 		UUID:    uuid,
 		TTL:     req.Ttl,
-		Token:   req.Token,
 		URI:     req.Uri,
 		App:     req.App,
 		Comment: req.Comment,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("could not obtain lock: %w", err)
+	}
+
+	return &repository.LockResponse{
+		Token: lock.Token,
+	}, nil
+}
+
+// ExtendLock extends the expiration of an existing lock.
+func (a *DocumentsService) ExtendLock(
+	ctx context.Context, req *repository.ExtendLockRequest,
+) (*repository.LockResponse, error) {
+	auth, ok := GetAuthInfo(ctx)
+	if !ok {
+		return nil, twirp.Unauthenticated.Error(
+			"no anonymous requests allowed")
+	}
+
+	if !auth.Claims.HasScope("doc_write") {
+		return nil, twirp.PermissionDenied.Error(
+			"no write permission")
+	}
+
+	if req.Uuid == "" {
+		return nil, twirp.RequiredArgumentError("uuid")
+	}
+
+	uuid, err := uuid.Parse(req.Uuid)
+	if err != nil {
+		return nil, fmt.Errorf("invalid document UUID: %w", err)
+	}
+
+	if req.Ttl == 0 {
+		return nil, twirp.RequiredArgumentError("ttl")
+	}
+
+	if req.Token == "" {
+		return nil, twirp.RequiredArgumentError("token")
+	}
+
+	lock, err := a.store.UpdateLock(ctx, UpdateLockRequest{
+		UUID:  uuid,
+		TTL:   req.Ttl,
+		Token: req.Token,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("could not obtain lock: %w", err)

@@ -976,22 +976,28 @@ func TestDocumentLocking(t *testing.T) {
 	test.MustNot(t, err, "re-lock the document")
 
 	_, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid: docUUID,
+		Ttl:  500,
+	})
+	test.MustNot(t, err, "steal an existing lock")
+
+	_, err = client.ExtendLock(ctx, &repository.ExtendLockRequest{
 		Uuid:  docUUID,
 		Ttl:   500,
 		Token: "4ab0330e-7cd7-4a75-b1f9-5ee8b098e333",
 	})
-	test.MustNot(t, err, "steal an existing lock")
+	test.MustNot(t, err, "extend a lock with the wrong token")
 
-	_, err = client.Lock(ctx, &repository.LockRequest{
+	_, err = client.ExtendLock(ctx, &repository.ExtendLockRequest{
 		Uuid:  docUUID,
 		Ttl:   1,
 		Token: lock.Token,
 	})
-	test.Must(t, err, "update an existing lock")
+	test.Must(t, err, "extend an existing lock")
 
 	time.Sleep(time.Millisecond * 100)
 
-	_, err = client.Lock(ctx, &repository.LockRequest{
+	_, err = client.ExtendLock(ctx, &repository.ExtendLockRequest{
 		Uuid:  docUUID,
 		Ttl:   500,
 		Token: lock.Token,
