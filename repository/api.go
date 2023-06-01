@@ -960,7 +960,7 @@ func (a *DocumentsService) Lock(
 	lock, err := a.store.Lock(ctx, LockRequest{
 		UUID:    docUUID,
 		TTL:     req.Ttl,
-		URI:     req.Uri,
+		URI:     auth.Claims.Subject,
 		App:     req.App,
 		Comment: req.Comment,
 	})

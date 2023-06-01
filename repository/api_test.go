@@ -954,7 +954,6 @@ func TestDocumentLocking(t *testing.T) {
 	lock, err := client.Lock(ctx, &repository.LockRequest{
 		Uuid:    docUUID,
 		Ttl:     500,
-		Uri:     "user://tt/panda",
 		App:     "app",
 		Comment: "my comment",
 	})
@@ -965,7 +964,7 @@ func TestDocumentLocking(t *testing.T) {
 	})
 	test.Must(t, err, "fetch document meta")
 	test.NotNil(t, meta.Meta.Lock, "document should have a lock")
-	test.Equal(t, meta.Meta.Lock.Uri, "user://tt/panda", "expected uri set")
+	test.Equal(t, meta.Meta.Lock.Uri, "user://test/testdocumentlocking", "expected uri set")
 	test.Equal(t, meta.Meta.Lock.App, "app", "expected app set")
 	test.Equal(t, meta.Meta.Lock.Comment, "my comment", "expected comment set")
 
