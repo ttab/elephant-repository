@@ -963,9 +963,12 @@ func (a *DocumentsService) Lock(
 	}
 
 	lock, err := a.store.Lock(ctx, LockRequest{
-		UUID:  uuid,
-		TTL:   req.Ttl,
-		Token: req.Token,
+		UUID:    uuid,
+		TTL:     req.Ttl,
+		Token:   req.Token,
+		URI:     req.Uri,
+		App:     req.App,
+		Comment: req.Comment,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("could not obtain lock: %w", err)

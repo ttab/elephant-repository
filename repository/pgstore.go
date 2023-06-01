@@ -1135,6 +1135,9 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 			Token:   token,
 			Created: internal.PGTime(now),
 			Expires: internal.PGTime(expires),
+			URI:     internal.PGTextOrNull(req.URI),
+			App:     internal.PGTextOrNull(req.App),
+			Comment: internal.PGTextOrNull(req.Comment),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to insert document lock: %w", err)
