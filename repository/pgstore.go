@@ -275,6 +275,15 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 		return nil
 	}
 
+	lock, err := s.checkLock(ctx, q, req.UUID, req.LockToken)
+	if err != nil {
+		return err
+	}
+
+	if lock == lockCheckDenied {
+		return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
+	}
+
 	timeout := time.After(s.opts.DeleteTimeout)
 
 	archived := make(chan ArchivedEvent)
@@ -672,6 +681,34 @@ func (s *PGDocStore) CheckPermission(
 	return PermissionCheckAllowed, nil
 }
 
+func (s *PGDocStore) checkLock(
+	ctx context.Context,
+	q *postgres.Queries,
+	uuid uuid.UUID, token string,
+) (checkLockResult, error) {
+	lock, err := q.CheckDocumentLock(ctx, postgres.CheckDocumentLockParams{
+		UUID:  uuid,
+		Token: token,
+		Now:   pg.Time(time.Now()),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to check lock: %w", err)
+	}
+
+	if len(lock) > 0 {
+		return lockCheckDenied, nil
+	}
+
+	return lockCheckAllowed, nil
+}
+
+type checkLockResult int
+
+const (
+	lockCheckAllowed = iota
+	lockCheckDenied
+)
+
 // Update implements DocStore.
 func (s *PGDocStore) Update(
 	ctx context.Context, workflows WorkflowProvider, update UpdateRequest,
@@ -734,6 +771,15 @@ func (s *PGDocStore) Update(
 	info, err := s.updatePreflight(ctx, q, update.UUID, update.IfMatch)
 	if err != nil {
 		return nil, err
+	}
+
+	lock, err := s.checkLock(ctx, q, update.UUID, update.LockToken)
+	if err != nil {
+		return nil, err
+	}
+
+	if lock == lockCheckDenied {
+		return nil, DocStoreErrorf(ErrCodeDocumentLock, "document locked")
 	}
 
 	docType := info.Info.Type

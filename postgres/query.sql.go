@@ -38,6 +38,48 @@ func (q *Queries) ActivateSchema(ctx context.Context, arg ActivateSchemaParams) 
 	return err
 }
 
+const checkDocumentLock = `-- name: CheckDocumentLock :many
+SELECT uuid, token, created, expires, uri, app, comment
+FROM document_lock
+WHERE uuid = $1
+  AND token <> $2
+  AND expires > $3
+`
+
+type CheckDocumentLockParams struct {
+	UUID  uuid.UUID
+	Token string
+	Now   pgtype.Timestamptz
+}
+
+func (q *Queries) CheckDocumentLock(ctx context.Context, arg CheckDocumentLockParams) ([]DocumentLock, error) {
+	rows, err := q.db.Query(ctx, checkDocumentLock, arg.UUID, arg.Token, arg.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DocumentLock
+	for rows.Next() {
+		var i DocumentLock
+		if err := rows.Scan(
+			&i.UUID,
+			&i.Token,
+			&i.Created,
+			&i.Expires,
+			&i.URI,
+			&i.App,
+			&i.Comment,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const checkPermission = `-- name: CheckPermission :one
 SELECT (acl.uri IS NOT NULL) = true AS has_access
 FROM document AS d

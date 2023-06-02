@@ -179,11 +179,12 @@ type UpdateRequest struct {
 }
 
 type DeleteRequest struct {
-	UUID    uuid.UUID
-	Updated time.Time
-	Updater string
-	Meta    newsdoc.DataMap
-	IfMatch int64
+	UUID      uuid.UUID
+	Updated   time.Time
+	Updater   string
+	Meta      newsdoc.DataMap
+	IfMatch   int64
+	LockToken string
 }
 
 type DocumentMeta struct {

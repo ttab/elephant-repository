@@ -412,22 +412,20 @@ func (a *DocumentsService) Delete(
 		return nil, err
 	}
 
-	err = a.lockCheck(ctx, docUUID, req.LockToken)
-	if err != nil {
-		return nil, err
-	}
-
 	err = a.store.Delete(ctx, DeleteRequest{
-		UUID:    docUUID,
-		Updated: time.Now(),
-		Updater: auth.Claims.Subject,
-		Meta:    req.Meta,
-		IfMatch: req.IfMatch,
+		UUID:      docUUID,
+		Updated:   time.Now(),
+		Updater:   auth.Claims.Subject,
+		Meta:      req.Meta,
+		IfMatch:   req.IfMatch,
+		LockToken: req.LockToken,
 	})
 
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
 		return nil, twirp.FailedPrecondition.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
+		return nil, twirp.FailedPrecondition.Error("the docuemnt is locked by someone else")
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
 		// Treating a delete call as a success if the delete already is
 		// in progress.
@@ -607,27 +605,6 @@ func (a *DocumentsService) accessCheck(
 		return twirp.PermissionDenied.Errorf(
 			"no %s permission for the document", permission.Name())
 	case PermissionCheckAllowed:
-	}
-
-	return nil
-}
-
-func (a *DocumentsService) lockCheck(
-	ctx context.Context,
-	docUUID uuid.UUID,
-	token string,
-) error {
-	meta, err := a.store.GetDocumentMeta(ctx, docUUID)
-	if err != nil {
-		if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-			return nil
-		}
-
-		return fmt.Errorf("failed to fetch document meta: %w", err)
-	}
-
-	if meta.Lock.Token != token {
-		return twirp.InvalidArgumentError("lockToken", "invalid lock token")
 	}
 
 	return nil
@@ -839,11 +816,6 @@ func (a *DocumentsService) Update(
 		return nil, err
 	}
 
-	err = a.lockCheck(ctx, docUUID, req.LockToken)
-	if err != nil {
-		return nil, err
-	}
-
 	updater := auth.Claims.Subject
 	updated := time.Now()
 
@@ -868,12 +840,13 @@ func (a *DocumentsService) Update(
 	}
 
 	up := UpdateRequest{
-		UUID:    docUUID,
-		Updated: updated,
-		Updater: updater,
-		Meta:    req.Meta,
-		Status:  RPCToStatusUpdate(req.Status),
-		IfMatch: req.IfMatch,
+		UUID:      docUUID,
+		Updated:   updated,
+		Updater:   updater,
+		Meta:      req.Meta,
+		Status:    RPCToStatusUpdate(req.Status),
+		IfMatch:   req.IfMatch,
+		LockToken: req.LockToken,
 	}
 
 	if req.Document != nil {
@@ -969,6 +942,10 @@ func (a *DocumentsService) Validate(
 func (a *DocumentsService) Lock(
 	ctx context.Context, req *repository.LockRequest,
 ) (*repository.LockResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
 	if err != nil {
 		return nil, err
