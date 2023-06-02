@@ -995,7 +995,13 @@ func (a *DocumentsService) Lock(
 		App:     req.App,
 		Comment: req.Comment,
 	})
-	if err != nil {
+
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeNotFound):
+		return nil, twirp.FailedPrecondition.Error("could not find the document")
+	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
+		return nil, twirp.FailedPrecondition.Error("the document is locked by someone else")
+	case err != nil:
 		return nil, fmt.Errorf("could not obtain lock: %w", err)
 	}
 
@@ -1036,7 +1042,13 @@ func (a *DocumentsService) ExtendLock(
 		TTL:   req.Ttl,
 		Token: req.Token,
 	})
-	if err != nil {
+
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeNoSuchLock):
+		return nil, twirp.FailedPrecondition.Error("the document is not lockd by anyone")
+	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
+		return nil, twirp.FailedPrecondition.Error("the doument is locked by someone else")
+	case err != nil:
 		return nil, fmt.Errorf("could not obtain lock: %w", err)
 	}
 
@@ -1068,7 +1080,9 @@ func (a *DocumentsService) Unlock(
 	}
 
 	err = a.store.Unlock(ctx, docUUID, req.Token)
-	if err != nil {
+	if IsDocStoreErrorCode(err, ErrCodeNoSuchLock) {
+		return nil, twirp.FailedPrecondition.Errorf("you no longer hold a lock on this document")
+	} else if err != nil {
 		return nil, fmt.Errorf("could not unlock document: %w", err)
 	}
 

@@ -175,6 +175,7 @@ type UpdateRequest struct {
 	Status     []StatusUpdate
 	Document   *newsdoc.Document
 	IfMatch    int64
+	LockToken  string
 }
 
 type DeleteRequest struct {
@@ -277,6 +278,7 @@ type DocStoreErrorCode string
 const (
 	NoErrCode                 DocStoreErrorCode = ""
 	ErrCodeNotFound           DocStoreErrorCode = "not-found"
+	ErrCodeNoSuchLock         DocStoreErrorCode = "no-such-lock"
 	ErrCodeOptimisticLock     DocStoreErrorCode = "optimistic-lock"
 	ErrCodeDeleteLock         DocStoreErrorCode = "delete-lock"
 	ErrCodeBadRequest         DocStoreErrorCode = "bad-request"

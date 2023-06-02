@@ -1157,7 +1157,7 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 		}
 
 		if !info.LockToken.Valid {
-			return DocStoreErrorf(ErrCodeDocumentLock, "not locked")
+			return DocStoreErrorf(ErrCodeNoSuchLock, "not locked")
 		}
 
 		if info.LockToken.String != req.Token {
@@ -1192,7 +1192,7 @@ func (s *PGDocStore) Unlock(ctx context.Context, uuid uuid.UUID, token string) e
 		}
 
 		if deleted == 0 {
-			return DocStoreErrorf(ErrCodeDeleteLock, "failed to release lock")
+			return DocStoreErrorf(ErrCodeNoSuchLock, "no locks found")
 		}
 
 		return nil
