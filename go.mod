@@ -25,7 +25,7 @@ require (
 	github.com/rakutentech/jwk-go v1.1.2
 	github.com/ttab/elephant-api v0.4.0
 	github.com/ttab/elephantine v0.6.0
-	github.com/ttab/newsdoc v0.3.0
+	github.com/ttab/newsdoc v0.3.2
 	github.com/ttab/revisor v0.3.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.25.5
