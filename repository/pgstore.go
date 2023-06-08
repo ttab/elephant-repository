@@ -1144,7 +1144,10 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 	}
 
 	err := s.withTX(ctx, "document locking", func(tx pgx.Tx) error {
-		err := s.reader.DeleteExpiredDocumentLocks(ctx, pg.Time(now))
+		err := s.reader.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
+			Now:  pg.Time(now),
+			UUID: req.UUID,
+		})
 		if err != nil {
 			return fmt.Errorf("could not delete expired locks: %w", err)
 		}
@@ -1190,7 +1193,10 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 	}
 
 	err := s.withTX(ctx, "document lock update", func(tx pgx.Tx) error {
-		err := s.reader.DeleteExpiredDocumentLocks(ctx, pg.Time(now))
+		err := s.reader.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
+			Now:  pg.Time(now),
+			UUID: req.UUID,
+		})
 		if err != nil {
 			return fmt.Errorf("could not delete expired locks: %w", err)
 		}

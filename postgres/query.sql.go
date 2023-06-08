@@ -224,6 +224,22 @@ func (q *Queries) DeleteDocumentLock(ctx context.Context, arg DeleteDocumentLock
 	return result.RowsAffected(), nil
 }
 
+const deleteExpiredDocumentLock = `-- name: DeleteExpiredDocumentLock :exec
+DELETE FROM document_lock
+WHERE expires < $1
+  AND uuid = $2
+`
+
+type DeleteExpiredDocumentLockParams struct {
+	Now  pgtype.Timestamptz
+	UUID uuid.UUID
+}
+
+func (q *Queries) DeleteExpiredDocumentLock(ctx context.Context, arg DeleteExpiredDocumentLockParams) error {
+	_, err := q.db.Exec(ctx, deleteExpiredDocumentLock, arg.Now, arg.UUID)
+	return err
+}
+
 const deleteExpiredDocumentLocks = `-- name: DeleteExpiredDocumentLocks :exec
 DELETE FROM document_lock
 WHERE expires < $1

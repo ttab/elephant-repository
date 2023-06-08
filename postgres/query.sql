@@ -271,6 +271,11 @@ UPDATE document_lock
 SET expires = @expires
 WHERE uuid = @uuid;
 
+-- name: DeleteExpiredDocumentLock :exec
+DELETE FROM document_lock
+WHERE expires < @now
+  AND uuid = @uuid;
+
 -- name: DeleteExpiredDocumentLocks :exec
 DELETE FROM document_lock
 WHERE expires < @now;
