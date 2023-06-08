@@ -486,9 +486,14 @@ SELECT
         l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
         l.token as lock_token
 FROM document as d 
-LEFT JOIN document_lock as l ON d.uuid = l.uuid 
-WHERE d.uuid = $1
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > $1
+WHERE d.uuid = $2
 `
+
+type GetDocumentInfoParams struct {
+	Now  pgtype.Timestamptz
+	UUID uuid.UUID
+}
 
 type GetDocumentInfoRow struct {
 	UUID           uuid.UUID
@@ -508,8 +513,8 @@ type GetDocumentInfoRow struct {
 	LockToken      pgtype.Text
 }
 
-func (q *Queries) GetDocumentInfo(ctx context.Context, argUuid uuid.UUID) (GetDocumentInfoRow, error) {
-	row := q.db.QueryRow(ctx, getDocumentInfo, argUuid)
+func (q *Queries) GetDocumentInfo(ctx context.Context, arg GetDocumentInfoParams) (GetDocumentInfoRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentInfo, arg.Now, arg.UUID)
 	var i GetDocumentInfoRow
 	err := row.Scan(
 		&i.UUID,

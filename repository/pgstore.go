@@ -560,7 +560,10 @@ func (s *PGDocStore) GetStatusHistory(
 func (s *PGDocStore) GetDocumentMeta(
 	ctx context.Context, uuid uuid.UUID,
 ) (*DocumentMeta, error) {
-	info, err := s.reader.GetDocumentInfo(ctx, uuid)
+	info, err := s.reader.GetDocumentInfo(ctx, postgres.GetDocumentInfoParams{
+		UUID: uuid,
+		Now:  pg.Time(time.Now()),
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, DocStoreErrorf(ErrCodeNotFound, "not found")
 	} else if err != nil {
@@ -1201,7 +1204,10 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 			return fmt.Errorf("could not delete expired locks: %w", err)
 		}
 
-		info, err := s.reader.GetDocumentInfo(ctx, req.UUID)
+		info, err := s.reader.GetDocumentInfo(ctx, postgres.GetDocumentInfoParams{
+			UUID: req.UUID,
+			Now:  pg.Time(now),
+		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
 		} else if err != nil {

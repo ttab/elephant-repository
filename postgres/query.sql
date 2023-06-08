@@ -61,8 +61,8 @@ SELECT
         l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
         l.token as lock_token
 FROM document as d 
-LEFT JOIN document_lock as l ON d.uuid = l.uuid 
-WHERE d.uuid = $1;
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
+WHERE d.uuid = @uuid;
 
 -- name: GetDocumentData :one
 SELECT v.document_data

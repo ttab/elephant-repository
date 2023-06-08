@@ -425,7 +425,7 @@ func (a *DocumentsService) Delete(
 	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
 		return nil, twirp.FailedPrecondition.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
-		return nil, twirp.FailedPrecondition.Error("the docuemnt is locked by someone else")
+		return nil, twirp.FailedPrecondition.Error("the document is locked by someone else")
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
 		// Treating a delete call as a success if the delete already is
 		// in progress.
@@ -991,6 +991,10 @@ func (a *DocumentsService) Lock(
 func (a *DocumentsService) ExtendLock(
 	ctx context.Context, req *repository.ExtendLockRequest,
 ) (*repository.LockResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
 	if err != nil {
 		return nil, err
@@ -1022,7 +1026,7 @@ func (a *DocumentsService) ExtendLock(
 
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeNoSuchLock):
-		return nil, twirp.FailedPrecondition.Error("the document is not lockd by anyone")
+		return nil, twirp.FailedPrecondition.Error("the document is not locked by anyone")
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
 		return nil, twirp.FailedPrecondition.Error("the doument is locked by someone else")
 	case err != nil:
@@ -1037,6 +1041,10 @@ func (a *DocumentsService) ExtendLock(
 func (a *DocumentsService) Unlock(
 	ctx context.Context, req *repository.UnlockRequest,
 ) (*repository.UnlockResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
 	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
 	if err != nil {
 		return nil, err
