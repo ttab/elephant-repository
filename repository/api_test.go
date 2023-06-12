@@ -1072,4 +1072,10 @@ func TestDocumentLocking(t *testing.T) {
 		LockToken: lock.Token,
 	})
 	test.Must(t, err, "delete a locked document with the correct token")
+
+	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
+		Uuid:      "59b9d054-c0ec-4a3e-ab4c-67aa5a9b5b6e",
+		LockToken: lock.Token,
+	})
+	test.Must(t, err, "unlock non-existing document")
 }

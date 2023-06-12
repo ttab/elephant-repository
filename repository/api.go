@@ -974,6 +974,7 @@ func (a *DocumentsService) Lock(
 	})
 
 	switch {
+	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
 	case IsDocStoreErrorCode(err, ErrCodeNotFound):
 		return nil, twirp.FailedPrecondition.Error("could not find the document")
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
@@ -1025,6 +1026,9 @@ func (a *DocumentsService) ExtendLock(
 	})
 
 	switch {
+	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
+	case IsDocStoreErrorCode(err, ErrCodeNotFound):
+		return nil, twirp.FailedPrecondition.Error("could not find the document")
 	case IsDocStoreErrorCode(err, ErrCodeNoSuchLock):
 		return nil, twirp.FailedPrecondition.Error("the document is not locked by anyone")
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
@@ -1065,9 +1069,13 @@ func (a *DocumentsService) Unlock(
 	}
 
 	err = a.store.Unlock(ctx, docUUID, req.Token)
-	if IsDocStoreErrorCode(err, ErrCodeNoSuchLock) {
+
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
+		return &repository.UnlockResponse{}, nil
+	case IsDocStoreErrorCode(err, ErrCodeNoSuchLock):
 		return nil, twirp.FailedPrecondition.Errorf("you no longer hold a lock on this document")
-	} else if err != nil {
+	case err != nil:
 		return nil, fmt.Errorf("could not unlock document: %w", err)
 	}
 
