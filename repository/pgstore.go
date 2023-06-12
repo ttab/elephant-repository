@@ -1144,45 +1144,34 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 	res := LockResult{
 		Created: now,
 		Expires: expires,
+		Token:   uuid.NewString(),
 	}
 
-	err := s.withTX(ctx, "document locking", func(tx pgx.Tx) error {
-		q := postgres.New(tx)
-
-		err := q.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
-			Now:  pg.Time(now),
-			UUID: req.UUID,
-		})
-		if err != nil {
-			return fmt.Errorf("could not delete expired locks: %w", err)
-		}
-
-		token := uuid.NewString()
-		err = q.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
-			UUID:    req.UUID,
-			Token:   token,
-			Created: pg.Time(now),
-			Expires: pg.Time(expires),
-			URI:     pg.TextOrNull(req.URI),
-			App:     pg.TextOrNull(req.App),
-			Comment: pg.TextOrNull(req.Comment),
-		})
-		if pg.IsConstraintError(err, "document_lock_uuid_fkey") {
-			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
-		}
-		if pg.IsConstraintError(err, "document_lock_pkey") {
-			return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
-		}
-		if err != nil {
-			return fmt.Errorf("failed to insert document lock: %w", err)
-		}
-
-		res.Token = token
-
-		return nil
+	err := s.reader.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
+		Now:  pg.Time(now),
+		UUID: req.UUID,
 	})
 	if err != nil {
-		return LockResult{}, err
+		return LockResult{}, fmt.Errorf("could not delete expired locks: %w", err)
+	}
+
+	err = s.reader.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
+		UUID:    req.UUID,
+		Token:   res.Token,
+		Created: pg.Time(now),
+		Expires: pg.Time(expires),
+		URI:     pg.TextOrNull(req.URI),
+		App:     pg.TextOrNull(req.App),
+		Comment: pg.TextOrNull(req.Comment),
+	})
+
+	switch {
+	case pg.IsConstraintError(err, "document_lock_uuid_fkey"):
+		return LockResult{}, DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
+	case pg.IsConstraintError(err, "document_lock_pkey"):
+		return LockResult{}, DocStoreErrorf(ErrCodeDocumentLock, "document locked")
+	case err != nil:
+		return LockResult{}, fmt.Errorf("failed to insert document lock: %w", err)
 	}
 
 	return res, nil
