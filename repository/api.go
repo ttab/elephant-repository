@@ -1073,8 +1073,8 @@ func (a *DocumentsService) Unlock(
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
 		return &repository.UnlockResponse{}, nil
-	case IsDocStoreErrorCode(err, ErrCodeNoSuchLock):
-		return nil, twirp.FailedPrecondition.Errorf("you no longer hold a lock on this document")
+	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
+		return nil, twirp.FailedPrecondition.Errorf("the document is locked by someone else")
 	case err != nil:
 		return nil, fmt.Errorf("could not unlock document: %w", err)
 	}
