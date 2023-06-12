@@ -424,26 +424,50 @@ func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDel
 }
 
 const getDocumentForUpdate = `-- name: GetDocumentForUpdate :one
-SELECT uri, type, current_version, deleting FROM document
-WHERE uuid = $1
-FOR UPDATE
+SELECT d.uri, d.type, d.current_version, d.deleting, l.uuid as lock_uuid, 
+        l.uri as lock_uri, l.created as lock_created,
+        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
+        l.token as lock_token
+FROM document as d
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > $2
+WHERE d.uuid = $1
+FOR UPDATE OF d
 `
+
+type GetDocumentForUpdateParams struct {
+	UUID uuid.UUID
+	Now  pgtype.Timestamptz
+}
 
 type GetDocumentForUpdateRow struct {
 	URI            string
 	Type           string
 	CurrentVersion int64
 	Deleting       bool
+	LockUuid       pgtype.UUID
+	LockUri        pgtype.Text
+	LockCreated    pgtype.Timestamptz
+	LockExpires    pgtype.Timestamptz
+	LockApp        pgtype.Text
+	LockComment    pgtype.Text
+	LockToken      pgtype.Text
 }
 
-func (q *Queries) GetDocumentForUpdate(ctx context.Context, argUuid uuid.UUID) (GetDocumentForUpdateRow, error) {
-	row := q.db.QueryRow(ctx, getDocumentForUpdate, argUuid)
+func (q *Queries) GetDocumentForUpdate(ctx context.Context, arg GetDocumentForUpdateParams) (GetDocumentForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentForUpdate, arg.UUID, arg.Now)
 	var i GetDocumentForUpdateRow
 	err := row.Scan(
 		&i.URI,
 		&i.Type,
 		&i.CurrentVersion,
 		&i.Deleting,
+		&i.LockUuid,
+		&i.LockUri,
+		&i.LockCreated,
+		&i.LockExpires,
+		&i.LockApp,
+		&i.LockComment,
+		&i.LockToken,
 	)
 	return i, err
 }

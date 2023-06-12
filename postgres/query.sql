@@ -1,7 +1,12 @@
 -- name: GetDocumentForUpdate :one
-SELECT uri, type, current_version, deleting FROM document
-WHERE uuid = $1
-FOR UPDATE;
+SELECT d.uri, d.type, d.current_version, d.deleting, l.uuid as lock_uuid, 
+        l.uri as lock_uri, l.created as lock_created,
+        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
+        l.token as lock_token
+FROM document as d
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
+WHERE d.uuid = $1
+FOR UPDATE OF d;
 
 -- name: GetDocumentHeads :many
 SELECT name, current_id

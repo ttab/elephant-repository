@@ -1724,13 +1724,17 @@ func (s *PGDocStore) updateACL(
 type updatePrefligthInfo struct {
 	Info   postgres.GetDocumentForUpdateRow
 	Exists bool
+	Lock   Lock
 }
 
 func (s *PGDocStore) updatePreflight(
 	ctx context.Context, q *postgres.Queries,
 	uuid uuid.UUID, ifMatch int64,
 ) (*updatePrefligthInfo, error) {
-	info, err := q.GetDocumentForUpdate(ctx, uuid)
+	info, err := q.GetDocumentForUpdate(ctx, postgres.GetDocumentForUpdateParams{
+		UUID: uuid,
+		Now:  pg.Time(time.Now()),
+	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf(
 			"failed to get document information: %w", err)
@@ -1763,6 +1767,14 @@ func (s *PGDocStore) updatePreflight(
 	return &updatePrefligthInfo{
 		Info:   info,
 		Exists: exists,
+		Lock: Lock{
+			URI:     info.LockUri.String,
+			Token:   info.LockToken.String,
+			Created: info.LockCreated.Time,
+			Expires: info.LockExpires.Time,
+			App:     info.LockApp.String,
+			Comment: info.LockComment.String,
+		},
 	}, nil
 }
 
