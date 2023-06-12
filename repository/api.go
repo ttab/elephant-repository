@@ -972,7 +972,6 @@ func (a *DocumentsService) Lock(
 		App:     req.App,
 		Comment: req.Comment,
 	})
-	fmt.Println("API error: ", err)
 
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeNotFound):
