@@ -290,13 +290,6 @@ DELETE FROM document_lock
 WHERE uuid = @uuid
   AND token = @token;  
 
--- name: CheckDocumentLock :many
-SELECT *
-FROM document_lock
-WHERE uuid = @uuid
-  AND token <> @token
-  AND expires > @now;
-
 -- name: UpdateReport :exec
 INSERT INTO report(
        name, enabled, next_execution, spec
