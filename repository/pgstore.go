@@ -1147,7 +1147,9 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 	}
 
 	err := s.withTX(ctx, "document locking", func(tx pgx.Tx) error {
-		err := s.reader.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
+		q := postgres.New(tx)
+
+		err := q.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
 			Now:  pg.Time(now),
 			UUID: req.UUID,
 		})
@@ -1156,7 +1158,7 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 		}
 
 		token := uuid.NewString()
-		err = s.reader.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
+		err = q.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
 			UUID:    req.UUID,
 			Token:   token,
 			Created: pg.Time(now),
@@ -1196,7 +1198,9 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 	}
 
 	err := s.withTX(ctx, "document lock update", func(tx pgx.Tx) error {
-		err := s.reader.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
+		q := postgres.New(tx)
+
+		err := q.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
 			Now:  pg.Time(now),
 			UUID: req.UUID,
 		})
@@ -1204,7 +1208,7 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 			return fmt.Errorf("could not delete expired locks: %w", err)
 		}
 
-		info, err := s.reader.GetDocumentInfo(ctx, postgres.GetDocumentInfoParams{
+		info, err := q.GetDocumentInfo(ctx, postgres.GetDocumentInfoParams{
 			UUID: req.UUID,
 			Now:  pg.Time(now),
 		})
@@ -1222,7 +1226,7 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 			return DocStoreErrorf(ErrCodeDocumentLock, "invalid lock token")
 		}
 
-		err = s.reader.UpdateDocumentLock(ctx, postgres.UpdateDocumentLockParams{
+		err = q.UpdateDocumentLock(ctx, postgres.UpdateDocumentLockParams{
 			UUID:    req.UUID,
 			Expires: pg.Time(expires),
 		})
@@ -1240,23 +1244,19 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 }
 
 func (s *PGDocStore) Unlock(ctx context.Context, uuid uuid.UUID, token string) error {
-	err := s.withTX(ctx, "document unlocking", func(tx pgx.Tx) error {
-		deleted, err := s.reader.DeleteDocumentLock(ctx, postgres.DeleteDocumentLockParams{
-			UUID:  uuid,
-			Token: token,
-		})
-		if err != nil {
-			return fmt.Errorf("could not delete lock: %w", err)
-		}
-
-		if deleted == 0 {
-			return DocStoreErrorf(ErrCodeNoSuchLock, "no locks found")
-		}
-
-		return nil
+	deleted, err := s.reader.DeleteDocumentLock(ctx, postgres.DeleteDocumentLockParams{
+		UUID:  uuid,
+		Token: token,
 	})
+	if err != nil {
+		return fmt.Errorf("could not delete lock: %w", err)
+	}
 
-	return err
+	if deleted == 0 {
+		return DocStoreErrorf(ErrCodeNoSuchLock, "no locks found")
+	}
+
+	return nil
 }
 
 // RegisterSchema implements DocStore.
