@@ -7,7 +7,7 @@ require (
 	github.com/adhocore/gronx v1.6.2
 	github.com/antonmedv/expr v1.12.5
 	github.com/aws/aws-sdk-go-v2 v1.18.0
-	github.com/aws/aws-sdk-go-v2/config v1.18.22
+	github.com/aws/aws-sdk-go-v2/config v1.18.25
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.24
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.19.2
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.33.1
