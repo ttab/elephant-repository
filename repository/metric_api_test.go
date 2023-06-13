@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant/internal/test"
 	repo "github.com/ttab/elephant/repository"
@@ -94,7 +95,7 @@ func TestIntegrationMetrics(t *testing.T) {
 	// test register metric
 	_, err = documentsClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
-		Document: &repository.Document{
+		Document: &newsdoc.Document{
 			Type: "core/article",
 			Uri:  "article://test/123",
 		},

@@ -43,11 +43,7 @@ type DocumentLink struct {
 
 var nonAlphaNum = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
 
-func DetailFromDocument(d *newsdoc.Document) *DocumentDetail {
-	if d == nil {
-		return nil
-	}
-
+func DetailFromDocument(d newsdoc.Document) *DocumentDetail {
 	e := DocumentDetail{
 		UUID:  d.UUID,
 		URI:   d.URI,

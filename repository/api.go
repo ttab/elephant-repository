@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	rpcdoc "github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
@@ -516,7 +517,7 @@ func (a *DocumentsService) Get(
 	}
 
 	return &repository.GetDocumentResponse{
-		Document: DocumentToRPC(doc),
+		Document: rpcdoc.DocumentToRPC(*doc),
 		Version:  version,
 	}, nil
 }
@@ -825,12 +826,21 @@ func (a *DocumentsService) Update(
 		}
 	}
 
-	doc := RPCToDocument(req.Document)
+	up := UpdateRequest{
+		UUID:    docUUID,
+		Updated: updated,
+		Updater: updater,
+		Meta:    req.Meta,
+		Status:  RPCToStatusUpdate(req.Status),
+		IfMatch: req.IfMatch,
+	}
 
-	if doc != nil {
+	if req.Document != nil {
+		doc := rpcdoc.DocumentFromRPC(req.Document)
+
 		doc.UUID = docUUID.String()
 
-		validationResult := a.validator.ValidateDocument(doc)
+		validationResult := a.validator.ValidateDocument(&doc)
 
 		if len(validationResult) > 0 {
 			err := twirp.InvalidArgument.Errorf(
@@ -847,16 +857,8 @@ func (a *DocumentsService) Update(
 
 			return nil, err
 		}
-	}
 
-	up := UpdateRequest{
-		UUID:     docUUID,
-		Updated:  updated,
-		Updater:  updater,
-		Meta:     req.Meta,
-		Status:   RPCToStatusUpdate(req.Status),
-		Document: doc,
-		IfMatch:  req.IfMatch,
+		up.Document = &doc
 	}
 
 	for _, e := range req.Acl {
@@ -907,9 +909,9 @@ func (a *DocumentsService) Validate(
 		return nil, twirp.RequiredArgumentError("document")
 	}
 
-	doc := RPCToDocument(req.Document)
+	doc := rpcdoc.DocumentFromRPC(req.Document)
 
-	validationResult := a.validator.ValidateDocument(doc)
+	validationResult := a.validator.ValidateDocument(&doc)
 
 	var res repository.ValidateResponse
 
@@ -956,124 +958,4 @@ func RPCToStatusUpdate(update []*repository.StatusUpdate) []StatusUpdate {
 	}
 
 	return out
-}
-
-func DocumentToRPC(d *newsdoc.Document) *repository.Document {
-	if d == nil {
-		return nil
-	}
-
-	return &repository.Document{
-		Uuid:     d.UUID,
-		Type:     d.Type,
-		Uri:      d.URI,
-		Url:      d.URL,
-		Title:    d.Title,
-		Content:  BlocksToRPC(d.Content),
-		Meta:     BlocksToRPC(d.Meta),
-		Links:    BlocksToRPC(d.Links),
-		Language: d.Language,
-	}
-}
-
-func BlocksToRPC(blocks []newsdoc.Block) []*repository.Block {
-	var res []*repository.Block
-
-	// Not allocating up-front to avoid turning nil into [].
-	if len(blocks) > 0 {
-		res = make([]*repository.Block, len(blocks))
-	}
-
-	for i, b := range blocks {
-		rb := repository.Block{
-			Id:          b.ID,
-			Uuid:        b.UUID,
-			Uri:         b.URI,
-			Url:         b.URL,
-			Type:        b.Type,
-			Title:       b.Title,
-			Rel:         b.Rel,
-			Role:        b.Role,
-			Name:        b.Name,
-			Value:       b.Value,
-			Contenttype: b.Contenttype,
-			Links:       BlocksToRPC(b.Links),
-			Content:     BlocksToRPC(b.Content),
-			Meta:        BlocksToRPC(b.Meta),
-		}
-
-		for k, v := range b.Data {
-			if rb.Data == nil {
-				rb.Data = make(map[string]string)
-			}
-
-			rb.Data[k] = v
-		}
-
-		res[i] = &rb
-	}
-
-	return res
-}
-
-func RPCToDocument(rpcDoc *repository.Document) *newsdoc.Document {
-	if rpcDoc == nil {
-		return nil
-	}
-
-	return &newsdoc.Document{
-		UUID:     rpcDoc.Uuid,
-		Type:     rpcDoc.Type,
-		URI:      rpcDoc.Uri,
-		URL:      rpcDoc.Url,
-		Title:    rpcDoc.Title,
-		Links:    RPCToBlocks(rpcDoc.Links),
-		Content:  RPCToBlocks(rpcDoc.Content),
-		Meta:     RPCToBlocks(rpcDoc.Meta),
-		Language: rpcDoc.Language,
-	}
-}
-
-func RPCToBlocks(blocks []*repository.Block) []newsdoc.Block {
-	var res []newsdoc.Block
-
-	// Not allocating up-front to avoid turning nil into [].
-	if len(blocks) > 0 {
-		res = make([]newsdoc.Block, len(blocks))
-	}
-
-	for i, rb := range blocks {
-		if rb == nil {
-			continue
-		}
-
-		b := newsdoc.Block{
-			ID:          rb.Id,
-			UUID:        rb.Uuid,
-			URI:         rb.Uri,
-			URL:         rb.Url,
-			Type:        rb.Type,
-			Title:       rb.Title,
-			Rel:         rb.Rel,
-			Role:        rb.Role,
-			Name:        rb.Name,
-			Value:       rb.Value,
-			Contenttype: rb.Contenttype,
-			Links:       RPCToBlocks(rb.Links),
-			Content:     RPCToBlocks(rb.Content),
-			Meta:        RPCToBlocks(rb.Meta),
-		}
-
-		for k, v := range rb.Data {
-			if b.Data == nil {
-				b.Data = make(newsdoc.DataMap)
-			}
-
-			b.Data[k] = v
-		}
-
-		res[i] = b
-	}
-
-	return res
 }

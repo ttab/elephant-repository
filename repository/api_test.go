@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant/internal/test"
 	"github.com/ttab/elephantine"
@@ -21,8 +22,8 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
-func baseDocument(uuid, uri string) *repository.Document {
-	return &repository.Document{
+func baseDocument(uuid, uri string) *newsdoc.Document {
+	return &newsdoc.Document{
 		Uuid:  uuid,
 		Title: "A bare-bones article",
 		Type:  "core/article",
@@ -66,7 +67,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	doc2 := test.CloneMessage(doc)
 
-	doc2.Content = append(doc2.Content, &repository.Block{
+	doc2.Content = append(doc2.Content, &newsdoc.Block{
 		Type: "core/heading-1",
 		Data: map[string]string{
 			"text": "The headline of the year",
@@ -81,7 +82,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	test.Equal(t, 2, res.Version, "expected this to be the second version")
 
-	docTypeShift := repository.Document{
+	docTypeShift := newsdoc.Document{
 		Type: "core/place",
 		Uri:  doc2.Uri,
 	}
@@ -94,7 +95,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	docBadBlock := test.CloneMessage(doc2)
 
-	docBadBlock.Content = append(docBadBlock.Content, &repository.Block{
+	docBadBlock.Content = append(docBadBlock.Content, &newsdoc.Block{
 		Type: "something/made-up",
 		Data: map[string]string{
 			"text": "Dunno what this is",
@@ -710,7 +711,7 @@ or Heads.approved_legal.Version == Status.Version`,
 
 	docV2 := test.CloneMessage(doc)
 
-	docV2.Content = append(docV2.Content, &repository.Block{
+	docV2.Content = append(docV2.Content, &newsdoc.Block{
 		Type: "core/paragraph",
 		Data: map[string]string{
 			"text": "Some sensitive stuff",
