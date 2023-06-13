@@ -23,12 +23,12 @@ require (
 	github.com/ory/dockertest/v3 v3.10.0
 	github.com/prometheus/client_golang v1.15.1
 	github.com/rakutentech/jwk-go v1.1.2
-	github.com/ttab/elephant-api v0.4.0
+	github.com/ttab/elephant-api v0.5.1
 	github.com/ttab/elephantine v0.6.0
-	github.com/ttab/newsdoc v0.3.2
+	github.com/ttab/newsdoc v0.4.1
 	github.com/ttab/revisor v0.3.2
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	github.com/urfave/cli/v2 v2.25.5
+	github.com/urfave/cli/v2 v2.25.6
 	github.com/xuri/excelize/v2 v2.7.1
 	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53
 	golang.org/x/mod v0.10.0

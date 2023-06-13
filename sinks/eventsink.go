@@ -8,6 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	repo "github.com/ttab/elephant/repository"
 	"github.com/ttab/elephantine"
@@ -310,7 +311,7 @@ func (r *EventForwarder) enrichEvent(
 	}
 
 	detail.Document = DetailFromDocument(
-		repo.RPCToDocument(docRes.Document),
+		newsdoc.DocumentFromRPC(docRes.Document),
 	)
 
 	detail.Event.Version = docRes.Version
