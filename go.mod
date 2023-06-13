@@ -7,7 +7,7 @@ require (
 	github.com/adhocore/gronx v1.6.2
 	github.com/antonmedv/expr v1.12.5
 	github.com/aws/aws-sdk-go-v2 v1.18.0
-	github.com/aws/aws-sdk-go-v2/config v1.18.22
+	github.com/aws/aws-sdk-go-v2/config v1.18.25
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.24
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.19.2
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.33.1
@@ -24,13 +24,13 @@ require (
 	github.com/prometheus/client_golang v1.15.1
 	github.com/rakutentech/jwk-go v1.1.2
 	github.com/ttab/elephant-api v0.5.1
-	github.com/ttab/elephantine v0.6.0
+	github.com/ttab/elephantine v0.6.2
 	github.com/ttab/newsdoc v0.4.1
 	github.com/ttab/revisor v0.3.2
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.25.6
 	github.com/xuri/excelize/v2 v2.7.1
-	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53
+	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
 	golang.org/x/mod v0.10.0
 	golang.org/x/sync v0.2.0
 	google.golang.org/protobuf v1.30.0
