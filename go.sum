@@ -301,10 +301,10 @@ github.com/ttab/elephant-api v0.4.0 h1:kens3Bo14clIYk1saunqUQgu6g8uWk9s+GxdbcbZW
 github.com/ttab/elephant-api v0.4.0/go.mod h1:G1HErHbQzPs82xEtNtGJeomGje2BOfb90/xM+0ZYTEk=
 github.com/ttab/elephantine v0.6.0 h1:nq/WqBJm25D5PZbRwkqw/6zEQlPW1igNAVIBAhdSGBM=
 github.com/ttab/elephantine v0.6.0/go.mod h1:zmA+jo1Lpd8OcdLYL4jkWNWcA+ZxoXVVJ0pCLdmRPqk=
-github.com/ttab/newsdoc v0.3.0 h1:8lWbIlxaVoMirtjgTt7pi+91QhOfF+LmP2CmY9OxVUo=
-github.com/ttab/newsdoc v0.3.0/go.mod h1:VQu5cqcIHLryGiN/0ogMVTJy8l76wz6iylPz9F+I7bM=
-github.com/ttab/revisor v0.3.0 h1:WCMEKsll5PDBvWOogh5cM8mM5uuWYu4+i+qWnUc2u/c=
-github.com/ttab/revisor v0.3.0/go.mod h1:DglzieYoTxQpUAKGJoyWjZAFYfAXKo6Khem7TifxNBc=
+github.com/ttab/newsdoc v0.3.2 h1:EHydMjAe/5lsrPf83TfsvTinTD0+VisYZf57ilVNhVI=
+github.com/ttab/newsdoc v0.3.2/go.mod h1:0Go0GXVJfYSahE2ZUVW13oXNH8ywS4GLkGsw6Os+nvI=
+github.com/ttab/revisor v0.3.2 h1:ZymAa4gHYkeQZlQrYu6XOnZLgSPx7vMZ3wlJVmY6Nrk=
+github.com/ttab/revisor v0.3.2/go.mod h1:x8aC3I/c0mDTjHo3cNWwFCa3fdTk1iTeVL1+4iKyWp8=
 github.com/twitchtv/twirp v8.1.3+incompatible h1:+F4TdErPgSUbMZMwp13Q/KgDVuI7HJXP61mNV3/7iuU=
 github.com/twitchtv/twirp v8.1.3+incompatible/go.mod h1:RRJoFSAmTEh2weEqWtpPE3vFK5YBhA6bqp2l1kfCC5A=
 github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
