@@ -1,4 +1,4 @@
-FROM registry.a.tt.se/docker/golang:1.20.2-alpine3.17 AS build
+FROM registry.a.tt.se/docker/golang:1.20.4-alpine3.17 AS build
 
 WORKDIR /usr/src
 
@@ -7,11 +7,13 @@ RUN go mod download && go mod verify
 
 ADD . ./
 
-RUN go build -o /usr/local/bin/repository ./cmd/repository
+ARG COMMAND
 
-FROM registry.a.tt.se/docker/alpine:3.17.2
+RUN go build -o /build/main ./cmd/${COMMAND}
 
-COPY --from=build /usr/local/bin/repository /usr/local/bin/
+FROM registry.a.tt.se/docker/alpine:3.17.3
+
+COPY --from=build /build/main /usr/local/bin/main
 
 RUN apk upgrade --no-cache \
     && apk add tzdata
@@ -22,4 +24,4 @@ EXPOSE 1080
 # Debug/profiling server
 EXPOSE 1081
 
-ENTRYPOINT ["repository"]
+ENTRYPOINT ["main", "run"]

@@ -51,6 +51,8 @@ jobs:
           # Specify the build_platforms variable in the GitHub repo
           platforms: ${{ vars.BUILD_PLATFORMS }}
           push: true
+          build-args: |
+            COMMAND=repository
           tags: ${{ env.docker_image }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
