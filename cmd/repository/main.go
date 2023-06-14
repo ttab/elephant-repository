@@ -41,12 +41,14 @@ func main() {
 		Action:      runServer,
 		Flags: append([]cli.Flag{
 			&cli.StringFlag{
-				Name:  "addr",
-				Value: ":1080",
+				Name:    "addr",
+				Value:   ":1080",
+				EnvVars: []string{"LISTEN_ADDR"},
 			},
 			&cli.StringFlag{
-				Name:  "profile-addr",
-				Value: ":1081",
+				Name:    "profile-addr",
+				Value:   ":1081",
+				EnvVars: []string{"PROFILE_ADDR"},
 			},
 			&cli.StringFlag{
 				Name:    "log-level",
