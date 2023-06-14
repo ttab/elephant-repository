@@ -1,35 +1,81 @@
-# Elephant
+# Elephant repository
 
 ![Image](docs/elephant.png?raw=true)
 
-Executable entrypoints in cmd/repository.
+Elephant repository is a NewsDoc document repository with versioning, ACLs for permissions, archiving, validation schemas, workflow statuses, reporting support, event output, and metrics for observability.
 
-Revisor is documented separately in the [revisor package](revisor/README.md).
+The repository depends on PostgreSQL for data storage and a S3 compatible store for archiving and reports. It can use AWS EventBridge as an event sink, but that is optional and can be disabled with `--no-eventsink`.
 
-## Preparing the environment
+N.B. Until we reach v1.0.0 this should be seen as a tech preview of work in progress without any stability guarantees, and it is not in ANY way production ready.
 
-Follow [the instructions](#the-database) to get the database up and running.
+## Versioning
 
-Then create a ".env" file containing the following values:
+All updates to a document are stored as sequentially numbered versions with information about when it was created, who created it, and optional metadata for the version.
 
-```
-S3_ENDPOINT=http://localhost:9000/
-S3_ACCESS_KEY_ID=minioadmin
-S3_ACCESS_KEY_SECRET=minioadmin
-JWT_SIGNING_KEY='MIGkAgEBBDAgdjcifmVXiJoQh7IbTnsCS81CxYHQ1r6ftXE6ykJDz1SoQJEB6LppaCLpNBJhGNugBwYFK4EEACKhZANiAAS4LqvuFUwFXUNpCPTtgeMy61hE-Pdm57OVzTaVKUz7GzzPKNoGbcTllPGDg7nzXIga9ObRNs8ytSLQMOWIO8xJW35Xko4kwPR_CVsTS5oMaoYnBCOZYEO2NXND7gU7GoM'
-```
+Old versions can always be fetched through the API, and the history can be inspected through `Documents.GetHistory`.
 
-I load this environment file using `export $(cat .env | xargs)`.
+## ACLs for permissions
 
-The server will generate and a JWT signing key (and log a warning) if it's missing from the environment.
+Documents can be shared with individuals or units (groups of people). By default only the entity that created a document has access to it, and other entities will have to be granted read and/or write access.
 
-## Running the repository server
+In most workflows documents will be shared with a group of people, but this makes it possible to work with private drafts, and share documents with individuals that are untrusted in the sense that they shouldn't have access to all your content.
 
-The repository server runs the API, archiver, and replicator. If your environment has been set up correctly (env vars, postgres, and minio) you should be able to run it like this:
+## Archiving
 
-``` shell
-go run ./cmd/repository run
-```
+All document statuses and versions are archived by a background process in the repository. Archiving is tightly integrated with the document lifecycle and a document cannot be deleted until it has been fully archived.
+
+As part of the archiving process the archive objects are signed with an archiving key, and as the signature of the previous version is included in the object we create a tamper-proof chain of updates. Statuses also include the signature of the document version they refer to.
+
+The archive status and signature are fed back into the database after the object has been successfully archived.
+
+See [Archiving data](#archiving-data) for further details.
+
+## Validation schemas
+
+All document types need to be declared before they can be stored in the repository. This serves two purposes, of which the primary is to maintain data quality, the other purpose is to inform automated systems about the shape of your data. This is leveraged by the [elephant-index](https://github.com/ttab/elephant-index) to create correct mappings for OpenSearch/ElasticSearch.
+
+Schema management is handled through the `Schemas` service. For details on how to write specifications, see [revisor "Writing specifications"](https://github.com/ttab/revisor#writing-specifications).
+
+## Workflow statuses
+
+You can define and set statuses for document versions. To publish a version of a document you would typically set the status "usable" for it. Your publishing pipeline would then pick up that status event and act on it. New document versions that are created don't affect the "usable" status you set, to publish a new version you would have to create a new "usable" status update that references that version.
+
+The last status of a given name for a document is referred to as the "head". Just like documents, statuses are versioned and have sequential IDs for a given document and status name.
+
+TODO: write and link to workflow rule documentation, see presentation.slide
+
+## Event output
+
+All changes to a document are emitted on the eventlog, accessed through `Documents.Eventlog`. Changes can be:
+
+* a new document version
+* anew document status
+* updated ACL entries
+* a document delete
+
+This eventlog can be used by other applications to act on changes in the repository.
+
+### Event sink
+
+The repository also has the concept of event sinks where enriched events can be posted to an event sink (right now only we only support AWS EventBridge as a sink).
+
+The purpose of the enriched events is to allow the constructions of event-based architectures where f.ex. a Lambda function could subscribe to published articles with a specific category. This let's you avoid situations where a lot of systems load unnecessary just to determine if an event should be handled.
+
+TODO: link to more documentation of enriched format.
+
+## Reporting support
+
+The repository allows for scheduling of automatic reports. Reports are defined using SQL and are run with decreased privileges that has read-only access to select tables in the internal database.
+
+The results of the report run are written to a reporting S3 bucket where other systems can pick them up and post to f.ex. Slack.
+
+## Metrics
+
+Prometheus metrics and PPROF debugging endpoints are exposed on port 1081 at "/metrics" and "/debug/pprof/".
+
+The metrics cover API usage and most internal operations in the repository as well as Go runtime metrics.
+
+The PPROF debugging endpoints allow for CPU and memory profiling to get to the bottom of performance issues and concurrency bugs.
 
 ## Calling the API
 
@@ -105,6 +151,33 @@ curl --request POST \
 }'
 ```
 
+## Running locally
+
+### Preparing the environment
+
+Follow [the instructions](#the-database) to get the database up and running.
+
+Then create a ".env" file containing the following values:
+
+```
+S3_ENDPOINT=http://localhost:9000/
+S3_ACCESS_KEY_ID=minioadmin
+S3_ACCESS_KEY_SECRET=minioadmin
+JWT_SIGNING_KEY='MIGkAgEBBDAgdjcifmVXiJoQh7IbTnsCS81CxYHQ1r6ftXE6ykJDz1SoQJEB6LppaCLpNBJhGNugBwYFK4EEACKhZANiAAS4LqvuFUwFXUNpCPTtgeMy61hE-Pdm57OVzTaVKUz7GzzPKNoGbcTllPGDg7nzXIga9ObRNs8ytSLQMOWIO8xJW35Xko4kwPR_CVsTS5oMaoYnBCOZYEO2NXND7gU7GoM'
+```
+
+I load this environment file using `export $(cat .env | xargs)`.
+
+The server will generate and a JWT signing key (and log a warning) if it's missing from the environment.
+
+###  Running the repository server
+
+The repository server runs the API, archiver, and replicator. If your environment has been set up correctly (env vars, postgres, and minio) you should be able to run it like this:
+
+``` shell
+go run ./cmd/repository run
+```
+
 ## The database
 
 ### Running and DB schema ops
@@ -126,8 +199,6 @@ Each document has a single row in the `document` table. New versions of the docu
 An update to a document always starts with getting a row lock on the `document(uuid)` table for the transaction. This gives us serialisation guarantees for writes to a single document, and lets us use straight-forward numbering for document versions and status updates.
 
 ### Data mining examples
-
-
 
 #### Published article cause
 
@@ -285,13 +356,3 @@ Archiving is used to support the delete functionality. A delete request will acq
 
 The archiver looks for documents with pending deletes and then moves the objects from the "documents/[uuid]" prefix to a "deleted/[uuid]/[delete record id]" prefix in the bucket. Once the move is complete the document row is deleted, and the only thing that remains is the delete_record and the archived objects.
 
-#### TODO: Restoring from archive
-
-## Some starting points
-
-* `constraints/*.json`: format constraint specifications
-* `pgdocstore.go`: implementation of the PostgreSQL document store.
-
-## License
-
-Uses code and definitions from [NavigaDoc](https://github.com/navigacontentlab/navigadoc), as reflected in the LICENSE file.
