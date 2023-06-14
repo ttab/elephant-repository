@@ -6,6 +6,8 @@ Elephant repository is a [NewsDoc](https://github.com/ttab/newsdoc) document rep
 
 The repository depends on PostgreSQL for data storage and a S3 compatible store for archiving and reports. It can use AWS EventBridge as an event sink, but that is optional and can be disabled with `--no-eventsink`.
 
+All operations against the repository is exposed as a [Twirp RPC API](https://twitchtv.github.io/twirp/docs/intro.html) that you can communicate either using [Protobuf](https://protobuf.dev/) messages or standard JSON. See [Calling the API](#calling-the-api) for more details on communicating with the defined services.
+
 N.B. Until we reach v1.0.0 this should be seen as a tech preview of work in progress without any stability guarantees, and it is not in ANY way production ready.
 
 ## Versioning
