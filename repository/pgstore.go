@@ -1131,15 +1131,7 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 		Token:   uuid.NewString(),
 	}
 
-	err := s.reader.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
-		Now:  pg.Time(now),
-		UUID: req.UUID,
-	})
-	if err != nil {
-		return LockResult{}, fmt.Errorf("could not delete expired locks: %w", err)
-	}
-
-	err = s.withTX(ctx, "document lock create", func(tx pgx.Tx) error {
+	err := s.withTX(ctx, "document lock create", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		info, err := s.updatePreflight(ctx, q, req.UUID, 0)
@@ -1153,6 +1145,14 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 
 		if info.Lock.Token != "" {
 			return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
+		}
+
+		err = s.reader.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
+			Now:  pg.Time(now),
+			UUID: req.UUID,
+		})
+		if err != nil {
+			return fmt.Errorf("could not delete expired locks: %w", err)
 		}
 
 		err = q.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
