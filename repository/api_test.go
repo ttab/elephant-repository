@@ -1047,6 +1047,12 @@ func TestDocumentLocking(t *testing.T) {
 	})
 	test.Must(t, err, "unlock the document with the correct token")
 
+	_, err = client.Unlock(ctx, &repository.UnlockRequest{
+		Uuid:  docUUID,
+		Token: "4ab0330e-7cd7-4a75-b1f9-5ee8b098e333",
+	})
+	test.Must(t, err, "unlock an unlocked document with an arbitrary token")
+
 	meta, err = client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docUUID,
 	})

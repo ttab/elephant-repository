@@ -1238,6 +1238,10 @@ func (s *PGDocStore) Unlock(ctx context.Context, uuid uuid.UUID, token string) e
 			return nil
 		}
 
+		if info.Lock.Token == "" {
+			return nil
+		}
+
 		deleted, err := s.reader.DeleteDocumentLock(ctx, postgres.DeleteDocumentLockParams{
 			UUID:  uuid,
 			Token: token,
