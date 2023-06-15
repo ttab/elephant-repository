@@ -579,7 +579,7 @@ func (s *PGDocStore) GetDocumentMeta(
 		Lock: Lock{
 			Token:   info.LockToken.String,
 			URI:     info.LockUri.String,
-			Created: info.Created.Time,
+			Created: info.LockCreated.Time,
 			Expires: info.LockExpires.Time,
 			App:     info.LockApp.String,
 			Comment: info.LockComment.String,
