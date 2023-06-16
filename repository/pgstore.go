@@ -1234,12 +1234,12 @@ func (s *PGDocStore) Unlock(ctx context.Context, uuid uuid.UUID, token string) e
 			return err
 		}
 
-		if !info.Exists {
+		if !info.Exists || info.Lock.Token == "" {
 			return nil
 		}
 
-		if info.Lock.Token == "" {
-			return nil
+		if info.Lock.Token != token {
+			return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
 		}
 
 		deleted, err := s.reader.DeleteDocumentLock(ctx, postgres.DeleteDocumentLockParams{
@@ -1251,7 +1251,7 @@ func (s *PGDocStore) Unlock(ctx context.Context, uuid uuid.UUID, token string) e
 		}
 
 		if deleted == 0 {
-			return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
+			return errors.New("data constistency error, failed to delete lock")
 		}
 
 		return nil
