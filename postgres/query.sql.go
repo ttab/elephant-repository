@@ -203,8 +203,8 @@ DELETE FROM document_lock
 WHERE expires < $1
 `
 
-func (q *Queries) DeleteExpiredDocumentLocks(ctx context.Context, now pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, deleteExpiredDocumentLocks, now)
+func (q *Queries) DeleteExpiredDocumentLocks(ctx context.Context, cutoff pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteExpiredDocumentLocks, cutoff)
 	return err
 }
 

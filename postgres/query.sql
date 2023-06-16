@@ -283,7 +283,7 @@ WHERE expires < @now
 
 -- name: DeleteExpiredDocumentLocks :exec
 DELETE FROM document_lock
-WHERE expires < @now;
+WHERE expires < @cutoff;
 
 -- name: DeleteDocumentLock :execrows
 DELETE FROM document_lock
