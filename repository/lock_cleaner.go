@@ -45,5 +45,6 @@ func (s *PGDocStore) removeExpiredLocks(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("could not remove expired locks: %w", err)
 	}
+
 	return nil
 }
