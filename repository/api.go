@@ -413,16 +413,19 @@ func (a *DocumentsService) Delete(
 	}
 
 	err = a.store.Delete(ctx, DeleteRequest{
-		UUID:    docUUID,
-		Updated: time.Now(),
-		Updater: auth.Claims.Subject,
-		Meta:    req.Meta,
-		IfMatch: req.IfMatch,
+		UUID:      docUUID,
+		Updated:   time.Now(),
+		Updater:   auth.Claims.Subject,
+		Meta:      req.Meta,
+		IfMatch:   req.IfMatch,
+		LockToken: req.LockToken,
 	})
 
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
 		return nil, twirp.FailedPrecondition.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
+		return nil, twirp.FailedPrecondition.Error("the document is locked by someone else")
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
 		// Treating a delete call as a success if the delete already is
 		// in progress.
@@ -666,6 +669,16 @@ func (a *DocumentsService) GetMeta(
 		})
 	}
 
+	if meta.Lock.Expires != (time.Time{}) {
+		resp.Lock = &repository.Lock{
+			Uri:     meta.Lock.URI,
+			Created: meta.Lock.Created.Format(time.RFC3339),
+			Expires: meta.Lock.Expires.Format(time.RFC3339),
+			App:     meta.Lock.App,
+			Comment: meta.Lock.Comment,
+		}
+	}
+
 	return &repository.GetMetaResponse{
 		Meta: &resp,
 	}, nil
@@ -827,12 +840,13 @@ func (a *DocumentsService) Update(
 	}
 
 	up := UpdateRequest{
-		UUID:    docUUID,
-		Updated: updated,
-		Updater: updater,
-		Meta:    req.Meta,
-		Status:  RPCToStatusUpdate(req.Status),
-		IfMatch: req.IfMatch,
+		UUID:      docUUID,
+		Updated:   updated,
+		Updater:   updater,
+		Meta:      req.Meta,
+		Status:    RPCToStatusUpdate(req.Status),
+		IfMatch:   req.IfMatch,
+		LockToken: req.LockToken,
 	}
 
 	if req.Document != nil {
@@ -923,6 +937,147 @@ func (a *DocumentsService) Validate(
 	}
 
 	return &res, nil
+}
+
+func (a *DocumentsService) Lock(
+	ctx context.Context, req *repository.LockRequest,
+) (*repository.LockResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
+	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Ttl == 0 {
+		return nil, twirp.RequiredArgumentError("ttl")
+	}
+
+	lock, err := a.store.Lock(ctx, LockRequest{
+		UUID:    docUUID,
+		TTL:     req.Ttl,
+		URI:     auth.Claims.Subject,
+		App:     req.App,
+		Comment: req.Comment,
+	})
+
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeDeleteLock), IsDocStoreErrorCode(err, ErrCodeNotFound):
+		return nil, twirp.FailedPrecondition.Error("could not find the document")
+	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
+		return nil, twirp.FailedPrecondition.Error("the document is locked by someone else")
+	case err != nil:
+		return nil, fmt.Errorf("could not obtain lock: %w", err)
+	}
+
+	return &repository.LockResponse{
+		Token: lock.Token,
+	}, nil
+}
+
+// ExtendLock extends the expiration of an existing lock.
+func (a *DocumentsService) ExtendLock(
+	ctx context.Context, req *repository.ExtendLockRequest,
+) (*repository.LockResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
+	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Ttl == 0 {
+		return nil, twirp.RequiredArgumentError("ttl")
+	}
+
+	if req.Token == "" {
+		return nil, twirp.RequiredArgumentError("token")
+	}
+
+	lock, err := a.store.UpdateLock(ctx, UpdateLockRequest{
+		UUID:  docUUID,
+		TTL:   req.Ttl,
+		Token: req.Token,
+	})
+
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeDeleteLock), IsDocStoreErrorCode(err, ErrCodeNotFound):
+		return nil, twirp.FailedPrecondition.Error("could not find the document")
+	case IsDocStoreErrorCode(err, ErrCodeNoSuchLock):
+		return nil, twirp.FailedPrecondition.Error("the document is not locked by anyone")
+	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
+		return nil, twirp.FailedPrecondition.Error("the doument is locked by someone else")
+	case err != nil:
+		return nil, fmt.Errorf("could not obtain lock: %w", err)
+	}
+
+	return &repository.LockResponse{
+		Token: lock.Token,
+	}, nil
+}
+
+func (a *DocumentsService) Unlock(
+	ctx context.Context, req *repository.UnlockRequest,
+) (*repository.UnlockResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
+	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Token == "" {
+		return nil, twirp.RequiredArgumentError("token")
+	}
+
+	err = a.store.Unlock(ctx, docUUID, req.Token)
+
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
+		return &repository.UnlockResponse{}, nil
+	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
+		return nil, twirp.FailedPrecondition.Errorf("the document is locked by someone else")
+	case err != nil:
+		return nil, fmt.Errorf("could not unlock document: %w", err)
+	}
+
+	return &repository.UnlockResponse{}, nil
 }
 
 func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {

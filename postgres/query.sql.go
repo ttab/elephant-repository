@@ -163,6 +163,51 @@ func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) 
 	return err
 }
 
+const deleteDocumentLock = `-- name: DeleteDocumentLock :execrows
+DELETE FROM document_lock
+WHERE uuid = $1
+  AND token = $2
+`
+
+type DeleteDocumentLockParams struct {
+	UUID  uuid.UUID
+	Token string
+}
+
+func (q *Queries) DeleteDocumentLock(ctx context.Context, arg DeleteDocumentLockParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteDocumentLock, arg.UUID, arg.Token)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteExpiredDocumentLock = `-- name: DeleteExpiredDocumentLock :exec
+DELETE FROM document_lock
+WHERE expires < $1
+  AND uuid = $2
+`
+
+type DeleteExpiredDocumentLockParams struct {
+	Now  pgtype.Timestamptz
+	UUID uuid.UUID
+}
+
+func (q *Queries) DeleteExpiredDocumentLock(ctx context.Context, arg DeleteExpiredDocumentLockParams) error {
+	_, err := q.db.Exec(ctx, deleteExpiredDocumentLock, arg.Now, arg.UUID)
+	return err
+}
+
+const deleteExpiredDocumentLocks = `-- name: DeleteExpiredDocumentLocks :exec
+DELETE FROM document_lock
+WHERE expires < $1
+`
+
+func (q *Queries) DeleteExpiredDocumentLocks(ctx context.Context, now pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteExpiredDocumentLocks, now)
+	return err
+}
+
 const deleteMetricKind = `-- name: DeleteMetricKind :exec
 DELETE FROM metric_kind
 WHERE name = $1
@@ -337,26 +382,50 @@ func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDel
 }
 
 const getDocumentForUpdate = `-- name: GetDocumentForUpdate :one
-SELECT uri, type, current_version, deleting FROM document
-WHERE uuid = $1
-FOR UPDATE
+SELECT d.uri, d.type, d.current_version, d.deleting, l.uuid as lock_uuid, 
+        l.uri as lock_uri, l.created as lock_created,
+        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
+        l.token as lock_token
+FROM document as d
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > $2
+WHERE d.uuid = $1
+FOR UPDATE OF d
 `
+
+type GetDocumentForUpdateParams struct {
+	UUID uuid.UUID
+	Now  pgtype.Timestamptz
+}
 
 type GetDocumentForUpdateRow struct {
 	URI            string
 	Type           string
 	CurrentVersion int64
 	Deleting       bool
+	LockUuid       pgtype.UUID
+	LockUri        pgtype.Text
+	LockCreated    pgtype.Timestamptz
+	LockExpires    pgtype.Timestamptz
+	LockApp        pgtype.Text
+	LockComment    pgtype.Text
+	LockToken      pgtype.Text
 }
 
-func (q *Queries) GetDocumentForUpdate(ctx context.Context, argUuid uuid.UUID) (GetDocumentForUpdateRow, error) {
-	row := q.db.QueryRow(ctx, getDocumentForUpdate, argUuid)
+func (q *Queries) GetDocumentForUpdate(ctx context.Context, arg GetDocumentForUpdateParams) (GetDocumentForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentForUpdate, arg.UUID, arg.Now)
 	var i GetDocumentForUpdateRow
 	err := row.Scan(
 		&i.URI,
 		&i.Type,
 		&i.CurrentVersion,
 		&i.Deleting,
+		&i.LockUuid,
+		&i.LockUri,
+		&i.LockCreated,
+		&i.LockExpires,
+		&i.LockApp,
+		&i.LockComment,
+		&i.LockToken,
 	)
 	return i, err
 }
@@ -394,11 +463,19 @@ func (q *Queries) GetDocumentHeads(ctx context.Context, argUuid uuid.UUID) ([]Ge
 
 const getDocumentInfo = `-- name: GetDocumentInfo :one
 SELECT
-        uuid, uri, created, creator_uri, updated, updater_uri, current_version,
-        deleting
-FROM document
-WHERE uuid = $1
+        d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
+        deleting, l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
+        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
+        l.token as lock_token
+FROM document as d 
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > $1
+WHERE d.uuid = $2
 `
+
+type GetDocumentInfoParams struct {
+	Now  pgtype.Timestamptz
+	UUID uuid.UUID
+}
 
 type GetDocumentInfoRow struct {
 	UUID           uuid.UUID
@@ -409,10 +486,17 @@ type GetDocumentInfoRow struct {
 	UpdaterUri     string
 	CurrentVersion int64
 	Deleting       bool
+	LockUuid       pgtype.UUID
+	LockUri        pgtype.Text
+	LockCreated    pgtype.Timestamptz
+	LockExpires    pgtype.Timestamptz
+	LockApp        pgtype.Text
+	LockComment    pgtype.Text
+	LockToken      pgtype.Text
 }
 
-func (q *Queries) GetDocumentInfo(ctx context.Context, argUuid uuid.UUID) (GetDocumentInfoRow, error) {
-	row := q.db.QueryRow(ctx, getDocumentInfo, argUuid)
+func (q *Queries) GetDocumentInfo(ctx context.Context, arg GetDocumentInfoParams) (GetDocumentInfoRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentInfo, arg.Now, arg.UUID)
 	var i GetDocumentInfoRow
 	err := row.Scan(
 		&i.UUID,
@@ -423,6 +507,13 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, argUuid uuid.UUID) (GetDo
 		&i.UpdaterUri,
 		&i.CurrentVersion,
 		&i.Deleting,
+		&i.LockUuid,
+		&i.LockUri,
+		&i.LockCreated,
+		&i.LockExpires,
+		&i.LockApp,
+		&i.LockComment,
+		&i.LockToken,
 	)
 	return i, err
 }
@@ -1183,6 +1274,37 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 	return id, err
 }
 
+const insertDocumentLock = `-- name: InsertDocumentLock :exec
+INSERT INTO document_lock(
+  uuid, token, created, expires, uri, app, comment
+) VALUES(
+  $1, $2, $3, $4, $5, $6, $7
+)
+`
+
+type InsertDocumentLockParams struct {
+	UUID    uuid.UUID
+	Token   string
+	Created pgtype.Timestamptz
+	Expires pgtype.Timestamptz
+	URI     pgtype.Text
+	App     pgtype.Text
+	Comment pgtype.Text
+}
+
+func (q *Queries) InsertDocumentLock(ctx context.Context, arg InsertDocumentLockParams) error {
+	_, err := q.db.Exec(ctx, insertDocumentLock,
+		arg.UUID,
+		arg.Token,
+		arg.Created,
+		arg.Expires,
+		arg.URI,
+		arg.App,
+		arg.Comment,
+	)
+	return err
+}
+
 const insertIntoEventLog = `-- name: InsertIntoEventLog :one
 INSERT INTO eventlog(
        event, uuid, type, timestamp, updater, version, status, status_id, acl
@@ -1465,6 +1587,22 @@ func (q *Queries) StealJobLock(ctx context.Context, arg StealJobLockParams) (int
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const updateDocumentLock = `-- name: UpdateDocumentLock :exec
+UPDATE document_lock
+SET expires = $1
+WHERE uuid = $2
+`
+
+type UpdateDocumentLockParams struct {
+	Expires pgtype.Timestamptz
+	UUID    uuid.UUID
+}
+
+func (q *Queries) UpdateDocumentLock(ctx context.Context, arg UpdateDocumentLockParams) error {
+	_, err := q.db.Exec(ctx, updateDocumentLock, arg.Expires, arg.UUID)
+	return err
 }
 
 const updateEventsinkPosition = `-- name: UpdateEventsinkPosition :exec

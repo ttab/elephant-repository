@@ -275,6 +275,11 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 		return nil
 	}
 
+	lock := checkLock(info.Lock, req.LockToken)
+	if lock == lockCheckDenied {
+		return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
+	}
+
 	timeout := time.After(s.opts.DeleteTimeout)
 
 	archived := make(chan ArchivedEvent)
@@ -551,7 +556,10 @@ func (s *PGDocStore) GetStatusHistory(
 func (s *PGDocStore) GetDocumentMeta(
 	ctx context.Context, uuid uuid.UUID,
 ) (*DocumentMeta, error) {
-	info, err := s.reader.GetDocumentInfo(ctx, uuid)
+	info, err := s.reader.GetDocumentInfo(ctx, postgres.GetDocumentInfoParams{
+		UUID: uuid,
+		Now:  pg.Time(time.Now()),
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, DocStoreErrorf(ErrCodeNotFound, "not found")
 	} else if err != nil {
@@ -568,6 +576,14 @@ func (s *PGDocStore) GetDocumentMeta(
 		CurrentVersion: info.CurrentVersion,
 		Statuses:       make(map[string]Status),
 		Deleting:       info.Deleting,
+		Lock: Lock{
+			Token:   info.LockToken.String,
+			URI:     info.LockUri.String,
+			Created: info.LockCreated.Time,
+			Expires: info.LockExpires.Time,
+			App:     info.LockApp.String,
+			Comment: info.LockComment.String,
+		},
 	}
 
 	heads, err := s.getFullDocumentHeads(ctx, s.reader, uuid)
@@ -664,6 +680,26 @@ func (s *PGDocStore) CheckPermission(
 	return PermissionCheckAllowed, nil
 }
 
+func checkLock(
+	lock Lock,
+	token string,
+) checkLockResult {
+	// We only need to validate the token; the expiration has already been
+	// handled in the SQL layer.
+	if token == lock.Token {
+		return lockCheckAllowed
+	}
+
+	return lockCheckDenied
+}
+
+type checkLockResult int
+
+const (
+	lockCheckAllowed = iota
+	lockCheckDenied
+)
+
 // Update implements DocStore.
 func (s *PGDocStore) Update(
 	ctx context.Context, workflows WorkflowProvider, update UpdateRequest,
@@ -726,6 +762,11 @@ func (s *PGDocStore) Update(
 	info, err := s.updatePreflight(ctx, q, update.UUID, update.IfMatch)
 	if err != nil {
 		return nil, err
+	}
+
+	lock := checkLock(info.Lock, update.LockToken)
+	if lock == lockCheckDenied {
+		return nil, DocStoreErrorf(ErrCodeDocumentLock, "document locked")
 	}
 
 	docType := info.Info.Type
@@ -1078,6 +1119,148 @@ func (s *PGDocStore) GetSchemaVersions(
 	}
 
 	return res, nil
+}
+
+func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, error) {
+	now := time.Now()
+	expires := now.Add(time.Millisecond * time.Duration(req.TTL))
+
+	res := LockResult{
+		Created: now,
+		Expires: expires,
+		Token:   uuid.NewString(),
+	}
+
+	err := s.withTX(ctx, "document lock create", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		info, err := s.updatePreflight(ctx, q, req.UUID, 0)
+		if err != nil {
+			return err
+		}
+
+		if !info.Exists {
+			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
+		}
+
+		if info.Lock.Token != "" {
+			return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
+		}
+
+		err = s.reader.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
+			Now:  pg.Time(now),
+			UUID: req.UUID,
+		})
+		if err != nil {
+			return fmt.Errorf("could not delete expired locks: %w", err)
+		}
+
+		err = q.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
+			UUID:    req.UUID,
+			Token:   res.Token,
+			Created: pg.Time(now),
+			Expires: pg.Time(expires),
+			URI:     pg.TextOrNull(req.URI),
+			App:     pg.TextOrNull(req.App),
+			Comment: pg.TextOrNull(req.Comment),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to insert document lock: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return LockResult{}, err
+	}
+
+	return res, nil
+}
+
+func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (LockResult, error) {
+	now := time.Now()
+	expires := now.Add(time.Millisecond * time.Duration(req.TTL))
+
+	res := LockResult{
+		Created: now,
+		Expires: expires,
+		Token:   req.Token,
+	}
+
+	err := s.withTX(ctx, "document lock update", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		info, err := s.updatePreflight(ctx, q, req.UUID, 0)
+		if err != nil {
+			return err
+		}
+
+		if !info.Exists {
+			return DocStoreErrorf(ErrCodeNotFound, "not found")
+		}
+
+		if info.Lock.Token == "" {
+			return DocStoreErrorf(ErrCodeNoSuchLock, "not locked")
+		}
+
+		lock := checkLock(info.Lock, req.Token)
+		if lock == lockCheckDenied {
+			return DocStoreErrorf(ErrCodeDocumentLock, "invalid lock token")
+		}
+
+		err = q.UpdateDocumentLock(ctx, postgres.UpdateDocumentLockParams{
+			UUID:    req.UUID,
+			Expires: pg.Time(expires),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to extend lock: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return LockResult{}, err
+	}
+
+	return res, nil
+}
+
+func (s *PGDocStore) Unlock(ctx context.Context, uuid uuid.UUID, token string) error {
+	err := s.withTX(ctx, "document lock delete", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		info, err := s.updatePreflight(ctx, q, uuid, 0)
+		if err != nil {
+			return err
+		}
+
+		if !info.Exists || info.Lock.Token == "" {
+			return nil
+		}
+
+		if info.Lock.Token != token {
+			return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
+		}
+
+		deleted, err := s.reader.DeleteDocumentLock(ctx, postgres.DeleteDocumentLockParams{
+			UUID:  uuid,
+			Token: token,
+		})
+		if err != nil {
+			return fmt.Errorf("could not delete lock: %w", err)
+		}
+
+		if deleted == 0 {
+			return errors.New("data constistency error, failed to delete lock")
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // RegisterSchema implements DocStore.
@@ -1555,13 +1738,17 @@ func (s *PGDocStore) updateACL(
 type updatePrefligthInfo struct {
 	Info   postgres.GetDocumentForUpdateRow
 	Exists bool
+	Lock   Lock
 }
 
 func (s *PGDocStore) updatePreflight(
 	ctx context.Context, q *postgres.Queries,
 	uuid uuid.UUID, ifMatch int64,
 ) (*updatePrefligthInfo, error) {
-	info, err := q.GetDocumentForUpdate(ctx, uuid)
+	info, err := q.GetDocumentForUpdate(ctx, postgres.GetDocumentForUpdateParams{
+		UUID: uuid,
+		Now:  pg.Time(time.Now()),
+	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf(
 			"failed to get document information: %w", err)
@@ -1594,6 +1781,14 @@ func (s *PGDocStore) updatePreflight(
 	return &updatePrefligthInfo{
 		Info:   info,
 		Exists: exists,
+		Lock: Lock{
+			URI:     info.LockUri.String,
+			Token:   info.LockToken.String,
+			Created: info.LockCreated.Time,
+			Expires: info.LockExpires.Time,
+			App:     info.LockApp.String,
+			Comment: info.LockComment.String,
+		},
 	}, nil
 }
 

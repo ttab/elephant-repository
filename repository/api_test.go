@@ -917,3 +917,171 @@ func TestIntegrationACL(t *testing.T) {
 		}, adminP,
 		"expected the permissions response to reflect that admin gains access through scopes")
 }
+
+func TestDocumentLocking(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+	ctx := test.Context(t)
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunArchiver: true,
+	})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete"))
+
+	const (
+		docUUID = "88f13bde-1a84-4151-8f2d-aaee3ae57c05"
+		docURI  = "article://test/123"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	_, err := client.Lock(ctx, &repository.LockRequest{
+		Uuid: docUUID,
+		Ttl:  500,
+	})
+	test.MustNot(t, err, "lock non-existing article")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.Must(t, err, "create test article")
+
+	lock, err := client.Lock(ctx, &repository.LockRequest{
+		Uuid:    docUUID,
+		Ttl:     500,
+		App:     "app",
+		Comment: "my comment",
+	})
+	test.Must(t, err, "lock the document")
+
+	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "fetch document meta")
+	test.NotNil(t, meta.Meta.Lock, "document should have a lock")
+	test.Equal(t, meta.Meta.Lock.Uri, "user://test/testdocumentlocking", "expected uri set")
+	test.Equal(t, meta.Meta.Lock.App, "app", "expected app set")
+	test.Equal(t, meta.Meta.Lock.Comment, "my comment", "expected comment set")
+
+	_, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid: docUUID,
+		Ttl:  500,
+	})
+	test.MustNot(t, err, "re-lock the document")
+
+	_, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid: docUUID,
+		Ttl:  500,
+	})
+	test.MustNot(t, err, "steal an existing lock")
+
+	_, err = client.ExtendLock(ctx, &repository.ExtendLockRequest{
+		Uuid:  docUUID,
+		Ttl:   500,
+		Token: "4ab0330e-7cd7-4a75-b1f9-5ee8b098e333",
+	})
+	test.MustNot(t, err, "extend a lock with the wrong token")
+
+	_, err = client.ExtendLock(ctx, &repository.ExtendLockRequest{
+		Uuid:  docUUID,
+		Ttl:   1,
+		Token: lock.Token,
+	})
+	test.Must(t, err, "extend an existing lock")
+
+	time.Sleep(time.Millisecond * 100)
+
+	_, err = client.ExtendLock(ctx, &repository.ExtendLockRequest{
+		Uuid:  docUUID,
+		Ttl:   500,
+		Token: lock.Token,
+	})
+	test.MustNot(t, err, "re-lock an expired lock")
+
+	lock, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid: docUUID,
+		Ttl:  500,
+	})
+	test.Must(t, err, "create a new lock")
+
+	meta, err = client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "fetch document meta")
+	test.NotNil(t, meta.Meta.Lock, "document should have a lock")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.MustNot(t, err, "update a locked document")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:      docUUID,
+		Document:  doc,
+		LockToken: lock.Token,
+	})
+	test.Must(t, err, "update a locked document with the correct token")
+
+	_, err = client.Unlock(ctx, &repository.UnlockRequest{
+		Uuid: docUUID,
+	})
+	test.MustNot(t, err, "unlock a document without a token")
+
+	_, err = client.Unlock(ctx, &repository.UnlockRequest{
+		Uuid:  docUUID,
+		Token: "4ab0330e-7cd7-4a75-b1f9-5ee8b098e333",
+	})
+	test.MustNot(t, err, "unlock a document with the wrong token")
+
+	_, err = client.Unlock(ctx, &repository.UnlockRequest{
+		Uuid:  docUUID,
+		Token: lock.Token,
+	})
+	test.Must(t, err, "unlock the document with the correct token")
+
+	_, err = client.Unlock(ctx, &repository.UnlockRequest{
+		Uuid:  docUUID,
+		Token: "4ab0330e-7cd7-4a75-b1f9-5ee8b098e333",
+	})
+	test.Must(t, err, "unlock an unlocked document with an arbitrary token")
+
+	meta, err = client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "fetch document meta")
+
+	if meta.Meta.Lock != nil {
+		t.Fatalf("expected lock deleted, got: %v", meta.Meta.Lock)
+	}
+
+	lock, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid: docUUID,
+		Ttl:  500,
+	})
+	test.Must(t, err, "create a new lock")
+
+	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
+		Uuid: docUUID,
+	})
+	test.MustNot(t, err, "delete a locked document")
+
+	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
+		Uuid:      docUUID,
+		LockToken: lock.Token,
+	})
+	test.Must(t, err, "delete a locked document with the correct token")
+
+	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
+		Uuid:      "59b9d054-c0ec-4a3e-ab4c-67aa5a9b5b6e",
+		LockToken: lock.Token,
+	})
+	test.Must(t, err, "unlock non-existing document")
+}

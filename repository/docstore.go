@@ -46,6 +46,15 @@ type DocStore interface {
 	GetDocumentACL(
 		ctx context.Context, uuid uuid.UUID,
 	) ([]ACLEntry, error)
+	Lock(
+		ctx context.Context, req LockRequest,
+	) (LockResult, error)
+	UpdateLock(
+		ctx context.Context, req UpdateLockRequest,
+	) (LockResult, error)
+	Unlock(
+		ctx context.Context, uuid uuid.UUID, token string,
+	) error
 }
 
 type SchemaStore interface {
@@ -166,14 +175,16 @@ type UpdateRequest struct {
 	Status     []StatusUpdate
 	Document   *newsdoc.Document
 	IfMatch    int64
+	LockToken  string
 }
 
 type DeleteRequest struct {
-	UUID    uuid.UUID
-	Updated time.Time
-	Updater string
-	Meta    newsdoc.DataMap
-	IfMatch int64
+	UUID      uuid.UUID
+	Updated   time.Time
+	Updater   string
+	Meta      newsdoc.DataMap
+	IfMatch   int64
+	LockToken string
 }
 
 type DocumentMeta struct {
@@ -183,11 +194,41 @@ type DocumentMeta struct {
 	ACL            []ACLEntry
 	Statuses       map[string]Status
 	Deleting       bool
+	Lock           Lock
 }
 
 type ACLEntry struct {
 	URI         string   `json:"uri"`
 	Permissions []string `json:"permissions"`
+}
+
+type Lock struct {
+	Token   string
+	URI     string
+	Created time.Time
+	Expires time.Time
+	App     string
+	Comment string
+}
+
+type LockRequest struct {
+	UUID    uuid.UUID
+	URI     string
+	TTL     int32
+	App     string
+	Comment string
+}
+
+type LockResult struct {
+	Token   string
+	Created time.Time
+	Expires time.Time
+}
+
+type UpdateLockRequest struct {
+	UUID  uuid.UUID
+	TTL   int32
+	Token string
 }
 
 type DocumentUpdate struct {
@@ -238,12 +279,14 @@ type DocStoreErrorCode string
 const (
 	NoErrCode                 DocStoreErrorCode = ""
 	ErrCodeNotFound           DocStoreErrorCode = "not-found"
+	ErrCodeNoSuchLock         DocStoreErrorCode = "no-such-lock"
 	ErrCodeOptimisticLock     DocStoreErrorCode = "optimistic-lock"
 	ErrCodeDeleteLock         DocStoreErrorCode = "delete-lock"
 	ErrCodeBadRequest         DocStoreErrorCode = "bad-request"
 	ErrCodeExists             DocStoreErrorCode = "exists"
 	ErrCodePermissionDenied   DocStoreErrorCode = "permission-denied"
 	ErrCodeFailedPrecondition DocStoreErrorCode = "failed-precondition"
+	ErrCodeDocumentLock       DocStoreErrorCode = "document-lock"
 )
 
 type DocStoreError struct {

@@ -1,7 +1,12 @@
 -- name: GetDocumentForUpdate :one
-SELECT uri, type, current_version, deleting FROM document
-WHERE uuid = $1
-FOR UPDATE;
+SELECT d.uri, d.type, d.current_version, d.deleting, l.uuid as lock_uuid, 
+        l.uri as lock_uri, l.created as lock_created,
+        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
+        l.token as lock_token
+FROM document as d
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
+WHERE d.uuid = $1
+FOR UPDATE OF d;
 
 -- name: GetDocumentHeads :many
 SELECT name, current_id
@@ -56,10 +61,13 @@ WHERE uuid = @UUID AND version = @version;
 
 -- name: GetDocumentInfo :one
 SELECT
-        uuid, uri, created, creator_uri, updated, updater_uri, current_version,
-        deleting
-FROM document
-WHERE uuid = $1;
+        d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
+        deleting, l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
+        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
+        l.token as lock_token
+FROM document as d 
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
+WHERE d.uuid = @uuid;
 
 -- name: GetDocumentData :one
 SELECT v.document_data
@@ -255,6 +263,32 @@ INSERT INTO status_rule(
 
 -- name: DeleteStatusRule :exec
 DELETE FROM status_rule WHERE name = $1;
+
+-- name: InsertDocumentLock :exec
+INSERT INTO document_lock(
+  uuid, token, created, expires, uri, app, comment
+) VALUES(
+  @uuid, @token, @created, @expires, @uri, @app, @comment
+);
+
+-- name: UpdateDocumentLock :exec
+UPDATE document_lock
+SET expires = @expires
+WHERE uuid = @uuid;
+
+-- name: DeleteExpiredDocumentLock :exec
+DELETE FROM document_lock
+WHERE expires < @now
+  AND uuid = @uuid;
+
+-- name: DeleteExpiredDocumentLocks :exec
+DELETE FROM document_lock
+WHERE expires < @now;
+
+-- name: DeleteDocumentLock :execrows
+DELETE FROM document_lock
+WHERE uuid = @uuid
+  AND token = @token;  
 
 -- name: UpdateReport :exec
 INSERT INTO report(

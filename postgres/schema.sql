@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 15.2 (Debian 15.2-1.pgdg110+1)
--- Dumped by pg_dump version 15.2 (Debian 15.2-1.pgdg110+1)
+-- Dumped from database version 15.3 (Debian 15.3-1.pgdg110+1)
+-- Dumped by pg_dump version 15.3 (Debian 15.3-1.pgdg110+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -256,6 +256,23 @@ CREATE TABLE public.document_link (
 
 
 ALTER TABLE public.document_link OWNER TO repository;
+
+--
+-- Name: document_lock; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.document_lock (
+    uuid uuid NOT NULL,
+    token text NOT NULL,
+    created timestamp with time zone NOT NULL,
+    expires timestamp with time zone NOT NULL,
+    uri text,
+    app text,
+    comment text
+);
+
+
+ALTER TABLE public.document_lock OWNER TO repository;
 
 --
 -- Name: document_schema; Type: TABLE; Schema: public; Owner: repository
@@ -519,6 +536,14 @@ ALTER TABLE ONLY public.document_link
 
 
 --
+-- Name: document_lock document_lock_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.document_lock
+    ADD CONSTRAINT document_lock_pkey PRIMARY KEY (uuid);
+
+
+--
 -- Name: document document_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -714,6 +739,14 @@ ALTER TABLE ONLY public.document_link
 
 
 --
+-- Name: document_lock document_lock_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.document_lock
+    ADD CONSTRAINT document_lock_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
 -- Name: document_status document_status_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -788,6 +821,69 @@ ALTER PUBLICATION eventlog ADD TABLE ONLY public.document;
 --
 
 ALTER PUBLICATION eventlog ADD TABLE ONLY public.status_heads;
+
+
+--
+-- Name: TABLE acl; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.acl TO reporting;
+
+
+--
+-- Name: TABLE acl_audit; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.acl_audit TO reporting;
+
+
+--
+-- Name: TABLE delete_record; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.delete_record TO reporting;
+
+
+--
+-- Name: TABLE document; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document TO reporting;
+
+
+--
+-- Name: TABLE document_status; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document_status TO reporting;
+
+
+--
+-- Name: TABLE document_version; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document_version TO reporting;
+
+
+--
+-- Name: TABLE status; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status TO reporting;
+
+
+--
+-- Name: TABLE status_heads; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status_heads TO reporting;
+
+
+--
+-- Name: TABLE status_rule; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status_rule TO reporting;
 
 
 --

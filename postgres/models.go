@@ -61,6 +61,16 @@ type DocumentLink struct {
 	Type         pgtype.Text
 }
 
+type DocumentLock struct {
+	UUID    uuid.UUID
+	Token   string
+	Created pgtype.Timestamptz
+	Expires pgtype.Timestamptz
+	URI     pgtype.Text
+	App     pgtype.Text
+	Comment pgtype.Text
+}
+
 type DocumentSchema struct {
 	Name    string
 	Version string
