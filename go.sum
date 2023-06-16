@@ -335,6 +335,8 @@ github.com/ttab/elephant-api v0.5.1 h1:hW199O24TWGIzxWlYx+VsZmB5e/N3G5/7wBhjv79L
 github.com/ttab/elephant-api v0.5.1/go.mod h1:4ptLFZtJY87q/uCJCrjezr+gLp8IavTiUZvbuyhwuL0=
 github.com/ttab/elephant-api v0.5.2-0.20230613114849-f448a5ab79b3 h1:xjKZzY7KQlJMRntafcPgFzq63Znt1n9oeh0ky1fPrqQ=
 github.com/ttab/elephant-api v0.5.2-0.20230613114849-f448a5ab79b3/go.mod h1:4ptLFZtJY87q/uCJCrjezr+gLp8IavTiUZvbuyhwuL0=
+github.com/ttab/elephant-api v0.6.0 h1:r5YqKCZWQ1mNoyLzakNlZxunYP5A/WysMJYJVC2lPwg=
+github.com/ttab/elephant-api v0.6.0/go.mod h1:4ptLFZtJY87q/uCJCrjezr+gLp8IavTiUZvbuyhwuL0=
 github.com/ttab/elephantine v0.6.0 h1:nq/WqBJm25D5PZbRwkqw/6zEQlPW1igNAVIBAhdSGBM=
 github.com/ttab/elephantine v0.6.0/go.mod h1:zmA+jo1Lpd8OcdLYL4jkWNWcA+ZxoXVVJ0pCLdmRPqk=
 github.com/ttab/newsdoc v0.4.1 h1:iMQSLkAVolwXVJepGRJ0zQ9tE+UkBuH3J1TxOspiWqY=

@@ -23,7 +23,7 @@ require (
 	github.com/ory/dockertest/v3 v3.10.0
 	github.com/prometheus/client_golang v1.15.1
 	github.com/rakutentech/jwk-go v1.1.2
-	github.com/ttab/elephant-api v0.5.2-0.20230613114849-f448a5ab79b3
+	github.com/ttab/elephant-api v0.6.0
 	github.com/ttab/elephantine v0.6.0
 	github.com/ttab/newsdoc v0.4.1
 	github.com/ttab/revisor v0.3.2
