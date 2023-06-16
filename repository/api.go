@@ -974,9 +974,7 @@ func (a *DocumentsService) Lock(
 	})
 
 	switch {
-	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
-		fallthrough
-	case IsDocStoreErrorCode(err, ErrCodeNotFound):
+	case IsDocStoreErrorCode(err, ErrCodeDeleteLock), IsDocStoreErrorCode(err, ErrCodeNotFound):
 		return nil, twirp.FailedPrecondition.Error("could not find the document")
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
 		return nil, twirp.FailedPrecondition.Error("the document is locked by someone else")
@@ -1027,9 +1025,7 @@ func (a *DocumentsService) ExtendLock(
 	})
 
 	switch {
-	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
-		fallthrough
-	case IsDocStoreErrorCode(err, ErrCodeNotFound):
+	case IsDocStoreErrorCode(err, ErrCodeDeleteLock), IsDocStoreErrorCode(err, ErrCodeNotFound):
 		return nil, twirp.FailedPrecondition.Error("could not find the document")
 	case IsDocStoreErrorCode(err, ErrCodeNoSuchLock):
 		return nil, twirp.FailedPrecondition.Error("the document is not locked by anyone")
