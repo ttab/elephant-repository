@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/ttab/elephantine"
@@ -38,7 +39,12 @@ func (p *PGDocStore) RunCleaner(ctx context.Context, period time.Duration) {
 func (p *PGDocStore) removeExpiredLocks(ctx context.Context) error {
 	p.logger.Debug("removing expired document locks")
 
-	return p.reader.DeleteExpiredDocumentLocks(ctx,
+	err := p.reader.DeleteExpiredDocumentLocks(ctx,
 		pg.Time(time.Now().Add(5*time.Minute)),
 	)
+	if err != nil {
+		return fmt.Errorf("could not remove expired locks: %w", err)
+	}
+
+	return nil
 }
