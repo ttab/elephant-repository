@@ -136,7 +136,12 @@ func (r *EventForwarder) run(ctx context.Context) {
 
 		jobLock, err := pg.NewJobLock(
 			r.db, r.logger, "forwarder",
-			10*time.Second, 1*time.Minute, 20*time.Second, 5*time.Second)
+			pg.JobLockOptions{
+				PingInterval:  10 * time.Second,
+				StaleAfter:    1 * time.Minute,
+				CheckInterval: 20 * time.Second,
+				Timeout:       5 * time.Second,
+			})
 		if err != nil {
 			r.logger.ErrorCtx(ctx, "failed to create job lock",
 				elephantine.LogKeyError, err)
