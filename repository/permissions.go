@@ -28,14 +28,12 @@ func (p Permission) Name() string {
 }
 
 const (
-	// TODO: ScopeSuperuser is a bad scope, introducing doc_admin and
-	// doc_read_all to replace usage of superuser.
-	ScopeSuperuser       = "superuser"
 	ScopeDocumentAdmin   = "doc_admin"
 	ScopeDocumentReadAll = "doc_read_all"
 	ScopeDocumentRead    = "doc_read"
 	ScopeDocumentDelete  = "doc_delete"
 	ScopeDocumentWrite   = "doc_write"
+	ScopeDocumentImport  = "doc_import"
 	ScopeEventlogRead    = "eventlog_read"
 	ScopeMetricsAdmin    = "metrics_admin"
 	ScopeMetricsWrite    = "metrics_write"

@@ -55,8 +55,8 @@ func (a *DocumentsService) GetStatusHistory(
 	)
 
 	auth, err := RequireAnyScope(ctx,
-		ScopeSuperuser, ScopeDocumentAdmin,
-		ScopeDocumentReadAll, ScopeDocumentRead)
+		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -110,9 +110,9 @@ func (a *DocumentsService) GetPermissions(
 	ctx context.Context, req *repository.GetPermissionsRequest,
 ) (*repository.GetPermissionsResponse, error) {
 	auth, err := RequireAnyScope(ctx,
-		ScopeSuperuser, ScopeDocumentAdmin,
-		ScopeDocumentReadAll, ScopeDocumentRead,
+		ScopeDocumentRead, ScopeDocumentReadAll,
 		ScopeDocumentWrite, ScopeDocumentDelete,
+		ScopeDocumentAdmin,
 	)
 	if err != nil {
 		return nil, err
@@ -139,8 +139,8 @@ func (a *DocumentsService) GetPermissions(
 	}
 
 	elevated := map[Permission][]string{
-		ReadPermission:  {ScopeSuperuser, ScopeDocumentReadAll, ScopeDocumentAdmin},
-		WritePermission: {ScopeSuperuser, ScopeDocumentAdmin},
+		ReadPermission:  {ScopeDocumentReadAll, ScopeDocumentAdmin},
+		WritePermission: {ScopeDocumentAdmin},
 	}
 
 	for permission, scopes := range elevated {
@@ -213,7 +213,7 @@ func aclPermissions(sub string, acl []ACLEntry) []Permission {
 func (a *DocumentsService) Eventlog(
 	ctx context.Context, req *repository.GetEventlogRequest,
 ) (*repository.GetEventlogResponse, error) {
-	_, err := RequireAnyScope(ctx, ScopeSuperuser, ScopeEventlogRead)
+	_, err := RequireAnyScope(ctx, ScopeEventlogRead, ScopeDocumentAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +389,9 @@ func (a *DocumentsService) Delete(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx, ScopeSuperuser, ScopeDocumentDelete)
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentDelete, ScopeDocumentAdmin,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -446,7 +448,10 @@ func (a *DocumentsService) Get(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx, ScopeSuperuser, ScopeDocumentRead)
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll,
+		ScopeDocumentAdmin,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -533,7 +538,10 @@ func (a *DocumentsService) GetHistory(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx, ScopeSuperuser, ScopeDocumentRead)
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll,
+		ScopeDocumentAdmin,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -579,7 +587,7 @@ func (a *DocumentsService) accessCheck(
 	auth *elephantine.AuthInfo, docUUID uuid.UUID,
 	permission Permission,
 ) error {
-	if auth.Claims.HasAnyScope(ScopeSuperuser, ScopeDocumentAdmin) {
+	if auth.Claims.HasAnyScope(ScopeDocumentAdmin) {
 		return nil
 	}
 
@@ -618,7 +626,10 @@ func (a *DocumentsService) GetMeta(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx, ScopeSuperuser, ScopeDocumentRead)
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll,
+		ScopeDocumentAdmin,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -706,12 +717,14 @@ func (a *DocumentsService) Update(
 	)
 
 	auth, err := RequireAnyScope(ctx,
-		ScopeSuperuser, ScopeDocumentAdmin, ScopeDocumentWrite)
+		ScopeDocumentWrite, ScopeDocumentAdmin,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	if req.ImportDirective != nil && !auth.Claims.HasScope("import_directive") {
+	if req.ImportDirective != nil && !auth.Claims.HasAnyScope(
+		ScopeDocumentImport, ScopeDocumentAdmin) {
 		return nil, twirp.PermissionDenied.Error(
 			"no import directive permission")
 	}
@@ -946,7 +959,9 @@ func (a *DocumentsService) Lock(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentWrite, ScopeDocumentDelete, ScopeDocumentAdmin,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -995,7 +1010,9 @@ func (a *DocumentsService) ExtendLock(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentWrite, ScopeDocumentDelete, ScopeDocumentAdmin,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1047,7 +1064,9 @@ func (a *DocumentsService) Unlock(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx, ScopeDocumentWrite)
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentWrite, ScopeDocumentDelete, ScopeDocumentAdmin,
+	)
 	if err != nil {
 		return nil, err
 	}
