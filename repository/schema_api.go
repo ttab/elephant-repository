@@ -29,8 +29,7 @@ var _ repository.Schemas = &SchemasService{}
 func (a *SchemasService) GetAllActive(
 	ctx context.Context, req *repository.GetAllActiveSchemasRequest,
 ) (*repository.GetAllActiveSchemasResponse, error) {
-	_, err := RequireAnyScope(ctx,
-		ScopeSuperuser, ScopeSchemaAdmin, ScopeSchemaRead)
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin, ScopeSchemaRead)
 	if err != nil {
 		return nil, err
 	}
@@ -112,8 +111,7 @@ func (a *SchemasService) waitIfSchemasAreUnchanged(
 func (a *SchemasService) Get(
 	ctx context.Context, req *repository.GetSchemaRequest,
 ) (*repository.GetSchemaResponse, error) {
-	_, err := RequireAnyScope(ctx,
-		ScopeSuperuser, ScopeSchemaAdmin, ScopeSchemaRead)
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin, ScopeSchemaRead)
 	if err != nil {
 		return nil, err
 	}
@@ -145,8 +143,7 @@ func (a *SchemasService) Get(
 func (a *SchemasService) Register(
 	ctx context.Context, req *repository.RegisterSchemaRequest,
 ) (*repository.RegisterSchemaResponse, error) {
-	_, err := RequireAnyScope(ctx,
-		ScopeSuperuser, ScopeSchemaAdmin)
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -197,8 +194,7 @@ func (a *SchemasService) Register(
 func (a *SchemasService) SetActive(
 	ctx context.Context, req *repository.SetActiveSchemaRequest,
 ) (*repository.SetActiveSchemaResponse, error) {
-	_, err := RequireAnyScope(ctx,
-		ScopeSuperuser, ScopeSchemaAdmin)
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin)
 	if err != nil {
 		return nil, err
 	}

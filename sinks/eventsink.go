@@ -203,7 +203,7 @@ func (r *EventForwarder) runNext(ctx context.Context, pos int64) (int64, error) 
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject: "internal://event-forwarder",
 			},
-			Scope: "superuser doc_read",
+			Scope: "doc_read_all eventlog_read",
 		},
 	}))
 
