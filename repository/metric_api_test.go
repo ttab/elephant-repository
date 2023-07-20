@@ -6,8 +6,8 @@ import (
 
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
-	itest "github.com/ttab/elephant/internal/test"
-	repo "github.com/ttab/elephant/repository"
+	itest "github.com/ttab/elephant-repository/internal/test"
+	repo "github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine/test"
 	"golang.org/x/exp/slog"
 )

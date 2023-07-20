@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
-	"github.com/ttab/elephant/repository"
+	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
 	"golang.org/x/exp/slog"
 )

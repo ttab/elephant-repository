@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ttab/elephant/repository"
+	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine/test"
 )
 

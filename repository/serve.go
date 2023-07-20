@@ -16,7 +16,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/ttab/elephant-api/repository"
-	"github.com/ttab/elephant/internal"
+	"github.com/ttab/elephant-repository/internal"
 	"github.com/ttab/elephantine"
 	"github.com/twitchtv/twirp"
 )
