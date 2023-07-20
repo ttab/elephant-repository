@@ -8,7 +8,7 @@ The repository depends on PostgreSQL for data storage and a S3 compatible store 
 
 All operations against the repository is exposed as a [Twirp RPC API](https://twitchtv.github.io/twirp/docs/intro.html) that you can communicate either using [Protobuf](https://protobuf.dev/) messages or standard JSON. See [Calling the API](#calling-the-api) for more details on communicating with the defined services.
 
-N.B. Until we reach v1.0.0 this should be seen as a tech preview of work in progress without any stability guarantees, and it is not in ANY way production ready.
+N.B. Until we reach v1.0.0 this must be seen as a tech preview of work in progress without any stability guarantees, and it is not in ANY way production ready.
 
 ## Versioning
 
@@ -85,7 +85,7 @@ The API is defined in [service.proto](https://github.com/ttab/elephant-api/blob/
 
 ### Retrieving a token
 
-The API service has an endpoint for fetching dummy tokens for use with the API.
+Elephant has an endpoint for fetching dummy tokens for use with the API. This exists only because we want to be able to easily test the API with authentication from the beginning. This token endpoint will be removed as soon as we're getting close to having something that can be deployed in production.
 
 ``` shell
 curl http://localhost:1080/token \
