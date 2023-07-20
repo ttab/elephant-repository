@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ttab/elephant/repository"
+	"github.com/ttab/elephant-repository/repository"
 	"github.com/urfave/cli/v2"
 )
 

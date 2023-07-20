@@ -1,4 +1,4 @@
-module github.com/ttab/elephant
+module github.com/ttab/elephant-repository
 
 go 1.20
 

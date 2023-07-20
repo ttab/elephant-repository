@@ -14,7 +14,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
-	itest "github.com/ttab/elephant/internal/test"
+	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
 	"github.com/twitchtv/twirp"

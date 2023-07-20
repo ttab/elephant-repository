@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ttab/elephant-api/repository"
-	itest "github.com/ttab/elephant/internal/test"
+	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephantine/test"
 	"golang.org/x/exp/slog"
 )

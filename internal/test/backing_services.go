@@ -15,8 +15,8 @@ import (
 	"github.com/jackc/tern/v2/migrate"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
-	"github.com/ttab/elephant/repository"
-	"github.com/ttab/elephant/schema"
+	"github.com/ttab/elephant-repository/repository"
+	"github.com/ttab/elephant-repository/schema"
 	"github.com/ttab/elephantine"
 	"golang.org/x/sync/errgroup"
 )
