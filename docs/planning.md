@@ -132,4 +132,16 @@ This represent three major changes:
 
 3. There's no longer a link between an assignment and the deliverable. The planning item has links to deliverables, and assignees have roles/jobs to fulfil in the context of the planning item. I think that this makes more sense, and I don't see any real loss of capability.
 
-Planning data is primarily going to filtered by date, that should narrow the candidate set down enough for most other filtering being done without indexes, might even be a good idea to turn to client based filtering to cut down on client-server back and forth after the data set has been downloaded.
+## Queryability
+
+The entry point for queries are going to be planning items and planning coverage. Planning data is primarily going to be filtered by date, that should narrow the candidate set down enough for most other filtering to be done without indexes without ill effects. Might even be a good idea to turn to client based filtering to cut down on client-server back and forth after the data set has been downloaded.
+
+Being flexible in querying and composing data for views ([this article](https://buttondown.email/hillelwayne/archive/queryability-and-the-sublime-mediocrity-of-sql/) springs to mind, and I think "sublime mediocrity" is a worthy design goal to aspire to) will cut down on the active data distortion that we see today with repetition and inconsistencies being introduced to make information turn up in specific views or applications.
+
+## Mutation and live updates
+
+The object structure representations of the planning data above would ideally be the way that our user facing applications interact with the data through a Y.js document. That means that we will need a way to diff the current state against db state and perform the necessary mutations to the DB. I think that we'll also need to store the Y.js state in the database.
+
+A big difference to the document data is that the Y.js document should be the only way to update the planning data. We can of course expose API:s for performing discrete operations against the state for more light-weight integrations, but those would be applied against the Y.js doc followed by a forced diff & flush to db.
+
+When it comes to live updates it's a given that it should be driven by Y.js while in a detail or editing view. For the list overview it's less clear cut, is it too expensive to fetch all planning items for a week and then instantiate and subscribe to them all as y.js documents? Can we multiplex many documents on a single websocket? Otherwise the fallback should probably be an event stream that f.ex. just emits updated object IDs and their date range, and then lets the client decide what to do with it, though that might actually lead to more data being shuffled due to loss of delta format. Another option is to poll at regular intervals, which might be good enough, it would also let us use SQL to get just the data that's needed for the view.
