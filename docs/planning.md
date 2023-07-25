@@ -48,8 +48,6 @@ Main data structure, rooted at planning item:
     "assignments": [
         {
             "uuid": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
-            "created": "2023-07-24T08:33:08+0200",
-            "modified": "2023-07-24T08:33:15+0200",
             "starts": "2023-07-25T00:00:00+0200",
             "ends": "2023-07-25T23:59:59+0200",
             "status": "done",
@@ -75,8 +73,6 @@ Main data structure, rooted at planning item:
         },
         {
             "uuid": "c85caaa0-8498-4666-a999-be22623d0261",
-            "created": "2023-07-24T08:38:44+0200",
-            "modified": "2023-07-24T08:38:53+0200",
             "starts": "2023-07-25T11:30:00+0200",
             "ends": "2023-07-25T13:30:00+0200",
             "status": "done",

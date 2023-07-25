@@ -50,8 +50,6 @@ create table user_reference(
 
 create table planning_assignment(
   uuid uuid primary key,
-  created timestamptz not null,
-  modified timestamptz not null,
   planning_item uuid not null,
   status text not null,
   starts timestamptz not null,
