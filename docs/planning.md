@@ -145,3 +145,25 @@ The object structure representations of the planning data above would ideally be
 A big difference to the document data is that the Y.js document should be the only way to update the planning data. We can of course expose API:s for performing discrete operations against the state for more light-weight integrations, but those would be applied against the Y.js doc followed by a forced diff & flush to db.
 
 When it comes to live updates it's a given that it should be driven by Y.js while in a detail or editing view. For the list overview it's less clear cut, is it too expensive to fetch all planning items for a week and then instantiate and subscribe to them all as y.js documents? Can we multiplex many documents on a single websocket? Otherwise the fallback should probably be an event stream that f.ex. just emits updated object IDs and their date range, and then lets the client decide what to do with it, though that might actually lead to more data being shuffled due to loss of delta format. Another option is to poll at regular intervals, which might be good enough, it would also let us use SQL to get just the data that's needed for the view.
+
+## What is a status?
+
+Status is currently very overloaded in NRP, especially for us who not only deal with the workflow status (something we: might do, will do, or have decided not to do) but also whether we want to publish it to our customers.
+
+I would suggest four statuses for planning items:
+
+* draft
+* tentative
+* planned
+* cancelled
+
+This would work together with `public` to form the status of a planning item. A "draft" must never be published to customers regardless of `public`, public would in that case communicate that this is a planning item we **intend** to make public. The difference between "tentative" and "planned" is one of confidence. "cancelled" should always be used when we decide to not go forward with planned delivery that went beyond the draft stage. Drafts can just be deleted. 
+
+It could be argued that these statuses conflate workflow status and confidence level, and while that's true I think that confidence level fits nicely on the same axis that the workflow status moves along:
+
+* draft: missing information - early days not sure yet
+* tentative: good enough to publish - decent probability that we'll do this
+* planned: good enough to publish - to the best of our knowledge we'll do this
+* cancelled: was good enough, but got cancelled - we don't plan to do this anymore
+
+This model would become unfit if we want to start modelling confidence with more granularity, say: unlikely, tentative, probable, for-sure, come-hell-or-high-water. Then it would make more sense to split out confidence to its own value. Though I think that even if this gives us a clear way to communicate confidence in, say, a 0-100% range, it becomes less valuable as a signal and misreprents our ability to measure the probability.
