@@ -25,7 +25,7 @@ else
        -e PGDATA=/var/lib/postgresql/data/pgdata \
        -v "${pgdata}":/var/lib/postgresql/data \
        -p 5432:5432 \
-       postgres \
+       postgres:15.3 \
        -c wal_level=logical \
        -c log_lock_waits=on
 

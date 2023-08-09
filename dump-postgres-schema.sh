@@ -10,7 +10,3 @@ docker run --rm -it postgres pg_dump ${url} --schema-only \
 docker run --rm -it postgres pg_dump ${url} --data-only \
        --column-inserts --table=schema_version \
        > postgres/schema_version.sql
-
-docker run --rm -it postgres pg_dump ${url} --data-only \
-       --column-inserts --table=document_schema --table=active_schemas \
-       > postgres/document_schema.sql
