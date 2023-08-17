@@ -17,8 +17,12 @@ func (s *PGDocStore) RunCleaner(ctx context.Context, period time.Duration) {
 			return
 		}
 
-		jobLock, err := pg.NewJobLock(s.pool, s.logger, "cleaner",
-			10*time.Second, 1*time.Minute, 20*time.Second, 5*time.Second)
+		jobLock, err := pg.NewJobLock(s.pool, s.logger, "cleaner", pg.JobLockOptions{
+			PingInterval:  10 * time.Second,
+			StaleAfter:    1 * time.Minute,
+			CheckInterval: 20 * time.Second,
+			Timeout:       5 * time.Second,
+		})
 		if err != nil {
 			s.logger.ErrorCtx(ctx, "failed to create job lock",
 				elephantine.LogKeyError, err)
