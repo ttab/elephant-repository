@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 15.3 (Debian 15.3-1.pgdg110+1)
--- Dumped by pg_dump version 15.3 (Debian 15.3-1.pgdg110+1)
+-- Dumped from database version 15.3 (Debian 15.3-1.pgdg120+1)
+-- Dumped by pg_dump version 15.3 (Debian 15.3-1.pgdg120+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -412,6 +412,90 @@ CREATE TABLE public.metric_kind (
 ALTER TABLE public.metric_kind OWNER TO repository;
 
 --
+-- Name: planning_assignee; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.planning_assignee (
+    assignment uuid NOT NULL,
+    assignee uuid NOT NULL,
+    version bigint NOT NULL,
+    role text NOT NULL
+);
+
+
+ALTER TABLE public.planning_assignee OWNER TO repository;
+
+--
+-- Name: planning_assignment; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.planning_assignment (
+    uuid uuid NOT NULL,
+    version bigint NOT NULL,
+    planning_item uuid NOT NULL,
+    status text NOT NULL,
+    starts timestamp with time zone NOT NULL,
+    ends timestamp with time zone,
+    full_day boolean NOT NULL,
+    kind text[] NOT NULL,
+    description text NOT NULL
+);
+
+
+ALTER TABLE public.planning_assignment OWNER TO repository;
+
+--
+-- Name: planning_coverage; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.planning_coverage (
+    uuid uuid NOT NULL,
+    title text NOT NULL,
+    description text NOT NULL,
+    status text NOT NULL,
+    public boolean NOT NULL,
+    starts date NOT NULL,
+    ends date
+);
+
+
+ALTER TABLE public.planning_coverage OWNER TO repository;
+
+--
+-- Name: planning_deliverable; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.planning_deliverable (
+    assignment uuid NOT NULL,
+    document uuid NOT NULL,
+    version bigint NOT NULL
+);
+
+
+ALTER TABLE public.planning_deliverable OWNER TO repository;
+
+--
+-- Name: planning_item; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.planning_item (
+    uuid uuid NOT NULL,
+    version bigint NOT NULL,
+    title text NOT NULL,
+    description text NOT NULL,
+    public boolean NOT NULL,
+    tentative boolean NOT NULL,
+    date date NOT NULL,
+    publish timestamp with time zone,
+    publish_slot smallint,
+    urgency smallint,
+    coverage uuid
+);
+
+
+ALTER TABLE public.planning_item OWNER TO repository;
+
+--
 -- Name: report; Type: TABLE; Schema: public; Owner: repository
 --
 
@@ -494,6 +578,20 @@ CREATE TABLE public.status_rule (
 
 
 ALTER TABLE public.status_rule OWNER TO repository;
+
+--
+-- Name: user_reference; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.user_reference (
+    uuid uuid NOT NULL,
+    external_id text NOT NULL,
+    name text NOT NULL,
+    avatar_url text NOT NULL
+);
+
+
+ALTER TABLE public.user_reference OWNER TO repository;
 
 --
 -- Name: acl_audit acl_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
@@ -624,6 +722,46 @@ ALTER TABLE ONLY public.metric
 
 
 --
+-- Name: planning_assignee planning_assignee_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_assignee
+    ADD CONSTRAINT planning_assignee_pkey PRIMARY KEY (assignment, assignee);
+
+
+--
+-- Name: planning_assignment planning_assignment_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_assignment
+    ADD CONSTRAINT planning_assignment_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: planning_coverage planning_coverage_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_coverage
+    ADD CONSTRAINT planning_coverage_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: planning_deliverable planning_deliverable_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_deliverable
+    ADD CONSTRAINT planning_deliverable_pkey PRIMARY KEY (assignment, document);
+
+
+--
+-- Name: planning_item planning_item_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_item
+    ADD CONSTRAINT planning_item_pkey PRIMARY KEY (uuid);
+
+
+--
 -- Name: report report_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -664,6 +802,22 @@ ALTER TABLE ONLY public.status_rule
 
 
 --
+-- Name: user_reference user_reference_external_id_key; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.user_reference
+    ADD CONSTRAINT user_reference_external_id_key UNIQUE (external_id);
+
+
+--
+-- Name: user_reference user_reference_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.user_reference
+    ADD CONSTRAINT user_reference_pkey PRIMARY KEY (uuid);
+
+
+--
 -- Name: delete_record_uuid_idx; Type: INDEX; Schema: public; Owner: repository
 --
 
@@ -696,6 +850,41 @@ CREATE INDEX document_status_archived ON public.document_status USING btree (cre
 --
 
 CREATE INDEX document_version_archived ON public.document_version USING btree (created) WHERE (archived = false);
+
+
+--
+-- Name: planning_assignment_kind_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_assignment_kind_idx ON public.planning_assignment USING gin (kind);
+
+
+--
+-- Name: planning_coverage_date_range_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_coverage_date_range_idx ON public.planning_coverage USING btree (starts, ends);
+
+
+--
+-- Name: planning_item_coverage_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_item_coverage_idx ON public.planning_item USING btree (coverage);
+
+
+--
+-- Name: planning_item_publish_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_item_publish_idx ON public.planning_item USING btree (publish);
+
+
+--
+-- Name: planning_item_publish_slot_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_item_publish_slot_idx ON public.planning_item USING btree (publish_slot);
 
 
 --
@@ -779,6 +968,54 @@ ALTER TABLE ONLY public.metric
 
 
 --
+-- Name: planning_assignee planning_assignee_assignee_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_assignee
+    ADD CONSTRAINT planning_assignee_assignee_fkey FOREIGN KEY (assignee) REFERENCES public.user_reference(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: planning_assignee planning_assignee_assignment_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_assignee
+    ADD CONSTRAINT planning_assignee_assignment_fkey FOREIGN KEY (assignment) REFERENCES public.planning_assignment(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: planning_assignment planning_assignment_planning_item_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_assignment
+    ADD CONSTRAINT planning_assignment_planning_item_fkey FOREIGN KEY (planning_item) REFERENCES public.planning_item(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: planning_deliverable planning_deliverable_assignment_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_deliverable
+    ADD CONSTRAINT planning_deliverable_assignment_fkey FOREIGN KEY (assignment) REFERENCES public.planning_assignment(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: planning_deliverable planning_deliverable_document_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_deliverable
+    ADD CONSTRAINT planning_deliverable_document_fkey FOREIGN KEY (document) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: planning_item planning_item_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_item
+    ADD CONSTRAINT planning_item_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
 -- Name: status_heads status_heads_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -821,69 +1058,6 @@ ALTER PUBLICATION eventlog ADD TABLE ONLY public.document;
 --
 
 ALTER PUBLICATION eventlog ADD TABLE ONLY public.status_heads;
-
-
---
--- Name: TABLE acl; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.acl TO reporting;
-
-
---
--- Name: TABLE acl_audit; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.acl_audit TO reporting;
-
-
---
--- Name: TABLE delete_record; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.delete_record TO reporting;
-
-
---
--- Name: TABLE document; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.document TO reporting;
-
-
---
--- Name: TABLE document_status; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.document_status TO reporting;
-
-
---
--- Name: TABLE document_version; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.document_version TO reporting;
-
-
---
--- Name: TABLE status; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.status TO reporting;
-
-
---
--- Name: TABLE status_heads; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.status_heads TO reporting;
-
-
---
--- Name: TABLE status_rule; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.status_rule TO reporting;
 
 
 --

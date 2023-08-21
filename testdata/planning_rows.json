@@ -1,0 +1,81 @@
+{
+  "Item": {
+    "UUID": "b622d028-b423-4a7e-92d9-6fe07b4b80be",
+    "Version": 1,
+    "Title": "Sommarporträttet: radioprofilen",
+    "Description": "",
+    "Public": true,
+    "Tentative": false,
+    "Date": "2023-07-27",
+    "Publish": "2023-07-27T15:00:00+02:00",
+    "PublishSlot": 12,
+    "Urgency": 2,
+    "Coverage": null
+  },
+  "Assignments": [
+    {
+      "UUID": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
+      "Version": 1,
+      "PlanningItem": "b622d028-b423-4a7e-92d9-6fe07b4b80be",
+      "Status": "done",
+      "Starts": "2023-07-25T00:00:00+02:00",
+      "Ends": "2023-07-25T23:59:59+02:00",
+      "FullDay": true,
+      "Kind": [
+        "text"
+      ],
+      "Description": ""
+    },
+    {
+      "UUID": "c85caaa0-8498-4666-a999-be22623d0261",
+      "Version": 1,
+      "PlanningItem": "b622d028-b423-4a7e-92d9-6fe07b4b80be",
+      "Status": "done",
+      "Starts": "2023-07-25T11:30:00+02:00",
+      "Ends": "2023-07-25T13:30:00+02:00",
+      "FullDay": false,
+      "Kind": [
+        "photo"
+      ],
+      "Description": ""
+    }
+  ],
+  "Assignees": [
+    {
+      "Assignment": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
+      "Assignee": "84ec9855-32b5-451c-a0e4-c91968fd5328",
+      "Version": 1,
+      "Role": "primary"
+    },
+    {
+      "Assignment": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
+      "Assignee": "74fd578d-6a7b-4e83-ab4f-c0006c268838",
+      "Version": 1,
+      "Role": "standby"
+    },
+    {
+      "Assignment": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
+      "Assignee": "9c26ee5e-4391-45dc-996d-06cd7f37bd93",
+      "Version": 1,
+      "Role": "standby"
+    },
+    {
+      "Assignment": "c85caaa0-8498-4666-a999-be22623d0261",
+      "Assignee": "94d0e6be-38c4-4485-ae19-1d6f779648dc",
+      "Version": 1,
+      "Role": "primary"
+    }
+  ],
+  "Deliverables": [
+    {
+      "Assignment": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
+      "Document": "7c5f41f6-c515-4cf4-aab9-42c660616f61",
+      "Version": 1
+    },
+    {
+      "Assignment": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
+      "Document": "e1611bc7-c663-4428-8111-c90717483670",
+      "Version": 1
+    }
+  ]
+}

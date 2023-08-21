@@ -417,3 +417,93 @@ INSERT INTO metric(uuid, kind, label, value)
 VALUES (@uuid, @kind, @label, @value)
 ON CONFLICT ON CONSTRAINT metric_pkey DO UPDATE 
 SET value = metric.value + @value;
+
+-- name: GetPlanningItem :one
+SELECT
+        uuid, version, title, description, public, tentative, publish,
+        publish_slot, urgency, coverage
+FROM planning_item
+WHERE uuid = @uuid;
+
+-- name: SetPlanningItem :exec
+INSERT INTO planning_item(
+        uuid, version, title, description, public, tentative,
+        date, publish, publish_slot, urgency, coverage
+) VALUES (
+        @uuid, @version, @title, @description, @public, @tentative,
+        @date, @publish, @publish_slot, @urgency, @coverage
+)
+ON CONFLICT ON CONSTRAINT planning_item_pkey DO UPDATE
+SET
+   version = @version, title = @title, description = @description,
+   public = @public, tentative = @tentative, publish = @publish,
+   publish_slot = @publish_slot, urgency = @urgency, coverage = @coverage;
+
+-- name: SetPlanningItemDeliverable :exec
+INSERT INTO planning_deliverable(
+       assignment, document, version
+) VALUES(
+       @assignment, @document, @version
+)
+ON CONFLICT ON CONSTRAINT planning_item_deliverable_pkey DO UPDATE
+SET
+   version = @version;
+
+-- name: GetUserReferenceByUUID :one
+SELECT uuid, external_id, name, avatar_url
+FROM user_reference WHERE uuid = @uuid;
+
+-- name: GetUserReferenceByExternalID :one
+SELECT uuid, external_id, name, avatar_url
+FROM user_reference
+WHERE external_id = @external_id;
+
+-- name: GetPlanningAssignment :one
+SELECT uuid, version, planning_item, status, starts, ends,
+       full_day, kind, description
+FROM planning_assignment
+WHERE uuid = @uuid;
+
+-- name: SetPlanningAssignment :exec
+INSERT INTO planning_assignment(
+       uuid, version, planning_item, status, starts, ends,
+       full_day, kind, description
+) VALUES (
+       @uuid, @version, @planning_item, @status, @starts, @ends,
+       @full_day, @kind, @description
+)
+ON CONFLICT ON CONSTRAINT planning_assignment_pkey DO UPDATE
+SET
+   version = @version, planning_item = @planning_item, status = @status,
+   starts = @starts, ends = @ends, full_day = @full_day, kind = @kind,
+   description = @description;
+
+-- name: GetPlanningAssignments :many
+SELECT uuid, version, planning_item, status, starts, ends,
+       full_day, kind, description
+FROM planning_assignment
+WHERE planning_item = @planning_item;
+
+-- name: SetPlanningAssignee :exec
+INSERT INTO planning_assignee(
+       assignment, assignee, version, role
+) VALUES (
+       @assignment, @assignee, @version, @role
+)
+ON CONFLICT ON CONSTRAINT planning_assignee_pkey DO UPDATE
+SET version = @version, role = @role;
+
+-- name: DeletePlanningItem :exec
+DELETE FROM planning_item WHERE uuid = @uuid;
+
+-- name: CleanUpAssignments :exec
+DELETE FROM planning_assignment
+WHERE planning_item = @planning_item AND version != @version;
+
+-- name: CleanUpAssignees :exec
+DELETE FROM planning_assignee
+WHERE assignment = @assignment AND version != @version;
+
+-- name: CleanUpDeliverables :exec
+DELETE FROM planning_deliverable
+WHERE assignment = @assignment AND version != @version;

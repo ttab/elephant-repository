@@ -167,3 +167,6 @@ It could be argued that these statuses conflate workflow status and confidence l
 * cancelled: was good enough, but got cancelled - we don't plan to do this anymore
 
 This model would become unfit if we want to start modelling confidence with more granularity, say: unlikely, tentative, probable, for-sure, come-hell-or-high-water. Then it would make more sense to split out confidence to its own value. Though I think that even if this gives us a clear way to communicate confidence in, say, a 0-100% range, it becomes less valuable as a signal and misreprents our ability to measure the probability.
+
+## Planned publishing time
+

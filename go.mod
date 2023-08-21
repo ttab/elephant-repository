@@ -1,6 +1,6 @@
 module github.com/ttab/elephant-repository
 
-go 1.20
+go 1.21.0
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
@@ -71,6 +71,7 @@ require (
 	github.com/docker/docker v23.0.3+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
+	github.com/fatih/structtag v1.2.0 // indirect
 	github.com/go-sql-driver/mysql v1.7.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -118,6 +119,7 @@ require (
 	github.com/spf13/cobra v1.7.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
+	github.com/ttab/darknut v0.1.0 // indirect
 	github.com/vaughan0/go-ini v0.0.0-20130923145212-a98ad7ee00ec // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect

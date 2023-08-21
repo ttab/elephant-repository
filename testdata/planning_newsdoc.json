@@ -1,0 +1,123 @@
+{
+  "uuid": "b622d028-b423-4a7e-92d9-6fe07b4b80be",
+  "title": "Sommarporträttet: radioprofilen",
+  "type": "core/planning-item",
+  "meta": [
+    {
+      "type": "core/planning-item",
+      "data": {
+        "date": "2023-07-27",
+        "publish": "2023-07-27T15:00:00+02:00",
+        "publish_slot": "12",
+        "public": "true",
+        "tentative": "false",
+        "urgency": "2"
+      }
+    },
+    {
+      "type": "tt/slugline",
+      "value": "sommar"
+    },
+    {
+      "type": "core/description",
+      "role": "public",
+      "data": {
+        "text": "Hennes jobb är att vara \"en personlighet på plats\" – klockan 06.00. Beskrivs som en av landets roligaste, hon sänder direkt i P3 och vill gärna vara på gränsen. Vi har intervjuat henne."
+      }
+    },
+    {
+      "type": "core/description",
+      "role": "internal",
+      "data": {
+        "text": "Vad: Vi träffar radioprofilen (och numera även tv-profilen) för en intervju i vår serie sommarporträtt.\nVar: Lilla caféet på Söder, Ringvägen 131.\nKontakt till profilen: 070/XXXXXYY."
+      }
+    },
+    {
+      "id": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
+      "type": "core/assignment",
+      "data": {
+        "starts": "2023-07-25T00:00:00+02:00",
+        "ends": "2023-07-25T23:59:59+02:00",
+        "status": "done",
+        "full_day": "true"
+      },
+      "meta": [
+        {
+          "type": "core/assignment-kind",
+          "value": "text"
+        }
+      ],
+      "links": [
+        {
+          "rel": "assignee",
+          "type": "core/author",
+          "uuid": "84ec9855-32b5-451c-a0e4-c91968fd5328",
+          "name": "Erika",
+          "role": "primary"
+        },
+        {
+          "rel": "assignee",
+          "type": "core/author",
+          "uuid": "74fd578d-6a7b-4e83-ab4f-c0006c268838",
+          "name": "Sara",
+          "role": "standby"
+        },
+        {
+          "rel": "assignee",
+          "type": "core/author",
+          "uuid": "9c26ee5e-4391-45dc-996d-06cd7f37bd93",
+          "name": "Sara",
+          "role": "standby"
+        },
+        {
+          "rel": "deliverable",
+          "type": "core/article",
+          "uuid": "7c5f41f6-c515-4cf4-aab9-42c660616f61"
+        },
+        {
+          "rel": "deliverable",
+          "type": "core/facts",
+          "uuid": "e1611bc7-c663-4428-8111-c90717483670"
+        }
+      ]
+    },
+    {
+      "id": "c85caaa0-8498-4666-a999-be22623d0261",
+      "type": "core/assignment",
+      "data": {
+        "starts": "2023-07-25T11:30:00+02:00",
+        "ends": "2023-07-25T13:30:00+02:00",
+        "status": "done",
+        "full_day": "false"
+      },
+      "meta": [
+        {
+          "type": "core/assignment-kind",
+          "value": "photo"
+        }
+      ],
+      "links": [
+        {
+          "rel": "assignee",
+          "type": "core/author",
+          "uuid": "94d0e6be-38c4-4485-ae19-1d6f779648dc",
+          "name": "Anders",
+          "role": "primary"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "title": "Kultur och nöje",
+      "rel": "sector",
+      "type": "tt/sector",
+      "value": "KLT"
+    },
+    {
+      "rel": "broader",
+      "type": "core/coverage",
+      "uuid": "d1338a6d-e0a7-4413-be7e-7d6be74d2c55"
+    }
+  ]
+}
