@@ -18,9 +18,9 @@ jobs:
       - name: Log in to Harbor
         uses: docker/login-action@v2
         with:
-          registry: registry.a.tt.se
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
@@ -40,8 +40,8 @@ jobs:
           safe_ref=$(echo ${{ github.ref_name }} | sed -E 's/[^a-zA-Z0-9_.]+/-/g')
           (
           echo safe_ref=${safe_ref}
-          echo docker_repo=registry.a.tt.se/${{ github.repository }}
-          echo docker_image=registry.a.tt.se/${{ github.repository }}:${safe_ref}
+          echo docker_repo=ghcr.io/ttab/${{ github.repository }}
+          echo docker_image=ghcr.io/ttab/${{ github.repository }}:${safe_ref}
           ) >> $GITHUB_ENV
 
       - name: Build and push release image
