@@ -15,7 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Log in to Harbor
+      - name: Log in to docker repository
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
