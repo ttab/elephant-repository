@@ -432,7 +432,7 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 
 	switch msg.Table {
 	case "document":
-		e, err := parseDocumentMessage(msg)
+		e, err := parseDocumentMessage(pr.logger, msg)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to parse document table message: %w", err)
@@ -440,7 +440,7 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 
 		evt = e
 	case "status_heads":
-		e, err := parseStatusHeadsMessage(msg)
+		e, err := parseStatusHeadsMessage(pr.logger, msg)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to parse status_heads table message: %w", err)
@@ -581,7 +581,7 @@ func parseACLMessage(msg replMessage) (Event, error) {
 	return evt, nil
 }
 
-func parseStatusHeadsMessage(msg replMessage) (Event, error) {
+func parseStatusHeadsMessage(log *slog.Logger, msg replMessage) (Event, error) {
 	evt := Event{
 		Event: TypeNewStatus,
 	}
@@ -593,17 +593,20 @@ func parseStatusHeadsMessage(msg replMessage) (Event, error) {
 
 	evt.StatusID = id
 
-	if msg.OldValues == nil {
-		evt.Event = TypeDocumentVersion
-
-		oldID, ok := msg.NewValues["current_id"].(int64)
+	if msg.OldValues != nil {
+		oldID, ok := msg.OldValues["current_id"].(int64)
 		if !ok {
 			return Event{}, fmt.Errorf("failed to extract old id")
 		}
 
 		// New IDs have to be higher, bail, something odd is going on.
 		if id <= oldID {
-			// TODO: log?
+			log.Warn("received a status replication update that didn't increment the status ID",
+				elephantine.LogKeyDocumentUUID, msg.NewValues["uuid"],
+				elephantine.LogKeyDocumentStatus, msg.NewValues["name"],
+				elephantine.LogKeyDocumentStatusID, id,
+			)
+
 			return Event{}, nil
 		}
 	}
@@ -649,7 +652,7 @@ func parseStatusHeadsMessage(msg replMessage) (Event, error) {
 	return evt, nil
 }
 
-func parseDocumentMessage(msg replMessage) (Event, error) {
+func parseDocumentMessage(log *slog.Logger, msg replMessage) (Event, error) {
 	evt := Event{
 		Event: TypeDocumentVersion,
 	}
@@ -672,8 +675,6 @@ func parseDocumentMessage(msg replMessage) (Event, error) {
 	evt.Version = version
 
 	if msg.OldValues != nil {
-		evt.Event = TypeDocumentVersion
-
 		oldVersion, ok := msg.OldValues["current_version"].(int64)
 		if !ok {
 			return Event{}, fmt.Errorf("failed to extract old version")
@@ -682,7 +683,11 @@ func parseDocumentMessage(msg replMessage) (Event, error) {
 		// New versions have to be higher, bail, something odd
 		// is going on.
 		if version <= oldVersion {
-			// TODO: log?
+			log.Warn("received a document replication update that didn't increment the version",
+				elephantine.LogKeyDocumentUUID, msg.NewValues["uuid"],
+				elephantine.LogKeyDocumentVersion, version,
+			)
+
 			return Event{}, nil
 		}
 	}
