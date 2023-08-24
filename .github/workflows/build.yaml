@@ -10,22 +10,22 @@ on:
 jobs:
   build:
     name: Create Docker image
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Log in to Harbor
+      - name: Log in to docker repository
         uses: docker/login-action@v2
         with:
-          registry: registry.a.tt.se
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
         with:
-          image: registry.a.tt.se/docker/tonistiigi/binfmt:qemu-v7.0.0
+          image: tonistiigi/binfmt:qemu-v7.0.0
 
       - name: Create build context
         run: docker context create builders
@@ -35,15 +35,6 @@ jobs:
         with:
           endpoint: builders
 
-      - name: Set up TT environment
-        run: |
-          safe_ref=$(echo ${{ github.ref_name }} | sed -E 's/[^a-zA-Z0-9_.]+/-/g')
-          (
-          echo safe_ref=${safe_ref}
-          echo docker_repo=registry.a.tt.se/${{ github.repository }}
-          echo docker_image=registry.a.tt.se/${{ github.repository }}:${safe_ref}
-          ) >> $GITHUB_ENV
-
       - name: Build and push release image
         uses: docker/build-push-action@v3
         with:
@@ -51,8 +42,6 @@ jobs:
           # Specify the build_platforms variable in the GitHub repo
           platforms: ${{ vars.BUILD_PLATFORMS }}
           push: true
-          build-args: |
-            COMMAND=repository
-          tags: ${{ env.docker_image }}
+          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
