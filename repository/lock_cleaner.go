@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
 )
@@ -43,9 +46,32 @@ func (s *PGDocStore) RunCleaner(ctx context.Context, period time.Duration) {
 func (s *PGDocStore) removeExpiredLocks(ctx context.Context) error {
 	s.logger.Debug("removing expired document locks")
 
-	err := s.reader.DeleteExpiredDocumentLocks(ctx,
-		pg.Time(time.Now().Add(5*time.Minute)),
-	)
+	cutoff := pg.Time(time.Now().Add(5 * time.Minute))
+
+	err := s.withTX(ctx, "lock cleaner", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		expired, err := q.GetExpiredDocumentLocks(ctx, cutoff)
+		if err != nil {
+			return fmt.Errorf("could not get expired locks: %w", err)
+		}
+
+		uuids := make([]uuid.UUID, len(expired))
+		for i := 0; i < len(expired); i++ {
+			uuids[i] = expired[i].UUID
+		}
+
+		err = q.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
+			Cutoff: cutoff,
+			Uuids:  uuids,
+		})
+
+		if err != nil {
+			return fmt.Errorf("could not remove expired locks: %w", err)
+		}
+
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("could not remove expired locks: %w", err)
 	}
