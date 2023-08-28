@@ -197,11 +197,11 @@ CREATE TABLE public.delete_record (
     id bigint NOT NULL,
     uuid uuid NOT NULL,
     uri text NOT NULL,
-    type text NOT NULL,
     version bigint NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
-    meta jsonb
+    meta jsonb,
+    type text NOT NULL
 );
 
 
@@ -228,13 +228,13 @@ ALTER TABLE public.delete_record ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTIT
 CREATE TABLE public.document (
     uuid uuid NOT NULL,
     uri text NOT NULL,
-    type text NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
     updated timestamp with time zone NOT NULL,
     updater_uri text NOT NULL,
     current_version bigint NOT NULL,
-    deleting boolean DEFAULT false NOT NULL
+    deleting boolean DEFAULT false NOT NULL,
+    type text NOT NULL
 );
 
 ALTER TABLE ONLY public.document REPLICA IDENTITY FULL;
@@ -434,6 +434,8 @@ CREATE TABLE public.planning_assignment (
     version bigint NOT NULL,
     planning_item uuid NOT NULL,
     status text NOT NULL,
+    publish timestamp with time zone,
+    publish_slot smallint,
     starts timestamp with time zone NOT NULL,
     ends timestamp with time zone,
     full_day boolean NOT NULL,
@@ -443,23 +445,6 @@ CREATE TABLE public.planning_assignment (
 
 
 ALTER TABLE public.planning_assignment OWNER TO repository;
-
---
--- Name: planning_coverage; Type: TABLE; Schema: public; Owner: repository
---
-
-CREATE TABLE public.planning_coverage (
-    uuid uuid NOT NULL,
-    title text NOT NULL,
-    description text NOT NULL,
-    status text NOT NULL,
-    public boolean NOT NULL,
-    starts date NOT NULL,
-    ends date
-);
-
-
-ALTER TABLE public.planning_coverage OWNER TO repository;
 
 --
 -- Name: planning_deliverable; Type: TABLE; Schema: public; Owner: repository
@@ -486,10 +471,8 @@ CREATE TABLE public.planning_item (
     public boolean NOT NULL,
     tentative boolean NOT NULL,
     date date NOT NULL,
-    publish timestamp with time zone,
-    publish_slot smallint,
     urgency smallint,
-    coverage uuid
+    event uuid
 );
 
 
@@ -738,14 +721,6 @@ ALTER TABLE ONLY public.planning_assignment
 
 
 --
--- Name: planning_coverage planning_coverage_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
---
-
-ALTER TABLE ONLY public.planning_coverage
-    ADD CONSTRAINT planning_coverage_pkey PRIMARY KEY (uuid);
-
-
---
 -- Name: planning_deliverable planning_deliverable_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -860,31 +835,24 @@ CREATE INDEX planning_assignment_kind_idx ON public.planning_assignment USING gi
 
 
 --
--- Name: planning_coverage_date_range_idx; Type: INDEX; Schema: public; Owner: repository
+-- Name: planning_assignment_publish_idx; Type: INDEX; Schema: public; Owner: repository
 --
 
-CREATE INDEX planning_coverage_date_range_idx ON public.planning_coverage USING btree (starts, ends);
-
-
---
--- Name: planning_item_coverage_idx; Type: INDEX; Schema: public; Owner: repository
---
-
-CREATE INDEX planning_item_coverage_idx ON public.planning_item USING btree (coverage);
+CREATE INDEX planning_assignment_publish_idx ON public.planning_assignment USING btree (publish);
 
 
 --
--- Name: planning_item_publish_idx; Type: INDEX; Schema: public; Owner: repository
+-- Name: planning_assignment_publish_slot_idx; Type: INDEX; Schema: public; Owner: repository
 --
 
-CREATE INDEX planning_item_publish_idx ON public.planning_item USING btree (publish);
+CREATE INDEX planning_assignment_publish_slot_idx ON public.planning_assignment USING btree (publish_slot);
 
 
 --
--- Name: planning_item_publish_slot_idx; Type: INDEX; Schema: public; Owner: repository
+-- Name: planning_item_event_idx; Type: INDEX; Schema: public; Owner: repository
 --
 
-CREATE INDEX planning_item_publish_slot_idx ON public.planning_item USING btree (publish_slot);
+CREATE INDEX planning_item_event_idx ON public.planning_item USING btree (event);
 
 
 --
@@ -1058,6 +1026,69 @@ ALTER PUBLICATION eventlog ADD TABLE ONLY public.document;
 --
 
 ALTER PUBLICATION eventlog ADD TABLE ONLY public.status_heads;
+
+
+--
+-- Name: TABLE acl; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.acl TO reporting;
+
+
+--
+-- Name: TABLE acl_audit; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.acl_audit TO reporting;
+
+
+--
+-- Name: TABLE delete_record; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.delete_record TO reporting;
+
+
+--
+-- Name: TABLE document; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document TO reporting;
+
+
+--
+-- Name: TABLE document_status; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document_status TO reporting;
+
+
+--
+-- Name: TABLE document_version; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.document_version TO reporting;
+
+
+--
+-- Name: TABLE status; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status TO reporting;
+
+
+--
+-- Name: TABLE status_heads; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status_heads TO reporting;
+
+
+--
+-- Name: TABLE status_rule; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.status_rule TO reporting;
 
 
 --

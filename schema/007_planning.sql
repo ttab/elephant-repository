@@ -1,15 +1,3 @@
-create table planning_coverage(
-  uuid uuid primary key not null,
-  title text not null,
-  description text not null,
-  status text not null,
-  public bool not null,
-  starts date not null,
-  ends date
-);
-
-create index planning_coverage_date_range_idx on planning_coverage(starts, ends);
-
 create table planning_item(
   uuid uuid primary key not null,
   version bigint not null,
@@ -18,22 +6,20 @@ create table planning_item(
   public bool not null,
   tentative bool not null,
   date date not null,
-  publish timestamptz,
-  publish_slot smallint,
   urgency smallint,
-  coverage uuid,
+  event uuid,
   foreign key(uuid) references document(uuid) on delete cascade
 );
 
-create index planning_item_coverage_idx on planning_item(coverage);
-create index planning_item_publish_idx on planning_item(publish);
-create index planning_item_publish_slot_idx on planning_item(publish_slot);
+create index planning_item_event_idx on planning_item(event);
 
 create table planning_assignment(
   uuid uuid primary key,
   version bigint not null,
   planning_item uuid not null,
   status text not null,
+  publish timestamptz,
+  publish_slot smallint,
   starts timestamptz not null,
   ends timestamptz,
   full_day boolean not null,
@@ -43,6 +29,8 @@ create table planning_assignment(
 );
 
 create index planning_assignment_kind_idx on planning_assignment using GIN(kind);
+create index planning_assignment_publish_idx on planning_assignment(publish);
+create index planning_assignment_publish_slot_idx on planning_assignment(publish_slot);
 
 create table planning_deliverable(
   assignment uuid not null,
@@ -72,11 +60,8 @@ create table planning_assignee(
 
 ---- create above / drop below ----
 
-drop index planning_assignment_kind_idx;
-
-drop table planning_assignee;
-drop table planning_assignment;
-drop table planning_item_deliverable;
-drop table user_reference;
-drop table planning_item;
-drop table planning_coverage;
+drop table if exists planning_assignee;
+drop table if exists planning_deliverable;
+drop table if exists user_reference;
+drop table if exists planning_assignment;
+drop table if exists planning_item;

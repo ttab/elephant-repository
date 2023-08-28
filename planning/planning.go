@@ -19,7 +19,7 @@ type Item struct {
 	InternalDescription *DescriptionBlock `newsdoc:"meta,type=core/description,role=internal"`
 	PublicDescription   *DescriptionBlock `newsdoc:"meta,type=core/description,role=public"`
 	Assignments         []AssignmentBlock `newsdoc:"meta,type=core/assignment"`
-	Coverage            *CoverageLink     `newsdoc:"links,rel=coverage"`
+	Event               *EventLink        `newsdoc:"links,type=core/event,rel=associated"`
 }
 
 type DescriptionBlock struct {
@@ -28,16 +28,16 @@ type DescriptionBlock struct {
 }
 
 type ItemMeta struct {
-	Date        time.Time  `newsdoc:"data.date,format=2006-01-02"`
-	Publish     *time.Time `newsdoc:"data.publish"`
-	PublishSlot *int16     `newsdoc:"data.publish_slot"`
-	Public      bool       `newsdoc:"data.public"`
-	Tentative   bool       `newsdoc:"data.tentative"`
-	Urgency     *int16     `newsdoc:"data.urgency"`
+	Date      time.Time `newsdoc:"data.date,format=2006-01-02"`
+	Public    bool      `newsdoc:"data.public"`
+	Tentative bool      `newsdoc:"data.tentative"`
+	Urgency   *int16    `newsdoc:"data.urgency"`
 }
 
 type AssignmentBlock struct {
 	ID           uuid.UUID         `newsdoc:"id"`
+	Publish      *time.Time        `newsdoc:"data.publish"`
+	PublishSlot  *int16            `newsdoc:"data.publish_slot"`
 	Starts       time.Time         `newsdoc:"data.starts"`
 	Ends         *time.Time        `newsdoc:"data.ends"`
 	Status       string            `newsdoc:"data.status"`
@@ -56,7 +56,7 @@ type AssigneeLink struct {
 	Role string    `newsdoc:"role"`
 }
 
-type CoverageLink struct {
+type EventLink struct {
 	UUID uuid.UUID `newsdoc:"uuid"`
 }
 
@@ -87,21 +87,19 @@ func NewItemFromDocument(doc newsdoc.Document) (*Item, error) {
 func (p *Item) ToRows(version int64) (*Rows, error) {
 	rows := Rows{
 		Item: postgres.SetPlanningItemParams{
-			UUID:        p.UUID,
-			Version:     version,
-			Title:       p.Title,
-			Public:      p.Meta.Public,
-			Tentative:   p.Meta.Tentative,
-			Date:        pg.Date(p.Meta.Date),
-			Publish:     pg.PTime(p.Meta.Publish),
-			PublishSlot: pg.PInt2(p.Meta.PublishSlot),
-			Urgency:     pg.PInt2(p.Meta.Urgency),
+			UUID:      p.UUID,
+			Version:   version,
+			Title:     p.Title,
+			Public:    p.Meta.Public,
+			Tentative: p.Meta.Tentative,
+			Date:      pg.Date(p.Meta.Date),
+			Urgency:   pg.PInt2(p.Meta.Urgency),
 		},
 	}
 
-	if p.Coverage != nil {
-		rows.Item.Coverage = pgtype.UUID{
-			Bytes: p.Coverage.UUID,
+	if p.Event != nil {
+		rows.Item.Event = pgtype.UUID{
+			Bytes: p.Event.UUID,
 			Valid: true,
 		}
 	}
@@ -112,6 +110,8 @@ func (p *Item) ToRows(version int64) (*Rows, error) {
 			Version:      version,
 			PlanningItem: p.UUID,
 			Status:       a.Status,
+			Publish:      pg.PTime(a.Publish),
+			PublishSlot:  pg.PInt2(a.PublishSlot),
 			Starts:       pg.Time(a.Starts),
 			Ends:         pg.PTime(a.Ends),
 			FullDay:      a.FullDay,
