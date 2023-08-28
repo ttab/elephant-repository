@@ -13,7 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.38.5
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/go-cmp v0.5.9
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.3.1
 	github.com/jackc/pglogrepl v0.0.0-20230630212501-5fd22a600b50
 	github.com/jackc/pgx/v5 v5.4.2
 	github.com/jackc/tern/v2 v2.1.1
