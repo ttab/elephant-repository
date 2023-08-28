@@ -23,10 +23,11 @@ require (
 	github.com/ory/dockertest/v3 v3.10.0
 	github.com/prometheus/client_golang v1.16.0
 	github.com/rakutentech/jwk-go v1.1.3
+	github.com/ttab/darknut v0.1.0
 	github.com/ttab/elephant-api v0.6.1
 	github.com/ttab/elephantine v0.7.2
 	github.com/ttab/newsdoc v0.4.2
-	github.com/ttab/revisor v0.3.3
+	github.com/ttab/revisor v0.3.5-0.20230828111845-95fed275cb71
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.25.7
 	github.com/xuri/excelize/v2 v2.7.1
@@ -119,7 +120,6 @@ require (
 	github.com/spf13/cobra v1.7.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
-	github.com/ttab/darknut v0.1.0 // indirect
 	github.com/vaughan0/go-ini v0.0.0-20130923145212-a98ad7ee00ec // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect

@@ -7,8 +7,6 @@
       "type": "core/planning-item",
       "data": {
         "date": "2023-07-27",
-        "publish": "2023-07-27T15:00:00+02:00",
-        "publish_slot": "12",
         "public": "true",
         "tentative": "false",
         "urgency": "2"
@@ -36,6 +34,8 @@
       "id": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
       "type": "core/assignment",
       "data": {
+        "publish": "2023-07-27T15:00:00+02:00",
+        "publish_slot": "12",
         "starts": "2023-07-25T00:00:00+02:00",
         "ends": "2023-07-25T23:59:59+02:00",
         "status": "done",
@@ -94,6 +94,13 @@
         {
           "type": "core/assignment-kind",
           "value": "photo"
+        },
+        {
+          "type": "core/description",
+          "role": "internal",
+          "data": {
+            "text": "Vad: Vi träffar radioprofilen (och numera även tv-profilen) för en intervju i vår serie sommarporträtt.\nVar: Lilla caféet på Söder, Ringvägen 131.\nKontakt till profilen: 070/XXXXXYY."
+          }
         }
       ],
       "links": [
@@ -115,8 +122,8 @@
       "value": "KLT"
     },
     {
-      "rel": "broader",
-      "type": "core/coverage",
+      "rel": "associated",
+      "type": "core/event",
       "uuid": "d1338a6d-e0a7-4413-be7e-7d6be74d2c55"
     }
   ]
