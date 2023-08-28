@@ -151,12 +151,14 @@ func (pr *PGReplication) Run(ctx context.Context) {
 
 	for {
 		err := pr.startReplication(rCtx)
-		if isReplicationErrorCode(err, errorCodeReplicationAlreadyActive) {
+
+		switch {
+		case isReplicationErrorCode(err, errorCodeReplicationAlreadyActive):
 			// Ignoring this, it's not actually an error, just check
 			// again later.
-		} else if errors.Is(err, context.Canceled) {
+		case errors.Is(err, context.Canceled):
 			return
-		} else if err != nil {
+		case err != nil:
 			pr.restarts.Inc()
 
 			pr.logger.ErrorCtx(
@@ -207,7 +209,7 @@ func (pr *PGReplication) startReplication(
 		return fmt.Errorf("failed to get slot information: %w", err)
 	}
 
-	if slotInfo.Active == true {
+	if slotInfo.Active {
 		// Informing the caller that replication already is running.
 		return pgReplicationError{
 			Code: errorCodeReplicationAlreadyActive,
@@ -279,7 +281,7 @@ const (
 )
 
 // isPgErrorCode checks if an error has a specific error code.
-// TODO: Move to elephantine
+// TODO: Move to elephantine.
 func isPgErrorCode(err error, code string) bool {
 	if err == nil {
 		return false
