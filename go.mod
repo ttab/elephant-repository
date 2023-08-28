@@ -26,7 +26,7 @@ require (
 	github.com/ttab/elephant-api v0.6.1
 	github.com/ttab/elephantine v0.7.2
 	github.com/ttab/newsdoc v0.4.2
-	github.com/ttab/revisor v0.3.3
+	github.com/ttab/revisor v0.3.4
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.25.7
 	github.com/xuri/excelize/v2 v2.7.1
