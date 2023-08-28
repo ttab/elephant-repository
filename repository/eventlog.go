@@ -45,6 +45,30 @@ type Event struct {
 	ACL       []ACLEntry `json:"acl,omitempty"`
 }
 
+type replicationErrorCode string
+
+const (
+	errorCodeReplicationAlreadyActive replicationErrorCode = "already-active"
+)
+
+type pgReplicationError struct {
+	Code replicationErrorCode
+}
+
+func (err pgReplicationError) Error() string {
+	return fmt.Sprintf("error code: %q", err.Code)
+}
+
+func isReplicationErrorCode(err error, code replicationErrorCode) bool {
+	var re pgReplicationError
+
+	if !errors.As(err, &re) {
+		return false
+	}
+
+	return re.Code == code
+}
+
 type PGReplication struct {
 	pool     *pgxpool.Pool
 	dbURI    string
@@ -52,7 +76,7 @@ type PGReplication struct {
 	slotName string
 
 	cancel  func()
-	started chan struct{}
+	started chan bool
 	stopped chan struct{}
 
 	restarts prometheus.Counter
@@ -110,7 +134,7 @@ func NewPGReplication(
 		restarts: restarts,
 		timeouts: timeouts,
 		events:   events,
-		started:  make(chan struct{}),
+		started:  make(chan bool, 1),
 		stopped:  make(chan struct{}),
 	}, nil
 }
@@ -127,7 +151,10 @@ func (pr *PGReplication) Run(ctx context.Context) {
 
 	for {
 		err := pr.startReplication(rCtx)
-		if errors.Is(err, context.Canceled) {
+		if isReplicationErrorCode(err, errorCodeReplicationAlreadyActive) {
+			// Ignoring this, it's not actually an error, just check
+			// again later.
+		} else if errors.Is(err, context.Canceled) {
 			return
 		} else if err != nil {
 			pr.restarts.Inc()
@@ -147,7 +174,8 @@ func (pr *PGReplication) Run(ctx context.Context) {
 	}
 }
 
-func (pr *PGReplication) Started() <-chan struct{} {
+// Started emits true as a signal every time replication has started.
+func (pr *PGReplication) Started() <-chan bool {
 	return pr.started
 }
 
@@ -167,19 +195,26 @@ func (pr *PGReplication) Stop() {
 func (pr *PGReplication) startReplication(
 	ctx context.Context,
 ) error {
-	lockTx, err := pr.pool.Begin(ctx)
+	nconn, err := pr.pool.Acquire(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to begin locking transaction: %w", err)
+		return fmt.Errorf("failed to get a connection from the connection pool: %w", err)
 	}
 
-	defer pg.SafeRollback(ctx, pr.logger, lockTx, "replication lock")
+	defer nconn.Release()
 
-	lockQueries := postgres.New(lockTx)
-
-	err = lockQueries.AcquireTXLock(ctx, LockLogicalReplication)
+	slotInfo, err := pr.getSlotInfo(ctx, nconn, pr.slotName)
 	if err != nil {
-		return fmt.Errorf("failed to acquire replication lock: %w", err)
+		return fmt.Errorf("failed to get slot information: %w", err)
 	}
+
+	if slotInfo.Active == true {
+		// Informing the caller that replication already is running.
+		return pgReplicationError{
+			Code: errorCodeReplicationAlreadyActive,
+		}
+	}
+
+	nconn.Release()
 
 	replConnString, err := pg.SetConnStringVariables(
 		pr.dbURI, url.Values{
@@ -197,11 +232,6 @@ func (pr *PGReplication) startReplication(
 
 	defer conn.Close(context.Background())
 
-	slotInfo, err := pr.getSlotInfo(ctx, lockTx, pr.slotName)
-	if err != nil {
-		return fmt.Errorf("failed to get slot information: %w", err)
-	}
-
 	if !slotInfo.Exists {
 		_, err = pglogrepl.CreateReplicationSlot(ctx,
 			conn, pr.slotName, "pgoutput",
@@ -218,14 +248,21 @@ func (pr *PGReplication) startReplication(
 		pglogrepl.StartReplicationOptions{PluginArgs: []string{
 			"proto_version '1'", "publication_names 'eventlog'",
 		}})
-	if err != nil {
+	if isPgErrorCode(err, SQLCodeObjectInUse) {
+		// Another instance has grabbed the replication slot between our
+		// initial check and now. Informing the caller that replication
+		// already is running.
+		return pgReplicationError{
+			Code: errorCodeReplicationAlreadyActive,
+		}
+	} else if err != nil {
 		return fmt.Errorf("failed to start replication: %w", err)
 	}
 
+	pr.logger.Info("replication started")
 	select {
-	case <-pr.started:
+	case pr.started <- true:
 	default:
-		close(pr.started)
 	}
 
 	err = pr.replicationLoop(ctx, conn)
@@ -234,6 +271,28 @@ func (pr *PGReplication) startReplication(
 	}
 
 	return nil
+}
+
+// https://www.postgresql.org/docs/current/errcodes-appendix.html#ERRCODES-TABLE
+const (
+	SQLCodeObjectInUse = "55006"
+)
+
+// isPgErrorCode checks if an error has a specific error code.
+// TODO: Move to elephantine
+func isPgErrorCode(err error, code string) bool {
+	if err == nil {
+		return false
+	}
+
+	var pgerr *pgconn.PgError
+
+	ok := errors.As(err, &pgerr)
+	if !ok {
+		return false
+	}
+
+	return pgerr.Code == code
 }
 
 func (pr *PGReplication) replicationLoop(
@@ -849,7 +908,7 @@ type slotInfo struct {
 }
 
 func (pr *PGReplication) getSlotInfo(
-	ctx context.Context, conn pgx.Tx, name string,
+	ctx context.Context, conn *pgxpool.Conn, name string,
 ) (*slotInfo, error) {
 	row := conn.QueryRow(ctx, `
 SELECT plugin, active
