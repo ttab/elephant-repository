@@ -17,7 +17,15 @@ func EnsureCoreSchema(ctx context.Context, store SchemaStore) error {
 
 	coreVersion := constraints.CoreSchemaVersion()
 
-	return EnsureSchema(ctx, store, "core", coreVersion, core)
+	for _, schema := range core {
+		err := EnsureSchema(ctx, store, schema.Name, coreVersion, schema)
+		if err != nil {
+			return fmt.Errorf("failed to ensure schema %q: %w",
+				schema.Name, err)
+		}
+	}
+
+	return nil
 }
 
 func EnsureSchema(
