@@ -17,7 +17,7 @@ require (
 	github.com/jackc/pglogrepl v0.0.0-20230630212501-5fd22a600b50
 	github.com/jackc/pgx/v5 v5.4.2
 	github.com/jackc/tern/v2 v2.1.1
-	github.com/jedib0t/go-pretty/v6 v6.4.6
+	github.com/jedib0t/go-pretty/v6 v6.4.7
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/kyleconroy/sqlc v1.19.1
 	github.com/ory/dockertest/v3 v3.10.0
