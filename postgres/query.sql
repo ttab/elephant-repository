@@ -278,12 +278,15 @@ WHERE uuid = @uuid;
 
 -- name: DeleteExpiredDocumentLock :exec
 DELETE FROM document_lock
-WHERE expires < @now
-  AND uuid = @uuid;
+WHERE uuid = ANY(@uuids::uuid[])
+  AND expires < @cutoff;
 
--- name: DeleteExpiredDocumentLocks :exec
-DELETE FROM document_lock
-WHERE expires < @now;
+-- name: GetExpiredDocumentLocks :many
+SELECT d.uuid, l.expires AS lock_expires, l.app
+FROM document_lock AS l
+       INNER JOIN document AS d ON d.uuid = l.uuid
+WHERE l.expires < @cutoff
+FOR UPDATE OF d SKIP LOCKED;
 
 -- name: DeleteDocumentLock :execrows
 DELETE FROM document_lock
