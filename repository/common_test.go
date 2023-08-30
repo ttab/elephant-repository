@@ -211,7 +211,7 @@ func testingAPIServer(
 		t.Cleanup(repl.Stop)
 
 		select {
-		case <-ctx.Done():
+		case <-time.After(10 * time.Second):
 			t.Fatal("failed to start replicator")
 		case <-repl.Started():
 		}
