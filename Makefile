@@ -1,23 +1,18 @@
-UID := $(shell id -u)
-GID := $(shell id -g)
-
 pg_conn?=postgres://repository:pass@localhost/repository
 rollback_to?=0
 
 UID := $(shell id -u)
 GID := $(shell id -g)
 
+SQL_TOOLS := ghcr.io/ttab/elephant-sqltools:v0.1.0
+
 SQLC := docker run --rm \
 	-v "${PWD}:/usr/src" -u $(UID):$(GID) \
-	repository-tools:latest sqlc
+	$(SQL_TOOLS) sqlc
 TERN := docker run --rm \
 	-v "${PWD}:/usr/src" \
 	--network host \
-	repository-tools:latest tern
-
-.PHONY: build-tools-image
-build-tools-image:
-	docker build . -f Dockerfile.tools -t repository-tools:latest
+	$(SQL_TOOLS) tern
 
 .PHONY: db-rollback
 db-rollback:
