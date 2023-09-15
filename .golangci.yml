@@ -49,6 +49,8 @@ linters:
   - wrapcheck
   - wsl
 linters-settings:
+  nestif:
+    min-complexity: 6
   godox:
     keywords:
       - FIXME

@@ -160,7 +160,6 @@ func (p *Item) ToRows(version int64) (*Rows, error) {
 
 			rows.Deliverables = append(rows.Deliverables, dr)
 		}
-
 	}
 
 	return &rows, nil
