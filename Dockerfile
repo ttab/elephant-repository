@@ -1,4 +1,4 @@
-FROM golang:1.20.4-alpine3.17 AS build
+FROM golang:1.21.1-alpine3.18 AS build
 
 WORKDIR /usr/src
 
@@ -11,7 +11,7 @@ ARG COMMAND
 
 RUN go build -o /build/repository ./cmd/repository
 
-FROM alpine:3.17.3
+FROM alpine:3.18
 
 COPY --from=build /build/repository /usr/local/bin/repository
 

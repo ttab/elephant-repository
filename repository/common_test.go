@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +20,6 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
 	"github.com/twitchtv/twirp"
-	"golang.org/x/exp/slog"
 )
 
 type TestContext struct {

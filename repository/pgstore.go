@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,12 +13,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/ttab/elephant-repository/planning"
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -128,7 +129,7 @@ func (s *PGDocStore) RunListener(ctx context.Context) {
 		if errors.Is(err, context.Canceled) {
 			return
 		} else if err != nil {
-			s.logger.ErrorCtx(
+			s.logger.ErrorContext(
 				ctx, "failed to run notification listener",
 				elephantine.LogKeyError, err,
 			)
@@ -800,6 +801,15 @@ func (s *PGDocStore) Update(
 		if err != nil {
 			return nil, fmt.Errorf(
 				"failed to create version in database: %w", err)
+		}
+
+		if update.Document.Type == "core/planning-item" {
+			err = planning.UpdateDatabase(ctx, tx,
+				*update.Document, up.Version)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to update planning data: %w", err)
+			}
 		}
 	}
 

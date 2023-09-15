@@ -1,0 +1,49 @@
+{
+  "Item": {
+    "UUID": "ab72e57f-441b-460b-8df1-6b96b6357bd5",
+    "Version": 1,
+    "Title": "Nyhet rörande skattejämkning",
+    "Description": "",
+    "Public": true,
+    "Tentative": false,
+    "StartDate": "2023-09-11",
+    "EndDate": "2023-09-11",
+    "Priority": 2,
+    "Event": null
+  },
+  "Assignments": [
+    {
+      "UUID": "34244f38-dc72-40f5-a471-407dc6ea31e1",
+      "Version": 1,
+      "PlanningItem": "ab72e57f-441b-460b-8df1-6b96b6357bd5",
+      "Status": null,
+      "Publish": "2023-09-11T04:15:00Z",
+      "PublishSlot": null,
+      "Starts": "2023-09-10T22:00:00Z",
+      "Ends": "2023-09-11T21:59:59Z",
+      "StartDate": "2023-09-11",
+      "EndDate": "2023-09-11",
+      "FullDay": true,
+      "Public": false,
+      "Kind": [
+        "text"
+      ],
+      "Description": ""
+    }
+  ],
+  "Assignees": [
+    {
+      "Assignment": "34244f38-dc72-40f5-a471-407dc6ea31e1",
+      "Assignee": "ff5a4498-9c1e-4de9-9d4c-b269f9ceafd2",
+      "Version": 1,
+      "Role": "primary"
+    }
+  ],
+  "Deliverables": [
+    {
+      "Assignment": "34244f38-dc72-40f5-a471-407dc6ea31e1",
+      "Document": "e6205e56-88df-48b5-acb8-7a3ca7ca5636",
+      "Version": 1
+    }
+  ]
+}

@@ -3,6 +3,7 @@ package repository_test
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -18,7 +19,6 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
 	"github.com/twitchtv/twirp"
-	"golang.org/x/exp/slog"
 	"google.golang.org/protobuf/testing/protocmp"
 )
 

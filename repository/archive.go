@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	mrand "math/rand"
 	"net/http"
 	"strconv"
@@ -30,7 +31,6 @@ import (
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -216,7 +216,7 @@ func (a *Archiver) run(ctx context.Context) {
 		} else if err != nil {
 			a.restarts.Inc()
 
-			a.logger.ErrorCtx(ctx, "archiver error, restarting",
+			a.logger.ErrorContext(ctx, "archiver error, restarting",
 				elephantine.LogKeyError, err,
 				elephantine.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
 			)
@@ -543,7 +543,7 @@ func (a *Archiver) archiveDocumentVersions(
 			VersionId: putRes.VersionId,
 		})
 		if cErr != nil {
-			a.logger.ErrorCtx(ctx,
+			a.logger.ErrorContext(ctx,
 				"failed to clean up archive object after commit failed",
 				elephantine.LogKeyError, cErr,
 				elephantine.LogKeyBucket, a.bucket,
@@ -671,7 +671,7 @@ func (a *Archiver) archiveDocumentStatuses(
 			VersionId: putRes.VersionId,
 		})
 		if cErr != nil {
-			a.logger.ErrorCtx(ctx,
+			a.logger.ErrorContext(ctx,
 				"failed to clean up archive object after commit failed",
 				elephantine.LogKeyError, cErr,
 				elephantine.LogKeyBucket, a.bucket,

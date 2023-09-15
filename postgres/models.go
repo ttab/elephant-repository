@@ -34,23 +34,23 @@ type DeleteRecord struct {
 	ID         int64
 	UUID       uuid.UUID
 	URI        string
-	Type       string
 	Version    int64
 	Created    pgtype.Timestamptz
 	CreatorUri string
 	Meta       []byte
+	Type       string
 }
 
 type Document struct {
 	UUID           uuid.UUID
 	URI            string
-	Type           string
 	Created        pgtype.Timestamptz
 	CreatorUri     string
 	Updated        pgtype.Timestamptz
 	UpdaterUri     string
 	CurrentVersion int64
 	Deleting       bool
+	Type           string
 }
 
 type DocumentLink struct {
@@ -136,6 +136,49 @@ type Metric struct {
 type MetricKind struct {
 	Name        string
 	Aggregation int16
+}
+
+type PlanningAssignee struct {
+	Assignment uuid.UUID
+	Assignee   uuid.UUID
+	Version    int64
+	Role       string
+}
+
+type PlanningAssignment struct {
+	UUID         uuid.UUID
+	Version      int64
+	PlanningItem uuid.UUID
+	Status       pgtype.Text
+	Publish      pgtype.Timestamptz
+	PublishSlot  pgtype.Int2
+	Starts       pgtype.Timestamptz
+	Ends         pgtype.Timestamptz
+	StartDate    pgtype.Date
+	EndDate      pgtype.Date
+	FullDay      bool
+	Public       bool
+	Kind         []string
+	Description  string
+}
+
+type PlanningDeliverable struct {
+	Assignment uuid.UUID
+	Document   uuid.UUID
+	Version    int64
+}
+
+type PlanningItem struct {
+	UUID        uuid.UUID
+	Version     int64
+	Title       string
+	Description string
+	Public      bool
+	Tentative   bool
+	StartDate   pgtype.Date
+	EndDate     pgtype.Date
+	Priority    pgtype.Int2
+	Event       pgtype.UUID
 }
 
 type Report struct {

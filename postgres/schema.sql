@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 15.3 (Debian 15.3-1.pgdg110+1)
--- Dumped by pg_dump version 15.3 (Debian 15.3-1.pgdg110+1)
+-- Dumped from database version 15.3 (Debian 15.3-1.pgdg120+1)
+-- Dumped by pg_dump version 15.3 (Debian 15.3-1.pgdg120+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -197,11 +197,11 @@ CREATE TABLE public.delete_record (
     id bigint NOT NULL,
     uuid uuid NOT NULL,
     uri text NOT NULL,
-    type text NOT NULL,
     version bigint NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
-    meta jsonb
+    meta jsonb,
+    type text NOT NULL
 );
 
 
@@ -228,13 +228,13 @@ ALTER TABLE public.delete_record ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTIT
 CREATE TABLE public.document (
     uuid uuid NOT NULL,
     uri text NOT NULL,
-    type text NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
     updated timestamp with time zone NOT NULL,
     updater_uri text NOT NULL,
     current_version bigint NOT NULL,
-    deleting boolean DEFAULT false NOT NULL
+    deleting boolean DEFAULT false NOT NULL,
+    type text NOT NULL
 );
 
 ALTER TABLE ONLY public.document REPLICA IDENTITY FULL;
@@ -410,6 +410,77 @@ CREATE TABLE public.metric_kind (
 
 
 ALTER TABLE public.metric_kind OWNER TO repository;
+
+--
+-- Name: planning_assignee; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.planning_assignee (
+    assignment uuid NOT NULL,
+    assignee uuid NOT NULL,
+    version bigint NOT NULL,
+    role text NOT NULL
+);
+
+
+ALTER TABLE public.planning_assignee OWNER TO repository;
+
+--
+-- Name: planning_assignment; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.planning_assignment (
+    uuid uuid NOT NULL,
+    version bigint NOT NULL,
+    planning_item uuid NOT NULL,
+    status text,
+    publish timestamp with time zone,
+    publish_slot smallint,
+    starts timestamp with time zone NOT NULL,
+    ends timestamp with time zone,
+    start_date date NOT NULL,
+    end_date date NOT NULL,
+    full_day boolean NOT NULL,
+    public boolean NOT NULL,
+    kind text[] NOT NULL,
+    description text NOT NULL
+);
+
+
+ALTER TABLE public.planning_assignment OWNER TO repository;
+
+--
+-- Name: planning_deliverable; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.planning_deliverable (
+    assignment uuid NOT NULL,
+    document uuid NOT NULL,
+    version bigint NOT NULL
+);
+
+
+ALTER TABLE public.planning_deliverable OWNER TO repository;
+
+--
+-- Name: planning_item; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.planning_item (
+    uuid uuid NOT NULL,
+    version bigint NOT NULL,
+    title text NOT NULL,
+    description text NOT NULL,
+    public boolean NOT NULL,
+    tentative boolean NOT NULL,
+    start_date date NOT NULL,
+    end_date date NOT NULL,
+    priority smallint,
+    event uuid
+);
+
+
+ALTER TABLE public.planning_item OWNER TO repository;
 
 --
 -- Name: report; Type: TABLE; Schema: public; Owner: repository
@@ -624,6 +695,38 @@ ALTER TABLE ONLY public.metric
 
 
 --
+-- Name: planning_assignee planning_assignee_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_assignee
+    ADD CONSTRAINT planning_assignee_pkey PRIMARY KEY (assignment, assignee);
+
+
+--
+-- Name: planning_assignment planning_assignment_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_assignment
+    ADD CONSTRAINT planning_assignment_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: planning_deliverable planning_deliverable_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_deliverable
+    ADD CONSTRAINT planning_deliverable_pkey PRIMARY KEY (assignment, document);
+
+
+--
+-- Name: planning_item planning_item_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_item
+    ADD CONSTRAINT planning_item_pkey PRIMARY KEY (uuid);
+
+
+--
 -- Name: report report_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -696,6 +799,48 @@ CREATE INDEX document_status_archived ON public.document_status USING btree (cre
 --
 
 CREATE INDEX document_version_archived ON public.document_version USING btree (created) WHERE (archived = false);
+
+
+--
+-- Name: planning_assignee_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_assignee_idx ON public.planning_assignee USING btree (assignee);
+
+
+--
+-- Name: planning_assignment_kind_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_assignment_kind_idx ON public.planning_assignment USING gin (kind);
+
+
+--
+-- Name: planning_assignment_publish_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_assignment_publish_idx ON public.planning_assignment USING btree (publish);
+
+
+--
+-- Name: planning_assignment_publish_slot_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_assignment_publish_slot_idx ON public.planning_assignment USING btree (publish_slot);
+
+
+--
+-- Name: planning_deliverable_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_deliverable_idx ON public.planning_deliverable USING btree (document);
+
+
+--
+-- Name: planning_item_event_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_item_event_idx ON public.planning_item USING btree (event);
 
 
 --
@@ -776,6 +921,38 @@ ALTER TABLE ONLY public.metric
 
 ALTER TABLE ONLY public.metric
     ADD CONSTRAINT metric_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: planning_assignee planning_assignee_assignment_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_assignee
+    ADD CONSTRAINT planning_assignee_assignment_fkey FOREIGN KEY (assignment) REFERENCES public.planning_assignment(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: planning_assignment planning_assignment_planning_item_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_assignment
+    ADD CONSTRAINT planning_assignment_planning_item_fkey FOREIGN KEY (planning_item) REFERENCES public.planning_item(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: planning_deliverable planning_deliverable_assignment_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_deliverable
+    ADD CONSTRAINT planning_deliverable_assignment_fkey FOREIGN KEY (assignment) REFERENCES public.planning_assignment(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: planning_item planning_item_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.planning_item
+    ADD CONSTRAINT planning_item_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
 
 
 --

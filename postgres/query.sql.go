@@ -60,6 +60,51 @@ func (q *Queries) CheckPermission(ctx context.Context, arg CheckPermissionParams
 	return has_access, err
 }
 
+const cleanUpAssignees = `-- name: CleanUpAssignees :exec
+DELETE FROM planning_assignee
+WHERE assignment = $1 AND version != $2
+`
+
+type CleanUpAssigneesParams struct {
+	Assignment uuid.UUID
+	Version    int64
+}
+
+func (q *Queries) CleanUpAssignees(ctx context.Context, arg CleanUpAssigneesParams) error {
+	_, err := q.db.Exec(ctx, cleanUpAssignees, arg.Assignment, arg.Version)
+	return err
+}
+
+const cleanUpAssignments = `-- name: CleanUpAssignments :exec
+DELETE FROM planning_assignment
+WHERE planning_item = $1 AND version != $2
+`
+
+type CleanUpAssignmentsParams struct {
+	PlanningItem uuid.UUID
+	Version      int64
+}
+
+func (q *Queries) CleanUpAssignments(ctx context.Context, arg CleanUpAssignmentsParams) error {
+	_, err := q.db.Exec(ctx, cleanUpAssignments, arg.PlanningItem, arg.Version)
+	return err
+}
+
+const cleanUpDeliverables = `-- name: CleanUpDeliverables :exec
+DELETE FROM planning_deliverable
+WHERE assignment = $1 AND version != $2
+`
+
+type CleanUpDeliverablesParams struct {
+	Assignment uuid.UUID
+	Version    int64
+}
+
+func (q *Queries) CleanUpDeliverables(ctx context.Context, arg CleanUpDeliverablesParams) error {
+	_, err := q.db.Exec(ctx, cleanUpDeliverables, arg.Assignment, arg.Version)
+	return err
+}
+
 const configureEventsink = `-- name: ConfigureEventsink :exec
 INSERT INTO eventsink(name, configuration) VALUES($1, $2)
 ON CONFLICT (name) DO UPDATE SET
@@ -205,6 +250,15 @@ WHERE name = $1
 
 func (q *Queries) DeleteMetricKind(ctx context.Context, name string) error {
 	_, err := q.db.Exec(ctx, deleteMetricKind, name)
+	return err
+}
+
+const deletePlanningItem = `-- name: DeletePlanningItem :exec
+DELETE FROM planning_item WHERE uuid = $1
+`
+
+func (q *Queries) DeletePlanningItem(ctx context.Context, argUuid uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deletePlanningItem, argUuid)
 	return err
 }
 
@@ -898,6 +952,103 @@ func (q *Queries) GetNextReportDueTime(ctx context.Context) (pgtype.Timestamptz,
 	return column_1, err
 }
 
+const getPlanningAssignment = `-- name: GetPlanningAssignment :one
+SELECT uuid, version, planning_item, status, publish, publish_slot,
+       starts, ends, start_date, end_date, full_day, public, kind, description
+FROM planning_assignment
+WHERE uuid = $1
+`
+
+func (q *Queries) GetPlanningAssignment(ctx context.Context, argUuid uuid.UUID) (PlanningAssignment, error) {
+	row := q.db.QueryRow(ctx, getPlanningAssignment, argUuid)
+	var i PlanningAssignment
+	err := row.Scan(
+		&i.UUID,
+		&i.Version,
+		&i.PlanningItem,
+		&i.Status,
+		&i.Publish,
+		&i.PublishSlot,
+		&i.Starts,
+		&i.Ends,
+		&i.StartDate,
+		&i.EndDate,
+		&i.FullDay,
+		&i.Public,
+		&i.Kind,
+		&i.Description,
+	)
+	return i, err
+}
+
+const getPlanningAssignments = `-- name: GetPlanningAssignments :many
+SELECT uuid, version, planning_item, status, publish, publish_slot,
+       starts, ends, start_date, end_date, full_day, public, kind, description
+FROM planning_assignment
+WHERE planning_item = $1
+`
+
+func (q *Queries) GetPlanningAssignments(ctx context.Context, planningItem uuid.UUID) ([]PlanningAssignment, error) {
+	rows, err := q.db.Query(ctx, getPlanningAssignments, planningItem)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PlanningAssignment
+	for rows.Next() {
+		var i PlanningAssignment
+		if err := rows.Scan(
+			&i.UUID,
+			&i.Version,
+			&i.PlanningItem,
+			&i.Status,
+			&i.Publish,
+			&i.PublishSlot,
+			&i.Starts,
+			&i.Ends,
+			&i.StartDate,
+			&i.EndDate,
+			&i.FullDay,
+			&i.Public,
+			&i.Kind,
+			&i.Description,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPlanningItem = `-- name: GetPlanningItem :one
+SELECT
+        uuid, version, title, description, public, tentative,
+        start_date, end_date, priority, event
+FROM planning_item
+WHERE uuid = $1
+`
+
+func (q *Queries) GetPlanningItem(ctx context.Context, argUuid uuid.UUID) (PlanningItem, error) {
+	row := q.db.QueryRow(ctx, getPlanningItem, argUuid)
+	var i PlanningItem
+	err := row.Scan(
+		&i.UUID,
+		&i.Version,
+		&i.Title,
+		&i.Description,
+		&i.Public,
+		&i.Tentative,
+		&i.StartDate,
+		&i.EndDate,
+		&i.Priority,
+		&i.Event,
+	)
+	return i, err
+}
+
 const getReport = `-- name: GetReport :one
 SELECT name, enabled, next_execution, spec
 FROM report
@@ -1580,6 +1731,154 @@ type SetNextReportExecutionParams struct {
 
 func (q *Queries) SetNextReportExecution(ctx context.Context, arg SetNextReportExecutionParams) error {
 	_, err := q.db.Exec(ctx, setNextReportExecution, arg.NextExecution, arg.Name)
+	return err
+}
+
+const setPlanningAssignee = `-- name: SetPlanningAssignee :exec
+INSERT INTO planning_assignee(
+       assignment, assignee, version, role
+) VALUES (
+       $1, $2, $3, $4
+)
+ON CONFLICT ON CONSTRAINT planning_assignee_pkey DO UPDATE
+SET version = $3, role = $4
+`
+
+type SetPlanningAssigneeParams struct {
+	Assignment uuid.UUID
+	Assignee   uuid.UUID
+	Version    int64
+	Role       string
+}
+
+func (q *Queries) SetPlanningAssignee(ctx context.Context, arg SetPlanningAssigneeParams) error {
+	_, err := q.db.Exec(ctx, setPlanningAssignee,
+		arg.Assignment,
+		arg.Assignee,
+		arg.Version,
+		arg.Role,
+	)
+	return err
+}
+
+const setPlanningAssignment = `-- name: SetPlanningAssignment :exec
+INSERT INTO planning_assignment(
+       uuid, version, planning_item, status, publish, publish_slot,
+       starts, ends, start_date, end_date, full_day, public, kind, description
+) VALUES (
+       $1, $2, $3, $4, $5, $6,
+       $7, $8, $9, $10, $11, $12, $13,
+       $14
+)
+ON CONFLICT ON CONSTRAINT planning_assignment_pkey DO UPDATE
+SET
+   version = $2, planning_item = $3, status = $4,
+   publish = $5, publish_slot = $6, starts = $7,
+   ends = $8, start_date = $9, end_date = $10,
+   full_day = $11, public = $12, kind = $13,
+   description = $14
+`
+
+type SetPlanningAssignmentParams struct {
+	UUID         uuid.UUID
+	Version      int64
+	PlanningItem uuid.UUID
+	Status       pgtype.Text
+	Publish      pgtype.Timestamptz
+	PublishSlot  pgtype.Int2
+	Starts       pgtype.Timestamptz
+	Ends         pgtype.Timestamptz
+	StartDate    pgtype.Date
+	EndDate      pgtype.Date
+	FullDay      bool
+	Public       bool
+	Kind         []string
+	Description  string
+}
+
+func (q *Queries) SetPlanningAssignment(ctx context.Context, arg SetPlanningAssignmentParams) error {
+	_, err := q.db.Exec(ctx, setPlanningAssignment,
+		arg.UUID,
+		arg.Version,
+		arg.PlanningItem,
+		arg.Status,
+		arg.Publish,
+		arg.PublishSlot,
+		arg.Starts,
+		arg.Ends,
+		arg.StartDate,
+		arg.EndDate,
+		arg.FullDay,
+		arg.Public,
+		arg.Kind,
+		arg.Description,
+	)
+	return err
+}
+
+const setPlanningItem = `-- name: SetPlanningItem :exec
+INSERT INTO planning_item(
+        uuid, version, title, description, public, tentative,
+        start_date, end_date, priority, event
+) VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10
+)
+ON CONFLICT ON CONSTRAINT planning_item_pkey DO UPDATE
+SET
+   version = $2, title = $3, description = $4,
+   public = $5, tentative = $6, start_date = $7,
+   end_date = $8, priority = $9, event = $10
+`
+
+type SetPlanningItemParams struct {
+	UUID        uuid.UUID
+	Version     int64
+	Title       string
+	Description string
+	Public      bool
+	Tentative   bool
+	StartDate   pgtype.Date
+	EndDate     pgtype.Date
+	Priority    pgtype.Int2
+	Event       pgtype.UUID
+}
+
+func (q *Queries) SetPlanningItem(ctx context.Context, arg SetPlanningItemParams) error {
+	_, err := q.db.Exec(ctx, setPlanningItem,
+		arg.UUID,
+		arg.Version,
+		arg.Title,
+		arg.Description,
+		arg.Public,
+		arg.Tentative,
+		arg.StartDate,
+		arg.EndDate,
+		arg.Priority,
+		arg.Event,
+	)
+	return err
+}
+
+const setPlanningItemDeliverable = `-- name: SetPlanningItemDeliverable :exec
+INSERT INTO planning_deliverable(
+       assignment, document, version
+) VALUES(
+       $1, $2, $3
+)
+ON CONFLICT ON CONSTRAINT planning_deliverable_pkey DO UPDATE
+SET
+   version = $3
+`
+
+type SetPlanningItemDeliverableParams struct {
+	Assignment uuid.UUID
+	Document   uuid.UUID
+	Version    int64
+}
+
+func (q *Queries) SetPlanningItemDeliverable(ctx context.Context, arg SetPlanningItemDeliverableParams) error {
+	_, err := q.db.Exec(ctx, setPlanningItemDeliverable, arg.Assignment, arg.Document, arg.Version)
 	return err
 }
 

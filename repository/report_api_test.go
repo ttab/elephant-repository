@@ -1,6 +1,7 @@
 package repository_test
 
 import (
+	"log/slog"
 	"regexp"
 	"testing"
 	"time"
@@ -8,7 +9,6 @@ import (
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephantine/test"
-	"golang.org/x/exp/slog"
 )
 
 func TestIntegrationReporting(t *testing.T) {

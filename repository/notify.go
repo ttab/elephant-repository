@@ -3,11 +3,11 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
-	"golang.org/x/exp/slog"
 )
 
 type NotifyChannel string
@@ -92,7 +92,7 @@ func pgNotify[T any](
 ) {
 	message, err := json.Marshal(payload)
 	if err != nil {
-		logger.ErrorCtx(ctx, "failed to marshal payload for notification",
+		logger.ErrorContext(ctx, "failed to marshal payload for notification",
 			elephantine.LogKeyError, err,
 			elephantine.LogKeyChannel, channel)
 	}
@@ -102,7 +102,7 @@ func pgNotify[T any](
 		Message: string(message),
 	})
 	if err != nil {
-		logger.ErrorCtx(ctx, "failed to marshal payload for notification",
+		logger.ErrorContext(ctx, "failed to marshal payload for notification",
 			elephantine.LogKeyError, err,
 			elephantine.LogKeyChannel, channel,
 			elephantine.LogKeyMessage, json.RawMessage(message))

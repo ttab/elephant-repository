@@ -1,6 +1,7 @@
 package repository_test
 
 import (
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -9,7 +10,6 @@ import (
 	itest "github.com/ttab/elephant-repository/internal/test"
 	repo "github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine/test"
-	"golang.org/x/exp/slog"
 )
 
 func TestValidateLabel(t *testing.T) {

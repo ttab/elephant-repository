@@ -3,13 +3,13 @@ package repository
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
-	"golang.org/x/exp/slog"
 )
 
 type Validator struct {
@@ -57,7 +57,7 @@ func (v *Validator) reloadLoop(
 		err := v.loadSchemas(ctx, loader)
 		if err != nil {
 			// TODO: add handler that reacts to LogKeyCountMetric
-			logger.ErrorCtx(ctx, "failed to refresh schemas",
+			logger.ErrorContext(ctx, "failed to refresh schemas",
 				elephantine.LogKeyError, err,
 				elephantine.LogKeyCountMetric, "elephant_schema_refresh_failure_count")
 		}

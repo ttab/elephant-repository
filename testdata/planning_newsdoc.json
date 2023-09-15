@@ -1,0 +1,66 @@
+{
+  "uuid": "ab72e57f-441b-460b-8df1-6b96b6357bd5",
+  "type": "core/planning-item",
+  "uri": "core://newscoverage/ab72e57f-441b-460b-8df1-6b96b6357bd5",
+  "title": "Nyhet rörande skattejämkning",
+  "meta": [
+    {
+      "type": "core/planning-item",
+      "data": {
+        "end_date": "2023-09-11",
+        "priority": "2",
+        "public": "true",
+        "start_date": "2023-09-11",
+        "tentative": "false"
+      }
+    },
+    {
+      "id": "34244f38-dc72-40f5-a471-407dc6ea31e1",
+      "type": "core/assignment",
+      "title": "Fullängdstext med fakta",
+      "data": {
+        "end": "2023-09-11T21:59:59Z",
+        "end_date": "2023-09-11",
+        "full_day": "true",
+        "public": "true",
+        "publish": "2023-09-11T04:15:00Z",
+        "start": "2023-09-10T22:00:00Z",
+        "start_date": "2023-09-11"
+      },
+      "links": [
+        {
+          "uuid": "ff5a4498-9c1e-4de9-9d4c-b269f9ceafd2",
+          "type": "core/author",
+          "rel": "assignee",
+          "role": "primary",
+          "name": "Birdie Pfannerstill"
+        },
+        {
+          "uuid": "e6205e56-88df-48b5-acb8-7a3ca7ca5636",
+          "type": "core/article",
+          "rel": "deliverable"
+        }
+      ],
+      "meta": [
+        {
+          "type": "tt/slugline",
+          "value": "skattejämkning"
+        },
+        {
+          "type": "core/assignment-type",
+          "value": "text"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "uuid": "2c4bd9ba-8f59-5172-890b-bdb693d9c3fe",
+      "uri": "sector://eko",
+      "type": "tt/sector",
+      "title": "Ekonomi",
+      "rel": "sector",
+      "value": "EKO"
+    }
+  ]
+}

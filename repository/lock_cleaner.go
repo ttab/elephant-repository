@@ -27,7 +27,7 @@ func (s *PGDocStore) RunCleaner(ctx context.Context, period time.Duration) {
 			Timeout:       5 * time.Second,
 		})
 		if err != nil {
-			s.logger.ErrorCtx(ctx, "failed to create job lock",
+			s.logger.ErrorContext(ctx, "failed to create job lock",
 				elephantine.LogKeyError, err)
 
 			continue
@@ -35,7 +35,7 @@ func (s *PGDocStore) RunCleaner(ctx context.Context, period time.Duration) {
 
 		err = jobLock.RunWithContext(ctx, s.removeExpiredLocks)
 		if err != nil {
-			s.logger.ErrorCtx(
+			s.logger.ErrorContext(
 				ctx, "lock cleaner error",
 				elephantine.LogKeyError, err,
 			)

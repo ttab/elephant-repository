@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,7 +17,6 @@ import (
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
-	"golang.org/x/exp/slog"
 )
 
 type ReportRunnerOptions struct {
@@ -111,7 +111,7 @@ func (r *ReportRunner) run(ctx context.Context) {
 		} else if err != nil {
 			r.restarts.Inc()
 
-			r.logger.ErrorCtx(
+			r.logger.ErrorContext(
 				ctx, "reporter error, restarting",
 				elephantine.LogKeyError, err,
 				elephantine.LogKeyDelay, slog.DurationValue(restartWaitSeconds),

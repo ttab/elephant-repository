@@ -9,8 +9,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -28,9 +30,9 @@ import (
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephant-repository/sinks"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 	"github.com/urfave/cli/v2"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -55,6 +57,10 @@ func main() {
 				EnvVars: []string{"LOG_LEVEL"},
 				Value:   "error",
 			},
+			&cli.StringSliceFlag{
+				Name:    "ensure-schema",
+				EnvVars: []string{"ENSURE_SCHEMA"},
+			},
 		}, cmd.BackendFlags()...),
 	}
 
@@ -75,9 +81,10 @@ func main() {
 
 func runServer(c *cli.Context) error {
 	var (
-		addr        = c.String("addr")
-		profileAddr = c.String("profile-addr")
-		logLevel    = c.String("log-level")
+		addr          = c.String("addr")
+		profileAddr   = c.String("profile-addr")
+		logLevel      = c.String("log-level")
+		ensureSchemas = c.StringSlice("ensure-schema")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -196,6 +203,49 @@ func runServer(c *cli.Context) error {
 		if err != nil {
 			return fmt.Errorf(
 				"failed to ensure core schema: %w", err)
+		}
+	}
+
+	// Spec format name@version:URL
+	for _, spec := range ensureSchemas {
+		reference, rawURL, ok := strings.Cut(spec, ":")
+		if !ok {
+			return errors.New("expected a specification in the format name@version:URL")
+		}
+
+		name, version, ok := strings.Cut(reference, "@")
+		if !ok {
+			return errors.New("expected a specification in the format name@version:URL")
+		}
+
+		uri, err := url.Parse(rawURL)
+		if err != nil {
+			return fmt.Errorf("invalid URL for the schema %s: %w", name, err)
+		}
+
+		var schema revisor.ConstraintSet
+
+		switch uri.Scheme {
+		case "file":
+			err := elephantine.UnmarshalFile(uri.Opaque, &schema)
+			if err != nil {
+				return fmt.Errorf("failed to load the schema file for %s: %w",
+					name, err)
+			}
+		case "http", "https":
+			err := elephantine.UnmarshalHTTPResource(rawURL, &schema)
+			if err != nil {
+				return fmt.Errorf("failed to load the schema %s over HTTP(S): %w",
+					name, err)
+			}
+		default:
+			return fmt.Errorf("unknown schema URL scheme %q", uri.Scheme)
+		}
+
+		err = repository.EnsureSchema(c.Context, store, name, version, schema)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to ensure %s schema: %w", name, err)
 		}
 	}
 

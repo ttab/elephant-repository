@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"time"
 
@@ -19,7 +20,6 @@ import (
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
-	"golang.org/x/exp/slog"
 )
 
 type EventType string
@@ -161,7 +161,7 @@ func (pr *PGReplication) Run(ctx context.Context) {
 		case err != nil:
 			pr.restarts.Inc()
 
-			pr.logger.ErrorCtx(
+			pr.logger.ErrorContext(
 				rCtx, "replication error, restarting",
 				elephantine.LogKeyError, err,
 				elephantine.LogKeyDelay, slog.DurationValue(restartWaitSeconds),

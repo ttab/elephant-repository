@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -11,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
-	"golang.org/x/exp/slog"
 )
 
 type EventBridgeEventPutter interface {
