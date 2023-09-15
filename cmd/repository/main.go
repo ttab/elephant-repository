@@ -235,7 +235,7 @@ func runServer(c *cli.Context) error {
 		case "http", "https":
 			err := elephantine.UnmarshalHTTPResource(rawURL, &schema)
 			if err != nil {
-				return fmt.Errorf("failed to load the schema %s over HTTP: %w",
+				return fmt.Errorf("failed to load the schema %s over HTTP(S): %w",
 					name, err)
 			}
 		default:
