@@ -433,12 +433,15 @@ CREATE TABLE public.planning_assignment (
     uuid uuid NOT NULL,
     version bigint NOT NULL,
     planning_item uuid NOT NULL,
-    status text NOT NULL,
+    status text,
     publish timestamp with time zone,
     publish_slot smallint,
     starts timestamp with time zone NOT NULL,
     ends timestamp with time zone,
+    start_date date NOT NULL,
+    end_date date NOT NULL,
     full_day boolean NOT NULL,
+    public boolean NOT NULL,
     kind text[] NOT NULL,
     description text NOT NULL
 );
@@ -470,8 +473,9 @@ CREATE TABLE public.planning_item (
     description text NOT NULL,
     public boolean NOT NULL,
     tentative boolean NOT NULL,
-    date date NOT NULL,
-    urgency smallint,
+    start_date date NOT NULL,
+    end_date date NOT NULL,
+    priority smallint,
     event uuid
 );
 
@@ -561,20 +565,6 @@ CREATE TABLE public.status_rule (
 
 
 ALTER TABLE public.status_rule OWNER TO repository;
-
---
--- Name: user_reference; Type: TABLE; Schema: public; Owner: repository
---
-
-CREATE TABLE public.user_reference (
-    uuid uuid NOT NULL,
-    external_id text NOT NULL,
-    name text NOT NULL,
-    avatar_url text NOT NULL
-);
-
-
-ALTER TABLE public.user_reference OWNER TO repository;
 
 --
 -- Name: acl_audit acl_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
@@ -777,22 +767,6 @@ ALTER TABLE ONLY public.status_rule
 
 
 --
--- Name: user_reference user_reference_external_id_key; Type: CONSTRAINT; Schema: public; Owner: repository
---
-
-ALTER TABLE ONLY public.user_reference
-    ADD CONSTRAINT user_reference_external_id_key UNIQUE (external_id);
-
-
---
--- Name: user_reference user_reference_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
---
-
-ALTER TABLE ONLY public.user_reference
-    ADD CONSTRAINT user_reference_pkey PRIMARY KEY (uuid);
-
-
---
 -- Name: delete_record_uuid_idx; Type: INDEX; Schema: public; Owner: repository
 --
 
@@ -828,6 +802,13 @@ CREATE INDEX document_version_archived ON public.document_version USING btree (c
 
 
 --
+-- Name: planning_assignee_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_assignee_idx ON public.planning_assignee USING btree (assignee);
+
+
+--
 -- Name: planning_assignment_kind_idx; Type: INDEX; Schema: public; Owner: repository
 --
 
@@ -846,6 +827,13 @@ CREATE INDEX planning_assignment_publish_idx ON public.planning_assignment USING
 --
 
 CREATE INDEX planning_assignment_publish_slot_idx ON public.planning_assignment USING btree (publish_slot);
+
+
+--
+-- Name: planning_deliverable_idx; Type: INDEX; Schema: public; Owner: repository
+--
+
+CREATE INDEX planning_deliverable_idx ON public.planning_deliverable USING btree (document);
 
 
 --
@@ -936,14 +924,6 @@ ALTER TABLE ONLY public.metric
 
 
 --
--- Name: planning_assignee planning_assignee_assignee_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
---
-
-ALTER TABLE ONLY public.planning_assignee
-    ADD CONSTRAINT planning_assignee_assignee_fkey FOREIGN KEY (assignee) REFERENCES public.user_reference(uuid) ON DELETE CASCADE;
-
-
---
 -- Name: planning_assignee planning_assignee_assignment_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
 --
 
@@ -965,14 +945,6 @@ ALTER TABLE ONLY public.planning_assignment
 
 ALTER TABLE ONLY public.planning_deliverable
     ADD CONSTRAINT planning_deliverable_assignment_fkey FOREIGN KEY (assignment) REFERENCES public.planning_assignment(uuid) ON DELETE CASCADE;
-
-
---
--- Name: planning_deliverable planning_deliverable_document_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
---
-
-ALTER TABLE ONLY public.planning_deliverable
-    ADD CONSTRAINT planning_deliverable_document_fkey FOREIGN KEY (document) REFERENCES public.document(uuid) ON DELETE CASCADE;
 
 
 --

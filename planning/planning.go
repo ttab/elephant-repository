@@ -28,21 +28,25 @@ type DescriptionBlock struct {
 }
 
 type ItemMeta struct {
-	Date      time.Time `newsdoc:"data.date,format=2006-01-02"`
+	StartDate time.Time `newsdoc:"data.start_date,format=2006-01-02"`
+	EndDate   time.Time `newsdoc:"data.end_date,format=2006-01-02"`
 	Public    bool      `newsdoc:"data.public"`
 	Tentative bool      `newsdoc:"data.tentative"`
-	Urgency   *int16    `newsdoc:"data.urgency"`
+	Priority  *int16    `newsdoc:"data.priority"`
 }
 
 type AssignmentBlock struct {
 	ID           uuid.UUID         `newsdoc:"id"`
 	Publish      *time.Time        `newsdoc:"data.publish"`
 	PublishSlot  *int16            `newsdoc:"data.publish_slot"`
-	Starts       time.Time         `newsdoc:"data.starts"`
-	Ends         *time.Time        `newsdoc:"data.ends"`
-	Status       string            `newsdoc:"data.status"`
+	Starts       time.Time         `newsdoc:"data.start"`
+	Ends         *time.Time        `newsdoc:"data.end"`
+	StartDate    time.Time         `newsdoc:"data.start_date,format=2006-01-02"`
+	EndDate      time.Time         `newsdoc:"data.end_date,format=2006-01-02"`
+	Status       *string           `newsdoc:"data.status"`
 	FullDay      bool              `newsdoc:"data.full_day"`
-	Kind         []AssignmentKind  `newsdoc:"meta,type=core/assignment-kind"`
+	Public       bool              `newsdoc:"data.public"`
+	Kind         []AssignmentKind  `newsdoc:"meta,type=core/assignment-type"`
 	Assignees    []AssigneeLink    `newsdoc:"links,rel=assignee"`
 	Deliverables []DeliverableLink `newsdoc:"links,rel=deliverable"`
 }
@@ -92,9 +96,20 @@ func (p *Item) ToRows(version int64) (*Rows, error) {
 			Title:     p.Title,
 			Public:    p.Meta.Public,
 			Tentative: p.Meta.Tentative,
-			Date:      pg.Date(p.Meta.Date),
-			Urgency:   pg.PInt2(p.Meta.Urgency),
+			StartDate: pg.Date(p.Meta.StartDate),
+			EndDate:   pg.Date(p.Meta.EndDate),
+			Priority:  pg.PInt2(p.Meta.Priority),
 		},
+	}
+
+	if p.PublicDescription != nil {
+		rows.Item.Description = p.PublicDescription.Text
+	}
+
+	if p.InternalDescription != nil {
+		rows.Item.Description = textAppend("\n\n",
+			rows.Item.Description,
+			p.InternalDescription.Text)
 	}
 
 	if p.Event != nil {
@@ -109,11 +124,13 @@ func (p *Item) ToRows(version int64) (*Rows, error) {
 			UUID:         a.ID,
 			Version:      version,
 			PlanningItem: p.UUID,
-			Status:       a.Status,
+			Status:       pg.PText(a.Status),
 			Publish:      pg.PTime(a.Publish),
 			PublishSlot:  pg.PInt2(a.PublishSlot),
 			Starts:       pg.Time(a.Starts),
 			Ends:         pg.PTime(a.Ends),
+			StartDate:    pg.Date(a.StartDate),
+			EndDate:      pg.Date(a.EndDate),
 			FullDay:      a.FullDay,
 		}
 
@@ -147,4 +164,16 @@ func (p *Item) ToRows(version int64) (*Rows, error) {
 	}
 
 	return &rows, nil
+}
+
+func textAppend(separator string, a string, b string) string {
+	if a == "" {
+		return b
+	}
+
+	if b == "" {
+		return a
+	}
+
+	return a + separator + b
 }

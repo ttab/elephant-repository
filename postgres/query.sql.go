@@ -930,7 +930,7 @@ func (q *Queries) GetNextReportDueTime(ctx context.Context) (pgtype.Timestamptz,
 
 const getPlanningAssignment = `-- name: GetPlanningAssignment :one
 SELECT uuid, version, planning_item, status, publish, publish_slot,
-       starts, ends, full_day, kind, description
+       starts, ends, start_date, end_date, full_day, public, kind, description
 FROM planning_assignment
 WHERE uuid = $1
 `
@@ -947,7 +947,10 @@ func (q *Queries) GetPlanningAssignment(ctx context.Context, argUuid uuid.UUID) 
 		&i.PublishSlot,
 		&i.Starts,
 		&i.Ends,
+		&i.StartDate,
+		&i.EndDate,
 		&i.FullDay,
+		&i.Public,
 		&i.Kind,
 		&i.Description,
 	)
@@ -956,7 +959,7 @@ func (q *Queries) GetPlanningAssignment(ctx context.Context, argUuid uuid.UUID) 
 
 const getPlanningAssignments = `-- name: GetPlanningAssignments :many
 SELECT uuid, version, planning_item, status, publish, publish_slot,
-       starts, ends, full_day, kind, description
+       starts, ends, start_date, end_date, full_day, public, kind, description
 FROM planning_assignment
 WHERE planning_item = $1
 `
@@ -979,7 +982,10 @@ func (q *Queries) GetPlanningAssignments(ctx context.Context, planningItem uuid.
 			&i.PublishSlot,
 			&i.Starts,
 			&i.Ends,
+			&i.StartDate,
+			&i.EndDate,
 			&i.FullDay,
+			&i.Public,
 			&i.Kind,
 			&i.Description,
 		); err != nil {
@@ -995,8 +1001,8 @@ func (q *Queries) GetPlanningAssignments(ctx context.Context, planningItem uuid.
 
 const getPlanningItem = `-- name: GetPlanningItem :one
 SELECT
-        uuid, version, title, description, public, tentative, date, urgency,
-        event
+        uuid, version, title, description, public, tentative,
+        start_date, end_date, priority, event
 FROM planning_item
 WHERE uuid = $1
 `
@@ -1011,8 +1017,9 @@ func (q *Queries) GetPlanningItem(ctx context.Context, argUuid uuid.UUID) (Plann
 		&i.Description,
 		&i.Public,
 		&i.Tentative,
-		&i.Date,
-		&i.Urgency,
+		&i.StartDate,
+		&i.EndDate,
+		&i.Priority,
 		&i.Event,
 	)
 	return i, err
@@ -1246,41 +1253,6 @@ func (q *Queries) GetStatuses(ctx context.Context, arg GetStatusesParams) ([]Get
 		return nil, err
 	}
 	return items, nil
-}
-
-const getUserReferenceByExternalID = `-- name: GetUserReferenceByExternalID :one
-SELECT uuid, external_id, name, avatar_url
-FROM user_reference
-WHERE external_id = $1
-`
-
-func (q *Queries) GetUserReferenceByExternalID(ctx context.Context, externalID string) (UserReference, error) {
-	row := q.db.QueryRow(ctx, getUserReferenceByExternalID, externalID)
-	var i UserReference
-	err := row.Scan(
-		&i.UUID,
-		&i.ExternalID,
-		&i.Name,
-		&i.AvatarUrl,
-	)
-	return i, err
-}
-
-const getUserReferenceByUUID = `-- name: GetUserReferenceByUUID :one
-SELECT uuid, external_id, name, avatar_url
-FROM user_reference WHERE uuid = $1
-`
-
-func (q *Queries) GetUserReferenceByUUID(ctx context.Context, argUuid uuid.UUID) (UserReference, error) {
-	row := q.db.QueryRow(ctx, getUserReferenceByUUID, argUuid)
-	var i UserReference
-	err := row.Scan(
-		&i.UUID,
-		&i.ExternalID,
-		&i.Name,
-		&i.AvatarUrl,
-	)
-	return i, err
 }
 
 const getVersion = `-- name: GetVersion :one
@@ -1768,28 +1740,34 @@ func (q *Queries) SetPlanningAssignee(ctx context.Context, arg SetPlanningAssign
 const setPlanningAssignment = `-- name: SetPlanningAssignment :exec
 INSERT INTO planning_assignment(
        uuid, version, planning_item, status, publish, publish_slot,
-       starts, ends, full_day, kind, description
+       starts, ends, start_date, end_date, full_day, public, kind, description
 ) VALUES (
        $1, $2, $3, $4, $5, $6,
-       $7, $8, $9, $10, $11
+       $7, $8, $9, $10, $11, $12, $13,
+       $14
 )
 ON CONFLICT ON CONSTRAINT planning_assignment_pkey DO UPDATE
 SET
    version = $2, planning_item = $3, status = $4,
    publish = $5, publish_slot = $6, starts = $7,
-   ends = $8, full_day = $9, kind = $10, description = $11
+   ends = $8, start_date = $9, end_date = $10,
+   full_day = $11, public = $12, kind = $13,
+   description = $14
 `
 
 type SetPlanningAssignmentParams struct {
 	UUID         uuid.UUID
 	Version      int64
 	PlanningItem uuid.UUID
-	Status       string
+	Status       pgtype.Text
 	Publish      pgtype.Timestamptz
 	PublishSlot  pgtype.Int2
 	Starts       pgtype.Timestamptz
 	Ends         pgtype.Timestamptz
+	StartDate    pgtype.Date
+	EndDate      pgtype.Date
 	FullDay      bool
+	Public       bool
 	Kind         []string
 	Description  string
 }
@@ -1804,7 +1782,10 @@ func (q *Queries) SetPlanningAssignment(ctx context.Context, arg SetPlanningAssi
 		arg.PublishSlot,
 		arg.Starts,
 		arg.Ends,
+		arg.StartDate,
+		arg.EndDate,
 		arg.FullDay,
+		arg.Public,
 		arg.Kind,
 		arg.Description,
 	)
@@ -1814,15 +1795,16 @@ func (q *Queries) SetPlanningAssignment(ctx context.Context, arg SetPlanningAssi
 const setPlanningItem = `-- name: SetPlanningItem :exec
 INSERT INTO planning_item(
         uuid, version, title, description, public, tentative,
-        date, urgency, event
+        start_date, end_date, priority, event
 ) VALUES (
         $1, $2, $3, $4, $5, $6,
-        $7, $8, $9
+        $7, $8, $9, $10
 )
 ON CONFLICT ON CONSTRAINT planning_item_pkey DO UPDATE
 SET
    version = $2, title = $3, description = $4,
-   public = $5, tentative = $6, urgency = $8, event = $9
+   public = $5, tentative = $6, start_date = $7,
+   end_date = $8, priority = $9, event = $10
 `
 
 type SetPlanningItemParams struct {
@@ -1832,8 +1814,9 @@ type SetPlanningItemParams struct {
 	Description string
 	Public      bool
 	Tentative   bool
-	Date        pgtype.Date
-	Urgency     pgtype.Int2
+	StartDate   pgtype.Date
+	EndDate     pgtype.Date
+	Priority    pgtype.Int2
 	Event       pgtype.UUID
 }
 
@@ -1845,8 +1828,9 @@ func (q *Queries) SetPlanningItem(ctx context.Context, arg SetPlanningItemParams
 		arg.Description,
 		arg.Public,
 		arg.Tentative,
-		arg.Date,
-		arg.Urgency,
+		arg.StartDate,
+		arg.EndDate,
+		arg.Priority,
 		arg.Event,
 	)
 	return err
@@ -1858,7 +1842,7 @@ INSERT INTO planning_deliverable(
 ) VALUES(
        $1, $2, $3
 )
-ON CONFLICT ON CONSTRAINT planning_item_deliverable_pkey DO UPDATE
+ON CONFLICT ON CONSTRAINT planning_deliverable_pkey DO UPDATE
 SET
    version = $3
 `

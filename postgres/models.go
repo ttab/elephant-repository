@@ -149,12 +149,15 @@ type PlanningAssignment struct {
 	UUID         uuid.UUID
 	Version      int64
 	PlanningItem uuid.UUID
-	Status       string
+	Status       pgtype.Text
 	Publish      pgtype.Timestamptz
 	PublishSlot  pgtype.Int2
 	Starts       pgtype.Timestamptz
 	Ends         pgtype.Timestamptz
+	StartDate    pgtype.Date
+	EndDate      pgtype.Date
 	FullDay      bool
+	Public       bool
 	Kind         []string
 	Description  string
 }
@@ -172,8 +175,9 @@ type PlanningItem struct {
 	Description string
 	Public      bool
 	Tentative   bool
-	Date        pgtype.Date
-	Urgency     pgtype.Int2
+	StartDate   pgtype.Date
+	EndDate     pgtype.Date
+	Priority    pgtype.Int2
 	Event       pgtype.UUID
 }
 
@@ -215,11 +219,4 @@ type StatusRule struct {
 	AppliesTo   []string
 	ForTypes    []string
 	Expression  string
-}
-
-type UserReference struct {
-	UUID       uuid.UUID
-	ExternalID string
-	Name       string
-	AvatarUrl  string
 }

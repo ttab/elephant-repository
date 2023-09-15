@@ -5,8 +5,9 @@ create table planning_item(
   description text not null,
   public bool not null,
   tentative bool not null,
-  date date not null,
-  urgency smallint,
+  start_date date not null,
+  end_date date not null,
+  priority smallint,
   event uuid,
   foreign key(uuid) references document(uuid) on delete cascade
 );
@@ -17,12 +18,15 @@ create table planning_assignment(
   uuid uuid primary key,
   version bigint not null,
   planning_item uuid not null,
-  status text not null,
+  status text,
   publish timestamptz,
   publish_slot smallint,
   starts timestamptz not null,
   ends timestamptz,
+  start_date date not null,
+  end_date date not null,
   full_day boolean not null,
+  public boolean not null,
   kind text[] not null,
   description text not null,
   foreign key(planning_item) references planning_item(uuid) on delete cascade
@@ -37,16 +41,10 @@ create table planning_deliverable(
   document uuid not null,
   version bigint not null,
   primary key(assignment, document),
-  foreign key(assignment) references planning_assignment(uuid) on delete cascade,
-  foreign key(document) references document(uuid) on delete cascade
+  foreign key(assignment) references planning_assignment(uuid) on delete cascade
 );
 
-create table user_reference(
-  uuid uuid primary key not null,
-  external_id text not null unique,
-  name text not null,
-  avatar_url text not null
-);
+create index planning_deliverable_idx on planning_deliverable(document);
 
 create table planning_assignee(
   assignment uuid not null,
@@ -54,9 +52,10 @@ create table planning_assignee(
   version bigint not null,
   role text not null,
   primary key(assignment, assignee),
-  foreign key(assignee) references user_reference(uuid) on delete cascade,
   foreign key(assignment) references planning_assignment(uuid) on delete cascade
 );
+
+create index planning_assignee_idx on planning_assignee(assignee);
 
 ---- create above / drop below ----
 
