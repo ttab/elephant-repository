@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -129,7 +129,7 @@ func (s *PGDocStore) RunListener(ctx context.Context) {
 		if errors.Is(err, context.Canceled) {
 			return
 		} else if err != nil {
-			s.logger.ErrorCtx(
+			s.logger.ErrorContext(
 				ctx, "failed to run notification listener",
 				elephantine.LogKeyError, err,
 			)

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
 	"golang.org/x/exp/slices"
-	"golang.org/x/exp/slog"
 )
 
 type Workflows struct {
@@ -62,7 +62,7 @@ func (w *Workflows) reloadLoop(
 		err := w.loadWorkflows(ctx, loader)
 		if err != nil {
 			// TODO: add handler that reacts to LogKeyCountMetric
-			logger.ErrorCtx(ctx, "failed to refresh workfows",
+			logger.ErrorContext(ctx, "failed to refresh workfows",
 				elephantine.LogKeyError, err,
 				elephantine.LogKeyCountMetric, "elephant_workflow_refresh_failure_count")
 		}

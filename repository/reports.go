@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/adhocore/gronx"
 	"github.com/jackc/pgx/v5"
 	"github.com/ttab/elephantine"
-	"golang.org/x/exp/slog"
 )
 
 type Report struct {
@@ -86,7 +86,7 @@ func GenerateReport(
 		spreadsheet = NewSpreadsheetReporter()
 		defer func() {
 			if err := spreadsheet.File.Close(); err != nil {
-				logger.ErrorCtx(ctx,
+				logger.ErrorContext(ctx,
 					"failed to close spreadsheet",
 					elephantine.LogKeyError, err,
 				)

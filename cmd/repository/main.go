@@ -9,8 +9,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -30,7 +32,6 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/twitchtv/twirp"
 	"github.com/urfave/cli/v2"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
 

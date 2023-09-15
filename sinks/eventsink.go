@@ -3,6 +3,7 @@ package sinks
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -14,7 +15,6 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
 	"github.com/twitchtv/twirp"
-	"golang.org/x/exp/slog"
 )
 
 type IncrementSkipMetricFunc func(eventType string, reason string)
@@ -143,7 +143,7 @@ func (r *EventForwarder) run(ctx context.Context) {
 				Timeout:       5 * time.Second,
 			})
 		if err != nil {
-			r.logger.ErrorCtx(ctx, "failed to create job lock",
+			r.logger.ErrorContext(ctx, "failed to create job lock",
 				elephantine.LogKeyError, err)
 
 			continue
@@ -155,7 +155,7 @@ func (r *EventForwarder) run(ctx context.Context) {
 		if err != nil {
 			r.restarts.WithLabelValues(r.sink.SinkName()).Inc()
 
-			r.logger.ErrorCtx(
+			r.logger.ErrorContext(
 				ctx, "sink error, restarting",
 				elephantine.LogKeyError, err,
 				elephantine.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
