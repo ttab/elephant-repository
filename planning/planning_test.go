@@ -1,6 +1,7 @@
 package planning_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -11,6 +12,8 @@ import (
 )
 
 func TestItemToRows(t *testing.T) {
+	regenerate := os.Getenv("REGENERATE") == "true"
+
 	var doc newsdoc.Document
 
 	err := elephantine.UnmarshalFile(
@@ -23,10 +26,16 @@ func TestItemToRows(t *testing.T) {
 	rows, err := item.ToRows(1)
 	test.Must(t, err, "convert item to rows")
 
+	goldenPath := "../testdata/planning_rows.json"
+
+	if regenerate {
+		err := elephantine.MarshalFile(goldenPath, rows)
+		test.Must(t, err, "update %q", goldenPath)
+	}
+
 	var golden planning.Rows
 
-	err = elephantine.UnmarshalFile(
-		"../testdata/planning_rows.json", &golden)
+	err = elephantine.UnmarshalFile(goldenPath, &golden)
 	test.Must(t, err, "unmarshal expected rows")
 
 	if diff := cmp.Diff(&golden, rows); diff != "" {

@@ -1,80 +1,48 @@
 {
   "Item": {
-    "UUID": "b622d028-b423-4a7e-92d9-6fe07b4b80be",
+    "UUID": "ab72e57f-441b-460b-8df1-6b96b6357bd5",
     "Version": 1,
-    "Title": "Sommarporträttet: radioprofilen",
+    "Title": "Nyhet rörande skattejämkning",
     "Description": "",
     "Public": true,
     "Tentative": false,
-    "Date": "2023-07-27",
-    "Urgency": 2,
-    "Event": "d1338a6d-e0a7-4413-be7e-7d6be74d2c55"
+    "StartDate": "2023-09-11",
+    "EndDate": "2023-09-11",
+    "Priority": 2,
+    "Event": null
   },
   "Assignments": [
     {
-      "UUID": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
+      "UUID": "34244f38-dc72-40f5-a471-407dc6ea31e1",
       "Version": 1,
-      "PlanningItem": "b622d028-b423-4a7e-92d9-6fe07b4b80be",
-      "Status": "done",
-      "Publish": "2023-07-27T15:00:00+02:00",
-      "PublishSlot": 12,
-      "Starts": "2023-07-25T00:00:00+02:00",
-      "Ends": "2023-07-25T23:59:59+02:00",
+      "PlanningItem": "ab72e57f-441b-460b-8df1-6b96b6357bd5",
+      "Status": null,
+      "Publish": "2023-09-11T04:15:00Z",
+      "PublishSlot": null,
+      "Starts": "2023-09-10T22:00:00Z",
+      "Ends": "2023-09-11T21:59:59Z",
+      "StartDate": "2023-09-11",
+      "EndDate": "2023-09-11",
       "FullDay": true,
+      "Public": false,
       "Kind": [
         "text"
-      ],
-      "Description": ""
-    },
-    {
-      "UUID": "c85caaa0-8498-4666-a999-be22623d0261",
-      "Version": 1,
-      "PlanningItem": "b622d028-b423-4a7e-92d9-6fe07b4b80be",
-      "Status": "done",
-      "Starts": "2023-07-25T11:30:00+02:00",
-      "Ends": "2023-07-25T13:30:00+02:00",
-      "FullDay": false,
-      "Kind": [
-        "photo"
       ],
       "Description": ""
     }
   ],
   "Assignees": [
     {
-      "Assignment": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
-      "Assignee": "84ec9855-32b5-451c-a0e4-c91968fd5328",
-      "Version": 1,
-      "Role": "primary"
-    },
-    {
-      "Assignment": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
-      "Assignee": "74fd578d-6a7b-4e83-ab4f-c0006c268838",
-      "Version": 1,
-      "Role": "standby"
-    },
-    {
-      "Assignment": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
-      "Assignee": "9c26ee5e-4391-45dc-996d-06cd7f37bd93",
-      "Version": 1,
-      "Role": "standby"
-    },
-    {
-      "Assignment": "c85caaa0-8498-4666-a999-be22623d0261",
-      "Assignee": "94d0e6be-38c4-4485-ae19-1d6f779648dc",
+      "Assignment": "34244f38-dc72-40f5-a471-407dc6ea31e1",
+      "Assignee": "ff5a4498-9c1e-4de9-9d4c-b269f9ceafd2",
       "Version": 1,
       "Role": "primary"
     }
   ],
   "Deliverables": [
     {
-      "Assignment": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
-      "Document": "7c5f41f6-c515-4cf4-aab9-42c660616f61",
-      "Version": 1
-    },
-    {
-      "Assignment": "2e2b8f33-5948-4add-97fe-5f7dab63f065",
-      "Document": "e1611bc7-c663-4428-8111-c90717483670",
+      "Assignment": "34244f38-dc72-40f5-a471-407dc6ea31e1",
+      "Document": "e6205e56-88df-48b5-acb8-7a3ca7ca5636",
       "Version": 1
     }
   ]
