@@ -179,6 +179,7 @@ func runServer(c *cli.Context) error {
 	}
 
 	go store.RunListener(c.Context)
+	go store.RunCleaner(c.Context, 5*time.Minute)
 
 	reportDB, err := pgxpool.New(c.Context, conf.ReportingDB)
 	if err != nil {

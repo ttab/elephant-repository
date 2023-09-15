@@ -1157,9 +1157,9 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 			return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
 		}
 
-		err = s.reader.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
-			Now:  pg.Time(now),
-			UUID: req.UUID,
+		err = q.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{
+			Cutoff: pg.Time(now),
+			Uuids:  []uuid.UUID{req.UUID},
 		})
 		if err != nil {
 			return fmt.Errorf("could not delete expired locks: %w", err)

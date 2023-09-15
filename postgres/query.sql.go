@@ -229,27 +229,17 @@ func (q *Queries) DeleteDocumentLock(ctx context.Context, arg DeleteDocumentLock
 
 const deleteExpiredDocumentLock = `-- name: DeleteExpiredDocumentLock :exec
 DELETE FROM document_lock
-WHERE expires < $1
-  AND uuid = $2
+WHERE uuid = ANY($1::uuid[])
+  AND expires < $2
 `
 
 type DeleteExpiredDocumentLockParams struct {
-	Now  pgtype.Timestamptz
-	UUID uuid.UUID
+	Uuids  []uuid.UUID
+	Cutoff pgtype.Timestamptz
 }
 
 func (q *Queries) DeleteExpiredDocumentLock(ctx context.Context, arg DeleteExpiredDocumentLockParams) error {
-	_, err := q.db.Exec(ctx, deleteExpiredDocumentLock, arg.Now, arg.UUID)
-	return err
-}
-
-const deleteExpiredDocumentLocks = `-- name: DeleteExpiredDocumentLocks :exec
-DELETE FROM document_lock
-WHERE expires < $1
-`
-
-func (q *Queries) DeleteExpiredDocumentLocks(ctx context.Context, now pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, deleteExpiredDocumentLocks, now)
+	_, err := q.db.Exec(ctx, deleteExpiredDocumentLock, arg.Uuids, arg.Cutoff)
 	return err
 }
 
@@ -781,6 +771,40 @@ func (q *Queries) GetEventsinkPosition(ctx context.Context, name string) (int64,
 	var position int64
 	err := row.Scan(&position)
 	return position, err
+}
+
+const getExpiredDocumentLocks = `-- name: GetExpiredDocumentLocks :many
+SELECT d.uuid, l.expires AS lock_expires, l.app
+FROM document_lock AS l
+       INNER JOIN document AS d ON d.uuid = l.uuid
+WHERE l.expires < $1
+FOR UPDATE OF d SKIP LOCKED
+`
+
+type GetExpiredDocumentLocksRow struct {
+	UUID        uuid.UUID
+	LockExpires pgtype.Timestamptz
+	App         pgtype.Text
+}
+
+func (q *Queries) GetExpiredDocumentLocks(ctx context.Context, cutoff pgtype.Timestamptz) ([]GetExpiredDocumentLocksRow, error) {
+	rows, err := q.db.Query(ctx, getExpiredDocumentLocks, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetExpiredDocumentLocksRow
+	for rows.Next() {
+		var i GetExpiredDocumentLocksRow
+		if err := rows.Scan(&i.UUID, &i.LockExpires, &i.App); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getFullDocumentHeads = `-- name: GetFullDocumentHeads :many
