@@ -36,6 +36,9 @@ type DocStore interface {
 	GetEventlog(
 		ctx context.Context, after int64, limit int32,
 	) ([]Event, error)
+	GetLastEvent(
+		ctx context.Context,
+	) (*Event, error)
 	OnEventlog(
 		ctx context.Context, ch chan int64,
 	)

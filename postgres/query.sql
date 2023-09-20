@@ -339,6 +339,12 @@ WHERE id > @after
 ORDER BY id ASC
 LIMIT sqlc.arg(row_limit);
 
+-- name: GetLastEvent :one
+SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl
+FROM eventlog
+ORDER BY id DESC
+LIMIT 1;
+
 -- name: ConfigureEventsink :exec
 INSERT INTO eventsink(name, configuration) VALUES(@name, @config)
 ON CONFLICT (name) DO UPDATE SET

@@ -235,12 +235,25 @@ func (a *DocumentsService) Eventlog(
 		waitBatch = time.Duration(req.BatchWaitMs) * time.Millisecond
 	}
 
+	after := req.After
+	if after < 0 {
+		evt, err := a.store.GetLastEvent(ctx)
+		if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+			after = 0
+		} else if err != nil {
+			return nil, twirp.InternalErrorf(
+				"failed to get last event: %w", err)
+		}
+
+		after = evt.ID + after
+	}
+
 	limit := req.BatchSize
 	if limit == 0 {
 		limit = 10
 	}
 
-	evts, err := a.store.GetEventlog(ctx, req.After, limit)
+	evts, err := a.store.GetEventlog(ctx, after, limit)
 	if err != nil {
 		return nil, twirp.InternalErrorf(
 			"failed to fetch events from store: %w", err)

@@ -381,6 +381,29 @@ func (s *PGDocStore) GetDocument(
 	return &d, nil
 }
 
+func (s *PGDocStore) GetLastEvent(
+	ctx context.Context,
+) (*Event, error) {
+	res, err := s.reader.GetLastEvent(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, DocStoreErrorf(ErrCodeNotFound, "not found")
+	} else if err != nil {
+		return nil, fmt.Errorf("database query failed: %w", err)
+	}
+
+	return &Event{
+		ID:        res.ID,
+		Event:     EventType(res.Event),
+		UUID:      res.UUID,
+		Timestamp: res.Timestamp.Time,
+		Updater:   res.Updater.String,
+		Type:      res.Type.String,
+		Version:   res.Version.Int64,
+		Status:    res.Status.String,
+		StatusID:  res.StatusID.Int64,
+	}, nil
+}
+
 func (s *PGDocStore) GetEventlog(
 	ctx context.Context, after int64, limit int32,
 ) ([]Event, error) {
