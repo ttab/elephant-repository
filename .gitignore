@@ -2,3 +2,7 @@
 /.env
 /.env.*
 localstate/
+.direnv
+.envrc
+flake.lock
+flake.nix
