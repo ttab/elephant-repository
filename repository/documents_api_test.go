@@ -31,6 +31,8 @@ func baseDocument(uuid, uri string) *newsdoc.Document {
 	}
 }
 
+const timestampField = "timestamp"
+
 func TestIntegrationBasicCrud(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -163,7 +165,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	diff := cmp.Diff(&golden, events,
 		protocmp.Transform(),
 		cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
-			return k == "timestamp"
+			return k == timestampField
 		}),
 	)
 	if diff != "" {
@@ -515,11 +517,44 @@ func TestIntegrationStatus(t *testing.T) {
 	diff := cmp.Diff(&golden, events,
 		protocmp.Transform(),
 		cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
-			return k == "timestamp"
+			return k == timestampField
 		}),
 	)
 	if diff != "" {
 		t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
+	}
+
+	var compactGolden repository.GetCompactedEventlogResponse
+
+	err = elephantine.UnmarshalFile(
+		"testdata/TestIntegrationStatus/compact_eventlog.json",
+		&compactGolden)
+	test.Must(t, err, "read golden file for expected compact eventlog items")
+
+	lastEvt, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
+		After: -1,
+	})
+	test.Must(t, err, "failed to get last event")
+
+	if len(lastEvt.Items) != 1 {
+		t.Fatalf("expected after=-1 to yield one event, got %d",
+			len(lastEvt.Items))
+	}
+
+	compactEvents, err := client.CompactedEventlog(ctx,
+		&repository.GetCompactedEventlogRequest{
+			Until: lastEvt.Items[0].Id,
+		})
+	test.Must(t, err, "failed to get compacted eventlog")
+
+	cmpDiff := cmp.Diff(&compactGolden, compactEvents,
+		protocmp.Transform(),
+		cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
+			return k == timestampField
+		}),
+	)
+	if cmpDiff != "" {
+		t.Fatalf("compact eventlog mismatch (-want +got):\n%s", diff)
 	}
 }
 

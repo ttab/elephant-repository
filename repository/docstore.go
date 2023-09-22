@@ -39,6 +39,12 @@ type DocStore interface {
 	GetLastEvent(
 		ctx context.Context,
 	) (*Event, error)
+	GetLastEventID(
+		ctx context.Context,
+	) (int64, error)
+	GetCompactedEventlog(
+		ctx context.Context, req GetCompactedEventlogRequest,
+	) ([]Event, error)
 	OnEventlog(
 		ctx context.Context, ch chan int64,
 	)
@@ -273,6 +279,14 @@ type Metric struct {
 	Kind  string
 	Label string
 	Value int64
+}
+
+type GetCompactedEventlogRequest struct {
+	After  int64
+	Until  int64
+	Type   string
+	Limit  *int32
+	Offset int32
 }
 
 // DocStoreErrorCode TODO: Rename to StoreErrorCode and consistently rename all

@@ -333,7 +333,7 @@ INSERT INTO eventlog(
 ) RETURNING id;
 
 -- name: GetEventlog :many
-SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl
+SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater
 FROM eventlog
 WHERE id > @after
 ORDER BY id ASC
@@ -344,6 +344,29 @@ SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, ac
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1;
+
+-- name: GetLastEventID :one
+SELECT id FROM eventlog
+ORDER BY id DESC LIMIT 1;
+
+-- name: GetCompactedEventlog :many
+SELECT
+        w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
+        w.status_id, w.acl, w.updater
+FROM (
+     SELECT DISTINCT ON (
+            e.uuid,
+            CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END
+       ) * FROM eventlog AS e
+     WHERE e.id > @after AND e.id <= @until
+     AND (sqlc.narg(type)::text IS NULL OR e.type = @type)
+     ORDER BY
+           e.uuid,
+           CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END,
+           e.id DESC
+     ) AS w
+ORDER BY w.id ASC
+LIMIT sqlc.narg(row_limit) OFFSET sqlc.arg(row_offset);
 
 -- name: ConfigureEventsink :exec
 INSERT INTO eventsink(name, configuration) VALUES(@name, @config)
