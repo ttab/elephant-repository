@@ -900,6 +900,44 @@ func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, e
 	return i, err
 }
 
+const getLastEvent = `-- name: GetLastEvent :one
+SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl
+FROM eventlog
+ORDER BY id DESC
+LIMIT 1
+`
+
+type GetLastEventRow struct {
+	ID        int64
+	Event     string
+	UUID      uuid.UUID
+	Timestamp pgtype.Timestamptz
+	Updater   pgtype.Text
+	Type      pgtype.Text
+	Version   pgtype.Int8
+	Status    pgtype.Text
+	StatusID  pgtype.Int8
+	Acl       []byte
+}
+
+func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
+	row := q.db.QueryRow(ctx, getLastEvent)
+	var i GetLastEventRow
+	err := row.Scan(
+		&i.ID,
+		&i.Event,
+		&i.UUID,
+		&i.Timestamp,
+		&i.Updater,
+		&i.Type,
+		&i.Version,
+		&i.Status,
+		&i.StatusID,
+		&i.Acl,
+	)
+	return i, err
+}
+
 const getMetricKind = `-- name: GetMetricKind :one
 SELECT name, aggregation
 FROM metric_kind 
