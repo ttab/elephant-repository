@@ -171,6 +171,137 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	}
 }
 
+func TestIntegrationBulkCrud(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunArchiver:   true,
+		RunReplicator: true,
+	})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
+
+	ctx := test.Context(t)
+
+	docA := baseDocument(
+		"14f4ba22-f7c0-46bc-9c18-73f845a4f801", "article://test/a",
+	)
+
+	docB := baseDocument(
+		"3e885433-3f89-4f37-96d1-b3b9802b2bc6", "article://test/b",
+	)
+
+	res, err := client.BulkUpdate(ctx, &repository.BulkUpdateRequest{
+		Updates: []*repository.UpdateRequest{
+			{
+				Uuid:     docA.Uuid,
+				Document: docA,
+			},
+			{
+				Uuid:     docB.Uuid,
+				Document: docB,
+				Status: []*repository.StatusUpdate{
+					{Name: "usable"},
+				},
+			},
+		},
+	})
+	test.Must(t, err, "create articles")
+
+	test.EqualDiff(t, []int64{1, 1}, res.Version,
+		"expected this to be the first versions")
+
+	resA, err := client.Get(ctx, &repository.GetDocumentRequest{
+		Uuid: docA.Uuid,
+	})
+	test.Must(t, err, "be able to load document A")
+
+	test.EqualMessage(t, docA, resA.Document,
+		"expect to get the same document A back")
+
+	resB, err := client.Get(ctx, &repository.GetDocumentRequest{
+		Uuid: docB.Uuid,
+	})
+	test.Must(t, err, "be able to load document B")
+
+	test.EqualMessage(t, docB, resB.Document,
+		"expect to get the same document B back")
+
+	const (
+		testUserURI = "user://test/testintegrationbulkcrud"
+	)
+
+	ignoreTimeVariantValues := cmpopts.IgnoreMapEntries(
+		func(k string, _ interface{}) bool {
+			switch k {
+			case "created", "modified":
+				return true
+			}
+
+			return false
+		})
+
+	metaA, err := client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: docA.Uuid,
+	})
+	test.Must(t, err, "be able to load document A metadata")
+
+	wantMetaA := repository.DocumentMeta{
+		Acl: []*repository.ACLEntry{
+			{
+				Uri:         testUserURI,
+				Permissions: []string{"r", "w"},
+			},
+		},
+		CurrentVersion: 1,
+	}
+
+	cmpDiffA := cmp.Diff(&wantMetaA, metaA.Meta,
+		protocmp.Transform(),
+		ignoreTimeVariantValues,
+	)
+	if cmpDiffA != "" {
+		t.Fatalf("document A meta mismatch (-want +got):\n%s", cmpDiffA)
+	}
+
+	metaB, err := client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: docB.Uuid,
+	})
+	test.Must(t, err, "be able to load document B metadata")
+
+	wantMetaB := repository.DocumentMeta{
+		Acl: []*repository.ACLEntry{
+			{
+				Uri:         testUserURI,
+				Permissions: []string{"r", "w"},
+			},
+		},
+		CurrentVersion: 1,
+		Heads: map[string]*repository.Status{
+			"usable": {
+				Id:      1,
+				Version: 1,
+				Creator: testUserURI,
+			},
+		},
+	}
+
+	cmpDiffB := cmp.Diff(&wantMetaB, metaB.Meta,
+		protocmp.Transform(),
+		ignoreTimeVariantValues,
+	)
+	if cmpDiffB != "" {
+		t.Fatalf("document A meta mismatch (-want +got):\n%s", cmpDiffB)
+	}
+}
+
 func TestIntegrationPasswordGrant(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
