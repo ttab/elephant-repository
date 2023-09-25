@@ -729,119 +729,95 @@ func (a *DocumentsService) Update(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx,
-		ScopeDocumentWrite, ScopeDocumentAdmin,
-	)
+	auth, err := a.verifyUpdateRequests(ctx,
+		[]*repository.UpdateRequest{req})
 	if err != nil {
 		return nil, err
 	}
 
-	if req.ImportDirective != nil && !auth.Claims.HasAnyScope(
-		ScopeDocumentImport, ScopeDocumentAdmin) {
-		return nil, twirp.PermissionDenied.Error(
-			"no import directive permission")
-	}
-
-	if req.Document == nil && len(req.Status) == 0 && len(req.Acl) == 0 {
-		return nil, twirp.InvalidArgumentError(
-			"document",
-			"required when no status or ACL updates are included")
-	}
-
-	if req.IfMatch < -1 {
-		return nil, twirp.InvalidArgumentError("if_match",
-			"cannot be less than -1")
-	}
-
-	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	up, err := a.buildUpdateRequest(auth, req)
 	if err != nil {
 		return nil, err
 	}
 
-	if req.Document != nil && req.Document.Uuid == "" {
-		req.Document.Uuid = docUUID.String()
-	} else if req.Document != nil && req.Document.Uuid != docUUID.String() {
-		return nil, twirp.InvalidArgumentError("document.uuid",
-			"the document must have the same UUID as the request uuid")
+	res, err := a.store.Update(ctx, a.workflows, []*UpdateRequest{up})
+	if err != nil {
+		return nil, twirpErrorFromDocumentUpdateError(err)
 	}
 
-	if req.Document != nil {
-		if req.Document.Uuid == "" {
-			req.Document.Uuid = docUUID.String()
-		} else if req.Document.Uuid != docUUID.String() {
-			return nil, twirp.InvalidArgumentError("document.uuid",
-				"the document must have the same UUID as the request uuid")
-		}
+	return &repository.UpdateResponse{
+		Version: res[0].Version,
+	}, nil
+}
 
-		if req.Document.Uri == "" {
-			return nil, twirp.RequiredArgumentError("document.uri")
-		}
-	}
-
-	for i, s := range req.Status {
-		if s == nil {
-			return nil, twirp.InvalidArgumentError(
-				fmt.Sprintf("status.%d", i),
-				"a status cannot be nil")
-		}
-
-		if s.Name == "" {
-			return nil, twirp.InvalidArgumentError(
-				fmt.Sprintf("status.%d.name", i),
-				"a status cannot have an empty name")
-		}
-
-		if s.Version < 0 {
-			return nil, twirp.InvalidArgumentError(
-				fmt.Sprintf("status.%d.version", i),
-				"cannot be negative")
-		}
-
-		if req.Document == nil && s.Version == 0 {
-			return nil, twirp.InvalidArgumentError(
-				fmt.Sprintf("status.%d.version", i),
-				"required when no document is included")
-		}
-
-		if !a.workflows.HasStatus(s.Name) {
-			return nil, twirp.InvalidArgumentError(
-				fmt.Sprintf("status.%d.name", i),
-				fmt.Sprintf("unknown status %q", s.Name))
-		}
-	}
-
-	for i, e := range req.Acl {
-		if e == nil {
-			return nil, twirp.InvalidArgumentError(
-				fmt.Sprintf("acl.%d", i),
-				"an ACL entry cannot be nil")
-		}
-
-		if e.Uri == "" {
-			return nil, twirp.InvalidArgumentError(
-				fmt.Sprintf("acl.%d.uri", i),
-				"an ACL grantee URI cannot be empty")
-		}
-
-		for _, p := range e.Permissions {
-			// TODO: Should be validated against a list of
-			// acceptable permissions, it's not like
-			// []string{"z",".","k"} is valid.
-			if len(p) != 1 {
-				return nil, twirp.InvalidArgumentError(
-					fmt.Sprintf("acl.%d.permissions", i),
-					"a permission must be a single character")
-			}
-		}
-	}
-
-	// Check for ACL write permission, but allow the write if no document is
-	// found, as we want to allow the creation of new documents.
-	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
-	if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
+// BulkUpdate implements repository.Documents.
+func (a *DocumentsService) BulkUpdate(
+	ctx context.Context,
+	req *repository.BulkUpdateRequest,
+) (*repository.BulkUpdateResponse, error) {
+	auth, err := a.verifyUpdateRequests(ctx, req.Updates)
+	if err != nil {
 		return nil, err
 	}
 
+	var updates []*UpdateRequest
+
+	dedupe := make(map[string]bool)
+
+	for _, update := range req.Updates {
+		isDuplicate := dedupe[update.Uuid]
+		if isDuplicate {
+			return nil, twirp.InvalidArgumentError("updates",
+				"a document can only be updated once in a batch")
+		}
+
+		dedupe[update.Uuid] = true
+
+		up, err := a.buildUpdateRequest(auth, update)
+		if err != nil {
+			return nil, err
+		}
+
+		updates = append(updates, up)
+	}
+
+	res, err := a.store.Update(ctx, a.workflows, updates)
+	if err != nil {
+		return nil, twirpErrorFromDocumentUpdateError(err)
+	}
+
+	var resp repository.BulkUpdateResponse
+
+	for i := range res {
+		resp.Version = append(resp.Version, res[i].Version)
+	}
+
+	return &resp, nil
+}
+
+func twirpErrorFromDocumentUpdateError(err error) error {
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeOptimisticLock):
+		return twirp.FailedPrecondition.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
+		return twirp.InvalidArgumentError("document", err.Error())
+	case IsDocStoreErrorCode(err, ErrCodePermissionDenied):
+		return twirp.PermissionDenied.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
+		return twirp.FailedPrecondition.Error(err.Error())
+	case err != nil:
+		return twirp.InternalErrorf(
+			"failed to update document: %w", err)
+	}
+
+	return nil
+}
+
+func (a *DocumentsService) buildUpdateRequest(
+	auth *elephantine.AuthInfo,
+	req *repository.UpdateRequest,
+) (*UpdateRequest, error) {
+	docUUID := uuid.MustParse(req.Uuid)
 	updater := auth.Claims.Subject
 	updated := time.Now()
 
@@ -920,25 +896,145 @@ func (a *DocumentsService) Update(
 		})
 	}
 
-	res, err := a.store.Update(ctx, a.workflows, up)
+	return &up, nil
+}
 
-	switch {
-	case IsDocStoreErrorCode(err, ErrCodeOptimisticLock):
-		return nil, twirp.FailedPrecondition.Error(err.Error())
-	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
-		return nil, twirp.InvalidArgumentError("document", err.Error())
-	case IsDocStoreErrorCode(err, ErrCodePermissionDenied):
-		return nil, twirp.PermissionDenied.Error(err.Error())
-	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
-		return nil, twirp.FailedPrecondition.Error(err.Error())
-	case err != nil:
-		return nil, twirp.InternalErrorf(
-			"failed to update document: %w", err)
+// verifyUpdateRequest verifies that a set of update request are correct, and
+// that the user has the necessary permissions for making the updates.
+func (a *DocumentsService) verifyUpdateRequests(
+	ctx context.Context,
+	updates []*repository.UpdateRequest,
+) (*elephantine.AuthInfo, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentWrite, ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	return &repository.UpdateResponse{
-		Version: res.Version,
-	}, nil
+	for _, req := range updates {
+		err := a.verifyUpdateRequest(ctx, auth, req)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return auth, nil
+}
+
+func (a *DocumentsService) verifyUpdateRequest(
+	ctx context.Context,
+	auth *elephantine.AuthInfo,
+	req *repository.UpdateRequest,
+) error {
+	if req.ImportDirective != nil && !auth.Claims.HasAnyScope(
+		ScopeDocumentImport, ScopeDocumentAdmin) {
+		return twirp.PermissionDenied.Error(
+			"no import directive permission")
+	}
+
+	if req.Document == nil && len(req.Status) == 0 && len(req.Acl) == 0 {
+		return twirp.InvalidArgumentError(
+			"document",
+			"required when no status or ACL updates are included")
+	}
+
+	if req.IfMatch < -1 {
+		return twirp.InvalidArgumentError("if_match",
+			"cannot be less than -1")
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return err
+	}
+
+	if req.Document != nil && req.Document.Uuid == "" {
+		req.Document.Uuid = docUUID.String()
+	} else if req.Document != nil && req.Document.Uuid != docUUID.String() {
+		return twirp.InvalidArgumentError("document.uuid",
+			"the document must have the same UUID as the request uuid")
+	}
+
+	if req.Document != nil {
+		if req.Document.Uuid == "" {
+			req.Document.Uuid = docUUID.String()
+		} else if req.Document.Uuid != docUUID.String() {
+			return twirp.InvalidArgumentError("document.uuid",
+				"the document must have the same UUID as the request uuid")
+		}
+
+		if req.Document.Uri == "" {
+			return twirp.RequiredArgumentError("document.uri")
+		}
+	}
+
+	for i, s := range req.Status {
+		if s == nil {
+			return twirp.InvalidArgumentError(
+				fmt.Sprintf("status.%d", i),
+				"a status cannot be nil")
+		}
+
+		if s.Name == "" {
+			return twirp.InvalidArgumentError(
+				fmt.Sprintf("status.%d.name", i),
+				"a status cannot have an empty name")
+		}
+
+		if s.Version < 0 {
+			return twirp.InvalidArgumentError(
+				fmt.Sprintf("status.%d.version", i),
+				"cannot be negative")
+		}
+
+		if req.Document == nil && s.Version == 0 {
+			return twirp.InvalidArgumentError(
+				fmt.Sprintf("status.%d.version", i),
+				"required when no document is included")
+		}
+
+		if !a.workflows.HasStatus(s.Name) {
+			return twirp.InvalidArgumentError(
+				fmt.Sprintf("status.%d.name", i),
+				fmt.Sprintf("unknown status %q", s.Name))
+		}
+	}
+
+	for i, e := range req.Acl {
+		if e == nil {
+			return twirp.InvalidArgumentError(
+				fmt.Sprintf("acl.%d", i),
+				"an ACL entry cannot be nil")
+		}
+
+		if e.Uri == "" {
+			return twirp.InvalidArgumentError(
+				fmt.Sprintf("acl.%d.uri", i),
+				"an ACL grantee URI cannot be empty")
+		}
+
+		for _, p := range e.Permissions {
+			// TODO: Should be validated against a list of
+			// acceptable permissions, it's not like
+			// []string{"z",".","k"} is valid.
+			if len(p) != 1 {
+				return twirp.InvalidArgumentError(
+					fmt.Sprintf("acl.%d.permissions", i),
+					"a permission must be a single character")
+			}
+		}
+	}
+
+	// Check for ACL write permission, but allow the write if no
+	// document is found, as we want to allow the creation of new
+	// documents.
+	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+	if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
+		return err
+	}
+
+	return nil
 }
 
 // Validate implements repository.Documents.

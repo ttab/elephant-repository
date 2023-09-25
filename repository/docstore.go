@@ -27,8 +27,8 @@ type DocStore interface {
 	Update(
 		ctx context.Context,
 		workflows WorkflowProvider,
-		update UpdateRequest,
-	) (*DocumentUpdate, error)
+		update []*UpdateRequest,
+	) ([]DocumentUpdate, error)
 	Delete(ctx context.Context, req DeleteRequest) error
 	CheckPermission(
 		ctx context.Context, req CheckPermissionRequest,
