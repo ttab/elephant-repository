@@ -5,7 +5,7 @@ go 1.21.0
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/adhocore/gronx v1.6.5
-	github.com/antonmedv/expr v1.15.2
+	github.com/antonmedv/expr v1.15.3
 	github.com/aws/aws-sdk-go-v2 v1.21.0
 	github.com/aws/aws-sdk-go-v2/config v1.18.40
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.38
