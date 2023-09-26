@@ -23,7 +23,7 @@ require (
 	github.com/prometheus/client_golang v1.16.0
 	github.com/rakutentech/jwk-go v1.1.3
 	github.com/ttab/darknut v0.1.0
-	github.com/ttab/elephant-api v0.6.2-0.20230925072701-6fc90dc57cff
+	github.com/ttab/elephant-api v0.7.0
 	github.com/ttab/elephantine v0.8.2
 	github.com/ttab/newsdoc v0.4.2
 	github.com/ttab/revisor v0.4.0

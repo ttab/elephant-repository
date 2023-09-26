@@ -366,6 +366,71 @@ func (q *Queries) GetActiveStatuses(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const getCompactedEventlog = `-- name: GetCompactedEventlog :many
+SELECT
+        w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
+        w.status_id, w.acl, w.updater
+FROM (
+     SELECT DISTINCT ON (
+            e.uuid,
+            CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END
+       ) id, event, uuid, timestamp, type, version, status, status_id, acl, updater FROM eventlog AS e
+     WHERE e.id > $1 AND e.id <= $2
+     AND ($3::text IS NULL OR e.type = $3)
+     ORDER BY
+           e.uuid,
+           CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END,
+           e.id DESC
+     ) AS w
+ORDER BY w.id ASC
+LIMIT $5 OFFSET $4
+`
+
+type GetCompactedEventlogParams struct {
+	After     int64
+	Until     int64
+	Type      pgtype.Text
+	RowOffset int32
+	RowLimit  pgtype.Int4
+}
+
+func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEventlogParams) ([]Eventlog, error) {
+	rows, err := q.db.Query(ctx, getCompactedEventlog,
+		arg.After,
+		arg.Until,
+		arg.Type,
+		arg.RowOffset,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Eventlog
+	for rows.Next() {
+		var i Eventlog
+		if err := rows.Scan(
+			&i.ID,
+			&i.Event,
+			&i.UUID,
+			&i.Timestamp,
+			&i.Type,
+			&i.Version,
+			&i.Status,
+			&i.StatusID,
+			&i.Acl,
+			&i.Updater,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDocumentACL = `-- name: GetDocumentACL :many
 SELECT uuid, uri, permissions FROM acl WHERE uuid = $1
 `
@@ -706,7 +771,7 @@ func (q *Queries) GetDueReport(ctx context.Context) (Report, error) {
 }
 
 const getEventlog = `-- name: GetEventlog :many
-SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl
+SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater
 FROM eventlog
 WHERE id > $1
 ORDER BY id ASC
@@ -718,39 +783,26 @@ type GetEventlogParams struct {
 	RowLimit int32
 }
 
-type GetEventlogRow struct {
-	ID        int64
-	Event     string
-	UUID      uuid.UUID
-	Timestamp pgtype.Timestamptz
-	Updater   pgtype.Text
-	Type      pgtype.Text
-	Version   pgtype.Int8
-	Status    pgtype.Text
-	StatusID  pgtype.Int8
-	Acl       []byte
-}
-
-func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]GetEventlogRow, error) {
+func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]Eventlog, error) {
 	rows, err := q.db.Query(ctx, getEventlog, arg.After, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetEventlogRow
+	var items []Eventlog
 	for rows.Next() {
-		var i GetEventlogRow
+		var i Eventlog
 		if err := rows.Scan(
 			&i.ID,
 			&i.Event,
 			&i.UUID,
 			&i.Timestamp,
-			&i.Updater,
 			&i.Type,
 			&i.Version,
 			&i.Status,
 			&i.StatusID,
 			&i.Acl,
+			&i.Updater,
 		); err != nil {
 			return nil, err
 		}
@@ -936,6 +988,18 @@ func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
 		&i.Acl,
 	)
 	return i, err
+}
+
+const getLastEventID = `-- name: GetLastEventID :one
+SELECT id FROM eventlog
+ORDER BY id DESC LIMIT 1
+`
+
+func (q *Queries) GetLastEventID(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, getLastEventID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getMetricKind = `-- name: GetMetricKind :one

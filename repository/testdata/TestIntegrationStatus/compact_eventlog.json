@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "id": 30,
+      "event": "status",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "version": 5,
+      "status": "usable",
+      "status_id": 12,
+      "updater_uri": "user://test/testintegrationstatus",
+      "type": "core/article"
+    }
+  ]
+}

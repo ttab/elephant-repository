@@ -209,6 +209,62 @@ func aclPermissions(sub string, acl []ACLEntry) []Permission {
 	return perms
 }
 
+// CompactedEventlog implements repository.Documents.
+func (a *DocumentsService) CompactedEventlog(
+	ctx context.Context,
+	req *repository.GetCompactedEventlogRequest,
+) (*repository.GetCompactedEventlogResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeEventlogRead, ScopeDocumentAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	lastID, err := a.store.GetLastEventID(ctx)
+	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+		return &repository.GetCompactedEventlogResponse{}, nil
+	} else if err != nil {
+		return nil, fmt.Errorf(
+			"failed to get the latest event ID: %w", err)
+	}
+
+	cr := GetCompactedEventlogRequest{
+		After:  req.After,
+		Until:  req.Until,
+		Offset: req.Offset,
+		Type:   req.Type,
+	}
+
+	if req.Limit != 0 {
+		cr.Limit = &req.Limit
+	}
+
+	switch {
+	case cr.Until <= cr.After:
+		return nil, twirp.InvalidArgumentError("until",
+			"until must be greater than 'after'")
+	case cr.Until > lastID:
+		return nil, twirp.InvalidArgumentError("until",
+			"cannot be greater than the latest event ID")
+	case cr.Until-cr.After > 10000:
+		return nil, twirp.InvalidArgumentError("until",
+			"`until` cannot be greater than `after`+10000")
+	}
+
+	evts, err := a.store.GetCompactedEventlog(ctx, cr)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to read eventlog from database: %w", err)
+	}
+
+	var res repository.GetCompactedEventlogResponse
+
+	for i := range evts {
+		res.Items = append(res.Items, EventToRPC(evts[i]))
+	}
+
+	return &res, nil
+}
+
 // Eventlog returns document update events, optionally waiting for new events.
 func (a *DocumentsService) Eventlog(
 	ctx context.Context, req *repository.GetEventlogRequest,

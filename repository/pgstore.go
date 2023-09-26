@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ttab/elephant-repository/planning"
 	"github.com/ttab/elephant-repository/postgres"
@@ -404,6 +405,18 @@ func (s *PGDocStore) GetLastEvent(
 	}, nil
 }
 
+// GetLastEventID implements DocStore.
+func (s *PGDocStore) GetLastEventID(ctx context.Context) (int64, error) {
+	id, err := s.reader.GetLastEventID(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, DocStoreErrorf(ErrCodeNotFound, "not found")
+	} else if err != nil {
+		return 0, fmt.Errorf("database query failed: %w", err)
+	}
+
+	return id, nil
+}
+
 func (s *PGDocStore) GetEventlog(
 	ctx context.Context, after int64, limit int32,
 ) ([]Event, error) {
@@ -411,6 +424,57 @@ func (s *PGDocStore) GetEventlog(
 		After:    after,
 		RowLimit: limit,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from database: %w", err)
+	}
+
+	evts := make([]Event, len(res))
+
+	for i := range res {
+		e := Event{
+			ID:        res[i].ID,
+			Event:     EventType(res[i].Event),
+			UUID:      res[i].UUID,
+			Timestamp: res[i].Timestamp.Time,
+			Updater:   res[i].Updater.String,
+			Type:      res[i].Type.String,
+			Version:   res[i].Version.Int64,
+			Status:    res[i].Status.String,
+			StatusID:  res[i].StatusID.Int64,
+		}
+
+		if res[i].Acl != nil {
+			err := json.Unmarshal(res[i].Acl, &e.ACL)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to unmarshal event ACL: %w", err)
+			}
+		}
+
+		evts[i] = e
+	}
+
+	return evts, nil
+}
+
+func (s *PGDocStore) GetCompactedEventlog(
+	ctx context.Context, req GetCompactedEventlogRequest,
+) ([]Event, error) {
+	params := postgres.GetCompactedEventlogParams{
+		After:     req.After,
+		Until:     req.Until,
+		Type:      pg.TextOrNull(req.Type),
+		RowOffset: req.Offset,
+	}
+
+	if req.Limit != nil {
+		params.RowLimit = pgtype.Int4{
+			Int32: *req.Limit,
+			Valid: true,
+		}
+	}
+
+	res, err := s.reader.GetCompactedEventlog(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from database: %w", err)
 	}
