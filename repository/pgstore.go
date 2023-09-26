@@ -726,50 +726,22 @@ const (
 
 // Update implements DocStore.
 func (s *PGDocStore) Update(
-	ctx context.Context, workflows WorkflowProvider, update UpdateRequest,
-) (*DocumentUpdate, error) {
-	var docJSON, metaJSON []byte
+	ctx context.Context, workflows WorkflowProvider,
+	requests []*UpdateRequest,
+) ([]DocumentUpdate, error) {
+	var updates []*docUpdateState
 
 	// Do serialisation work before we start a transaction. That way we
 	// don't keep row locks or hog connections while doing that
-	// busy-work. Likewise we don't even try to update the db in the
+	// busy-work. Likewise we don't even try to statedate the db in the
 	// unlikely event that marshalling fails.
-
-	if update.Document != nil {
-		dj, err := json.Marshal(update.Document)
+	for _, req := range requests {
+		state, err := newUpdateState(req)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to marshal document for storage: %w", err)
+			return nil, err
 		}
 
-		docJSON = dj
-	}
-
-	if len(update.Meta) > 0 {
-		mj, err := json.Marshal(update.Meta)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to marshal metadata for storage: %w", err)
-		}
-
-		metaJSON = mj
-	}
-
-	statusMeta := make([][]byte, len(update.Status))
-
-	for i, stat := range update.Status {
-		if len(stat.Meta) == 0 {
-			continue
-		}
-
-		d, err := json.Marshal(stat.Meta)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to marshal %q status metadata for storage: %w",
-				stat.Name, err)
-		}
-
-		statusMeta[i] = d
+		updates = append(updates, state)
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -783,138 +755,143 @@ func (s *PGDocStore) Update(
 
 	q := postgres.New(tx)
 
-	info, err := s.updatePreflight(ctx, q, update.UUID, update.IfMatch)
-	if err != nil {
-		return nil, err
-	}
-
-	lock := checkLock(info.Lock, update.LockToken)
-	if lock == lockCheckDenied {
-		return nil, DocStoreErrorf(ErrCodeDocumentLock, "document locked")
-	}
-
-	docType := info.Info.Type
-
-	up := DocumentUpdate{
-		Version: info.Info.CurrentVersion,
-		Created: update.Updated,
-		Creator: update.Updater,
-		Meta:    update.Meta,
-	}
-
-	if update.Document != nil {
-		up.Version++
-
-		if info.Info.Type != "" && info.Info.Type != update.Document.Type {
-			return nil, DocStoreErrorf(ErrCodeBadRequest,
-				"cannot change the document type from %q",
-				info.Info.Type)
-		}
-
-		docType = update.Document.Type
-
-		err = q.CreateVersion(ctx, postgres.CreateVersionParams{
-			UUID:         update.UUID,
-			Version:      up.Version,
-			Created:      pg.Time(up.Created),
-			CreatorUri:   up.Creator,
-			Meta:         metaJSON,
-			DocumentData: docJSON,
-		})
+	for _, state := range updates {
+		info, err := s.updatePreflight(ctx, q,
+			state.Request.UUID, state.Request.IfMatch)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to create version in database: %w", err)
+			return nil, err
 		}
 
-		if update.Document.Type == "core/planning-item" {
-			err = planning.UpdateDatabase(ctx, tx,
-				*update.Document, up.Version)
+		state.Version = info.Info.CurrentVersion
+		state.Exists = info.Exists
+
+		if state.Exists {
+			state.Type = info.Info.Type
+		}
+
+		if state.Exists && state.Doc != nil {
+			if state.Doc.Type != state.Type {
+				return nil, DocStoreErrorf(ErrCodeBadRequest,
+					"cannot change the document type from %q",
+					state.Type)
+			}
+		}
+
+		lock := checkLock(info.Lock, state.Request.LockToken)
+		if lock == lockCheckDenied {
+			return nil, DocStoreErrorf(ErrCodeDocumentLock, "document locked")
+		}
+	}
+
+	for _, state := range updates {
+		if state.Doc != nil {
+			state.Version++
+
+			err = q.CreateVersion(ctx, postgres.CreateVersionParams{
+				UUID:         state.Request.UUID,
+				Version:      state.Version,
+				Created:      pg.Time(state.Created),
+				CreatorUri:   state.Creator,
+				Meta:         state.MetaJSON,
+				DocumentData: state.DocJSON,
+			})
 			if err != nil {
 				return nil, fmt.Errorf(
-					"failed to update planning data: %w", err)
+					"failed to create version in database: %w", err)
 			}
-		}
-	}
 
-	statusHeads := make(map[string]Status)
-
-	if len(update.Status) > 0 {
-		heads, err := s.getFullDocumentHeads(ctx, s.reader, update.UUID)
-		if err != nil {
-			return nil, err
-		}
-
-		statusHeads = heads
-	}
-
-	for i, stat := range update.Status {
-		statusID := statusHeads[stat.Name].ID + 1
-
-		status := Status{
-			ID:      statusID,
-			Creator: up.Creator,
-			Version: stat.Version,
-			Meta:    stat.Meta,
-			Created: up.Created,
-		}
-
-		if status.Version == 0 {
-			status.Version = up.Version
-		}
-
-		input, err := s.buildStatusRuleInput(
-			ctx, q, update.UUID, stat.Name, status, up,
-			update.Document, update.Meta, statusHeads,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		violations := workflows.EvaluateRules(input)
-
-		for _, v := range violations {
-			if v.AccessViolation {
-				return nil, DocStoreErrorf(
-					ErrCodePermissionDenied,
-					"status rule violation %q: %s",
-					v.Name,
-					v.Description)
+			if state.Doc.Type == "core/planning-item" {
+				err = planning.UpdateDatabase(ctx, tx,
+					*state.Doc, state.Version)
+				if err != nil {
+					return nil, fmt.Errorf(
+						"failed to update planning data: %w", err)
+				}
 			}
 		}
 
-		if len(violations) > 0 {
-			return nil, DocStoreErrorf(ErrCodeBadRequest,
-				"status rule violation: %w", StatusRuleError{
-					Violations: violations,
-				})
+		statusHeads := make(map[string]Status)
+
+		if len(state.Request.Status) > 0 {
+			heads, err := s.getFullDocumentHeads(ctx, s.reader,
+				state.Request.UUID)
+			if err != nil {
+				return nil, err
+			}
+
+			statusHeads = heads
 		}
 
-		err = q.CreateStatus(ctx, postgres.CreateStatusParams{
-			UUID:       update.UUID,
-			Name:       stat.Name,
-			ID:         statusID,
-			Version:    status.Version,
-			Type:       docType,
-			Created:    pg.Time(up.Created),
-			CreatorUri: up.Creator,
-			Meta:       statusMeta[i],
-		})
+		for i, stat := range state.Request.Status {
+			statusID := statusHeads[stat.Name].ID + 1
+
+			status := Status{
+				ID:      statusID,
+				Creator: state.Creator,
+				Version: stat.Version,
+				Meta:    stat.Meta,
+				Created: state.Created,
+			}
+
+			if status.Version == 0 {
+				status.Version = state.Version
+			}
+
+			input, err := s.buildStatusRuleInput(
+				ctx, q, state.Request.UUID, stat.Name, status,
+				state.DocumentUpdate, state.Doc, state.Request.Meta, statusHeads,
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			violations := workflows.EvaluateRules(input)
+
+			for _, v := range violations {
+				if v.AccessViolation {
+					return nil, DocStoreErrorf(
+						ErrCodePermissionDenied,
+						"status rule violation %q: %s",
+						v.Name,
+						v.Description)
+				}
+			}
+
+			if len(violations) > 0 {
+				return nil, DocStoreErrorf(ErrCodeBadRequest,
+					"status rule violation: %w", StatusRuleError{
+						Violations: violations,
+					})
+			}
+
+			err = q.CreateStatus(ctx, postgres.CreateStatusParams{
+				UUID:       state.Request.UUID,
+				Name:       stat.Name,
+				ID:         statusID,
+				Version:    status.Version,
+				Type:       state.Type,
+				Created:    pg.Time(state.Created),
+				CreatorUri: state.Creator,
+				Meta:       state.StatusMeta[i],
+			})
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to update %q status: %w",
+					stat.Name, err)
+			}
+		}
+
+		updateACL := state.Request.ACL
+
+		if len(updateACL) == 0 && !state.Exists {
+			updateACL = state.Request.DefaultACL
+		}
+
+		err = s.updateACL(ctx, q, state.Request.UUID,
+			state.Type, updateACL)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to update %q status: %w",
-				stat.Name, err)
+			return nil, fmt.Errorf("failed to update ACL: %w", err)
 		}
-	}
-
-	updateACL := update.ACL
-
-	if len(updateACL) == 0 && !info.Exists {
-		updateACL = update.DefaultACL
-	}
-
-	err = s.updateACL(ctx, q, update.UUID, docType, updateACL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update ACL: %w", err)
 	}
 
 	// TODO: model links, or should we just skip that? Could a stored
@@ -926,7 +903,78 @@ func (s *PGDocStore) Update(
 		return nil, fmt.Errorf("failed to commit: %w", err)
 	}
 
-	return &up, nil
+	var res []DocumentUpdate
+
+	for _, s := range updates {
+		res = append(res, s.DocumentUpdate)
+	}
+
+	return res, nil
+}
+
+type docUpdateState struct {
+	DocumentUpdate
+
+	Request    *UpdateRequest
+	Doc        *newsdoc.Document
+	DocJSON    []byte
+	MetaJSON   []byte
+	StatusMeta [][]byte
+
+	Type   string
+	Exists bool
+}
+
+func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
+	state := docUpdateState{
+		DocumentUpdate: DocumentUpdate{
+			Created: req.Updated,
+			Creator: req.Updater,
+			Meta:    req.Meta,
+		},
+		Request:    req,
+		Doc:        req.Document,
+		StatusMeta: make([][]byte, len(req.Status)),
+	}
+
+	if state.Doc != nil {
+		state.Type = state.Doc.Type
+
+		dj, err := json.Marshal(state.Doc)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to marshal document for storage: %w", err)
+		}
+
+		state.DocJSON = dj
+	}
+
+	if len(state.Request.Meta) > 0 {
+		mj, err := json.Marshal(state.Request.Meta)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to marshal metadata for storage: %w", err)
+		}
+
+		state.MetaJSON = mj
+	}
+
+	for i, stat := range state.Request.Status {
+		if len(stat.Meta) == 0 {
+			continue
+		}
+
+		d, err := json.Marshal(stat.Meta)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to marshal %q status metadata for storage: %w",
+				stat.Name, err)
+		}
+
+		state.StatusMeta[i] = d
+	}
+
+	return &state, nil
 }
 
 func (s *PGDocStore) buildStatusRuleInput(

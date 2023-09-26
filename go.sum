@@ -264,8 +264,8 @@ github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXl
 github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635/go.mod h1:hkRG7XYTFWNJGYcbNJQlaLq0fg1yr4J4t/NcTQtrfww=
 github.com/ttab/darknut v0.1.0 h1:0EvIc82YzRYmxk8x/nEU374ci0TpGYaFOaGMKdggkYg=
 github.com/ttab/darknut v0.1.0/go.mod h1:G7jxtatph/rpttr2XOoElJpcUX25hWr+Uql5PhRf7ao=
-github.com/ttab/elephant-api v0.6.1 h1:J7X3gNv2qcXU1y5ExdbXbn80qGUGgcx/AS7W8kJpr/w=
-github.com/ttab/elephant-api v0.6.1/go.mod h1:8mrcfV1eexHkUoe9HG8iQSfauF+6idQnATAtG9lRTwI=
+github.com/ttab/elephant-api v0.6.2-0.20230925072701-6fc90dc57cff h1:d7jdP1Q9VahBIuLw7qa4IniIYdystC5idahudsY3/xw=
+github.com/ttab/elephant-api v0.6.2-0.20230925072701-6fc90dc57cff/go.mod h1:KbzuFsTafue0lWFodYOdKzshiZWpbNGLz3MygCLNbQo=
 github.com/ttab/elephantine v0.8.2 h1:VRS+CnDjrDsu8lLIntaIN4wg+H7orh8QzxrOm2d0AKo=
 github.com/ttab/elephantine v0.8.2/go.mod h1:xb2sBv9HLB3gMxs6fMsdMZ8zT2/CaWiyrt14eSgAUt8=
 github.com/ttab/newsdoc v0.4.2 h1:q8L22nzwWbxiNVkJ5V3yjZ8zMmGr6dHsLj469lpqa08=
