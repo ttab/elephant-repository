@@ -1,24 +1,35 @@
 package repository
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephantine"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/mod/semver"
 )
 
 type SchemasService struct {
-	store SchemaStore
+	logger *slog.Logger
+	store  SchemaStore
+	client *http.Client
 }
 
-func NewSchemasService(store SchemaStore) *SchemasService {
+func NewSchemasService(logger *slog.Logger, store SchemaStore) *SchemasService {
 	return &SchemasService{
-		store: store,
+		logger: logger,
+		store:  store,
+		client: &http.Client{},
 	}
 }
 
@@ -166,12 +177,32 @@ func (a *SchemasService) Register(
 			"schema.version", "invalid semver version")
 	}
 
+	if req.Schema.Spec == "" && req.SchemaUrl == "" {
+		return nil, twirp.InvalidArgumentError("schema.spec",
+			"the schema spec is required if no URL is passed")
+	}
+
+	if req.Schema.Spec != "" && req.SchemaUrl != "" {
+		return nil, twirp.InvalidArgumentError("schema_url",
+			"a schema_url cannot be passed if an inline spec is set")
+	}
+
 	var spec revisor.ConstraintSet
 
-	err = json.Unmarshal([]byte(req.Schema.Spec), &spec)
-	if err != nil {
-		return nil, twirp.InvalidArgument.Errorf(
-			"invalid schema: %w", err)
+	if req.Schema.Spec != "" {
+		err = json.Unmarshal([]byte(req.Schema.Spec), &spec)
+		if err != nil {
+			return nil, twirp.InvalidArgument.Errorf(
+				"invalid schema: %w", err)
+		}
+	} else {
+		s, err := a.fetchRemoteSpec(ctx,
+			req.SchemaUrl, req.SchemaSha256)
+		if err != nil {
+			return nil, err
+		}
+
+		spec = s
 	}
 
 	err = a.store.RegisterSchema(ctx, RegisterSchemaRequest{
@@ -188,6 +219,71 @@ func (a *SchemasService) Register(
 	}
 
 	return &repository.RegisterSchemaResponse{}, nil
+}
+
+func (a *SchemasService) fetchRemoteSpec(
+	ctx context.Context, schemaURL string, schemaHash string,
+) (revisor.ConstraintSet, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, schemaURL, nil)
+	if err != nil {
+		return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
+			"schema_url",
+			fmt.Sprintf("failed to create schema request: %v", err))
+	}
+
+	res, err := a.client.Do(req) //nolint:bodyclose
+	if err != nil {
+		return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
+			"schema_url",
+			fmt.Sprintf("failed to get schema_url: %v", err))
+	}
+
+	defer elephantine.SafeClose(a.logger,
+		"schema response", res.Body)
+
+	specData, err := io.ReadAll(res.Body)
+	if err != nil {
+		return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
+			"schema_url",
+			fmt.Sprintf("failed to read schema_url response: %v", err))
+	}
+
+	if schemaHash != "" {
+		want, err := hex.DecodeString(schemaHash)
+		if err != nil {
+			return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
+				"schema_sha256",
+				fmt.Sprintf("invalid checksum: %v", err))
+		}
+
+		if len(want) != sha256.Size {
+			return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
+				"schema_sha256",
+				fmt.Sprintf(
+					"invalid checksum length, expected %d bytes, got %d",
+					sha256.Size, len(want)))
+		}
+
+		got := sha256.Sum256(specData)
+
+		if !bytes.Equal(want, got[:]) {
+			return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
+				"schema_sha256",
+				fmt.Sprintf(
+					"checksum mismatch expected %x, got %x",
+					want, got))
+		}
+	}
+
+	var spec revisor.ConstraintSet
+
+	err = json.Unmarshal(specData, &spec)
+	if err != nil {
+		return revisor.ConstraintSet{}, twirp.InvalidArgument.Errorf(
+			"invalid schema: %w", err)
+	}
+
+	return spec, nil
 }
 
 // SetActive activates schema versions.

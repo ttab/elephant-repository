@@ -402,7 +402,7 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("subsystem setup failed: %w", err)
 	}
 
-	schemaService := repository.NewSchemasService(store)
+	schemaService := repository.NewSchemasService(logger, store)
 	workflowService := repository.NewWorkflowsService(store)
 	reportsService := repository.NewReportsService(logger, store, reportDB)
 	metricsService := repository.NewMetricsService(store)

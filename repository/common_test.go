@@ -225,7 +225,7 @@ func testingAPIServer(
 	test.Must(t, err, "create workflows")
 
 	docService := repository.NewDocumentsService(store, validator, workflows)
-	schemaService := repository.NewSchemasService(store)
+	schemaService := repository.NewSchemasService(logger, store)
 	workflowService := repository.NewWorkflowsService(store)
 	reportsService := repository.NewReportsService(logger, store, reportingPool)
 	metricsService := repository.NewMetricsService(store)
