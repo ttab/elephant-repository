@@ -294,14 +294,16 @@ func (a *DocumentsService) Eventlog(
 	after := req.After
 	if after < 0 {
 		evt, err := a.store.GetLastEvent(ctx)
-		if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+
+		switch {
+		case IsDocStoreErrorCode(err, ErrCodeNotFound):
 			after = 0
-		} else if err != nil {
+		case err != nil:
 			return nil, twirp.InternalErrorf(
 				"failed to get last event: %w", err)
+		default:
+			after = evt.ID + after
 		}
-
-		after = evt.ID + after
 	}
 
 	limit := req.BatchSize
