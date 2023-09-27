@@ -52,6 +52,16 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	ctx := test.Context(t)
 
+	t.Run("NegativeEventlogAfterOnEmpty", func(t *testing.T) {
+		log, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
+			After: -1,
+		})
+
+		test.Must(t, err, "get eventlog")
+		test.Equal(t, 0, len(log.Items),
+			"no eventlog items should be returned")
+	})
+
 	const (
 		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
 		docURI  = "article://test/123"
