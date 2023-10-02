@@ -24,10 +24,11 @@ import (
 
 func baseDocument(uuid, uri string) *newsdoc.Document {
 	return &newsdoc.Document{
-		Uuid:  uuid,
-		Title: "A bare-bones article",
-		Type:  "core/article",
-		Uri:   uri,
+		Uuid:     uuid,
+		Title:    "A bare-bones article",
+		Type:     "core/article",
+		Uri:      uri,
+		Language: "en",
 	}
 }
 
@@ -181,6 +182,84 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	if diff != "" {
 		t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
 	}
+}
+
+func TestIntegrationDocumentLanguage(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunArchiver:   false,
+		RunReplicator: false,
+	})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
+
+	t.Run("NoLanguage", func(t *testing.T) {
+		doc := baseDocument(
+			"1d450529-fd98-4e4e-80c2-f70f9194737a",
+			"example://1d450529-fd98-4e4e-80c2-f70f9194737a",
+		)
+
+		doc.Language = ""
+
+		_, err := client.Update(test.Context(t), &repository.UpdateRequest{
+			Uuid:     doc.Uuid,
+			Document: doc,
+		})
+		test.MustNot(t, err, "update a document without a language")
+	})
+
+	t.Run("InvalidLanguage", func(t *testing.T) {
+		doc := baseDocument(
+			"1d450529-fd98-4e4e-80c2-f70f9194737a",
+			"example://1d450529-fd98-4e4e-80c2-f70f9194737a",
+		)
+
+		doc.Language = "ad"
+
+		_, err := client.Update(test.Context(t), &repository.UpdateRequest{
+			Uuid:     doc.Uuid,
+			Document: doc,
+		})
+		test.MustNot(t, err, "update a document with a invalid language")
+	})
+
+	t.Run("InvalidCodeFormat", func(t *testing.T) {
+		doc := baseDocument(
+			"1d450529-fd98-4e4e-80c2-f70f9194737a",
+			"example://1d450529-fd98-4e4e-80c2-f70f9194737a",
+		)
+
+		doc.Language = "sv-"
+
+		_, err := client.Update(test.Context(t), &repository.UpdateRequest{
+			Uuid:     doc.Uuid,
+			Document: doc,
+		})
+		test.MustNot(t, err, "update a document with a malformed language code")
+	})
+
+	t.Run("LanguageAndRegion", func(t *testing.T) {
+		doc := baseDocument(
+			"00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
+			"example://00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
+		)
+
+		doc.Language = "en-GB"
+
+		_, err := client.Update(test.Context(t), &repository.UpdateRequest{
+			Uuid:     doc.Uuid,
+			Document: doc,
+		})
+		test.Must(t, err, "update a document with a valid language and region")
+	})
 }
 
 func TestIntegrationBulkCrud(t *testing.T) {
