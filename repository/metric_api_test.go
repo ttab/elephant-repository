@@ -96,8 +96,9 @@ func TestIntegrationMetrics(t *testing.T) {
 	_, err = documentsClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
 		Document: &newsdoc.Document{
-			Type: "core/article",
-			Uri:  "article://test/123",
+			Type:     "core/article",
+			Uri:      "article://test/123",
+			Language: "en",
 		},
 	})
 	test.Must(t, err, "create test document")

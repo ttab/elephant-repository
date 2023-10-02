@@ -10,6 +10,7 @@ import (
 	rpcdoc "github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/langos"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
@@ -1024,6 +1025,16 @@ func (a *DocumentsService) verifyUpdateRequest(
 
 		if req.Document.Uri == "" {
 			return twirp.RequiredArgumentError("document.uri")
+		}
+
+		if req.Document.Language == "" {
+			return twirp.RequiredArgumentError("document.language")
+		}
+
+		_, err := langos.GetLanguage(req.Document.Language)
+		if err != nil {
+			return twirp.InvalidArgumentError("document.language",
+				err.Error())
 		}
 	}
 
