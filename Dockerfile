@@ -1,4 +1,4 @@
-FROM golang:1.21.4-alpine3.18 AS build
+FROM --platform=$BUILDPLATFORM golang:1.21.4-alpine3.18 AS build
 
 WORKDIR /usr/src
 
@@ -7,9 +7,9 @@ RUN go mod download && go mod verify
 
 ADD . ./
 
-ARG COMMAND
-
-RUN go build -o /build/repository ./cmd/repository
+ARG TARGETOS TARGETARCH
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -o /build/repository ./cmd/repository
 
 FROM alpine:3.18
 

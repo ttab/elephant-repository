@@ -40,7 +40,7 @@ jobs:
         with:
           context: .
           # Specify the build_platforms variable in the GitHub repo
-          platforms: ${{ vars.BUILD_PLATFORMS }}
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
           cache-from: type=gha
