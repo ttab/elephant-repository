@@ -146,7 +146,16 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 		return fmt.Errorf("failed to acquire connection from pool: %w", err)
 	}
 
-	defer conn.Release()
+	pConn := conn.Hijack()
+
+	defer func() {
+		err := pConn.Close(ctx)
+		if err != nil {
+			s.logger.ErrorContext(ctx,
+				"failed to close PG listen connection",
+				elephantine.LogKeyError, err)
+		}
+	}()
 
 	notifications := []NotifyChannel{
 		NotifyArchived,
@@ -158,7 +167,7 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 	for _, channel := range notifications {
 		ident := pgx.Identifier{string(channel)}
 
-		_, err := conn.Exec(ctx, "LISTEN "+ident.Sanitize())
+		_, err := pConn.Exec(ctx, "LISTEN "+ident.Sanitize())
 		if err != nil {
 			return fmt.Errorf("failed to start listening to %q: %w",
 				channel, err)
@@ -170,7 +179,7 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 
 	grp.Go(func() error {
 		for {
-			notification, err := conn.Conn().WaitForNotification(gCtx)
+			notification, err := pConn.WaitForNotification(gCtx)
 			if err != nil {
 				return fmt.Errorf(
 					"error while waiting for notification: %w", err)
