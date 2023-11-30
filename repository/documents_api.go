@@ -239,6 +239,11 @@ func (a *DocumentsService) CompactedEventlog(
 		cr.Limit = &req.Limit
 	}
 
+	if cr.Until == 0 {
+		increment := max(req.Limit, req.Limit*5, 500)
+		cr.Until = min(cr.After+int64(increment), lastID)
+	}
+
 	switch {
 	case cr.Until <= cr.After:
 		return nil, twirp.InvalidArgumentError("until",
