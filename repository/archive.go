@@ -519,7 +519,7 @@ func (a *Archiver) archiveDocumentVersions(
 			base64.StdEncoding.EncodeToString(checksum[:]),
 		),
 		ContentType:   aws.String("application/json"),
-		ContentLength: int64(len(objectBody)),
+		ContentLength: aws.Int64(int64(len(objectBody))),
 		Metadata: map[string]string{
 			"elephant-signature": signature.String(),
 		},
@@ -646,7 +646,7 @@ func (a *Archiver) archiveDocumentStatuses(
 			base64.StdEncoding.EncodeToString(checksum[:]),
 		),
 		ContentType:   aws.String("application/json"),
-		ContentLength: int64(len(objectBody)),
+		ContentLength: aws.Int64(int64(len(objectBody))),
 		Metadata: map[string]string{
 			"elephant-signature": signature.String(),
 		},
