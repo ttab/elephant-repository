@@ -66,7 +66,9 @@ func S3Client(
 		})
 
 		options = append(options,
-			config.WithEndpointResolverWithOptions(customResolver))
+			config.WithEndpointResolverWithOptions(customResolver),
+			config.WithRegion("auto"),
+		)
 
 		s3Options = append(s3Options, func(o *s3.Options) {
 			o.EndpointOptions.DisableHTTPS = opts.DisableHTTPS
