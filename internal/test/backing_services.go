@@ -85,12 +85,14 @@ CREATE ROLE %s WITH LOGIN PASSWORD '%s' REPLICATION`,
 		"CREATE DATABASE "+ident+" WITH OWNER "+ident)
 	must(t, err, "create database")
 
-	reportingRole := pgx.Identifier{t.Name() + "Reporting"}.Sanitize()
-	reportingUser := pgx.Identifier{t.Name() + "ReportingUser"}.Sanitize()
+	reportingRole := t.Name() + "Reporting"
+	reportingUser := t.Name() + "ReportingUser"
+	reportingRoleIdent := pgx.Identifier{reportingRole}.Sanitize()
+	reportingUserIdent := pgx.Identifier{reportingUser}.Sanitize()
 
 	_, err = adminConn.Exec(ctx, fmt.Sprintf(
 		"CREATE ROLE %s",
-		reportingRole))
+		reportingRoleIdent))
 	must(t, err, "create reporting role")
 
 	_, err = adminConn.Exec(ctx, fmt.Sprintf(
@@ -98,7 +100,7 @@ CREATE ROLE %s WITH LOGIN PASSWORD '%s' REPLICATION`,
 CREATE ROLE %[1]s
 WITH LOGIN PASSWORD '%[2]s'
 IN ROLE %[3]s`,
-		reportingUser, t.Name()+"ReportingUser", reportingRole))
+		reportingUserIdent, reportingUser, reportingRoleIdent))
 	must(t, err, "create reporting user")
 
 	env := Environment{
@@ -106,7 +108,7 @@ IN ROLE %[3]s`,
 		Bucket:      bucket,
 		PostgresURI: bs.getPostgresURI(t.Name(), t.Name()),
 		ReportingURI: bs.getPostgresURI(
-			t.Name()+"ReportingUser", t.Name(),
+			reportingUser, t.Name(),
 		),
 	}
 
@@ -132,7 +134,7 @@ ON TABLE
    document_status, status_heads, status, status_rule,
    acl, acl_audit
 TO %s`,
-			reportingRole))
+			reportingRoleIdent))
 		must(t, err, "failed to grant reporting role permissions")
 	}
 

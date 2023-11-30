@@ -22,6 +22,8 @@ import (
 	"github.com/twitchtv/twirp"
 )
 
+const bearerPrefix = "Bearer "
+
 type TestContext struct {
 	SigningKey       *ecdsa.PrivateKey
 	Server           *httptest.Server
@@ -44,7 +46,7 @@ func (tc *TestContext) DocumentsClient(
 		tc.Server.URL, tc.Server.Client(),
 		twirp.WithClientHooks(&twirp.ClientHooks{
 			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
-				r.Header.Set("Authorization", "Bearer "+token)
+				r.Header.Set("Authorization", bearerPrefix+token)
 
 				return ctx, nil
 			},
@@ -65,7 +67,7 @@ func (tc *TestContext) WorkflowsClient(
 		tc.Server.URL, tc.Server.Client(),
 		twirp.WithClientHooks(&twirp.ClientHooks{
 			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
-				r.Header.Set("Authorization", "Bearer "+token)
+				r.Header.Set("Authorization", bearerPrefix+token)
 
 				return ctx, nil
 			},
@@ -86,7 +88,7 @@ func (tc *TestContext) ReportsClient(
 		tc.Server.URL, tc.Server.Client(),
 		twirp.WithClientHooks(&twirp.ClientHooks{
 			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
-				r.Header.Set("Authorization", "Bearer "+token)
+				r.Header.Set("Authorization", bearerPrefix+token)
 
 				return ctx, nil
 			},
@@ -107,7 +109,7 @@ func (tc *TestContext) SchemasClient(
 		tc.Server.URL, tc.Server.Client(),
 		twirp.WithClientHooks(&twirp.ClientHooks{
 			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
-				r.Header.Set("Authorization", "Bearer "+token)
+				r.Header.Set("Authorization", bearerPrefix+token)
 
 				return ctx, nil
 			},
@@ -128,7 +130,7 @@ func (tc *TestContext) MetricsClient(
 		tc.Server.URL, tc.Server.Client(),
 		twirp.WithClientHooks(&twirp.ClientHooks{
 			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
-				r.Header.Set("Authorization", "Bearer "+token)
+				r.Header.Set("Authorization", bearerPrefix+token)
 
 				return ctx, nil
 			},
