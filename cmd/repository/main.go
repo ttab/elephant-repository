@@ -85,6 +85,7 @@ func runServer(c *cli.Context) error {
 		profileAddr   = c.String("profile-addr")
 		logLevel      = c.String("log-level")
 		ensureSchemas = c.StringSlice("ensure-schema")
+		awsRegion     = c.String("aws-region")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -351,7 +352,8 @@ func runServer(c *cli.Context) error {
 
 		switch conf.Eventsink {
 		case "aws-eventbridge":
-			conf, err := config.LoadDefaultConfig(c.Context)
+			conf, err := config.LoadDefaultConfig(c.Context,
+				config.WithRegion(awsRegion))
 			if err != nil {
 				return fmt.Errorf("failed to load AWS SDK config for Eventbridge: %w", err)
 			}

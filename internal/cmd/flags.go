@@ -49,6 +49,7 @@ func BackendConfigFromContext(c *cli.Context, src ParameterSource) (BackendConfi
 			AccessKeyID:     c.String("s3-key-id"),
 			AccessKeySecret: c.String("s3-key-secret"),
 			DisableHTTPS:    c.Bool("s3-insecure"),
+			Region:          c.String("aws-region"),
 		},
 	}
 
@@ -127,6 +128,12 @@ func BackendFlags() []cli.Flag {
 			Name:    "report-bucket",
 			Value:   "elephant-reports",
 			EnvVars: []string{"REPORT_BUCKET"},
+		},
+		&cli.StringFlag{
+			Name:     "aws-region",
+			Usage:    "AWS SDK Region",
+			EnvVars:  []string{"AWS_REGION"},
+			Required: true,
 		},
 		&cli.StringFlag{
 			Name:    "s3-endpoint",

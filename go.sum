@@ -332,6 +332,8 @@ github.com/ttab/elephant-api v0.7.0 h1:IEu+fGQq/knmK8CV4AVrkseKEq9AigDBi986+bzH6
 github.com/ttab/elephant-api v0.7.0/go.mod h1:KbzuFsTafue0lWFodYOdKzshiZWpbNGLz3MygCLNbQo=
 github.com/ttab/elephantine v0.9.4 h1:e8SxXYAIvsEjaApMxVYTQqcyLYYaWiarK52y0yan5n8=
 github.com/ttab/elephantine v0.9.4/go.mod h1:MmXV1/PlZLWLQrr0bJav+/3GYIN1tIl7z8uB6oxxSJ4=
+github.com/ttab/elephantine v0.9.5-0.20231201075048-fffdb2776071 h1:dS9x4vxnozGEEHi84sjLeBJckFde7+o07ofI8Kad7GQ=
+github.com/ttab/elephantine v0.9.5-0.20231201075048-fffdb2776071/go.mod h1:MmXV1/PlZLWLQrr0bJav+/3GYIN1tIl7z8uB6oxxSJ4=
 github.com/ttab/langos v0.1.1 h1:87AksvnO5AWdXEKnb5Ga5H+dXvigDX8I1y46pTc8vDE=
 github.com/ttab/langos v0.1.1/go.mod h1:+E1sOSvBJIbE5VM0m2rfr83aqw0kZbfe/clqNtwSP8w=
 github.com/ttab/newsdoc v0.4.2 h1:q8L22nzwWbxiNVkJ5V3yjZ8zMmGr6dHsLj469lpqa08=
