@@ -231,6 +231,10 @@ func (a *DocumentsService) CompactedEventlog(
 			"failed to get the latest event ID: %w", err)
 	}
 
+	if req.After >= lastID {
+		return &repository.GetCompactedEventlogResponse{}, nil
+	}
+
 	cr := GetCompactedEventlogRequest{
 		After:  req.After,
 		Until:  req.Until,
