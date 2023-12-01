@@ -27,20 +27,23 @@ type WorkflowProvider interface {
 }
 
 type DocumentsService struct {
-	store     DocStore
-	validator DocumentValidator
-	workflows WorkflowProvider
+	store           DocStore
+	validator       DocumentValidator
+	workflows       WorkflowProvider
+	defaultLanguage string
 }
 
 func NewDocumentsService(
 	store DocStore,
 	validator DocumentValidator,
 	workflows WorkflowProvider,
+	defaultLanguage string,
 ) *DocumentsService {
 	return &DocumentsService{
-		store:     store,
-		validator: validator,
-		workflows: workflows,
+		store:           store,
+		validator:       validator,
+		workflows:       workflows,
+		defaultLanguage: defaultLanguage,
 	}
 }
 
@@ -601,6 +604,10 @@ func (a *DocumentsService) Get(
 			"failed to load document version: %w", err)
 	}
 
+	if doc.Language == "" {
+		doc.Language = a.defaultLanguage
+	}
+
 	return &repository.GetDocumentResponse{
 		Document: rpcdoc.DocumentToRPC(*doc),
 		Version:  version,
@@ -1033,7 +1040,7 @@ func (a *DocumentsService) verifyUpdateRequest(
 		}
 
 		if req.Document.Language == "" {
-			return twirp.RequiredArgumentError("document.language")
+			req.Document.Language = a.defaultLanguage
 		}
 
 		_, err := langos.GetLanguage(req.Document.Language)

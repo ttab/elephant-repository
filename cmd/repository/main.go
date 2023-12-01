@@ -30,6 +30,7 @@ import (
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephant-repository/sinks"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/langos"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 	"github.com/urfave/cli/v2"
@@ -57,6 +58,11 @@ func main() {
 				EnvVars: []string{"LOG_LEVEL"},
 				Value:   "error",
 			},
+			&cli.StringFlag{
+				Name:    "default-language",
+				EnvVars: []string{"DEFAULT_LANGUAGE"},
+				Value:   "sv-se",
+			},
 			&cli.StringSliceFlag{
 				Name:    "ensure-schema",
 				EnvVars: []string{"ENSURE_SCHEMA"},
@@ -81,15 +87,21 @@ func main() {
 
 func runServer(c *cli.Context) error {
 	var (
-		addr          = c.String("addr")
-		profileAddr   = c.String("profile-addr")
-		logLevel      = c.String("log-level")
-		ensureSchemas = c.StringSlice("ensure-schema")
+		addr            = c.String("addr")
+		profileAddr     = c.String("profile-addr")
+		logLevel        = c.String("log-level")
+		ensureSchemas   = c.StringSlice("ensure-schema")
+		defaultLanguage = c.String("default-language")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
 	grace := elephantine.NewGracefulShutdown(logger, 20*time.Second)
 	paramSource := elephantine.NewLazySSM()
+
+	_, err := langos.GetLanguage(defaultLanguage)
+	if err != nil {
+		return fmt.Errorf("invalid default language: %w", err)
+	}
 
 	conf, err := cmd.BackendConfigFromContext(c, paramSource.GetParameterValue)
 	if err != nil {
@@ -260,7 +272,9 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to create workflows: %w", err)
 	}
 
-	docService := repository.NewDocumentsService(store, validator, workflows)
+	docService := repository.NewDocumentsService(
+		store, validator, workflows, defaultLanguage,
+	)
 
 	setupCtx, cancel := context.WithTimeout(c.Context, 10*time.Second)
 	defer cancel()
