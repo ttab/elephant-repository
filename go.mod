@@ -24,7 +24,7 @@ require (
 	github.com/rakutentech/jwk-go v1.1.3
 	github.com/ttab/darknut v0.1.0
 	github.com/ttab/elephant-api v0.7.0
-	github.com/ttab/elephantine v0.9.5-0.20231201075048-fffdb2776071
+	github.com/ttab/elephantine v0.9.5-0.20231201080631-a0f2fb9ad8eb
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/newsdoc v0.4.2
 	github.com/ttab/revisor v0.4.0
@@ -54,7 +54,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.2.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.10.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.16.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssm v1.40.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssm v1.44.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.18.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.21.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.26.1 // indirect
