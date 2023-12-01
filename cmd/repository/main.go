@@ -30,6 +30,7 @@ import (
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephant-repository/sinks"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/langos"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 	"github.com/urfave/cli/v2"
@@ -96,6 +97,11 @@ func runServer(c *cli.Context) error {
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
 	grace := elephantine.NewGracefulShutdown(logger, 20*time.Second)
 	paramSource := elephantine.NewLazySSM()
+
+	_, err := langos.GetLanguage(defaultLanguage)
+	if err != nil {
+		return fmt.Errorf("invalid default language: %w", err)
+	}
 
 	conf, err := cmd.BackendConfigFromContext(c, paramSource.GetParameterValue)
 	if err != nil {
