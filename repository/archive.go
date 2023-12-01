@@ -40,7 +40,6 @@ type S3Options struct {
 	AccessKeySecret string
 	DisableHTTPS    bool
 	HTTPClient      *http.Client
-	Region          string
 }
 
 func S3Client(
@@ -68,6 +67,7 @@ func S3Client(
 
 		options = append(options,
 			config.WithEndpointResolverWithOptions(customResolver),
+			config.WithRegion("auto"),
 		)
 
 		s3Options = append(s3Options, func(o *s3.Options) {
@@ -87,8 +87,6 @@ func S3Client(
 	if opts.HTTPClient != nil {
 		options = append(options, config.WithHTTPClient(opts.HTTPClient))
 	}
-
-	options = append(options, config.WithRegion(opts.Region))
 
 	cfg, err := config.LoadDefaultConfig(ctx, options...)
 	if err != nil {

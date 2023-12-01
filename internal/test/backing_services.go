@@ -263,7 +263,6 @@ func (bs *BackingServices) getS3Client(client *http.Client) (*s3.Client, error) 
 			AccessKeyID:     "minioadmin",
 			AccessKeySecret: "minioadmin",
 			HTTPClient:      client,
-			Region:          "auto",
 		})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
