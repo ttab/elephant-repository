@@ -213,7 +213,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 			Uuid:     doc.Uuid,
 			Document: doc,
 		})
-		test.MustNot(t, err, "update a document without a language")
+		test.Must(t, err, "update a document without a language")
 	})
 
 	t.Run("InvalidLanguage", func(t *testing.T) {
