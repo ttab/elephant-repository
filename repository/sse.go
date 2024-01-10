@@ -212,7 +212,14 @@ func (s *SSE) sendUntil(ctx context.Context, id int64) bool {
 			continue
 		}
 
-		s.server.Publish(msg, topics...)
+		err = s.server.Publish(msg, topics...)
+		if err != nil {
+			// Basically ignore the error here as the only possible
+			// source of errors is that the SSE server has been
+			// closed.
+			s.logger.Error("failed to publish event",
+				elephantine.LogKeyEventID, evt.ID)
+		}
 
 		s.lastID = evt.ID
 	}

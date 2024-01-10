@@ -444,9 +444,12 @@ func runServer(c *cli.Context) error {
 		metrics,
 	)
 
-	sse := repository.NewSSE(logger.With(
+	sse, err := repository.NewSSE(setupCtx, logger.With(
 		elephantine.LogKeyComponent, "sse",
 	), store)
+	if err != nil {
+		return fmt.Errorf("failed to set up SSE server: %w", err)
+	}
 
 	err = repository.SetUpRouter(router,
 		repository.WithTokenEndpoint(signingKey, conf.SharedSecret),
