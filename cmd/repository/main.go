@@ -444,6 +444,10 @@ func runServer(c *cli.Context) error {
 		metrics,
 	)
 
+	sse := repository.NewSSE(logger.With(
+		elephantine.LogKeyComponent, "sse",
+	), store)
+
 	err = repository.SetUpRouter(router,
 		repository.WithTokenEndpoint(signingKey, conf.SharedSecret),
 		repository.WithJWKSEndpoint(signingKey),
@@ -452,6 +456,7 @@ func runServer(c *cli.Context) error {
 		repository.WithWorkflowsAPI(workflowService, opts),
 		repository.WithReportsAPI(reportsService, opts),
 		repository.WithMetricsAPI(metricsService, opts),
+		repository.WithSSE(sse.HTTPHandler()),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to set up router: %w", err)
@@ -557,6 +562,19 @@ func runServer(c *cli.Context) error {
 		if err != nil {
 			return fmt.Errorf("API server error: %w", err)
 		}
+
+		return nil
+	})
+
+	serverGroup.Go(func() error {
+		logger.Debug("starting SSE server")
+
+		go func() {
+			<-grace.ShouldStop()
+			sse.Stop()
+		}()
+
+		sse.Run(gCtx)
 
 		return nil
 	})
