@@ -186,6 +186,27 @@ func WithJWKSEndpoint(jwtKey *ecdsa.PrivateKey) RouterOption {
 	}
 }
 
+func WithSSE(
+	handler http.Handler,
+	opt ServerOptions,
+) RouterOption {
+	return func(router *httprouter.Router) error {
+		router.GET("/sse", internal.RHandleFunc(func(
+			w http.ResponseWriter, r *http.Request, _ httprouter.Params,
+		) error {
+			if opt.AuthMiddleware != nil {
+				return opt.AuthMiddleware(w, r, handler)
+			}
+
+			handler.ServeHTTP(w, r)
+
+			return nil
+		}))
+
+		return nil
+	}
+}
+
 func WithMetricsAPI(
 	service repository.Metrics,
 	opts ServerOptions,
