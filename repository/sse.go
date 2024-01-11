@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/tmaxmax/go-sse"
 	"github.com/ttab/elephantine"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type SSE struct {
@@ -36,7 +36,7 @@ func NewSSE(ctx context.Context, logger *slog.Logger, store DocStore) (*SSE, err
 	}
 
 	lastID, err := store.GetLastEventID(ctx)
-	if err != nil {
+	if err != nil && !IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, fmt.Errorf(
 			"get last event ID to prepopulate replay buffer: %w", err)
 	}
@@ -179,7 +179,9 @@ func (s *SSE) HTTPHandler() http.Handler {
 // evaluation.
 func (s *SSE) checkLatestEvent(ctx context.Context, eval chan int64) {
 	id, err := s.store.GetLastEventID(ctx)
-	if err != nil {
+	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+		return
+	} else if err != nil {
 		s.logger.ErrorContext(ctx, "failed to get last event id",
 			elephantine.LogKeyError, err)
 
@@ -237,7 +239,7 @@ func eventMessage(evt Event) (*sse.Message, []string, error) {
 		string(evt.Event) + "." + evt.Type,
 	}
 
-	data, err := json.Marshal(&evt)
+	data, err := protojson.Marshal(EventToRPC(evt))
 	if err != nil {
 		return nil, nil, fmt.Errorf(
 			"failed to marshal event to send: %w", err)

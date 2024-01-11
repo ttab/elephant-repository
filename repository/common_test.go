@@ -3,10 +3,12 @@ package repository_test
 import (
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/tmaxmax/go-sse"
 	rpc "github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephant-repository/repository"
@@ -32,6 +35,45 @@ type TestContext struct {
 	Schemas          rpc.Schemas
 	Workflows        rpc.Workflows
 	Env              itest.Environment
+}
+
+func (tc *TestContext) SSEConnect(
+	t *testing.T, topics []string, claims elephantine.JWTClaims,
+) *sse.Connection {
+	t.Helper()
+
+	token, err := itest.AccessKey(tc.SigningKey, claims)
+	test.Must(t, err, "create access key")
+
+	u, err := url.Parse(tc.Server.URL)
+	test.Must(t, err, "parse server URL")
+
+	u = u.JoinPath("sse")
+	u.RawQuery = url.Values{
+		"topic": topics,
+	}.Encode()
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	test.Must(t, err, "create SSE request")
+
+	req.Header.Set("Authorization", bearerPrefix+token)
+
+	client := sse.Client{
+		HTTPClient: tc.Server.Client(),
+	}
+
+	conn := client.NewConnection(req.WithContext(
+		test.Context(t),
+	))
+
+	go func() {
+		err = conn.Connect()
+		if err != nil && !errors.Is(err, context.Canceled) {
+			test.Must(t, err, "create connection")
+		}
+	}()
+
+	return conn
 }
 
 func (tc *TestContext) DocumentsClient(
@@ -185,6 +227,15 @@ func testingAPIServer(
 	err = repository.EnsureCoreSchema(ctx, store)
 	test.Must(t, err, "ensure core schema")
 
+	sse, err := repository.NewSSE(ctx, logger.With(
+		elephantine.LogKeyComponent, "sse",
+	), store)
+	test.Must(t, err, "failed to set up SSE server")
+
+	go sse.Run(ctx)
+
+	t.Cleanup(sse.Stop)
+
 	if opts.RunArchiver {
 		archiver, err := repository.NewArchiver(repository.ArchiverOptions{
 			Logger:            logger,
@@ -259,6 +310,7 @@ func testingAPIServer(
 		repository.WithWorkflowsAPI(workflowService, srvOpts),
 		repository.WithReportsAPI(reportsService, srvOpts),
 		repository.WithMetricsAPI(metricsService, srvOpts),
+		repository.WithSSE(sse.HTTPHandler(), srvOpts),
 	)
 	test.Must(t, err, "set up router")
 

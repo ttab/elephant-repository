@@ -13,12 +13,14 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/tmaxmax/go-sse"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
 	"github.com/twitchtv/twirp"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
@@ -46,6 +48,20 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunArchiver:   true,
 		RunReplicator: true,
+	})
+
+	sseConn := tc.SSEConnect(t, []string{"firehose"},
+		itest.StandardClaims(t, "eventlog_read"))
+
+	sseChan := make(chan *repository.EventlogItem, 10)
+
+	sseConn.SubscribeToAll(func(e sse.Event) {
+		var evt repository.EventlogItem
+
+		err := protojson.Unmarshal([]byte(e.Data), &evt)
+		test.Must(t, err, "decode SSE event %q", e.LastEventID)
+
+		sseChan <- &evt
 	})
 
 	client := tc.DocumentsClient(t,
@@ -181,6 +197,30 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	)
 	if diff != "" {
 		t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
+	}
+
+	sseDeadline := time.After(5 * time.Second)
+
+	var sseEvents []*repository.EventlogItem
+
+	for {
+		select {
+		case <-sseDeadline:
+			t.Fatal("timed out waiting for SSE events")
+		case item := <-sseChan:
+			sseEvents = append(sseEvents, item)
+		}
+
+		if len(sseEvents) == len(events.Items) {
+			break
+		}
+	}
+
+	sseDiff := cmp.Diff(events.Items, sseEvents,
+		protocmp.Transform(),
+	)
+	if sseDiff != "" {
+		t.Fatalf("sse <-> eventlog mismatch (-want +got):\n%s", diff)
 	}
 }
 

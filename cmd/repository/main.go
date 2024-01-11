@@ -459,7 +459,7 @@ func runServer(c *cli.Context) error {
 		repository.WithWorkflowsAPI(workflowService, opts),
 		repository.WithReportsAPI(reportsService, opts),
 		repository.WithMetricsAPI(metricsService, opts),
-		repository.WithSSE(sse.HTTPHandler()),
+		repository.WithSSE(sse.HTTPHandler(), opts),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to set up router: %w", err)
