@@ -15,7 +15,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.5.0
 	github.com/jackc/pglogrepl v0.0.0-20231111135425-1627ab1b5780
-	github.com/jackc/pgx/v5 v5.5.1
+	github.com/jackc/pgx/v5 v5.5.2
 	github.com/jackc/tern/v2 v2.1.1
 	github.com/jedib0t/go-pretty/v6 v6.5.2
 	github.com/julienschmidt/httprouter v1.3.0
