@@ -6,6 +6,8 @@ mode=${1:-""}
 data_dir="${STATE_DIR:-$HOME/localstate}"
 pgdata="${data_dir}/repo-pgdata"
 
+mkdir -p $pgdata
+
 if containerStatus=$(docker inspect repository-postgres | jq -r '.[0].State.Status'); then
     if [[ $containerStatus == "exited" ]]; then
         echo "Restarting postgresql..."
