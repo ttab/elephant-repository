@@ -34,23 +34,23 @@ type DeleteRecord struct {
 	ID         int64
 	UUID       uuid.UUID
 	URI        string
+	Type       string
 	Version    int64
 	Created    pgtype.Timestamptz
 	CreatorUri string
 	Meta       []byte
-	Type       string
 }
 
 type Document struct {
 	UUID           uuid.UUID
 	URI            string
+	Type           string
 	Created        pgtype.Timestamptz
 	CreatorUri     string
 	Updated        pgtype.Timestamptz
 	UpdaterUri     string
 	CurrentVersion int64
 	Deleting       bool
-	Type           string
 }
 
 type DocumentLink struct {
