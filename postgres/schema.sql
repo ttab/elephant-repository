@@ -1043,6 +1043,13 @@ GRANT SELECT ON TABLE public.document_version TO reporting;
 
 
 --
+-- Name: TABLE metric; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.metric TO reporting;
+
+
+--
 -- Name: TABLE status; Type: ACL; Schema: public; Owner: repository
 --
 
