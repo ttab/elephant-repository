@@ -27,11 +27,13 @@ type SSE struct {
 const replayLimit = 200
 
 func NewSSE(ctx context.Context, logger *slog.Logger, store DocStore) (*SSE, error) {
+	fin, err := sse.NewFiniteReplayProvider(replayLimit, false)
+	if err != nil {
+		return nil, fmt.Errorf("create SSE replay provider: %w", err)
+	}
+
 	sseProvider := &sse.Joe{
-		ReplayProvider: &sse.FiniteReplayProvider{
-			Count:   replayLimit,
-			AutoIDs: false,
-		},
+		ReplayProvider: fin,
 	}
 
 	lastID, err := store.GetLastEventID(ctx)
