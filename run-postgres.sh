@@ -46,7 +46,7 @@ CREATE ROLE reporting;
 GRANT SELECT
 ON TABLE
    document, delete_record, document_version, document_status,
-   status_heads, status, status_rule, acl, acl_audit
+   status_heads, status, status_rule, acl, acl_audit, metric
 TO reporting;
 
 CREATE ROLE reportuser WITH LOGIN PASSWORD 'reportuser' IN ROLE reporting;

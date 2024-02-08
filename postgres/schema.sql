@@ -197,11 +197,11 @@ CREATE TABLE public.delete_record (
     id bigint NOT NULL,
     uuid uuid NOT NULL,
     uri text NOT NULL,
+    type text NOT NULL,
     version bigint NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
-    meta jsonb,
-    type text NOT NULL
+    meta jsonb
 );
 
 
@@ -228,13 +228,13 @@ ALTER TABLE public.delete_record ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTIT
 CREATE TABLE public.document (
     uuid uuid NOT NULL,
     uri text NOT NULL,
+    type text NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
     updated timestamp with time zone NOT NULL,
     updater_uri text NOT NULL,
     current_version bigint NOT NULL,
-    deleting boolean DEFAULT false NOT NULL,
-    type text NOT NULL
+    deleting boolean DEFAULT false NOT NULL
 );
 
 ALTER TABLE ONLY public.document REPLICA IDENTITY FULL;
@@ -1040,6 +1040,13 @@ GRANT SELECT ON TABLE public.document_status TO reporting;
 --
 
 GRANT SELECT ON TABLE public.document_version TO reporting;
+
+
+--
+-- Name: TABLE metric; Type: ACL; Schema: public; Owner: repository
+--
+
+GRANT SELECT ON TABLE public.metric TO reporting;
 
 
 --
