@@ -278,6 +278,11 @@ func (a *DocumentsService) CompactedEventlog(
 	return &res, nil
 }
 
+const (
+	defaultEventlogBatchSize = 10
+	maxEventlogBatchSize     = 500
+)
+
 // Eventlog returns document update events, optionally waiting for new events.
 func (a *DocumentsService) Eventlog(
 	ctx context.Context, req *repository.GetEventlogRequest,
@@ -305,6 +310,16 @@ func (a *DocumentsService) Eventlog(
 	}
 
 	after := req.After
+	limit := min(req.BatchSize, maxEventlogBatchSize)
+
+	if limit == 0 && after < 0 {
+		// Default limit to abs(after) when after is negative. Don't
+		// exceed the normal default though.
+		limit = int32(min(defaultEventlogBatchSize, -after))
+	} else if limit == 0 {
+		limit = defaultEventlogBatchSize
+	}
+
 	if after < 0 {
 		evt, err := a.store.GetLastEvent(ctx)
 
@@ -315,13 +330,8 @@ func (a *DocumentsService) Eventlog(
 			return nil, twirp.InternalErrorf(
 				"failed to get last event: %w", err)
 		default:
-			after = evt.ID + after
+			after = max(0, evt.ID+after)
 		}
-	}
-
-	limit := req.BatchSize
-	if limit == 0 {
-		limit = 10
 	}
 
 	evts, err := a.store.GetEventlog(ctx, after, limit)
