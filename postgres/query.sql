@@ -1,8 +1,8 @@
 -- name: GetDocumentForUpdate :one
-SELECT d.uri, d.type, d.current_version, d.deleting, l.uuid as lock_uuid, 
-        l.uri as lock_uri, l.created as lock_created,
-        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
-        l.token as lock_token
+SELECT d.uri, d.type, d.current_version, d.deleting, d.meta_parent,
+       l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
+       l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
+       l.token as lock_token
 FROM document as d
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
 WHERE d.uuid = $1
@@ -62,9 +62,9 @@ WHERE uuid = @UUID AND version = @version;
 -- name: GetDocumentInfo :one
 SELECT
         d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
-        deleting, l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
-        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
-        l.token as lock_token
+        deleting, meta_parent, l.uuid as lock_uuid, l.uri as lock_uri,
+        l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
+        l.comment as lock_comment, l.token as lock_token
 FROM document as d 
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
 WHERE d.uuid = @uuid;
