@@ -262,6 +262,16 @@ func (q *Queries) DeletePlanningItem(ctx context.Context, argUuid uuid.UUID) err
 	return err
 }
 
+const deleteReport = `-- name: DeleteReport :exec
+DELETE FROM report
+WHERE name = $1
+`
+
+func (q *Queries) DeleteReport(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, deleteReport, name)
+	return err
+}
+
 const deleteStatusRule = `-- name: DeleteStatusRule :exec
 DELETE FROM status_rule WHERE name = $1
 `
@@ -1649,6 +1659,37 @@ type InsertSigningKeyParams struct {
 func (q *Queries) InsertSigningKey(ctx context.Context, arg InsertSigningKeyParams) error {
 	_, err := q.db.Exec(ctx, insertSigningKey, arg.Kid, arg.Spec)
 	return err
+}
+
+const listReports = `-- name: ListReports :many
+SELECT name, spec
+FROM report
+ORDER BY name
+`
+
+type ListReportsRow struct {
+	Name string
+	Spec []byte
+}
+
+func (q *Queries) ListReports(ctx context.Context) ([]ListReportsRow, error) {
+	rows, err := q.db.Query(ctx, listReports)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReportsRow
+	for rows.Next() {
+		var i ListReportsRow
+		if err := rows.Scan(&i.Name, &i.Spec); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const notify = `-- name: Notify :exec

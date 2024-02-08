@@ -303,6 +303,11 @@ INSERT INTO report(
   next_execution = @next_execution,
   spec = @spec;
 
+-- name: ListReports :many
+SELECT name, spec
+FROM report
+ORDER BY name;
+
 -- name: GetReport :one
 SELECT name, enabled, next_execution, spec
 FROM report
@@ -314,6 +319,10 @@ FROM report
 WHERE enabled AND next_execution < now()
 FOR UPDATE SKIP LOCKED
 LIMIT 1;
+
+-- name: DeleteReport :exec
+DELETE FROM report
+WHERE name = @name;
 
 -- name: SetNextReportExecution :exec
 UPDATE report

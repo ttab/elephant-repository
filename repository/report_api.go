@@ -30,6 +30,36 @@ func NewReportsService(
 // Interface guard.
 var _ repository.Reports = &ReportsService{}
 
+// List all reports.
+func (s *ReportsService) List(
+	ctx context.Context, _ *repository.ListReportsRequest,
+) (*repository.ListReportsResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeReportAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	var res repository.ListReportsResponse
+
+	reports, err := s.store.ListReports(ctx)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to list reports: %w", err)
+	}
+
+	res.Reports = make([]*repository.ReportListItem, len(reports))
+	for i, r := range reports {
+		res.Reports[i] = &repository.ReportListItem{
+			Name:           r.Name,
+			Title:          r.Title,
+			CronExpression: r.CronExpression,
+			CronTimezone:   r.CronTimezone,
+		}
+	}
+
+	return &res, nil
+}
+
 // Update or create a report.
 func (s *ReportsService) Update(
 	ctx context.Context, req *repository.UpdateReportRequest,
@@ -195,6 +225,24 @@ func ReportFromRPC(r *repository.Report) (Report, error) {
 	}
 
 	return res, nil
+}
+
+// Delete a report.
+func (s *ReportsService) Delete(
+	ctx context.Context, req *repository.DeleteReportRequest,
+) (*repository.DeleteReportResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeReportAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.store.DeleteReport(ctx, req.Name)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to delete report: %w", err)
+	}
+
+	return &repository.DeleteReportResponse{}, nil
 }
 
 // Test a report. This will run the report and return the results instead of

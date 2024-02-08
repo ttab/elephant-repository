@@ -1617,6 +1617,39 @@ func (s *PGDocStore) GetSchema(
 	}, nil
 }
 
+type ReportListItem struct {
+	Name           string `json:"name"`
+	Title          string `json:"title"`
+	CronExpression string `json:"cron_expression"`
+	CronTimezone   string `json:"cron_timezone"`
+}
+
+func (s *PGDocStore) ListReports(
+	ctx context.Context,
+) ([]ReportListItem, error) {
+	rows, err := s.reader.ListReports(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from database: %w", err)
+	}
+
+	var res []ReportListItem
+
+	for i := range rows {
+		report := ReportListItem{
+			Name: rows[i].Name,
+		}
+
+		err = json.Unmarshal(rows[i].Spec, &report)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal stored report: %w", err)
+		}
+
+		res = append(res, report)
+	}
+
+	return res, nil
+}
+
 type StoredReport struct {
 	Report        Report
 	Enabled       bool
@@ -1689,6 +1722,17 @@ func (s *PGDocStore) UpdateReport(
 	}
 
 	return nextExec, nil
+}
+
+func (s *PGDocStore) DeleteReport(
+	ctx context.Context, name string,
+) error {
+	err := s.reader.DeleteReport(ctx, name)
+	if err != nil {
+		return fmt.Errorf("failed to delete report: %w", err)
+	}
+
+	return nil
 }
 
 func (s *PGDocStore) RegisterMetricKind(
