@@ -49,7 +49,7 @@ func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
 	}
 
 	//nolint:wrapcheck
-	return elephantine.ListenAndServeContext(ctx, &server)
+	return elephantine.ListenAndServeContext(ctx, &server, 10*time.Second)
 }
 
 type ServerOptions struct {

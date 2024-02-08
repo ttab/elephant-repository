@@ -465,7 +465,7 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to set up router: %w", err)
 	}
 
-	healthServer := elephantine.NewHealthServer(profileAddr)
+	healthServer := elephantine.NewHealthServer(logger, profileAddr)
 
 	healthServer.AddReadyFunction("s3", func(ctx context.Context) error {
 		testUUID := uuid.New()
