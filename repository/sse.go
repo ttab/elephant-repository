@@ -32,7 +32,6 @@ func NewSSE(ctx context.Context, logger *slog.Logger, store DocStore) (*SSE, err
 			Count:   replayLimit,
 			AutoIDs: false,
 		},
-		ReplayGCInterval: 1 * time.Minute,
 	}
 
 	lastID, err := store.GetLastEventID(ctx)

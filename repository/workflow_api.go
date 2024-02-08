@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"github.com/antonmedv/expr"
+	"github.com/expr-lang/expr"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/twitchtv/twirp"
 )
