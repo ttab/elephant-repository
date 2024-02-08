@@ -303,6 +303,11 @@ INSERT INTO report(
   next_execution = @next_execution,
   spec = @spec;
 
+-- name: ListReports :many
+SELECT name, spec
+FROM report
+ORDER BY name;
+
 -- name: GetReport :one
 SELECT name, enabled, next_execution, spec
 FROM report

@@ -121,6 +121,16 @@ GROUP BY type`,
 		Report:        &reportSpec,
 	}, retrieved, "get the correct definition back")
 
+	reports, err := client.List(ctx, &repository.ListReportsRequest{})
+	test.Must(t, err, "list reports")
+	test.Equal(t, 1, len(reports.Reports), "get one report back")
+	test.EqualMessage(t, &repository.ReportListItem{
+		Name:           "today",
+		Title:          "Documents created today",
+		CronExpression: "0 18 * * *",
+		CronTimezone:   "Asia/Tokyo",
+	}, reports.Reports[0], "get the correct listed report back")
+
 	runRes, err := client.Run(ctx, &repository.RunReportRequest{
 		Name: reportSpec.Name,
 	})

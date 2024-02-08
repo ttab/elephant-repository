@@ -1651,6 +1651,37 @@ func (q *Queries) InsertSigningKey(ctx context.Context, arg InsertSigningKeyPara
 	return err
 }
 
+const listReports = `-- name: ListReports :many
+SELECT name, spec
+FROM report
+ORDER BY name
+`
+
+type ListReportsRow struct {
+	Name string
+	Spec []byte
+}
+
+func (q *Queries) ListReports(ctx context.Context) ([]ListReportsRow, error) {
+	rows, err := q.db.Query(ctx, listReports)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReportsRow
+	for rows.Next() {
+		var i ListReportsRow
+		if err := rows.Scan(&i.Name, &i.Spec); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const notify = `-- name: Notify :exec
 SELECT pg_notify($1::text, $2::text)
 `

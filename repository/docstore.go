@@ -99,6 +99,9 @@ type WorkflowStore interface {
 }
 
 type ReportStore interface {
+	ListReports(
+		ctx context.Context,
+	) ([]ReportListItem, error)
 	UpdateReport(
 		ctx context.Context, report Report, enabled bool,
 	) (time.Time, error)
