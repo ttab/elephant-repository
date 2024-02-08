@@ -320,6 +320,10 @@ WHERE enabled AND next_execution < now()
 FOR UPDATE SKIP LOCKED
 LIMIT 1;
 
+-- name: DeleteReport :exec
+DELETE FROM report
+WHERE name = @name;
+
 -- name: SetNextReportExecution :exec
 UPDATE report
 SET next_execution = @next_execution

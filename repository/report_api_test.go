@@ -149,6 +149,17 @@ GROUP BY type`,
 		t.Fatalf("no spreadsheet data was returned: %v", err)
 	}
 
+	_, err = client.Delete(ctx, &repository.DeleteReportRequest{
+		Name: "today",
+	})
+	test.Must(t, err, "delete report")
+
+	reports, err = client.List(ctx, &repository.ListReportsRequest{})
+	test.Must(t, err, "list reports")
+	test.EqualMessage(t, &repository.ListReportsResponse{
+		Reports: []*repository.ReportListItem{},
+	}, reports, "get the list of reports minus deleted")
+
 	testRes, err := client.Test(ctx, &repository.TestReportRequest{
 		Report: &repository.Report{
 			Queries: []*repository.ReportQuery{

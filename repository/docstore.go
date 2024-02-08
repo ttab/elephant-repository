@@ -108,6 +108,9 @@ type ReportStore interface {
 	GetReport(
 		ctx context.Context, name string,
 	) (*StoredReport, error)
+	DeleteReport(
+		ctx context.Context, name string,
+	) error
 }
 
 type MetricStore interface {

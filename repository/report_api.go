@@ -30,7 +30,7 @@ func NewReportsService(
 // Interface guard.
 var _ repository.Reports = &ReportsService{}
 
-// List all reports
+// List all reports.
 func (s *ReportsService) List(
 	ctx context.Context, _ *repository.ListReportsRequest,
 ) (*repository.ListReportsResponse, error) {
@@ -225,6 +225,24 @@ func ReportFromRPC(r *repository.Report) (Report, error) {
 	}
 
 	return res, nil
+}
+
+// Delete a report.
+func (s *ReportsService) Delete(
+	ctx context.Context, req *repository.DeleteReportRequest,
+) (*repository.DeleteReportResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeReportAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.store.DeleteReport(ctx, req.Name)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to delete report: %w", err)
+	}
+
+	return &repository.DeleteReportResponse{}, nil
 }
 
 // Test a report. This will run the report and return the results instead of

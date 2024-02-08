@@ -1724,6 +1724,17 @@ func (s *PGDocStore) UpdateReport(
 	return nextExec, nil
 }
 
+func (s *PGDocStore) DeleteReport(
+	ctx context.Context, name string,
+) error {
+	err := s.reader.DeleteReport(ctx, name)
+	if err != nil {
+		return fmt.Errorf("failed to delete report: %w", err)
+	}
+
+	return nil
+}
+
 func (s *PGDocStore) RegisterMetricKind(
 	ctx context.Context, name string, aggregation Aggregation,
 ) error {

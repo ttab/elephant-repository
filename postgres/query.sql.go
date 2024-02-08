@@ -262,6 +262,16 @@ func (q *Queries) DeletePlanningItem(ctx context.Context, argUuid uuid.UUID) err
 	return err
 }
 
+const deleteReport = `-- name: DeleteReport :exec
+DELETE FROM report
+WHERE name = $1
+`
+
+func (q *Queries) DeleteReport(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, deleteReport, name)
+	return err
+}
+
 const deleteStatusRule = `-- name: DeleteStatusRule :exec
 DELETE FROM status_rule WHERE name = $1
 `
