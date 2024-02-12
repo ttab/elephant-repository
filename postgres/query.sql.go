@@ -1044,25 +1044,26 @@ func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, e
 
 const getLastEvent = `-- name: GetLastEvent :one
 SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl,
-       language, main_doc
+       language, old_language, main_doc
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1
 `
 
 type GetLastEventRow struct {
-	ID        int64
-	Event     string
-	UUID      uuid.UUID
-	Timestamp pgtype.Timestamptz
-	Updater   pgtype.Text
-	Type      pgtype.Text
-	Version   pgtype.Int8
-	Status    pgtype.Text
-	StatusID  pgtype.Int8
-	Acl       []byte
-	Language  pgtype.Text
-	MainDoc   pgtype.UUID
+	ID          int64
+	Event       string
+	UUID        uuid.UUID
+	Timestamp   pgtype.Timestamptz
+	Updater     pgtype.Text
+	Type        pgtype.Text
+	Version     pgtype.Int8
+	Status      pgtype.Text
+	StatusID    pgtype.Int8
+	Acl         []byte
+	Language    pgtype.Text
+	OldLanguage pgtype.Text
+	MainDoc     pgtype.UUID
 }
 
 func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
@@ -1080,6 +1081,7 @@ func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
 		&i.StatusID,
 		&i.Acl,
 		&i.Language,
+		&i.OldLanguage,
 		&i.MainDoc,
 	)
 	return i, err

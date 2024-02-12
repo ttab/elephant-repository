@@ -39,6 +39,7 @@ require (
 )
 
 replace github.com/ttab/elephant-api => ../elephant-api
+replace github.com/ttab/elephantine => ../elephantine
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect

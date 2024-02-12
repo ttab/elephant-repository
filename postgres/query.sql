@@ -412,7 +412,7 @@ LIMIT sqlc.arg(row_limit);
 
 -- name: GetLastEvent :one
 SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl,
-       language, main_doc
+       language, old_language, main_doc
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1;

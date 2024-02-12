@@ -402,15 +402,18 @@ func (s *PGDocStore) GetLastEvent(
 	}
 
 	return &Event{
-		ID:        res.ID,
-		Event:     EventType(res.Event),
-		UUID:      res.UUID,
-		Timestamp: res.Timestamp.Time,
-		Updater:   res.Updater.String,
-		Type:      res.Type.String,
-		Version:   res.Version.Int64,
-		Status:    res.Status.String,
-		StatusID:  res.StatusID.Int64,
+		ID:           res.ID,
+		Event:        EventType(res.Event),
+		UUID:         res.UUID,
+		Timestamp:    res.Timestamp.Time,
+		Updater:      res.Updater.String,
+		Type:         res.Type.String,
+		Version:      res.Version.Int64,
+		Status:       res.Status.String,
+		StatusID:     res.StatusID.Int64,
+		MainDocument: pg.ToUUIDPointer(res.MainDoc),
+		Language:     res.Language.String,
+		OldLanguage:  res.OldLanguage.String,
 	}, nil
 }
 
@@ -440,14 +443,6 @@ func (s *PGDocStore) GetEventlog(
 	evts := make([]Event, len(res))
 
 	for i := range res {
-		var mainDoc *uuid.UUID
-
-		if res[i].MainDoc.Valid {
-			u := uuid.UUID(res[i].MainDoc.Bytes)
-
-			mainDoc = &u
-		}
-
 		e := Event{
 			ID:           res[i].ID,
 			Event:        EventType(res[i].Event),
@@ -458,7 +453,7 @@ func (s *PGDocStore) GetEventlog(
 			Version:      res[i].Version.Int64,
 			Status:       res[i].Status.String,
 			StatusID:     res[i].StatusID.Int64,
-			MainDocument: mainDoc,
+			MainDocument: pg.ToUUIDPointer(res[i].MainDoc),
 			Language:     res[i].Language.String,
 			OldLanguage:  res[i].OldLanguage.String,
 		}
@@ -502,14 +497,6 @@ func (s *PGDocStore) GetCompactedEventlog(
 	evts := make([]Event, len(res))
 
 	for i := range res {
-		var mainDoc *uuid.UUID
-
-		if res[i].MainDoc.Valid {
-			u := uuid.UUID(res[i].MainDoc.Bytes)
-
-			mainDoc = &u
-		}
-
 		e := Event{
 			ID:           res[i].ID,
 			Event:        EventType(res[i].Event),
@@ -520,7 +507,7 @@ func (s *PGDocStore) GetCompactedEventlog(
 			Version:      res[i].Version.Int64,
 			Status:       res[i].Status.String,
 			StatusID:     res[i].StatusID.Int64,
-			MainDocument: mainDoc,
+			MainDocument: pg.ToUUIDPointer(res[i].MainDoc),
 			Language:     res[i].Language.String,
 			OldLanguage:  res[i].OldLanguage.String,
 		}
@@ -882,15 +869,6 @@ func (s *PGDocStore) Update(
 		if state.Doc != nil {
 			state.Version++
 
-			var mainDoc pgtype.UUID
-
-			if state.Request.MainDocument != nil {
-				mainDoc = pgtype.UUID{
-					Bytes: *state.Request.MainDocument,
-					Valid: true,
-				}
-			}
-
 			err := q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
 				UUID:       state.Request.UUID,
 				URI:        state.Doc.URI,
@@ -899,7 +877,7 @@ func (s *PGDocStore) Update(
 				Created:    pg.Time(state.Created),
 				CreatorUri: state.Creator,
 				Language:   pg.TextOrNull(state.Doc.Language),
-				MainDoc:    mainDoc,
+				MainDoc:    pg.PUUID(state.Request.MainDocument),
 			})
 			if err != nil {
 				return nil, fmt.Errorf(
@@ -2085,18 +2063,10 @@ func (s *PGDocStore) updatePreflight(
 		}
 	}
 
-	var mainDoc *uuid.UUID
-
-	if info.MainDoc.Valid {
-		u := uuid.UUID(info.MainDoc.Bytes)
-
-		mainDoc = &u
-	}
-
 	return &updatePrefligthInfo{
 		Info:    info,
 		Exists:  exists,
-		MainDoc: mainDoc,
+		MainDoc: pg.ToUUIDPointer(info.MainDoc),
 		Lock: Lock{
 			URI:     info.LockUri.String,
 			Token:   info.LockToken.String,
