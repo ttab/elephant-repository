@@ -19,6 +19,7 @@ import (
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
+	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -300,6 +301,125 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 		})
 		test.Must(t, err, "update a document with a valid language and region")
 	})
+}
+
+func TestDocumentsServiceMetaDocuments(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunArchiver:   true,
+		RunReplicator: true,
+	})
+
+	ctx := test.Context(t)
+
+	schema := tc.SchemasClient(t, itest.StandardClaims(t, "schema_admin"))
+
+	spec := revisor.ConstraintSet{
+		Version: 1,
+		Name:    "test_metadata",
+		Documents: []revisor.DocumentConstraint{
+			{
+				Name:     "Simple metadata",
+				Declares: "test/metadata",
+				Meta: []*revisor.BlockConstraint{
+					{
+						Declares: &revisor.BlockSignature{
+							Type: "meta/annotation",
+						},
+						Attributes: revisor.ConstraintMap{
+							"title": revisor.StringConstraint{},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	specPayload, err := json.Marshal(&spec)
+	test.Must(t, err, "marshal meta schema")
+
+	_, err = schema.Register(ctx, &repository.RegisterSchemaRequest{
+		Activate: true,
+		Schema: &repository.Schema{
+			Name:    "test/metadata",
+			Version: "v1.0.0",
+			Spec:    string(specPayload),
+		},
+	})
+	test.Must(t, err, "register metadata schema")
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
+
+	docA := baseDocument(
+		"14f4ba22-f7c0-46bc-9c18-73f845a4f801", "article://test/a",
+	)
+
+	metaDoc := newsdoc.Document{
+		Type:  "test/metadata",
+		Title: "A meta document",
+		Meta: []*newsdoc.Block{
+			{
+				Type:  "meta/annotation",
+				Title: "A meta block",
+			},
+		},
+	}
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:               docA.Uuid,
+		IfMatch:            -1,
+		Document:           &metaDoc,
+		UpdateMetaDocument: true,
+	})
+	test.MustNot(t, err, "create a meta doc for a document that doesn't exist")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docA.Uuid,
+		Document: docA,
+	})
+	test.Must(t, err, "create a basic article")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:               docA.Uuid,
+		IfMatch:            -1,
+		Document:           &metaDoc,
+		UpdateMetaDocument: true,
+	})
+	test.MustNot(t, err, "create a meta doc for a document that doesn't have a configured meta type")
+
+	_, err = schema.RegisterMetaTypeUse(ctx, &repository.RegisterMetaTypeUseRequest{
+		MainType: "core/article",
+		MetaType: "test/metadata",
+	})
+	test.MustNot(t, err, "register the meta type for use before registering the type itself")
+
+	_, err = schema.RegisterMetaType(ctx, &repository.RegisterMetaTypeRequest{
+		Type:      "test/metadata",
+		Exclusive: true,
+	})
+	test.Must(t, err, "register the meta type")
+
+	_, err = schema.RegisterMetaTypeUse(ctx, &repository.RegisterMetaTypeUseRequest{
+		MainType: "core/article",
+		MetaType: "test/metadata",
+	})
+	test.Must(t, err, "register the meta type for use with articles")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:               docA.Uuid,
+		IfMatch:            -1,
+		Document:           &metaDoc,
+		UpdateMetaDocument: true,
+	})
+	test.Must(t, err, "create a meta doc for a document")
 }
 
 func TestIntegrationBulkCrud(t *testing.T) {

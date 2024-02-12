@@ -437,17 +437,32 @@ func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
 			"invalid timestamp for event: %w", err)
 	}
 
+	var mainDoc *uuid.UUID
+
+	if evt.MainDocument != "" {
+		u, err := uuid.Parse(evt.MainDocument)
+		if err != nil {
+			return Event{}, fmt.Errorf(
+				"invalid main document UUID: %w", err)
+		}
+
+		mainDoc = &u
+	}
+
 	return Event{
-		ID:        evt.Id,
-		Event:     EventType(evt.Event),
-		UUID:      docUUID,
-		Type:      evt.Type,
-		Timestamp: timestamp,
-		Updater:   evt.UpdaterUri,
-		Version:   evt.Version,
-		Status:    evt.Status,
-		StatusID:  evt.StatusId,
-		ACL:       acl,
+		ID:           evt.Id,
+		Event:        EventType(evt.Event),
+		UUID:         docUUID,
+		Type:         evt.Type,
+		Timestamp:    timestamp,
+		Updater:      evt.UpdaterUri,
+		Version:      evt.Version,
+		Status:       evt.Status,
+		StatusID:     evt.StatusId,
+		ACL:          acl,
+		MainDocument: mainDoc,
+		Language:     evt.Language,
+		OldLanguage:  evt.OldLanguage,
 	}, nil
 }
 
@@ -461,17 +476,26 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		}
 	}
 
+	var mainDoc string
+
+	if evt.MainDocument != nil {
+		mainDoc = evt.MainDocument.String()
+	}
+
 	return &repository.EventlogItem{
-		Id:         evt.ID,
-		Event:      string(evt.Event),
-		Uuid:       evt.UUID.String(),
-		Type:       evt.Type,
-		Timestamp:  evt.Timestamp.Format(time.RFC3339),
-		UpdaterUri: evt.Updater,
-		Version:    evt.Version,
-		Status:     evt.Status,
-		StatusId:   evt.StatusID,
-		Acl:        acl,
+		Id:           evt.ID,
+		Event:        string(evt.Event),
+		Uuid:         evt.UUID.String(),
+		Type:         evt.Type,
+		Timestamp:    evt.Timestamp.Format(time.RFC3339),
+		UpdaterUri:   evt.Updater,
+		Version:      evt.Version,
+		Status:       evt.Status,
+		StatusId:     evt.StatusID,
+		Acl:          acl,
+		MainDocument: mainDoc,
+		Language:     evt.Language,
+		OldLanguage:  evt.OldLanguage,
 	}
 }
 
@@ -905,6 +929,8 @@ func (a *DocumentsService) buildUpdateRequest(
 	docUUID := uuid.MustParse(req.Uuid)
 	updater := auth.Claims.Subject
 	updated := time.Now()
+	isMeta := req.UpdateMetaDocument ||
+		(req.Document != nil && isMetaURI(req.Document.Uri))
 
 	if req.ImportDirective != nil {
 		id := req.ImportDirective
@@ -960,25 +986,46 @@ func (a *DocumentsService) buildUpdateRequest(
 		}
 
 		up.Document = &doc
+
+		if isMetaURI(up.Document.URI) {
+			mainDoc, err := parseMetaURI(up.Document.URI)
+			if err != nil {
+				return nil, twirp.InvalidArgumentError(
+					"document.uri", err.Error())
+			}
+
+			up.MainDocument = &mainDoc
+		}
 	}
 
-	for _, e := range req.Acl {
-		up.ACL = append(up.ACL, ACLEntry{
-			URI:         e.Uri,
-			Permissions: e.Permissions,
-		})
+	if req.UpdateMetaDocument {
+		id, uri := metaIdentity(docUUID)
+
+		up.UUID = id
+		up.Document.UUID = id.String()
+		up.Document.URI = uri
+		up.MainDocument = &docUUID
 	}
 
-	up.DefaultACL = append(up.DefaultACL, ACLEntry{
-		URI:         updater,
-		Permissions: []string{"r", "w"},
-	})
+	if !isMeta {
+		for _, e := range req.Acl {
+			up.ACL = append(up.ACL, ACLEntry{
+				URI:         e.Uri,
+				Permissions: e.Permissions,
+			})
+		}
 
-	if updater != auth.Claims.Subject {
 		up.DefaultACL = append(up.DefaultACL, ACLEntry{
-			URI:         auth.Claims.Subject,
+			URI:         updater,
 			Permissions: []string{"r", "w"},
 		})
+
+		if updater != auth.Claims.Subject {
+			up.DefaultACL = append(up.DefaultACL, ACLEntry{
+				URI:         auth.Claims.Subject,
+				Permissions: []string{"r", "w"},
+			})
+		}
 	}
 
 	return &up, nil
@@ -1018,6 +1065,24 @@ func (a *DocumentsService) verifyUpdateRequest(
 			"no import directive permission")
 	}
 
+	isMeta := req.UpdateMetaDocument ||
+		(req.Document != nil && isMetaURI(req.Document.Uri))
+
+	if isMeta && len(req.Acl) != 0 {
+		return twirp.InvalidArgumentError(
+			"acl", "cannot set ALCs on a meta document")
+	}
+
+	if isMeta && len(req.Status) != 0 {
+		return twirp.InvalidArgumentError(
+			"status", "cannot set statuses on a meta document")
+	}
+
+	if isMeta && req.IfMatch == 0 {
+		return twirp.InvalidArgumentError(
+			"if_match", "updates of the meta document must use optimistic locks")
+	}
+
 	if req.Document == nil && len(req.Status) == 0 && len(req.Acl) == 0 {
 		return twirp.InvalidArgumentError(
 			"document",
@@ -1034,13 +1099,6 @@ func (a *DocumentsService) verifyUpdateRequest(
 		return err
 	}
 
-	if req.Document != nil && req.Document.Uuid == "" {
-		req.Document.Uuid = docUUID.String()
-	} else if req.Document != nil && req.Document.Uuid != docUUID.String() {
-		return twirp.InvalidArgumentError("document.uuid",
-			"the document must have the same UUID as the request uuid")
-	}
-
 	if req.Document != nil {
 		if req.Document.Uuid == "" {
 			req.Document.Uuid = docUUID.String()
@@ -1049,7 +1107,16 @@ func (a *DocumentsService) verifyUpdateRequest(
 				"the document must have the same UUID as the request uuid")
 		}
 
-		if req.Document.Uri == "" {
+		switch {
+		case req.UpdateMetaDocument && req.Document.Uri == "":
+			req.Document.Uri = metaURI(docUUID)
+		case isMeta && req.Document.Uri != "":
+			_, err := parseMetaURI(req.Document.Uri)
+			if err != nil {
+				return twirp.InvalidArgumentError(
+					"document.uri", err.Error())
+			}
+		case req.Document.Uri == "":
 			return twirp.RequiredArgumentError("document.uri")
 		}
 
@@ -1121,12 +1188,45 @@ func (a *DocumentsService) verifyUpdateRequest(
 		}
 	}
 
+	mainUUID := docUUID
+
+	// If we're updating a meta document we should check against the main
+	// document ACL.
+	if req.Document != nil && isMetaURI(req.Document.Uri) {
+		id, err := parseMetaURI(req.Document.Uri)
+		if err != nil {
+			return twirp.InvalidArgumentError(
+				"document.uri", err.Error())
+		}
+
+		mainUUID = id
+	}
+
 	// Check for ACL write permission, but allow the write if no
 	// document is found, as we want to allow the creation of new
 	// documents.
-	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
-	if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
+	err = a.accessCheck(ctx, auth, mainUUID, WritePermission)
+
+	switch {
+	case isMeta && elephantine.IsTwirpErrorCode(err, twirp.NotFound):
+		return twirp.FailedPrecondition.Error(
+			"main document doesn't exist")
+	case elephantine.IsTwirpErrorCode(err, twirp.NotFound):
+	case err != nil:
 		return err
+	}
+
+	if isMeta {
+		mt, err := a.store.GetMetaTypeForDocument(ctx, mainUUID)
+		if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+			return twirp.InvalidArgument.Error(
+				"document type doesn't have a configured meta document type")
+		}
+
+		if req.Document != nil && req.Document.Type != mt {
+			return twirp.InvalidArgumentError("document.type",
+				fmt.Sprintf("the meta document type has to be %q", mt))
+		}
 	}
 
 	return nil

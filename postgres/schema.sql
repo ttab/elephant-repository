@@ -157,7 +157,8 @@ CREATE TABLE public.acl_audit (
     updater_uri text NOT NULL,
     state jsonb NOT NULL,
     archived boolean DEFAULT false NOT NULL,
-    type text
+    type text,
+    language text
 );
 
 
@@ -201,7 +202,9 @@ CREATE TABLE public.delete_record (
     version bigint NOT NULL,
     created timestamp with time zone NOT NULL,
     creator_uri text NOT NULL,
-    meta jsonb
+    meta jsonb,
+    main_doc uuid,
+    language text
 );
 
 
@@ -234,7 +237,9 @@ CREATE TABLE public.document (
     updated timestamp with time zone NOT NULL,
     updater_uri text NOT NULL,
     current_version bigint NOT NULL,
-    deleting boolean DEFAULT false NOT NULL
+    deleting boolean DEFAULT false NOT NULL,
+    main_doc uuid,
+    language text
 );
 
 ALTER TABLE ONLY public.document REPLICA IDENTITY FULL;
@@ -338,7 +343,10 @@ CREATE TABLE public.eventlog (
     status text,
     status_id bigint,
     acl jsonb,
-    updater text
+    updater text,
+    main_doc uuid,
+    language text,
+    old_language text
 );
 
 
@@ -384,6 +392,30 @@ CREATE TABLE public.job_lock (
 
 
 ALTER TABLE public.job_lock OWNER TO repository;
+
+--
+-- Name: meta_type; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.meta_type (
+    meta_type text NOT NULL,
+    exclusive_for_meta boolean NOT NULL
+);
+
+
+ALTER TABLE public.meta_type OWNER TO repository;
+
+--
+-- Name: meta_type_use; Type: TABLE; Schema: public; Owner: repository
+--
+
+CREATE TABLE public.meta_type_use (
+    main_type text NOT NULL,
+    meta_type text NOT NULL
+);
+
+
+ALTER TABLE public.meta_type_use OWNER TO repository;
 
 --
 -- Name: metric; Type: TABLE; Schema: public; Owner: repository
@@ -542,7 +574,8 @@ CREATE TABLE public.status_heads (
     updated timestamp with time zone NOT NULL,
     updater_uri text NOT NULL,
     type text,
-    version bigint
+    version bigint,
+    language text
 );
 
 ALTER TABLE ONLY public.status_heads REPLICA IDENTITY FULL;
@@ -676,6 +709,22 @@ ALTER TABLE ONLY public.eventsink
 
 ALTER TABLE ONLY public.job_lock
     ADD CONSTRAINT job_lock_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: meta_type meta_type_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.meta_type
+    ADD CONSTRAINT meta_type_pkey PRIMARY KEY (meta_type);
+
+
+--
+-- Name: meta_type_use meta_type_use_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.meta_type_use
+    ADD CONSTRAINT meta_type_use_pkey PRIMARY KEY (main_type);
 
 
 --
@@ -905,6 +954,22 @@ ALTER TABLE ONLY public.document_status
 
 ALTER TABLE ONLY public.document_version
     ADD CONSTRAINT document_version_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: document fk_main_doc; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.document
+    ADD CONSTRAINT fk_main_doc FOREIGN KEY (main_doc) REFERENCES public.document(uuid) ON DELETE RESTRICT;
+
+
+--
+-- Name: meta_type_use meta_type_use_meta_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+--
+
+ALTER TABLE ONLY public.meta_type_use
+    ADD CONSTRAINT meta_type_use_meta_type_fkey FOREIGN KEY (meta_type) REFERENCES public.meta_type(meta_type) ON DELETE RESTRICT;
 
 
 --

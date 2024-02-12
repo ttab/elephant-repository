@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -35,6 +36,54 @@ func NewSchemasService(logger *slog.Logger, store SchemaStore) *SchemasService {
 
 // Interface guard.
 var _ repository.Schemas = &SchemasService{}
+
+// RegisterMetaType implements repository.Schemas.
+func (a *SchemasService) RegisterMetaType(
+	ctx context.Context, req *repository.RegisterMetaTypeRequest,
+) (*repository.RegisterMetaTypeResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Type == "" {
+		return nil, twirp.RequiredArgumentError("type")
+	}
+
+	err = a.store.RegisterMetaType(ctx, req.Type, req.Exclusive)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register meta type: %w", err)
+	}
+
+	return &repository.RegisterMetaTypeResponse{}, nil
+}
+
+// RegisterMetaTypeUse implements repository.Schemas.
+func (a *SchemasService) RegisterMetaTypeUse(
+	ctx context.Context, req *repository.RegisterMetaTypeUseRequest,
+) (*repository.RegisterMetaTypeUseResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.MainType == "" {
+		return nil, twirp.RequiredArgumentError("main_type")
+	}
+
+	if req.MetaType == "" {
+		return nil, twirp.RequiredArgumentError("meta_type")
+	}
+
+	err = a.store.RegisterMetaTypeUse(ctx, req.MainType, req.MetaType)
+	if errors.As(err, &DocStoreError{}) {
+		return nil, twirp.InvalidArgument.Error(err.Error())
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to register meta type: %w", err)
+	}
+
+	return &repository.RegisterMetaTypeUseResponse{}, nil
+}
 
 // GetAllActiveSchemas returns the currently active schemas.
 func (a *SchemasService) GetAllActive(

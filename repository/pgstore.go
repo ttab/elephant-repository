@@ -440,16 +440,27 @@ func (s *PGDocStore) GetEventlog(
 	evts := make([]Event, len(res))
 
 	for i := range res {
+		var mainDoc *uuid.UUID
+
+		if res[i].MainDoc.Valid {
+			u := uuid.UUID(res[i].MainDoc.Bytes)
+
+			mainDoc = &u
+		}
+
 		e := Event{
-			ID:        res[i].ID,
-			Event:     EventType(res[i].Event),
-			UUID:      res[i].UUID,
-			Timestamp: res[i].Timestamp.Time,
-			Updater:   res[i].Updater.String,
-			Type:      res[i].Type.String,
-			Version:   res[i].Version.Int64,
-			Status:    res[i].Status.String,
-			StatusID:  res[i].StatusID.Int64,
+			ID:           res[i].ID,
+			Event:        EventType(res[i].Event),
+			UUID:         res[i].UUID,
+			Timestamp:    res[i].Timestamp.Time,
+			Updater:      res[i].Updater.String,
+			Type:         res[i].Type.String,
+			Version:      res[i].Version.Int64,
+			Status:       res[i].Status.String,
+			StatusID:     res[i].StatusID.Int64,
+			MainDocument: mainDoc,
+			Language:     res[i].Language.String,
+			OldLanguage:  res[i].OldLanguage.String,
 		}
 
 		if res[i].Acl != nil {
@@ -491,16 +502,27 @@ func (s *PGDocStore) GetCompactedEventlog(
 	evts := make([]Event, len(res))
 
 	for i := range res {
+		var mainDoc *uuid.UUID
+
+		if res[i].MainDoc.Valid {
+			u := uuid.UUID(res[i].MainDoc.Bytes)
+
+			mainDoc = &u
+		}
+
 		e := Event{
-			ID:        res[i].ID,
-			Event:     EventType(res[i].Event),
-			UUID:      res[i].UUID,
-			Timestamp: res[i].Timestamp.Time,
-			Updater:   res[i].Updater.String,
-			Type:      res[i].Type.String,
-			Version:   res[i].Version.Int64,
-			Status:    res[i].Status.String,
-			StatusID:  res[i].StatusID.Int64,
+			ID:           res[i].ID,
+			Event:        EventType(res[i].Event),
+			UUID:         res[i].UUID,
+			Timestamp:    res[i].Timestamp.Time,
+			Updater:      res[i].Updater.String,
+			Type:         res[i].Type.String,
+			Version:      res[i].Version.Int64,
+			Status:       res[i].Status.String,
+			StatusID:     res[i].StatusID.Int64,
+			MainDocument: mainDoc,
+			Language:     res[i].Language.String,
+			OldLanguage:  res[i].OldLanguage.String,
 		}
 
 		if res[i].Acl != nil {
@@ -860,7 +882,31 @@ func (s *PGDocStore) Update(
 		if state.Doc != nil {
 			state.Version++
 
-			err = q.CreateVersion(ctx, postgres.CreateVersionParams{
+			var mainDoc pgtype.UUID
+
+			if state.Request.MainDocument != nil {
+				mainDoc = pgtype.UUID{
+					Bytes: *state.Request.MainDocument,
+					Valid: true,
+				}
+			}
+
+			err := q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
+				UUID:       state.Request.UUID,
+				URI:        state.Doc.URI,
+				Type:       state.Doc.Type,
+				Version:    state.Version,
+				Created:    pg.Time(state.Created),
+				CreatorUri: state.Creator,
+				Language:   pg.TextOrNull(state.Doc.Language),
+				MainDoc:    mainDoc,
+			})
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to create document in database: %w", err)
+			}
+
+			err = q.CreateDocumentVersion(ctx, postgres.CreateDocumentVersionParams{
 				UUID:         state.Request.UUID,
 				Version:      state.Version,
 				Created:      pg.Time(state.Created),
@@ -937,20 +983,26 @@ func (s *PGDocStore) Update(
 					})
 			}
 
-			err = q.CreateStatus(ctx, postgres.CreateStatusParams{
+			err = q.CreateStatusHead(ctx, postgres.CreateStatusHeadParams{
 				UUID:       state.Request.UUID,
 				Name:       stat.Name,
-				ID:         statusID,
+				Created:    pg.Time(state.Created),
+				CreatorUri: state.Creator,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create status head: %w", err)
+			}
+
+			err = q.InsertDocumentStatus(ctx, postgres.InsertDocumentStatusParams{
+				UUID:       state.Request.UUID,
+				Name:       stat.Name,
 				Version:    status.Version,
-				Type:       state.Type,
 				Created:    pg.Time(state.Created),
 				CreatorUri: state.Creator,
 				Meta:       state.StatusMeta[i],
 			})
 			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to update %q status: %w",
-					stat.Name, err)
+				return nil, fmt.Errorf("failed to insert document status: %w", err)
 			}
 		}
 
@@ -1258,6 +1310,58 @@ func (err StatusRuleError) Error() string {
 		strings.Join(rules, ", "))
 }
 
+// GetMetaTypeForDocument implements DocStore.
+func (s *PGDocStore) GetMetaTypeForDocument(
+	ctx context.Context, uuid uuid.UUID,
+) (string, error) {
+	t, err := s.reader.CheckMetaDocumentType(ctx, uuid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", DocStoreErrorf(ErrCodeNotFound,
+			"no meta type configured for document type")
+	}
+
+	return t, nil
+}
+
+// RegisterMetaType implements DocStore.
+func (s *PGDocStore) RegisterMetaType(
+	ctx context.Context, metaType string, exclusive bool,
+) error {
+	q := postgres.New(s.pool)
+
+	err := q.RegisterMetaType(ctx, postgres.RegisterMetaTypeParams{
+		MetaType:         metaType,
+		ExclusiveForMeta: exclusive,
+	})
+	if err != nil {
+		return fmt.Errorf("write to db: %w", err)
+	}
+
+	return nil
+}
+
+// RegisterMetaTypeUse implements DocStore.
+func (s *PGDocStore) RegisterMetaTypeUse(ctx context.Context, mainType string, metaType string) error {
+	q := postgres.New(s.pool)
+
+	err := q.RegisterMetaTypeUse(ctx, postgres.RegisterMetaTypeUseParams{
+		MainType: mainType,
+		MetaType: metaType,
+	})
+	switch {
+	case pg.IsConstraintError(err, "meta_type_use_meta_type_fkey"):
+		return DocStoreErrorf(ErrCodeFailedPrecondition,
+			"the meta type hasn't been registered")
+	case pg.IsConstraintError(err, "meta_type_use_pkey"):
+		return DocStoreErrorf(ErrCodeExists,
+			"the meta document use has already been registered")
+	case err != nil:
+		return fmt.Errorf("write to db: %w", err)
+	}
+
+	return nil
+}
+
 func (s *PGDocStore) GetSchemaVersions(
 	ctx context.Context,
 ) (map[string]string, error) {
@@ -1291,6 +1395,10 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 		info, err := s.updatePreflight(ctx, q, req.UUID, 0)
 		if err != nil {
 			return err
+		}
+
+		if info.MainDoc != nil {
+			return DocStoreErrorf(ErrCodeNotFound, "meta documents cannot be locked")
 		}
 
 		if !info.Exists {
@@ -1934,17 +2042,18 @@ func (s *PGDocStore) updateACL(
 }
 
 type updatePrefligthInfo struct {
-	Info   postgres.GetDocumentForUpdateRow
-	Exists bool
-	Lock   Lock
+	Info    postgres.GetDocumentForUpdateRow
+	Exists  bool
+	Lock    Lock
+	MainDoc *uuid.UUID
 }
 
 func (s *PGDocStore) updatePreflight(
 	ctx context.Context, q *postgres.Queries,
-	uuid uuid.UUID, ifMatch int64,
+	docUuid uuid.UUID, ifMatch int64,
 ) (*updatePrefligthInfo, error) {
 	info, err := q.GetDocumentForUpdate(ctx, postgres.GetDocumentForUpdateParams{
-		UUID: uuid,
+		UUID: docUuid,
 		Now:  pg.Time(time.Now()),
 	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -1976,9 +2085,18 @@ func (s *PGDocStore) updatePreflight(
 		}
 	}
 
+	var mainDoc *uuid.UUID
+
+	if info.MainDoc.Valid {
+		u := uuid.UUID(info.MainDoc.Bytes)
+
+		mainDoc = &u
+	}
+
 	return &updatePrefligthInfo{
-		Info:   info,
-		Exists: exists,
+		Info:    info,
+		Exists:  exists,
+		MainDoc: mainDoc,
 		Lock: Lock{
 			URI:     info.LockUri.String,
 			Token:   info.LockToken.String,

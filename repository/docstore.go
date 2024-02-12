@@ -33,6 +33,15 @@ type DocStore interface {
 	CheckPermission(
 		ctx context.Context, req CheckPermissionRequest,
 	) (CheckPermissionResult, error)
+	GetMetaTypeForDocument(
+		ctx context.Context, uuid uuid.UUID,
+	) (string, error)
+	RegisterMetaType(
+		ctx context.Context, metaType string, exclusive bool,
+	) error
+	RegisterMetaTypeUse(
+		ctx context.Context, mainType string, metaType string,
+	) error
 	GetEventlog(
 		ctx context.Context, after int64, limit int32,
 	) ([]Event, error)
@@ -82,6 +91,12 @@ type SchemaStore interface {
 	GetActiveSchemas(ctx context.Context) ([]*Schema, error)
 	GetSchemaVersions(ctx context.Context) (map[string]string, error)
 	OnSchemaUpdate(ctx context.Context, ch chan SchemaEvent)
+	RegisterMetaType(
+		ctx context.Context, metaType string, exclusive bool,
+	) error
+	RegisterMetaTypeUse(
+		ctx context.Context, mainType string, metaType string,
+	) error
 }
 
 type WorkflowStore interface {
@@ -181,16 +196,17 @@ const (
 )
 
 type UpdateRequest struct {
-	UUID       uuid.UUID
-	Updated    time.Time
-	Updater    string
-	Meta       newsdoc.DataMap
-	ACL        []ACLEntry
-	DefaultACL []ACLEntry
-	Status     []StatusUpdate
-	Document   *newsdoc.Document
-	IfMatch    int64
-	LockToken  string
+	UUID         uuid.UUID
+	Updated      time.Time
+	Updater      string
+	Meta         newsdoc.DataMap
+	ACL          []ACLEntry
+	DefaultACL   []ACLEntry
+	Status       []StatusUpdate
+	Document     *newsdoc.Document
+	MainDocument *uuid.UUID
+	IfMatch      int64
+	LockToken    string
 }
 
 type DeleteRequest struct {

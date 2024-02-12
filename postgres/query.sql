@@ -1,5 +1,5 @@
 -- name: GetDocumentForUpdate :one
-SELECT d.uri, d.type, d.current_version, d.deleting, d.meta_parent,
+SELECT d.uri, d.type, d.current_version, d.deleting, d.main_doc,
        l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
        l.token as lock_token
@@ -62,7 +62,7 @@ WHERE uuid = @UUID AND version = @version;
 -- name: GetDocumentInfo :one
 SELECT
         d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
-        deleting, meta_parent, l.uuid as lock_uuid, l.uri as lock_uri,
+        deleting, main_doc, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token
 FROM document as d 
@@ -87,17 +87,75 @@ SELECT pg_advisory_xact_lock(@id::bigint);
 -- name: Notify :exec
 SELECT pg_notify(@channel::text, @message::text);
 
--- name: CreateVersion :exec
-SELECT create_version(
-       @uuid::uuid, @version::bigint, @created::timestamptz,
-       @creator_uri::text, @meta::jsonb, @document_data::jsonb
+-- name: UpsertDocument :exec
+INSERT INTO document(
+       uuid, uri, type,
+       created, creator_uri, updated, updater_uri, current_version,
+       main_doc, language
+) VALUES (
+       @uuid, @uri, @type,
+       @created, @creator_uri, @created, @creator_uri, @version,
+       @main_doc, @language
+) ON CONFLICT (uuid) DO UPDATE
+     SET uri = @uri,
+         updated = @created,
+         updater_uri = @creator_uri,
+         current_version = @version,
+         language = @language;
+
+-- name: CreateDocumentVersion :exec
+INSERT INTO document_version(
+       uuid, version,
+       created, creator_uri, meta, document_data, archived
+) VALUES (
+       @uuid, @version,
+       @created, @creator_uri, @meta, @document_data, false
 );
 
--- name: CreateStatus :exec
-SELECT create_status(
-       @uuid::uuid, @name::varchar(32), @id::bigint, @version::bigint,
-       @type::text, @created::timestamptz, @creator_uri::text, @meta::jsonb
+-- name: CreateStatusHead :exec
+INSERT INTO status_heads(
+       uuid, name, type, version, current_id, updated, updater_uri, language
+) VALUES (
+       @uuid, @name, @type, @version, @current_id, @created, @creator_uri, @language
+)
+ON CONFLICT (uuid, name) DO UPDATE
+   SET updated = @created,
+       updater_uri = @creator_uri,
+       current_id = @current_id,
+       version = @version,
+       language = @language;
+
+-- name: InsertDocumentStatus :exec
+INSERT INTO document_status(
+       uuid, name, id, version, created, creator_uri, meta
+) VALUES (
+       @uuid, @name, @current_id, @version, @created, @creator_uri, @meta
 );
+
+-- name: RegisterMetaType :exec
+INSERT INTO meta_type(
+       meta_type, exclusive_for_meta
+) VALUES (
+       @meta_type, @exclusive_for_meta
+) ON CONFLICT (meta_type) DO UPDATE SET
+  exclusive_for_meta = @exclusive_for_meta;
+
+-- name: RegisterMetaTypeUse :exec
+INSERT INTO meta_type_use(
+       main_type, meta_type
+) VALUES (
+       @main_type, @meta_type
+);
+
+-- name: DropMetaType :exec
+DELETE FROM meta_type
+WHERE meta_type = @meta_type;
+
+-- name: CheckMetaDocumentType :one
+SELECT meta_type
+FROM document AS d
+     INNER JOIN meta_type_use AS m ON m.main_type = d.type
+WHERE d.uuid = @uuid;
 
 -- name: DeleteDocument :exec
 SELECT delete_document(
@@ -181,7 +239,8 @@ DELETE FROM acl WHERE uuid = @uuid AND uri = @uri;
 SELECT (acl.uri IS NOT NULL) = true AS has_access
 FROM document AS d
      LEFT JOIN acl
-          ON acl.uuid = d.uuid AND acl.uri = ANY(@uri::text[])
+          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
+          AND acl.uri = ANY(@uri::text[])
           AND @permission::text = ANY(permissions)
 WHERE d.uuid = @uuid;
 
@@ -336,20 +395,24 @@ WHERE enabled;
 
 -- name: InsertIntoEventLog :one
 INSERT INTO eventlog(
-       event, uuid, type, timestamp, updater, version, status, status_id, acl
+       event, uuid, type, timestamp, updater, version, status, status_id, acl,
+       language, old_language, main_doc
 ) VALUES (
-       @event, @uuid, @type, @timestamp, @updater, @version, @status, @status_id, @acl
+       @event, @uuid, @type, @timestamp, @updater, @version, @status, @status_id, @acl,
+       @language, @old_language, @main_doc
 ) RETURNING id;
 
 -- name: GetEventlog :many
-SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater
+SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater,
+       language, old_language, main_doc
 FROM eventlog
 WHERE id > @after
 ORDER BY id ASC
 LIMIT sqlc.arg(row_limit);
 
 -- name: GetLastEvent :one
-SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl
+SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl,
+       language, main_doc
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1;
@@ -361,17 +424,19 @@ ORDER BY id DESC LIMIT 1;
 -- name: GetCompactedEventlog :many
 SELECT
         w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
-        w.status_id, w.acl, w.updater
+        w.status_id, w.acl, w.updater, w.language, w.old_language, w.main_doc
 FROM (
      SELECT DISTINCT ON (
             e.uuid,
-            CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END
+            CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END,
+            CASE WHEN NOT e.old_language IS NULL THEN null ELSE 0 END
        ) * FROM eventlog AS e
      WHERE e.id > @after AND e.id <= @until
      AND (sqlc.narg(type)::text IS NULL OR e.type = @type)
      ORDER BY
            e.uuid,
            CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END,
+           CASE WHEN NOT e.old_language IS NULL THEN null ELSE 0 END,
            e.id DESC
      ) AS w
 ORDER BY w.id ASC
