@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -22,6 +23,7 @@ import (
 	"github.com/ttab/elephantine/test"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
+	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -641,6 +643,47 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 			Document: mDocV2,
 		},
 	}, docWithStatus2, "get the expected document back for usable 2")
+
+	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
+		Uuid: docA.Uuid,
+	})
+	test.Must(t, err, "delete main document")
+
+	readAllClient := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read_all"))
+
+	// Check that we get not found or failed precondition for the deleted
+	// docs.
+	//
+	// TODO: wait for transition from failed precondition to not found.
+
+	_, err = readAllClient.Get(ctx, &repository.GetDocumentRequest{
+		Uuid: docA.Uuid,
+	})
+	isTwirpError(t, err, twirp.NotFound, twirp.FailedPrecondition)
+
+	_, err = readAllClient.Get(ctx, &repository.GetDocumentRequest{
+		Uuid: mDocV1.Document.Uuid,
+	})
+	isTwirpError(t, err, twirp.NotFound, twirp.FailedPrecondition)
+}
+
+func isTwirpError(
+	t *testing.T, err error, code ...twirp.ErrorCode,
+) {
+	t.Helper()
+
+	var tErr twirp.Error
+
+	ok := errors.As(err, &tErr)
+
+	if !ok || slices.Contains(code, tErr.Code()) {
+		t.Fatalf("failed: expected a %q error: got %v", code, err)
+	}
+
+	if testing.Verbose() {
+		t.Logf("success: got a %q error", code)
+	}
 }
 
 func TestIntegrationBulkCrud(t *testing.T) {

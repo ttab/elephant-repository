@@ -277,18 +277,43 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 
 	q := postgres.New(tx)
 
-	info, err := s.updatePreflight(ctx, q, req.UUID, req.IfMatch)
+	mainInfo, err := s.updatePreflight(ctx, q, req.UUID, req.IfMatch)
 	if err != nil {
 		return err
 	}
 
-	if !info.Exists {
+	if !mainInfo.Exists {
 		return nil
 	}
 
-	lock := checkLock(info.Lock, req.LockToken)
+	lock := checkLock(mainInfo.Lock, req.LockToken)
 	if lock == lockCheckDenied {
 		return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
+	}
+
+	deleteDocs := map[uuid.UUID]*updatePrefligthInfo{
+		req.UUID: mainInfo,
+	}
+
+	deleteOrder := []uuid.UUID{
+		req.UUID,
+	}
+
+	if mainInfo.MainDoc == nil {
+		mUUID, _ := metaIdentity(req.UUID)
+
+		// Make a preflight request for the meta document.
+		mInfo, err := s.updatePreflight(ctx, q, mUUID, 0)
+		if err != nil {
+			return fmt.Errorf("meta document: %w", err)
+		}
+
+		if mInfo.Exists {
+			deleteDocs[mUUID] = mInfo
+			deleteOrder = []uuid.UUID{
+				mUUID, req.UUID,
+			}
+		}
 	}
 
 	timeout := time.After(s.opts.DeleteTimeout)
@@ -296,14 +321,21 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 	archived := make(chan ArchivedEvent)
 
 	go s.archived.Listen(ctx, archived, func(e ArchivedEvent) bool {
-		return e.UUID == req.UUID
+		_, ok := deleteDocs[e.UUID]
+		return ok
 	})
 
 	for {
-		remaining, err := q.GetDocumentUnarchivedCount(ctx, req.UUID)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to check archiving status: %w", err)
+		var remaining int64
+		for id := range deleteDocs {
+			n, err := q.GetDocumentUnarchivedCount(ctx, id)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to check archiving status for %s: %w",
+					id, err)
+			}
+
+			remaining += n
 		}
 
 		if remaining == 0 {
@@ -321,30 +353,34 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 		}
 	}
 
-	recordID, err := q.InsertDeleteRecord(ctx,
-		postgres.InsertDeleteRecordParams{
-			UUID:       req.UUID,
-			URI:        info.Info.URI,
-			Type:       info.Info.Type,
-			Version:    info.Info.CurrentVersion,
-			Created:    pg.Time(req.Updated),
-			CreatorUri: req.Updater,
-			Meta:       metaJSON,
-			MainDoc:    pg.PUUID(info.MainDoc),
-			Language:   pg.Text(info.Language),
-		})
-	if err != nil {
-		return fmt.Errorf("failed to create delete record: %w", err)
-	}
+	for _, id := range deleteOrder {
+		info := deleteDocs[id]
 
-	err = q.DeleteDocument(ctx, postgres.DeleteDocumentParams{
-		UUID:     req.UUID,
-		URI:      info.Info.URI,
-		RecordID: recordID,
-	})
-	if err != nil {
-		return fmt.Errorf(
-			"failed to delete document from database: %w", err)
+		recordID, err := q.InsertDeleteRecord(ctx,
+			postgres.InsertDeleteRecordParams{
+				UUID:       id,
+				URI:        info.Info.URI,
+				Type:       info.Info.Type,
+				Version:    info.Info.CurrentVersion,
+				Created:    pg.Time(req.Updated),
+				CreatorUri: req.Updater,
+				Meta:       metaJSON,
+				MainDoc:    pg.PUUID(info.MainDoc),
+				Language:   pg.Text(info.Language),
+			})
+		if err != nil {
+			return fmt.Errorf("failed to create delete record: %w", err)
+		}
+
+		err = q.DeleteDocument(ctx, postgres.DeleteDocumentParams{
+			UUID:     id,
+			URI:      info.Info.URI,
+			RecordID: recordID,
+		})
+		if err != nil {
+			return fmt.Errorf(
+				"failed to delete document from database: %w", err)
+		}
 	}
 
 	err = tx.Commit(ctx)
