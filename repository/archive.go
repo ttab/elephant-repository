@@ -52,7 +52,7 @@ func S3Client(
 
 	if opts.Endpoint != "" {
 		customResolver := aws.EndpointResolverWithOptionsFunc(func(
-			service, region string, options ...interface{},
+			service, region string, _ ...interface{},
 		) (aws.Endpoint, error) {
 			if service == s3.ServiceID {
 				return aws.Endpoint{

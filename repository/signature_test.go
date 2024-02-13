@@ -138,7 +138,7 @@ func FuzzArchiveSignatureParsing(f *testing.F) {
 	f.Add("v1.2..")
 	f.Add("v1.2.vZr1mhSxTiT_LNBP4S8eXfGUrmazfdjVZRGWoV2bhYE.")
 
-	f.Fuzz(func(t *testing.T, a string) {
+	f.Fuzz(func(_ *testing.T, a string) {
 		s, err := repository.ParseArchiveSignature(a)
 		if err != nil {
 			return

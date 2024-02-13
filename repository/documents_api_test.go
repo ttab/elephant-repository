@@ -555,22 +555,92 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	}, mDocV1, "get the expected document back")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docA.Uuid,
+		Status: []*repository.StatusUpdate{
+			{Name: "usable", Version: 1},
+		},
+	})
+	test.Must(t, err, "set a usable status")
+
+	mDocV2 := proto.Clone(mDocV1.Document).(*newsdoc.Document)
+	mDocV2.Title = "I am the the second"
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     mRes.Uuid,
-		IfMatch:  mDocV1.Version,
-		Document: mDocV1.Document,
+		IfMatch:  1,
+		Document: mDocV2,
 	})
 	test.Must(t, err, "be able to update a meta doc directly")
 
-	sneakyDoc := proto.Clone(mDocV1.Document).(*newsdoc.Document)
+	sneakyDoc := proto.Clone(mDocV2).(*newsdoc.Document)
 
 	sneakyDoc.Uri = fmt.Sprintf("core://article/%s", sneakyDoc.Uuid)
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     sneakyDoc.Uuid,
-		IfMatch:  mDocV1.Version,
+		IfMatch:  2,
 		Document: sneakyDoc,
 	})
 	test.MustNot(t, err, "be able to change meta doc into a normal doc")
+
+	docWithMetaDoc, err := client.Get(ctx, &repository.GetDocumentRequest{
+		Uuid:         docA.Uuid,
+		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
+	})
+	test.Must(t, err, "be able to fetch document with meta doc")
+
+	test.EqualMessage(t, &repository.GetDocumentResponse{
+		Document: docA,
+		Version:  1,
+		Meta: &repository.MetaDocument{
+			Version:  2,
+			Document: mDocV2,
+		},
+	}, docWithMetaDoc, "get the expected document back")
+
+	docWithStatus, err := client.Get(ctx, &repository.GetDocumentRequest{
+		Uuid:         docA.Uuid,
+		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
+		Status:       "usable",
+	})
+	test.Must(t, err, "be able to fetch document with meta doc by status")
+
+	test.EqualMessage(t, &repository.GetDocumentResponse{
+		Document: docA,
+		Version:  1,
+		// We expect the meta doc to reflect the version it had at the
+		// time the status was set.
+		Meta: &repository.MetaDocument{
+			Version:  1,
+			Document: mDocV1.Document,
+		},
+	}, docWithStatus, "get the expected document back for usable 1")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docA.Uuid,
+		Status: []*repository.StatusUpdate{
+			{Name: "usable", Version: 1},
+		},
+	})
+	test.Must(t, err, "set a second usable status")
+
+	docWithStatus2, err := client.Get(ctx, &repository.GetDocumentRequest{
+		Uuid:         docA.Uuid,
+		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
+		Status:       "usable",
+	})
+	test.Must(t, err, "be able to fetch document with meta doc by status")
+
+	test.EqualMessage(t, &repository.GetDocumentResponse{
+		Document: docA,
+		Version:  1,
+		// We expect the meta doc to reflect the version it had at the
+		// time the status was set.
+		Meta: &repository.MetaDocument{
+			Version:  2,
+			Document: mDocV2,
+		},
+	}, docWithStatus2, "get the expected document back for usable 2")
 }
 
 func TestIntegrationBulkCrud(t *testing.T) {

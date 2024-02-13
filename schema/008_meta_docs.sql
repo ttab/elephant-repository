@@ -6,6 +6,9 @@ ALTER TABLE document
           REFERENCES document(uuid)
           ON DELETE RESTRICT;
 
+ALTER TABLE document_status
+      ADD COLUMN meta_doc_version bigint;
+
 ALTER TABLE status_heads
       ADD COLUMN language text;
 
@@ -54,6 +57,9 @@ ALTER TABLE eventlog
       DROP COLUMN main_doc,
       DROP COLUMN language,
       DROP COLUMN old_language;
+
+ALTER TABLE document_status
+      DROP COLUMN meta_doc_version;
 
 DROP TABLE meta_type_use;
 DROP TABLE meta_type;

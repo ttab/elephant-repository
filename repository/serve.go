@@ -176,7 +176,7 @@ func WithJWKSEndpoint(jwtKey *ecdsa.PrivateKey) RouterOption {
 		}
 
 		router.GET("/.well-known/jwks.json", httprouter.Handle(func(
-			w http.ResponseWriter, r *http.Request, p httprouter.Params,
+			w http.ResponseWriter, _ *http.Request, _ httprouter.Params,
 		) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(payload)

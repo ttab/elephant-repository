@@ -529,18 +529,23 @@ func (q *Queries) GetDocumentACL(ctx context.Context, argUuid uuid.UUID) ([]Acl,
 }
 
 const getDocumentData = `-- name: GetDocumentData :one
-SELECT v.document_data
+SELECT v.document_data, v.version
 FROM document as d
      INNER JOIN document_version AS v ON
            v.uuid = d.uuid And v.version = d.current_version
 WHERE d.uuid = $1
 `
 
-func (q *Queries) GetDocumentData(ctx context.Context, argUuid uuid.UUID) ([]byte, error) {
+type GetDocumentDataRow struct {
+	DocumentData []byte
+	Version      int64
+}
+
+func (q *Queries) GetDocumentData(ctx context.Context, argUuid uuid.UUID) (GetDocumentDataRow, error) {
 	row := q.db.QueryRow(ctx, getDocumentData, argUuid)
-	var document_data []byte
-	err := row.Scan(&document_data)
-	return document_data, err
+	var i GetDocumentDataRow
+	err := row.Scan(&i.DocumentData, &i.Version)
+	return i, err
 }
 
 const getDocumentForDeletion = `-- name: GetDocumentForDeletion :one
@@ -960,7 +965,7 @@ func (q *Queries) GetExpiredDocumentLocks(ctx context.Context, cutoff pgtype.Tim
 
 const getFullDocumentHeads = `-- name: GetFullDocumentHeads :many
 SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
-       s.archived, s.signature
+       s.archived, s.signature, s.meta_doc_version
 FROM status_heads AS h
      INNER JOIN document_status AS s ON
            s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
@@ -986,6 +991,7 @@ func (q *Queries) GetFullDocumentHeads(ctx context.Context, argUuid uuid.UUID) (
 			&i.Meta,
 			&i.Archived,
 			&i.Signature,
+			&i.MetaDocVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -1106,6 +1112,18 @@ func (q *Queries) GetLastEventID(ctx context.Context) (int64, error) {
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const getMetaDocVersion = `-- name: GetMetaDocVersion :one
+SELECT current_version FROM document
+WHERE main_doc = $1
+`
+
+func (q *Queries) GetMetaDocVersion(ctx context.Context, argUuid pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getMetaDocVersion, argUuid)
+	var current_version int64
+	err := row.Scan(&current_version)
+	return current_version, err
 }
 
 const getMetricKind = `-- name: GetMetricKind :one
@@ -1703,20 +1721,23 @@ func (q *Queries) InsertDocumentLock(ctx context.Context, arg InsertDocumentLock
 
 const insertDocumentStatus = `-- name: InsertDocumentStatus :exec
 INSERT INTO document_status(
-       uuid, name, id, version, created, creator_uri, meta
+       uuid, name, id, version, created,
+       creator_uri, meta, meta_doc_version
 ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7
+       $1, $2, $3, $4, $5,
+       $6, $7, $8::bigint
 )
 `
 
 type InsertDocumentStatusParams struct {
-	UUID       uuid.UUID
-	Name       string
-	ID         int64
-	Version    int64
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Meta       []byte
+	UUID           uuid.UUID
+	Name           string
+	ID             int64
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           []byte
+	MetaDocVersion int64
 }
 
 func (q *Queries) InsertDocumentStatus(ctx context.Context, arg InsertDocumentStatusParams) error {
@@ -1728,6 +1749,7 @@ func (q *Queries) InsertDocumentStatus(ctx context.Context, arg InsertDocumentSt
 		arg.Created,
 		arg.CreatorUri,
 		arg.Meta,
+		arg.MetaDocVersion,
 	)
 	return err
 }

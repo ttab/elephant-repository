@@ -24,8 +24,8 @@ require (
 	github.com/rakutentech/jwk-go v1.1.3
 	github.com/tmaxmax/go-sse v0.8.0
 	github.com/ttab/darknut v0.1.0
-	github.com/ttab/elephant-api v0.9.0
-	github.com/ttab/elephantine v0.11.4
+	github.com/ttab/elephant-api v0.9.1-0.20240213144115-876616a2f039
+	github.com/ttab/elephantine v0.11.5
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/newsdoc v0.4.2
 	github.com/ttab/revisor v0.4.0
@@ -37,9 +37,6 @@ require (
 	golang.org/x/sync v0.6.0
 	google.golang.org/protobuf v1.32.0
 )
-
-replace github.com/ttab/elephant-api => ../elephant-api
-replace github.com/ttab/elephantine => ../elephantine
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect

@@ -305,7 +305,8 @@ CREATE TABLE public.document_status (
     creator_uri text NOT NULL,
     meta jsonb,
     archived boolean DEFAULT false NOT NULL,
-    signature text
+    signature text,
+    meta_doc_version bigint
 );
 
 

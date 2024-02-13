@@ -16,7 +16,7 @@ type DocStore interface {
 		ctx context.Context, uuid uuid.UUID) (*DocumentMeta, error)
 	GetDocument(
 		ctx context.Context, uuid uuid.UUID, version int64,
-	) (*newsdoc.Document, error)
+	) (*newsdoc.Document, int64, error)
 	GetVersion(
 		ctx context.Context, uuid uuid.UUID, version int64,
 	) (DocumentUpdate, error)
@@ -272,11 +272,12 @@ type DocumentUpdate struct {
 }
 
 type Status struct {
-	ID      int64
-	Version int64
-	Creator string
-	Created time.Time
-	Meta    newsdoc.DataMap
+	ID             int64
+	Version        int64
+	Creator        string
+	Created        time.Time
+	Meta           newsdoc.DataMap
+	MetaDocVersion int64
 }
 
 type StatusUpdate struct {

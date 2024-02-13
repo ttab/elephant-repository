@@ -15,7 +15,7 @@ WHERE uuid = $1;
 
 -- name: GetFullDocumentHeads :many
 SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
-       s.archived, s.signature
+       s.archived, s.signature, s.meta_doc_version
 FROM status_heads AS h
      INNER JOIN document_status AS s ON
            s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
@@ -70,7 +70,7 @@ LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
 WHERE d.uuid = @uuid;
 
 -- name: GetDocumentData :one
-SELECT v.document_data
+SELECT v.document_data, v.version
 FROM document as d
      INNER JOIN document_version AS v ON
            v.uuid = d.uuid And v.version = d.current_version
@@ -129,9 +129,11 @@ ON CONFLICT (uuid, name) DO UPDATE
 
 -- name: InsertDocumentStatus :exec
 INSERT INTO document_status(
-       uuid, name, id, version, created, creator_uri, meta
+       uuid, name, id, version, created,
+       creator_uri, meta, meta_doc_version
 ) VALUES (
-       @uuid, @name, @id, @version, @created, @creator_uri, @meta
+       @uuid, @name, @id, @version, @created,
+       @creator_uri, @meta, @meta_doc_version::bigint
 );
 
 -- name: RegisterMetaType :exec
@@ -158,6 +160,10 @@ SELECT coalesce(meta_type, ''), NOT d.main_doc IS NULL as is_meta_doc
 FROM document AS d
      LEFT JOIN meta_type_use AS m ON m.main_type = d.type
 WHERE d.uuid = @uuid;
+
+-- name: GetMetaDocVersion :one
+SELECT current_version FROM document
+WHERE main_doc = @uuid;
 
 -- name: DeleteDocument :exec
 SELECT delete_document(

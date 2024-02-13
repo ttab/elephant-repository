@@ -83,15 +83,16 @@ type DocumentSchema struct {
 }
 
 type DocumentStatus struct {
-	UUID       uuid.UUID
-	Name       string
-	ID         int64
-	Version    int64
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Meta       []byte
-	Archived   bool
-	Signature  pgtype.Text
+	UUID           uuid.UUID
+	Name           string
+	ID             int64
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           []byte
+	Archived       bool
+	Signature      pgtype.Text
+	MetaDocVersion pgtype.Int8
 }
 
 type DocumentVersion struct {

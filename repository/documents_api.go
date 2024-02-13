@@ -566,6 +566,10 @@ func (a *DocumentsService) Get(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
+	requireMetaDoc := req.MetaDocument == repository.GetMetaDoc_META_ONLY
+	includeMetaDoc := requireMetaDoc ||
+		req.MetaDocument == repository.GetMetaDoc_META_INCLUDE
+
 	auth, err := RequireAnyScope(ctx,
 		ScopeDocumentRead, ScopeDocumentReadAll,
 		ScopeDocumentAdmin,
@@ -613,7 +617,10 @@ func (a *DocumentsService) Get(
 			"document is being deleted")
 	}
 
-	var version int64
+	var (
+		version     int64
+		metaVersion int64
+	)
 
 	switch {
 	case req.Version > 0:
@@ -630,28 +637,65 @@ func (a *DocumentsService) Get(
 			return nil, twirp.NotFoundError(
 				"no such status set for the document")
 		}
+
+		switch {
+		case requireMetaDoc && status.MetaDocVersion == 0:
+			return nil, twirp.NotFoundError(
+				"no meta document was set for that status")
+		case status.MetaDocVersion == 0:
+			// Signal that no meta document was present when the
+			// status was set.
+			metaVersion = -1
+		default:
+			metaVersion = status.MetaDocVersion
+		}
 	default:
 		version = meta.CurrentVersion
 	}
 
-	doc, err := a.store.GetDocument(ctx, docUUID, version)
-	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-		return nil, twirp.NotFoundError("no such version")
-	} else if err != nil {
-		return nil, twirp.Internal.Errorf(
-			"failed to load document version: %w", err)
-	}
-
-	if doc.Language == "" {
-		doc.Language = a.defaultLanguage
-	}
-
-	return &repository.GetDocumentResponse{
-		Document:       rpcdoc.DocumentToRPC(*doc),
+	res := repository.GetDocumentResponse{
 		Version:        version,
 		IsMetaDocument: meta.MainDocument != "",
 		MainDocument:   meta.MainDocument,
-	}, nil
+	}
+
+	if req.MetaDocument != repository.GetMetaDoc_META_ONLY {
+		doc, _, err := a.store.GetDocument(ctx, docUUID, version)
+		if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+			return nil, twirp.NotFoundError("no such version")
+		} else if err != nil {
+			return nil, twirp.Internal.Errorf(
+				"failed to load document version: %w", err)
+		}
+
+		if doc.Language == "" {
+			doc.Language = a.defaultLanguage
+		}
+
+		res.Document = rpcdoc.DocumentToRPC(*doc)
+	}
+
+	if includeMetaDoc && metaVersion != -1 {
+		metaUUID, _ := metaIdentity(docUUID)
+
+		doc, v, err := a.store.GetDocument(ctx, metaUUID, metaVersion)
+
+		switch {
+		case IsDocStoreErrorCode(err, ErrCodeNotFound) && !requireMetaDoc:
+		case IsDocStoreErrorCode(err, ErrCodeNotFound) && requireMetaDoc:
+			return nil, twirp.NotFoundError("no meta document present")
+		case err != nil:
+			return nil, twirp.Internal.Errorf(
+				"failed to load meta document: %w", err)
+		default:
+			res.Meta = &repository.MetaDocument{
+				Document: rpcdoc.DocumentToRPC(*doc),
+				Version:  v,
+			}
+		}
+	}
+
+	return &res, nil
 }
 
 // GetHistory implements repository.Documents.
@@ -1108,6 +1152,7 @@ func (a *DocumentsService) verifyUpdateRequest(
 		return err
 	}
 
+	//nolint:nestif
 	if req.Document != nil {
 		if req.Document.Uuid == "" {
 			req.Document.Uuid = docUUID.String()
@@ -1324,6 +1369,8 @@ func (a *DocumentsService) Lock(
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock), IsDocStoreErrorCode(err, ErrCodeNotFound):
 		return nil, twirp.FailedPrecondition.Error("could not find the document")
+	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
+		return nil, twirp.InvalidArgument.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
 		return nil, twirp.FailedPrecondition.Error("the document is locked by someone else")
 	case err != nil:

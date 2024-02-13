@@ -517,7 +517,7 @@ func runServer(c *cli.Context) error {
 	})
 
 	router.GET("/health/alive", func(
-		w http.ResponseWriter, req *http.Request, _ httprouter.Params,
+		w http.ResponseWriter, _ *http.Request, _ httprouter.Params,
 	) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
