@@ -1321,7 +1321,9 @@ func (s *PGDocStore) GetMetaTypeForDocument(
 	ctx context.Context, uuid uuid.UUID,
 ) (DocumentMetaType, error) {
 	t, err := s.reader.CheckMetaDocumentType(ctx, uuid)
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DocumentMetaType{}, nil
+	} else if err != nil {
 		return DocumentMetaType{}, fmt.Errorf("query failed: %w", err)
 	}
 

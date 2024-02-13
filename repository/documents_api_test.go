@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
@@ -531,6 +533,44 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		UpdateMetaDocument: true,
 	})
 	test.MustNot(t, err, "create a meta doc for a meta doc")
+
+	mDocV1, err := client.Get(ctx, &repository.GetDocumentRequest{
+		Uuid: mRes.Uuid,
+	})
+	test.Must(t, err, "be able to read meta document")
+
+	wantDoc := proto.Clone(&metaDoc).(*newsdoc.Document)
+
+	wantDoc.Uuid = mRes.Uuid
+	// Generated from main document.
+	wantDoc.Uri = fmt.Sprintf("system://%s/meta", docA.Uuid)
+	// From default language.
+	wantDoc.Language = "sv-se"
+
+	test.EqualMessage(t, &repository.GetDocumentResponse{
+		Document:       wantDoc,
+		Version:        1,
+		IsMetaDocument: true,
+		MainDocument:   docA.Uuid,
+	}, mDocV1, "get the expected document back")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     mRes.Uuid,
+		IfMatch:  mDocV1.Version,
+		Document: mDocV1.Document,
+	})
+	test.Must(t, err, "be able to update a meta doc directly")
+
+	sneakyDoc := proto.Clone(mDocV1.Document).(*newsdoc.Document)
+
+	sneakyDoc.Uri = fmt.Sprintf("core://article/%s", sneakyDoc.Uuid)
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     sneakyDoc.Uuid,
+		IfMatch:  mDocV1.Version,
+		Document: sneakyDoc,
+	})
+	test.MustNot(t, err, "be able to change meta doc into a normal doc")
 }
 
 func TestIntegrationBulkCrud(t *testing.T) {

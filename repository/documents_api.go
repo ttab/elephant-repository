@@ -1232,13 +1232,13 @@ func (a *DocumentsService) verifyUpdateRequest(
 		return err
 	}
 
-	if isMeta {
-		mt, err := a.store.GetMetaTypeForDocument(ctx, mainUUID)
-		if err != nil {
-			return twirp.InternalErrorf(
-				"could not get meta type for document: %w", err)
-		}
+	mt, err := a.store.GetMetaTypeForDocument(ctx, mainUUID)
+	if err != nil {
+		return twirp.InternalErrorf(
+			"could not get meta type for document: %w", err)
+	}
 
+	if isMeta {
 		if mt.IsMetaDocument {
 			return twirp.InvalidArgumentError("update_meta_document",
 				"meta documents cannot have meta documents in turn")
@@ -1253,6 +1253,9 @@ func (a *DocumentsService) verifyUpdateRequest(
 			return twirp.InvalidArgumentError("document.type",
 				fmt.Sprintf("the meta document type has to be %q", mt.MetaType))
 		}
+	} else if mt.IsMetaDocument {
+		return twirp.InvalidArgument.Error(
+			"meta documents cannot be turned into normal documents")
 	}
 
 	return nil
