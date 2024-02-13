@@ -1,5 +1,5 @@
 -- name: GetDocumentForUpdate :one
-SELECT d.uri, d.type, d.current_version, d.deleting, d.main_doc,
+SELECT d.uri, d.type, d.current_version, d.deleting, d.main_doc, d.language,
        l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
        l.token as lock_token
@@ -114,22 +114,24 @@ INSERT INTO document_version(
 
 -- name: CreateStatusHead :exec
 INSERT INTO status_heads(
-       uuid, name, type, version, current_id, updated, updater_uri, language
+       uuid, name, type, version, current_id,
+       updated, updater_uri, language
 ) VALUES (
-       @uuid, @name, @type, @version, @current_id, @created, @creator_uri, @language
+       @uuid, @name, @type::text, @version::bigint, @id::bigint,
+       @created, @creator_uri, @language::text
 )
 ON CONFLICT (uuid, name) DO UPDATE
    SET updated = @created,
        updater_uri = @creator_uri,
-       current_id = @current_id,
-       version = @version,
-       language = @language;
+       current_id = @id::bigint,
+       version = @version::bigint,
+       language = @language::text;
 
 -- name: InsertDocumentStatus :exec
 INSERT INTO document_status(
        uuid, name, id, version, created, creator_uri, meta
 ) VALUES (
-       @uuid, @name, @current_id, @version, @created, @creator_uri, @meta
+       @uuid, @name, @id, @version, @created, @creator_uri, @meta
 );
 
 -- name: RegisterMetaType :exec
@@ -152,9 +154,9 @@ DELETE FROM meta_type
 WHERE meta_type = @meta_type;
 
 -- name: CheckMetaDocumentType :one
-SELECT meta_type
+SELECT coalesce(meta_type, ''), NOT d.main_doc IS NULL as is_meta_doc
 FROM document AS d
-     INNER JOIN meta_type_use AS m ON m.main_type = d.type
+     LEFT JOIN meta_type_use AS m ON m.main_type = d.type
 WHERE d.uuid = @uuid;
 
 -- name: DeleteDocument :exec
@@ -164,9 +166,11 @@ SELECT delete_document(
 
 -- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
-       uuid, uri, type, version, created, creator_uri, meta
+       uuid, uri, type, version, created, creator_uri, meta,
+       main_doc, language
 ) VALUES(
-       @uuid, @uri, @type, @version, @created, @creator_uri, @meta
+       @uuid, @uri, @type, @version, @created, @creator_uri, @meta,
+       @main_doc, @language
 ) RETURNING id;
 
 -- name: GetDocumentStatusForArchiving :one
@@ -245,8 +249,13 @@ FROM document AS d
 WHERE d.uuid = @uuid;
 
 -- name: InsertACLAuditEntry :exec
-INSERT INTO acl_audit(uuid, type, updated, updater_uri, state)
-SELECT @uuid::uuid, @type, @updated::timestamptz, @updater_uri::text, json_agg(l)
+INSERT INTO acl_audit(
+       uuid, type, updated,
+       updater_uri, state, language
+)
+SELECT
+       @uuid::uuid, @type, @updated::timestamptz,
+       @updater_uri::text, json_agg(l), @language::text
 FROM (
        SELECT uri, permissions
        FROM acl

@@ -647,8 +647,10 @@ func (a *DocumentsService) Get(
 	}
 
 	return &repository.GetDocumentResponse{
-		Document: rpcdoc.DocumentToRPC(*doc),
-		Version:  version,
+		Document:       rpcdoc.DocumentToRPC(*doc),
+		Version:        version,
+		IsMetaDocument: meta.MainDocument != "",
+		MainDocument:   meta.MainDocument,
 	}, nil
 }
 
@@ -777,6 +779,8 @@ func (a *DocumentsService) GetMeta(
 		Created:        meta.Created.Format(time.RFC3339),
 		Modified:       meta.Modified.Format(time.RFC3339),
 		CurrentVersion: meta.CurrentVersion,
+		IsMetaDocument: meta.MainDocument != "",
+		MainDocument:   meta.MainDocument,
 	}
 
 	for name, head := range meta.Statuses {
@@ -855,6 +859,7 @@ func (a *DocumentsService) Update(
 	}
 
 	return &repository.UpdateResponse{
+		Uuid:    res[0].UUID.String(),
 		Version: res[0].Version,
 	}, nil
 }
@@ -898,7 +903,11 @@ func (a *DocumentsService) BulkUpdate(
 	var resp repository.BulkUpdateResponse
 
 	for i := range res {
-		resp.Version = append(resp.Version, res[i].Version)
+		resp.Updates = append(resp.Updates,
+			&repository.UpdateResponse{
+				Uuid:    res[i].UUID.String(),
+				Version: res[i].Version,
+			})
 	}
 
 	return &resp, nil
@@ -1080,7 +1089,7 @@ func (a *DocumentsService) verifyUpdateRequest(
 
 	if isMeta && req.IfMatch == 0 {
 		return twirp.InvalidArgumentError(
-			"if_match", "updates of the meta document must use optimistic locks")
+			"if_match", "is required, updates of the meta document must use optimistic locks")
 	}
 
 	if req.Document == nil && len(req.Status) == 0 && len(req.Acl) == 0 {
@@ -1108,8 +1117,15 @@ func (a *DocumentsService) verifyUpdateRequest(
 		}
 
 		switch {
-		case req.UpdateMetaDocument && req.Document.Uri == "":
-			req.Document.Uri = metaURI(docUUID)
+		case req.UpdateMetaDocument:
+			mURI := metaURI(docUUID)
+
+			if req.Document.Uri != "" && req.Document.Uri != mURI {
+				return twirp.InvalidArgumentError(
+					"document.uri", fmt.Sprintf("document URI must be %q or empty", mURI))
+			}
+
+			req.Document.Uri = mURI
 		case isMeta && req.Document.Uri != "":
 			_, err := parseMetaURI(req.Document.Uri)
 			if err != nil {
@@ -1218,14 +1234,24 @@ func (a *DocumentsService) verifyUpdateRequest(
 
 	if isMeta {
 		mt, err := a.store.GetMetaTypeForDocument(ctx, mainUUID)
-		if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+		if err != nil {
+			return twirp.InternalErrorf(
+				"could not get meta type for document: %w", err)
+		}
+
+		if mt.IsMetaDocument {
+			return twirp.InvalidArgumentError("update_meta_document",
+				"meta documents cannot have meta documents in turn")
+		}
+
+		if mt.MetaType == "" {
 			return twirp.InvalidArgument.Error(
 				"document type doesn't have a configured meta document type")
 		}
 
-		if req.Document != nil && req.Document.Type != mt {
+		if req.Document != nil && req.Document.Type != mt.MetaType {
 			return twirp.InvalidArgumentError("document.type",
-				fmt.Sprintf("the meta document type has to be %q", mt))
+				fmt.Sprintf("the meta document type has to be %q", mt.MetaType))
 		}
 	}
 

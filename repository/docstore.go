@@ -35,7 +35,7 @@ type DocStore interface {
 	) (CheckPermissionResult, error)
 	GetMetaTypeForDocument(
 		ctx context.Context, uuid uuid.UUID,
-	) (string, error)
+	) (DocumentMetaType, error)
 	RegisterMetaType(
 		ctx context.Context, metaType string, exclusive bool,
 	) error
@@ -226,6 +226,7 @@ type DocumentMeta struct {
 	Statuses       map[string]Status
 	Deleting       bool
 	Lock           Lock
+	MainDocument   string
 }
 
 type ACLEntry struct {
@@ -263,6 +264,7 @@ type UpdateLockRequest struct {
 }
 
 type DocumentUpdate struct {
+	UUID    uuid.UUID
 	Version int64
 	Creator string
 	Created time.Time

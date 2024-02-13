@@ -6,8 +6,6 @@ ALTER TABLE document
           REFERENCES document(uuid)
           ON DELETE RESTRICT;
 
-ALTER TABLE document REPLICA IDENTITY FULL;
-
 ALTER TABLE status_heads
       ADD COLUMN language text;
 

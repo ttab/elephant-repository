@@ -35,7 +35,10 @@ func baseDocument(uuid, uri string) *newsdoc.Document {
 	}
 }
 
-const timestampField = "timestamp"
+const (
+	idField        = "id"
+	timestampField = "timestamp"
+)
 
 func TestIntegrationBasicCrud(t *testing.T) {
 	if testing.Short() {
@@ -234,9 +237,11 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
+	var expectedEvents int64
+
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunArchiver:   false,
-		RunReplicator: false,
+		RunReplicator: true,
 	})
 
 	client := tc.DocumentsClient(t,
@@ -255,6 +260,9 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 			Document: doc,
 		})
 		test.Must(t, err, "update a document without a language")
+
+		// Doc + ACL
+		expectedEvents += 2
 	})
 
 	t.Run("InvalidLanguage", func(t *testing.T) {
@@ -288,6 +296,8 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 	})
 
 	t.Run("LanguageAndRegion", func(t *testing.T) {
+		ctx := test.Context(t)
+
 		doc := baseDocument(
 			"00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
 			"example://00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
@@ -295,11 +305,75 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 		doc.Language = "en-GB"
 
-		_, err := client.Update(test.Context(t), &repository.UpdateRequest{
+		info1, err := client.Update(ctx, &repository.UpdateRequest{
 			Uuid:     doc.Uuid,
 			Document: doc,
 		})
 		test.Must(t, err, "update a document with a valid language and region")
+		_, err = client.Update(ctx, &repository.UpdateRequest{
+			Uuid: doc.Uuid,
+			Status: []*repository.StatusUpdate{
+				{
+					Name:    "usable",
+					Version: info1.Version,
+				},
+			},
+		})
+		test.Must(t, err, "set version one as usable")
+
+		doc.Language = "en-US"
+
+		info2, err := client.Update(ctx, &repository.UpdateRequest{
+			Uuid:     doc.Uuid,
+			Document: doc,
+		})
+		test.Must(t, err, "update a document with a new language")
+
+		_, err = client.Update(ctx, &repository.UpdateRequest{
+			Uuid: doc.Uuid,
+			Status: []*repository.StatusUpdate{
+				{
+					Name:    "usable",
+					Version: info2.Version,
+				},
+			},
+		})
+		test.Must(t, err, "set version two as usable")
+
+		expectedEvents += 5
+
+		// Wait until the expected events have been registered.
+		_, err = client.Eventlog(ctx,
+			&repository.GetEventlogRequest{
+				After: expectedEvents - 1,
+			})
+		test.Must(t, err, "wait for eventlog")
+
+		log, err := client.Eventlog(ctx,
+			&repository.GetEventlogRequest{
+				After: -5,
+			})
+		test.Must(t, err, "get eventlog")
+		test.Equal(t, 5, len(log.Items),
+			"get the expected number of events")
+
+		var golden repository.GetEventlogResponse
+
+		err = elephantine.UnmarshalFile(
+			"testdata/TestIntegrationDocumentLanguage/eventlog.json",
+			&golden)
+		test.Must(t, err, "read golden file for expected eventlog items")
+
+		diff := cmp.Diff(&golden, log,
+			protocmp.Transform(),
+			cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
+				return k == timestampField ||
+					k == idField
+			}),
+		)
+		if diff != "" {
+			t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
+		}
 	})
 }
 
@@ -413,13 +487,50 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	})
 	test.Must(t, err, "register the meta type for use with articles")
 
-	_, err = client.Update(ctx, &repository.UpdateRequest{
+	mRes, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:               docA.Uuid,
 		IfMatch:            -1,
 		Document:           &metaDoc,
 		UpdateMetaDocument: true,
 	})
 	test.Must(t, err, "create a meta doc for a document")
+
+	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: mRes.Uuid,
+	})
+	test.Must(t, err, "get meta information about meta doc")
+
+	wantMeta := repository.DocumentMeta{
+		CurrentVersion: 1,
+		IsMetaDocument: true,
+		MainDocument:   docA.Uuid,
+	}
+
+	ignoreTimeVariantValues := cmpopts.IgnoreMapEntries(
+		func(k string, _ interface{}) bool {
+			switch k {
+			case "created", "modified":
+				return true
+			}
+
+			return false
+		})
+
+	cmpDiff := cmp.Diff(&wantMeta, meta.Meta,
+		protocmp.Transform(),
+		ignoreTimeVariantValues,
+	)
+	if cmpDiff != "" {
+		t.Fatalf("meta document meta mismatch (-want +got):\n%s", cmpDiff)
+	}
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:               mRes.Uuid,
+		IfMatch:            1,
+		Document:           &metaDoc,
+		UpdateMetaDocument: true,
+	})
+	test.MustNot(t, err, "create a meta doc for a meta doc")
 }
 
 func TestIntegrationBulkCrud(t *testing.T) {
@@ -466,7 +577,20 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	})
 	test.Must(t, err, "create articles")
 
-	test.EqualDiff(t, []int64{1, 1}, res.Version,
+	test.EqualMessage(t,
+		&repository.BulkUpdateResponse{
+			Updates: []*repository.UpdateResponse{
+				{
+					Uuid:    docA.Uuid,
+					Version: 1,
+				},
+				{
+					Uuid:    docB.Uuid,
+					Version: 1,
+				},
+			},
+		},
+		res,
 		"expected this to be the first versions")
 
 	resA, err := client.Get(ctx, &repository.GetDocumentRequest{
@@ -803,7 +927,7 @@ func TestIntegrationStatus(t *testing.T) {
 		}),
 	)
 	if cmpDiff != "" {
-		t.Fatalf("compact eventlog mismatch (-want +got):\n%s", diff)
+		t.Fatalf("compact eventlog mismatch (-want +got):\n%s", cmpDiff)
 	}
 }
 

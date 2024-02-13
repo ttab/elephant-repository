@@ -8,7 +8,8 @@
       "status": "usable",
       "status_id": 12,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     }
   ]
 }

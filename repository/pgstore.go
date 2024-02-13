@@ -330,6 +330,8 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 			Created:    pg.Time(req.Updated),
 			CreatorUri: req.Updater,
 			Meta:       metaJSON,
+			MainDoc:    pg.PUUID(info.MainDoc),
+			Language:   pg.Text(info.Language),
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create delete record: %w", err)
@@ -660,10 +662,10 @@ func (s *PGDocStore) GetStatusHistory(
 
 // GetDocumentMeta implements DocStore.
 func (s *PGDocStore) GetDocumentMeta(
-	ctx context.Context, uuid uuid.UUID,
+	ctx context.Context, docID uuid.UUID,
 ) (*DocumentMeta, error) {
 	info, err := s.reader.GetDocumentInfo(ctx, postgres.GetDocumentInfoParams{
-		UUID: uuid,
+		UUID: docID,
 		Now:  pg.Time(time.Now()),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -676,12 +678,19 @@ func (s *PGDocStore) GetDocumentMeta(
 		return &DocumentMeta{Deleting: true}, nil
 	}
 
+	var mainDoc string
+
+	if info.MainDoc.Valid {
+		mainDoc = uuid.UUID(info.MainDoc.Bytes).String()
+	}
+
 	meta := DocumentMeta{
 		Created:        info.Created.Time,
 		Modified:       info.Updated.Time,
 		CurrentVersion: info.CurrentVersion,
 		Statuses:       make(map[string]Status),
 		Deleting:       info.Deleting,
+		MainDocument:   mainDoc,
 		Lock: Lock{
 			Token:   info.LockToken.String,
 			URI:     info.LockUri.String,
@@ -692,14 +701,14 @@ func (s *PGDocStore) GetDocumentMeta(
 		},
 	}
 
-	heads, err := s.getFullDocumentHeads(ctx, s.reader, uuid)
+	heads, err := s.getFullDocumentHeads(ctx, s.reader, docID)
 	if err != nil {
 		return nil, err
 	}
 
 	meta.Statuses = heads
 
-	acl, err := s.GetDocumentACL(ctx, uuid)
+	acl, err := s.GetDocumentACL(ctx, docID)
 	if err != nil {
 		return nil, err
 	}
@@ -846,6 +855,7 @@ func (s *PGDocStore) Update(
 
 		state.Version = info.Info.CurrentVersion
 		state.Exists = info.Exists
+		state.Language = info.Language
 
 		if state.Exists {
 			state.Type = info.Info.Type
@@ -868,6 +878,7 @@ func (s *PGDocStore) Update(
 	for _, state := range updates {
 		if state.Doc != nil {
 			state.Version++
+			state.Language = state.Doc.Language
 
 			err := q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
 				UUID:       state.Request.UUID,
@@ -961,11 +972,20 @@ func (s *PGDocStore) Update(
 					})
 			}
 
+			// TODO: language is a bit naive here, as it assumes
+			// that the status set for the referenced version is the
+			// same as the language of the latest version of the
+			// document. We should get the language from the
+			// referenced document version instead.
 			err = q.CreateStatusHead(ctx, postgres.CreateStatusHeadParams{
 				UUID:       state.Request.UUID,
 				Name:       stat.Name,
+				Type:       state.Type,
+				Version:    stat.Version,
+				ID:         status.ID,
 				Created:    pg.Time(state.Created),
 				CreatorUri: state.Creator,
+				Language:   state.Language,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("failed to create status head: %w", err)
@@ -974,6 +994,7 @@ func (s *PGDocStore) Update(
 			err = q.InsertDocumentStatus(ctx, postgres.InsertDocumentStatusParams{
 				UUID:       state.Request.UUID,
 				Name:       stat.Name,
+				ID:         status.ID,
 				Version:    status.Version,
 				Created:    pg.Time(state.Created),
 				CreatorUri: state.Creator,
@@ -991,7 +1012,7 @@ func (s *PGDocStore) Update(
 		}
 
 		err = s.updateACL(ctx, q, state.Request.UUID,
-			state.Type, updateACL)
+			state.Type, state.Language, updateACL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update ACL: %w", err)
 		}
@@ -1024,13 +1045,15 @@ type docUpdateState struct {
 	MetaJSON   []byte
 	StatusMeta [][]byte
 
-	Type   string
-	Exists bool
+	Type     string
+	Exists   bool
+	Language string
 }
 
 func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
 	state := docUpdateState{
 		DocumentUpdate: DocumentUpdate{
+			UUID:    req.UUID,
 			Created: req.Updated,
 			Creator: req.Updater,
 			Meta:    req.Meta,
@@ -1288,17 +1311,24 @@ func (err StatusRuleError) Error() string {
 		strings.Join(rules, ", "))
 }
 
+type DocumentMetaType struct {
+	MetaType       string
+	IsMetaDocument bool
+}
+
 // GetMetaTypeForDocument implements DocStore.
 func (s *PGDocStore) GetMetaTypeForDocument(
 	ctx context.Context, uuid uuid.UUID,
-) (string, error) {
+) (DocumentMetaType, error) {
 	t, err := s.reader.CheckMetaDocumentType(ctx, uuid)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", DocStoreErrorf(ErrCodeNotFound,
-			"no meta type configured for document type")
+	if err != nil {
+		return DocumentMetaType{}, fmt.Errorf("query failed: %w", err)
 	}
 
-	return t, nil
+	return DocumentMetaType{
+		MetaType:       t.MetaType,
+		IsMetaDocument: t.IsMetaDoc.Bool,
+	}, nil
 }
 
 // RegisterMetaType implements DocStore.
@@ -1954,7 +1984,7 @@ func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metri
 
 func (s *PGDocStore) updateACL(
 	ctx context.Context, q *postgres.Queries,
-	docUUID uuid.UUID, docType string, updateACL []ACLEntry,
+	docUUID uuid.UUID, docType string, language string, updateACL []ACLEntry,
 ) error {
 	if len(updateACL) == 0 {
 		return nil
@@ -2011,6 +2041,7 @@ func (s *PGDocStore) updateACL(
 		Type:       pg.TextOrNull(docType),
 		Updated:    pg.Time(time.Now()),
 		UpdaterUri: auth.Claims.Subject,
+		Language:   language,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to record audit trail: %w", err)
@@ -2020,10 +2051,11 @@ func (s *PGDocStore) updateACL(
 }
 
 type updatePrefligthInfo struct {
-	Info    postgres.GetDocumentForUpdateRow
-	Exists  bool
-	Lock    Lock
-	MainDoc *uuid.UUID
+	Info     postgres.GetDocumentForUpdateRow
+	Exists   bool
+	Lock     Lock
+	MainDoc  *uuid.UUID
+	Language string
 }
 
 func (s *PGDocStore) updatePreflight(
@@ -2064,9 +2096,10 @@ func (s *PGDocStore) updatePreflight(
 	}
 
 	return &updatePrefligthInfo{
-		Info:    info,
-		Exists:  exists,
-		MainDoc: pg.ToUUIDPointer(info.MainDoc),
+		Info:     info,
+		Exists:   exists,
+		MainDoc:  pg.ToUUIDPointer(info.MainDoc),
+		Language: info.Language.String,
 		Lock: Lock{
 			URI:     info.LockUri.String,
 			Token:   info.LockToken.String,

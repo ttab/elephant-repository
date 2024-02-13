@@ -39,17 +39,22 @@ func (q *Queries) ActivateSchema(ctx context.Context, arg ActivateSchemaParams) 
 }
 
 const checkMetaDocumentType = `-- name: CheckMetaDocumentType :one
-SELECT meta_type
+SELECT coalesce(meta_type, ''), NOT d.main_doc IS NULL as is_meta_doc
 FROM document AS d
-     INNER JOIN meta_type_use AS m ON m.main_type = d.type
+     LEFT JOIN meta_type_use AS m ON m.main_type = d.type
 WHERE d.uuid = $1
 `
 
-func (q *Queries) CheckMetaDocumentType(ctx context.Context, argUuid uuid.UUID) (string, error) {
+type CheckMetaDocumentTypeRow struct {
+	MetaType  string
+	IsMetaDoc pgtype.Bool
+}
+
+func (q *Queries) CheckMetaDocumentType(ctx context.Context, argUuid uuid.UUID) (CheckMetaDocumentTypeRow, error) {
 	row := q.db.QueryRow(ctx, checkMetaDocumentType, argUuid)
-	var meta_type string
-	err := row.Scan(&meta_type)
-	return meta_type, err
+	var i CheckMetaDocumentTypeRow
+	err := row.Scan(&i.MetaType, &i.IsMetaDoc)
+	return i, err
 }
 
 const checkPermission = `-- name: CheckPermission :one
@@ -169,27 +174,29 @@ func (q *Queries) CreateDocumentVersion(ctx context.Context, arg CreateDocumentV
 
 const createStatusHead = `-- name: CreateStatusHead :exec
 INSERT INTO status_heads(
-       uuid, name, type, version, current_id, updated, updater_uri, language
+       uuid, name, type, version, current_id,
+       updated, updater_uri, language
 ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8
+       $1, $2, $3::text, $4::bigint, $5::bigint,
+       $6, $7, $8::text
 )
 ON CONFLICT (uuid, name) DO UPDATE
    SET updated = $6,
        updater_uri = $7,
-       current_id = $5,
-       version = $4,
-       language = $8
+       current_id = $5::bigint,
+       version = $4::bigint,
+       language = $8::text
 `
 
 type CreateStatusHeadParams struct {
 	UUID       uuid.UUID
 	Name       string
-	Type       pgtype.Text
-	Version    pgtype.Int8
-	CurrentID  int64
+	Type       string
+	Version    int64
+	ID         int64
 	Created    pgtype.Timestamptz
 	CreatorUri string
-	Language   pgtype.Text
+	Language   string
 }
 
 func (q *Queries) CreateStatusHead(ctx context.Context, arg CreateStatusHeadParams) error {
@@ -198,7 +205,7 @@ func (q *Queries) CreateStatusHead(ctx context.Context, arg CreateStatusHeadPara
 		arg.Name,
 		arg.Type,
 		arg.Version,
-		arg.CurrentID,
+		arg.ID,
 		arg.Created,
 		arg.CreatorUri,
 		arg.Language,
@@ -557,7 +564,7 @@ func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDel
 }
 
 const getDocumentForUpdate = `-- name: GetDocumentForUpdate :one
-SELECT d.uri, d.type, d.current_version, d.deleting, d.main_doc,
+SELECT d.uri, d.type, d.current_version, d.deleting, d.main_doc, d.language,
        l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
        l.token as lock_token
@@ -578,6 +585,7 @@ type GetDocumentForUpdateRow struct {
 	CurrentVersion int64
 	Deleting       bool
 	MainDoc        pgtype.UUID
+	Language       pgtype.Text
 	LockUuid       pgtype.UUID
 	LockUri        pgtype.Text
 	LockCreated    pgtype.Timestamptz
@@ -596,6 +604,7 @@ func (q *Queries) GetDocumentForUpdate(ctx context.Context, arg GetDocumentForUp
 		&i.CurrentVersion,
 		&i.Deleting,
 		&i.MainDoc,
+		&i.Language,
 		&i.LockUuid,
 		&i.LockUri,
 		&i.LockCreated,
@@ -1589,8 +1598,13 @@ func (q *Queries) GranteesWithPermission(ctx context.Context, arg GranteesWithPe
 }
 
 const insertACLAuditEntry = `-- name: InsertACLAuditEntry :exec
-INSERT INTO acl_audit(uuid, type, updated, updater_uri, state)
-SELECT $1::uuid, $2, $3::timestamptz, $4::text, json_agg(l)
+INSERT INTO acl_audit(
+       uuid, type, updated,
+       updater_uri, state, language
+)
+SELECT
+       $1::uuid, $2, $3::timestamptz,
+       $4::text, json_agg(l), $5::text
 FROM (
        SELECT uri, permissions
        FROM acl
@@ -1603,6 +1617,7 @@ type InsertACLAuditEntryParams struct {
 	Type       pgtype.Text
 	Updated    pgtype.Timestamptz
 	UpdaterUri string
+	Language   string
 }
 
 func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEntryParams) error {
@@ -1611,15 +1626,18 @@ func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEnt
 		arg.Type,
 		arg.Updated,
 		arg.UpdaterUri,
+		arg.Language,
 	)
 	return err
 }
 
 const insertDeleteRecord = `-- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
-       uuid, uri, type, version, created, creator_uri, meta
+       uuid, uri, type, version, created, creator_uri, meta,
+       main_doc, language
 ) VALUES(
-       $1, $2, $3, $4, $5, $6, $7
+       $1, $2, $3, $4, $5, $6, $7,
+       $8, $9
 ) RETURNING id
 `
 
@@ -1631,6 +1649,8 @@ type InsertDeleteRecordParams struct {
 	Created    pgtype.Timestamptz
 	CreatorUri string
 	Meta       []byte
+	MainDoc    pgtype.UUID
+	Language   pgtype.Text
 }
 
 func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecordParams) (int64, error) {
@@ -1642,6 +1662,8 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 		arg.Created,
 		arg.CreatorUri,
 		arg.Meta,
+		arg.MainDoc,
+		arg.Language,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -1690,7 +1712,7 @@ INSERT INTO document_status(
 type InsertDocumentStatusParams struct {
 	UUID       uuid.UUID
 	Name       string
-	CurrentID  int64
+	ID         int64
 	Version    int64
 	Created    pgtype.Timestamptz
 	CreatorUri string
@@ -1701,7 +1723,7 @@ func (q *Queries) InsertDocumentStatus(ctx context.Context, arg InsertDocumentSt
 	_, err := q.db.Exec(ctx, insertDocumentStatus,
 		arg.UUID,
 		arg.Name,
-		arg.CurrentID,
+		arg.ID,
 		arg.Version,
 		arg.Created,
 		arg.CreatorUri,

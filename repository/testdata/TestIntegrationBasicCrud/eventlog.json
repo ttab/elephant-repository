@@ -7,7 +7,8 @@
       "timestamp": "2023-04-19T08:45:40+02:00",
       "version": 1,
       "updater_uri": "user://test/testintegrationbasiccrud",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 2,
@@ -24,7 +25,8 @@
         }
       ],
       "updater_uri": "user://test/testintegrationbasiccrud",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 3,
@@ -33,7 +35,8 @@
       "timestamp": "2023-04-19T08:45:40+02:00",
       "version": 2,
       "updater_uri": "user://test/testintegrationbasiccrud",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 4,
@@ -41,7 +44,8 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-04-19T08:45:40+02:00",
       "updater_uri": "user://test/testintegrationbasiccrud",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     }
   ]
 }
