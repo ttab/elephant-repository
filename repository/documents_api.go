@@ -1008,8 +1008,6 @@ func (a *DocumentsService) buildUpdateRequest(
 	docUUID := uuid.MustParse(req.Uuid)
 	updater := auth.Claims.Subject
 	updated := time.Now()
-	isMeta := req.UpdateMetaDocument ||
-		(req.Document != nil && isMetaURI(req.Document.Uri))
 
 	if req.ImportDirective != nil {
 		id := req.ImportDirective
@@ -1085,6 +1083,9 @@ func (a *DocumentsService) buildUpdateRequest(
 		up.Document.URI = uri
 		up.MainDocument = &docUUID
 	}
+
+	isMeta := req.UpdateMetaDocument ||
+		(req.Document != nil && isMetaURI(req.Document.Uri))
 
 	if !isMeta {
 		for _, e := range req.Acl {
