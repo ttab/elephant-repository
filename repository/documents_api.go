@@ -1155,7 +1155,7 @@ func (a *DocumentsService) verifyUpdateRequest(
 		(req.Document != nil && isMetaURI(req.Document.Uri))
 
 	if isMeta {
-		err := a.verifyMetaDocumentUpdate(ctx, auth, req, docUUID)
+		err := a.verifyMetaDocumentUpdate(ctx, req, docUUID)
 		if err != nil {
 			return err
 		}
@@ -1294,7 +1294,6 @@ func (a *DocumentsService) verifyUpdateRequest(
 
 func (a *DocumentsService) verifyMetaDocumentUpdate(
 	ctx context.Context,
-	auth *elephantine.AuthInfo,
 	req *repository.UpdateRequest,
 	docUUID uuid.UUID,
 ) error {
