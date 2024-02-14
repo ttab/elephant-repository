@@ -1263,6 +1263,8 @@ func (a *DocumentsService) verifyUpdateRequest(
 	}
 
 	if isMeta {
+		// For meta documents the access check is made against the main
+		// document, as meta documents don't have ACLs of their own.
 		mainUUID, err := parseMetaURI(req.Document.Uri)
 		if err != nil {
 			return twirp.InvalidArgumentError(
