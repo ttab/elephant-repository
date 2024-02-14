@@ -1172,10 +1172,16 @@ func (a *DocumentsService) verifyUpdateRequest(
 
 			req.Document.Uri = mURI
 		case isMeta && req.Document.Uri != "":
-			_, err := parseMetaURI(req.Document.Uri)
+			mainDocUUID, err := parseMetaURI(req.Document.Uri)
 			if err != nil {
 				return twirp.InvalidArgumentError(
 					"document.uri", err.Error())
+			}
+
+			metaUUID, _ := metaIdentity(mainDocUUID)
+			if docUUID != metaUUID {
+				return twirp.InvalidArgumentError(
+					"uid", fmt.Sprintf("uuid must be %s based on the meta URI", metaUUID))
 			}
 		case req.Document.Uri == "":
 			return twirp.RequiredArgumentError("document.uri")

@@ -909,7 +909,31 @@ func (s *PGDocStore) Update(
 			state.Type = info.Info.Type
 		}
 
+		//nolint:nestif
 		if state.Exists && state.Doc != nil {
+			if isMetaURI(state.Doc.URI) && info.MainDoc == nil {
+				return nil, DocStoreErrorf(ErrCodeBadRequest,
+					"cannot change a normal document into a meta document")
+			}
+
+			if info.MainDoc != nil {
+				expectUUID, expectURI := metaIdentity(*info.MainDoc)
+
+				if state.UUID != expectUUID {
+					return nil, DocStoreErrorf(ErrCodeBadRequest,
+						"expected meta document to have the UUID %s based on the main document UUID %s",
+						expectUUID, *info.MainDoc,
+					)
+				}
+
+				if state.Doc.URI != expectURI {
+					return nil, DocStoreErrorf(ErrCodeBadRequest,
+						"expected meta document to have the URI %s based on the main document UUID %s",
+						expectURI, *info.MainDoc,
+					)
+				}
+			}
+
 			if state.Doc.Type != state.Type {
 				return nil, DocStoreErrorf(ErrCodeBadRequest,
 					"cannot change the document type from %q",

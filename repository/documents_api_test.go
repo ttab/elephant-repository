@@ -440,6 +440,10 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		"14f4ba22-f7c0-46bc-9c18-73f845a4f801", "article://test/a",
 	)
 
+	docB := baseDocument(
+		"92ebfc38-5a1e-40c3-b316-3d06f488526e", "article://test/b",
+	)
+
 	metaDoc := newsdoc.Document{
 		Type:  "test/metadata",
 		Title: "A meta document",
@@ -457,7 +461,8 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Document:           &metaDoc,
 		UpdateMetaDocument: true,
 	})
-	test.MustNot(t, err, "create a meta doc for a document that doesn't exist")
+	isTwirpError(t, err, "create a meta doc for a document that doesn't exist",
+		twirp.FailedPrecondition)
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docA.Uuid,
@@ -466,18 +471,26 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	test.Must(t, err, "create a basic article")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docB.Uuid,
+		Document: docB,
+	})
+	test.Must(t, err, "create a second basic article")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:               docA.Uuid,
 		IfMatch:            -1,
 		Document:           &metaDoc,
 		UpdateMetaDocument: true,
 	})
-	test.MustNot(t, err, "create a meta doc for a document that doesn't have a configured meta type")
+	isTwirpError(t, err, "create a meta doc for a document that doesn't have a configured meta type",
+		twirp.InvalidArgument)
 
 	_, err = schema.RegisterMetaTypeUse(ctx, &repository.RegisterMetaTypeUseRequest{
 		MainType: "core/article",
 		MetaType: "test/metadata",
 	})
-	test.MustNot(t, err, "register the meta type for use before registering the type itself")
+	isTwirpError(t, err, "register the meta type for use before registering the type itself",
+		twirp.InvalidArgument)
 
 	_, err = schema.RegisterMetaType(ctx, &repository.RegisterMetaTypeRequest{
 		Type:      "test/metadata",
@@ -534,7 +547,8 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Document:           &metaDoc,
 		UpdateMetaDocument: true,
 	})
-	test.MustNot(t, err, "create a meta doc for a meta doc")
+	isTwirpError(t, err, "must not create a meta doc for a meta doc",
+		twirp.InvalidArgument)
 
 	mDocV1, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: mRes.Uuid,
@@ -583,7 +597,21 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		IfMatch:  2,
 		Document: sneakyDoc,
 	})
-	test.MustNot(t, err, "be able to change meta doc into a normal doc")
+	isTwirpError(t, err, "must not be able to change meta doc into a normal doc",
+		twirp.InvalidArgument)
+
+	sneakyDoc2 := proto.Clone(docA).(*newsdoc.Document)
+
+	sneakyDoc2.Uri = fmt.Sprintf("system://%s/meta", docB.Uuid)
+	sneakyDoc2.Type = "test/metadata"
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docA.Uuid,
+		IfMatch:  1,
+		Document: sneakyDoc2,
+	})
+	isTwirpError(t, err, "must not be able to change a normal doc into a meta doc",
+		twirp.InvalidArgument)
 
 	docWithMetaDoc, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:         docA.Uuid,
@@ -660,29 +688,36 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	_, err = readAllClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docA.Uuid,
 	})
-	isTwirpError(t, err, twirp.NotFound, twirp.FailedPrecondition)
+	isTwirpError(t, err, "get article", twirp.NotFound, twirp.FailedPrecondition)
 
 	_, err = readAllClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: mDocV1.Document.Uuid,
 	})
-	isTwirpError(t, err, twirp.NotFound, twirp.FailedPrecondition)
+	isTwirpError(t, err, "get meta doc", twirp.NotFound, twirp.FailedPrecondition)
 }
 
 func isTwirpError(
-	t *testing.T, err error, code ...twirp.ErrorCode,
+	t *testing.T, err error, message string, code ...twirp.ErrorCode,
 ) {
 	t.Helper()
+
+	if err == nil {
+		t.Fatalf("failed: %s: expected one of the error codes %q, didn't get an error",
+			message, code)
+	}
 
 	var tErr twirp.Error
 
 	ok := errors.As(err, &tErr)
 
 	if !ok || !slices.Contains(code, tErr.Code()) {
-		t.Fatalf("failed: expected one of the error codes %q: got %v", code, err)
+		t.Fatalf("failed: %s: expected one of the error codes %q: got %v",
+			message, code, err)
 	}
 
 	if testing.Verbose() {
-		t.Logf("success: got a %q error", code)
+		t.Logf("success: %s: got a %q error: %v",
+			message, code, err)
 	}
 }
 
