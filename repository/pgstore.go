@@ -1404,6 +1404,7 @@ func (err StatusRuleError) Error() string {
 type DocumentMetaType struct {
 	MetaType       string
 	IsMetaDocument bool
+	Exists         bool
 }
 
 // GetMetaTypeForDocument implements DocStore.
@@ -1420,6 +1421,7 @@ func (s *PGDocStore) GetMetaTypeForDocument(
 	return DocumentMetaType{
 		MetaType:       t.MetaType,
 		IsMetaDocument: t.IsMetaDoc.Bool,
+		Exists:         true,
 	}, nil
 }
 

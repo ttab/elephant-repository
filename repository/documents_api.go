@@ -1145,22 +1145,33 @@ func (a *DocumentsService) verifyUpdateRequest(
 			"no import directive permission")
 	}
 
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return err
+	}
+
 	isMeta := req.UpdateMetaDocument ||
 		(req.Document != nil && isMetaURI(req.Document.Uri))
 
-	if isMeta && len(req.Acl) != 0 {
-		return twirp.InvalidArgumentError(
-			"acl", "cannot set ALCs on a meta document")
-	}
+	if isMeta {
+		err := a.verifyMetaDocumentUpdate(ctx, auth, req, docUUID)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Load the meta type for the document as we want to check that
+		// this update doesn't change a document from a meta document to
+		// a normal document.
+		mt, err := a.store.GetMetaTypeForDocument(ctx, docUUID)
+		if err != nil {
+			return twirp.InternalErrorf(
+				"could not get meta type for document: %w", err)
+		}
 
-	if isMeta && len(req.Status) != 0 {
-		return twirp.InvalidArgumentError(
-			"status", "cannot set statuses on a meta document")
-	}
-
-	if isMeta && req.IfMatch == 0 {
-		return twirp.InvalidArgumentError(
-			"if_match", "is required, updates of the meta document must use optimistic locks")
+		if mt.IsMetaDocument {
+			return twirp.InvalidArgument.Error(
+				"meta documents cannot be turned into normal documents")
+		}
 	}
 
 	if req.Document == nil && len(req.Status) == 0 && len(req.Acl) == 0 {
@@ -1174,12 +1185,6 @@ func (a *DocumentsService) verifyUpdateRequest(
 			"cannot be less than -1")
 	}
 
-	docUUID, err := validateRequiredUUIDParam(req.Uuid)
-	if err != nil {
-		return err
-	}
-
-	//nolint:nestif
 	if req.Document != nil {
 		if req.Document.Uuid == "" {
 			req.Document.Uuid = docUUID.String()
@@ -1188,29 +1193,7 @@ func (a *DocumentsService) verifyUpdateRequest(
 				"the document must have the same UUID as the request uuid")
 		}
 
-		switch {
-		case req.UpdateMetaDocument:
-			mURI := metaURI(docUUID)
-
-			if req.Document.Uri != "" && req.Document.Uri != mURI {
-				return twirp.InvalidArgumentError(
-					"document.uri", fmt.Sprintf("document URI must be %q or empty", mURI))
-			}
-
-			req.Document.Uri = mURI
-		case isMeta && req.Document.Uri != "":
-			mainDocUUID, err := parseMetaURI(req.Document.Uri)
-			if err != nil {
-				return twirp.InvalidArgumentError(
-					"document.uri", err.Error())
-			}
-
-			metaUUID, _ := metaIdentity(mainDocUUID)
-			if docUUID != metaUUID {
-				return twirp.InvalidArgumentError(
-					"uid", fmt.Sprintf("uuid must be %s based on the meta URI", metaUUID))
-			}
-		case req.Document.Uri == "":
+		if req.Document.Uri == "" {
 			return twirp.RequiredArgumentError("document.uri")
 		}
 
@@ -1279,40 +1262,87 @@ func (a *DocumentsService) verifyUpdateRequest(
 		}
 	}
 
-	mainUUID := docUUID
-
-	// If we're updating a meta document we should check against the main
-	// document ACL.
-	if req.Document != nil && isMetaURI(req.Document.Uri) {
-		id, err := parseMetaURI(req.Document.Uri)
+	if isMeta {
+		mainUUID, err := parseMetaURI(req.Document.Uri)
 		if err != nil {
 			return twirp.InvalidArgumentError(
 				"document.uri", err.Error())
 		}
 
-		mainUUID = id
+		err = a.accessCheck(ctx, auth, mainUUID,
+			WritePermission,
+			MetaWritePermission,
+		)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Check for ACL write permissions, but allow the write if no
+		// document is found, as we want to allow the creation of new
+		// documents.
+		err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+		if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
+			return err
+		}
 	}
 
-	permissions := make([]Permission, 1, 2)
+	return nil
+}
 
-	permissions[0] = WritePermission
+func (a *DocumentsService) verifyMetaDocumentUpdate(
+	ctx context.Context,
+	auth *elephantine.AuthInfo,
+	req *repository.UpdateRequest,
+	docUUID uuid.UUID,
+) error {
+	directUpdate := !req.UpdateMetaDocument
 
-	if isMeta {
-		permissions = append(permissions, MetaWritePermission)
+	if len(req.Acl) != 0 {
+		return twirp.InvalidArgumentError(
+			"acl", "cannot set ALCs on a meta document")
 	}
 
-	// Check for ACL write permissions, but allow the write if no
-	// document is found, as we want to allow the creation of new
-	// documents.
-	err = a.accessCheck(ctx, auth, mainUUID, permissions...)
+	if len(req.Status) != 0 {
+		return twirp.InvalidArgumentError(
+			"status", "cannot set statuses on a meta document")
+	}
 
-	switch {
-	case isMeta && elephantine.IsTwirpErrorCode(err, twirp.NotFound):
-		return twirp.FailedPrecondition.Error(
-			"main document doesn't exist")
-	case elephantine.IsTwirpErrorCode(err, twirp.NotFound):
-	case err != nil:
-		return err
+	if req.IfMatch == 0 {
+		return twirp.InvalidArgumentError(
+			"if_match", "is required, updates of the meta document must use optimistic locks")
+	}
+
+	if req.Document == nil {
+		return twirp.RequiredArgumentError("document")
+	}
+
+	mainUUID := docUUID
+
+	if directUpdate {
+		main, err := parseMetaURI(req.Document.Uri)
+		if err != nil {
+			return twirp.InvalidArgumentError(
+				"document.uri", err.Error())
+		}
+
+		mainUUID = main
+
+		metaUUID, _ := metaIdentity(mainUUID)
+		if docUUID != metaUUID {
+			return twirp.InvalidArgumentError(
+				"uid",
+				fmt.Sprintf("uuid must be %s based on the meta URI", metaUUID))
+		}
+	} else {
+		mURI := metaURI(docUUID)
+
+		if req.Document.Uri != "" && req.Document.Uri != mURI {
+			return twirp.InvalidArgumentError(
+				"document.uri",
+				fmt.Sprintf("document URI must be %q or empty", mURI))
+		}
+
+		req.Document.Uri = mURI
 	}
 
 	mt, err := a.store.GetMetaTypeForDocument(ctx, mainUUID)
@@ -1321,24 +1351,24 @@ func (a *DocumentsService) verifyUpdateRequest(
 			"could not get meta type for document: %w", err)
 	}
 
-	if isMeta {
-		if mt.IsMetaDocument {
-			return twirp.InvalidArgumentError("update_meta_document",
-				"meta documents cannot have meta documents in turn")
-		}
+	if !mt.Exists {
+		return twirp.FailedPrecondition.Error(
+			"main document doesn't exist")
+	}
 
-		if mt.MetaType == "" {
-			return twirp.InvalidArgument.Error(
-				"document type doesn't have a configured meta document type")
-		}
+	if mt.IsMetaDocument {
+		return twirp.InvalidArgumentError("update_meta_document",
+			"meta documents cannot have meta documents in turn")
+	}
 
-		if req.Document != nil && req.Document.Type != mt.MetaType {
-			return twirp.InvalidArgumentError("document.type",
-				fmt.Sprintf("the meta document type has to be %q", mt.MetaType))
-		}
-	} else if mt.IsMetaDocument {
+	if mt.MetaType == "" {
 		return twirp.InvalidArgument.Error(
-			"meta documents cannot be turned into normal documents")
+			"document type doesn't have a configured meta document type")
+	}
+
+	if req.Document.Type != mt.MetaType {
+		return twirp.InvalidArgumentError("document.type",
+			fmt.Sprintf("the meta document type has to be %q", mt.MetaType))
 	}
 
 	return nil
