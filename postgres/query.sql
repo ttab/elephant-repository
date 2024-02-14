@@ -245,13 +245,13 @@ VALUES (@uuid, @uri, @permissions::text[])
 -- name: DropACL :exec
 DELETE FROM acl WHERE uuid = @uuid AND uri = @uri;
 
--- name: CheckPermission :one
+-- name: CheckPermissions :one
 SELECT (acl.uri IS NOT NULL) = true AS has_access
 FROM document AS d
      LEFT JOIN acl
           ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
           AND acl.uri = ANY(@uri::text[])
-          AND @permission::text = ANY(permissions)
+          AND @permissions::text[] && permissions
 WHERE d.uuid = @uuid;
 
 -- name: InsertACLAuditEntry :exec

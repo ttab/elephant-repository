@@ -30,7 +30,7 @@ type DocStore interface {
 		update []*UpdateRequest,
 	) ([]DocumentUpdate, error)
 	Delete(ctx context.Context, req DeleteRequest) error
-	CheckPermission(
+	CheckPermissions(
 		ctx context.Context, req CheckPermissionRequest,
 	) (CheckPermissionResult, error)
 	GetMetaTypeForDocument(
@@ -184,7 +184,7 @@ type RegisterSchemaRequest struct {
 type CheckPermissionRequest struct {
 	UUID        uuid.UUID
 	GranteeURIs []string
-	Permission  Permission
+	Permissions []Permission
 }
 
 type CheckPermissionResult int

@@ -7,14 +7,26 @@ import (
 
 	"github.com/ttab/elephantine"
 	"github.com/twitchtv/twirp"
+	"golang.org/x/exp/slices"
 )
 
 type Permission string
 
 const (
-	ReadPermission  Permission = "r"
-	WritePermission Permission = "w"
+	ReadPermission      Permission = "r"
+	WritePermission     Permission = "w"
+	MetaWritePermission Permission = "m"
 )
+
+var vailidPermissions = []Permission{
+	ReadPermission,
+	WritePermission,
+	MetaWritePermission,
+}
+
+func IsValidPermission(p Permission) bool {
+	return slices.Contains(vailidPermissions, p)
+}
 
 func (p Permission) Name() string {
 	switch p {
@@ -22,26 +34,29 @@ func (p Permission) Name() string {
 		return "read"
 	case WritePermission:
 		return "write"
+	case MetaWritePermission:
+		return "meta write"
 	}
 
 	return strconv.Quote(string(p))
 }
 
 const (
-	ScopeDocumentAdmin   = "doc_admin"
-	ScopeDocumentReadAll = "doc_read_all"
-	ScopeDocumentRead    = "doc_read"
-	ScopeDocumentDelete  = "doc_delete"
-	ScopeDocumentWrite   = "doc_write"
-	ScopeDocumentImport  = "doc_import"
-	ScopeEventlogRead    = "eventlog_read"
-	ScopeMetricsAdmin    = "metrics_admin"
-	ScopeMetricsWrite    = "metrics_write"
-	ScopeReportAdmin     = "report_admin"
-	ScopeReportRun       = "report_run"
-	ScopeSchemaAdmin     = "schema_admin"
-	ScopeSchemaRead      = "schema_read"
-	ScopeWorkflowAdmin   = "workflow_admin"
+	ScopeDocumentAdmin        = "doc_admin"
+	ScopeDocumentReadAll      = "doc_read_all"
+	ScopeDocumentRead         = "doc_read"
+	ScopeDocumentDelete       = "doc_delete"
+	ScopeDocumentWrite        = "doc_write"
+	ScopeMetaDocumentWriteAll = "meta_doc_write_all"
+	ScopeDocumentImport       = "doc_import"
+	ScopeEventlogRead         = "eventlog_read"
+	ScopeMetricsAdmin         = "metrics_admin"
+	ScopeMetricsWrite         = "metrics_write"
+	ScopeReportAdmin          = "report_admin"
+	ScopeReportRun            = "report_run"
+	ScopeSchemaAdmin          = "schema_admin"
+	ScopeSchemaRead           = "schema_read"
+	ScopeWorkflowAdmin        = "workflow_admin"
 )
 
 func Subscope(scope string, resource ...string) string {

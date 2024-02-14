@@ -436,6 +436,9 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
+	wMetaClient := tc.DocumentsClient(t,
+		itest.Claims(t, "wmc", "meta_doc_write_all"))
+
 	docA := baseDocument(
 		"14f4ba22-f7c0-46bc-9c18-73f845a4f801", "article://test/a",
 	)
@@ -470,11 +473,29 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	})
 	test.Must(t, err, "create a basic article")
 
+	_, err = wMetaClient.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docB.Uuid,
+		Document: docB,
+	})
+	isTwirpError(t, err,
+		"client with metadata write all must not be able to create normal documents",
+		twirp.PermissionDenied,
+	)
+
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docB.Uuid,
 		Document: docB,
 	})
 	test.Must(t, err, "create a second basic article")
+
+	_, err = wMetaClient.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docB.Uuid,
+		Document: docB,
+	})
+	isTwirpError(t, err,
+		"client with metadata write all must not be able to update normal documents",
+		twirp.PermissionDenied,
+	)
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:               docA.Uuid,
@@ -581,7 +602,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	mDocV2 := proto.Clone(mDocV1.Document).(*newsdoc.Document)
 	mDocV2.Title = "I am the the second"
 
-	_, err = client.Update(ctx, &repository.UpdateRequest{
+	_, err = wMetaClient.Update(ctx, &repository.UpdateRequest{
 		Uuid:     mRes.Uuid,
 		IfMatch:  1,
 		Document: mDocV2,

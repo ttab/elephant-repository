@@ -57,24 +57,24 @@ func (q *Queries) CheckMetaDocumentType(ctx context.Context, argUuid uuid.UUID) 
 	return i, err
 }
 
-const checkPermission = `-- name: CheckPermission :one
+const checkPermissions = `-- name: CheckPermissions :one
 SELECT (acl.uri IS NOT NULL) = true AS has_access
 FROM document AS d
      LEFT JOIN acl
           ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
           AND acl.uri = ANY($1::text[])
-          AND $2::text = ANY(permissions)
+          AND $2::text[] && permissions
 WHERE d.uuid = $3
 `
 
-type CheckPermissionParams struct {
-	URI        []string
-	Permission string
-	UUID       uuid.UUID
+type CheckPermissionsParams struct {
+	URI         []string
+	Permissions []string
+	UUID        uuid.UUID
 }
 
-func (q *Queries) CheckPermission(ctx context.Context, arg CheckPermissionParams) (bool, error) {
-	row := q.db.QueryRow(ctx, checkPermission, arg.URI, arg.Permission, arg.UUID)
+func (q *Queries) CheckPermissions(ctx context.Context, arg CheckPermissionsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, checkPermissions, arg.URI, arg.Permissions, arg.UUID)
 	var has_access bool
 	err := row.Scan(&has_access)
 	return has_access, err

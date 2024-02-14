@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -753,21 +754,39 @@ func (a *DocumentsService) GetHistory(
 func (a *DocumentsService) accessCheck(
 	ctx context.Context,
 	auth *elephantine.AuthInfo, docUUID uuid.UUID,
-	permission Permission,
+	permissions ...Permission,
 ) error {
 	if auth.Claims.HasAnyScope(ScopeDocumentAdmin) {
 		return nil
 	}
 
-	if permission == ReadPermission && auth.Claims.HasScope(ScopeDocumentReadAll) {
+	if slices.Contains(permissions, ReadPermission) &&
+		auth.Claims.HasScope(ScopeDocumentReadAll) {
 		return nil
 	}
 
-	access, err := a.store.CheckPermission(ctx, CheckPermissionRequest{
+	if slices.Contains(permissions, MetaWritePermission) &&
+		auth.Claims.HasScope(ScopeMetaDocumentWriteAll) {
+		return nil
+	}
+
+	// Guard against ScopeMetaDocumentWriteAll giving the permission to
+	// create normal documents.
+	normalWrite := !slices.Contains(permissions, MetaWritePermission) &&
+		slices.Contains(permissions, WritePermission)
+	if normalWrite {
+		_, err := RequireAnyScope(ctx,
+			ScopeDocumentWrite, ScopeDocumentAdmin)
+		if err != nil {
+			return err
+		}
+	}
+
+	access, err := a.store.CheckPermissions(ctx, CheckPermissionRequest{
 		UUID: docUUID,
 		GranteeURIs: append([]string{auth.Claims.Subject},
 			auth.Claims.Units...),
-		Permission: permission,
+		Permissions: permissions,
 	})
 	if err != nil {
 		return twirp.InternalErrorf(
@@ -778,8 +797,15 @@ func (a *DocumentsService) accessCheck(
 	case PermissionCheckNoSuchDocument:
 		return twirp.NotFoundError("no such document")
 	case PermissionCheckDenied:
+		names := make([]string, len(permissions))
+
+		for i := range permissions {
+			names[i] = permissions[i].Name()
+		}
+
 		return twirp.PermissionDenied.Errorf(
-			"no %s permission for the document", permission.Name())
+			"no %s permission for the document",
+			strings.Join(names, " or "))
 	case PermissionCheckAllowed:
 	}
 
@@ -1092,6 +1118,7 @@ func (a *DocumentsService) verifyUpdateRequests(
 ) (*elephantine.AuthInfo, error) {
 	auth, err := RequireAnyScope(ctx,
 		ScopeDocumentWrite, ScopeDocumentAdmin,
+		ScopeMetaDocumentWriteAll,
 	)
 	if err != nil {
 		return nil, err
@@ -1244,13 +1271,10 @@ func (a *DocumentsService) verifyUpdateRequest(
 		}
 
 		for _, p := range e.Permissions {
-			// TODO: Should be validated against a list of
-			// acceptable permissions, it's not like
-			// []string{"z",".","k"} is valid.
-			if len(p) != 1 {
+			if !IsValidPermission(Permission(p)) {
 				return twirp.InvalidArgumentError(
 					fmt.Sprintf("acl.%d.permissions", i),
-					"a permission must be a single character")
+					fmt.Sprintf("%q is not a valid permission", p))
 			}
 		}
 	}
@@ -1269,10 +1293,18 @@ func (a *DocumentsService) verifyUpdateRequest(
 		mainUUID = id
 	}
 
-	// Check for ACL write permission, but allow the write if no
+	permissions := make([]Permission, 1, 2)
+
+	permissions[0] = WritePermission
+
+	if isMeta {
+		permissions = append(permissions, MetaWritePermission)
+	}
+
+	// Check for ACL write permissions, but allow the write if no
 	// document is found, as we want to allow the creation of new
 	// documents.
-	err = a.accessCheck(ctx, auth, mainUUID, WritePermission)
+	err = a.accessCheck(ctx, auth, mainUUID, permissions...)
 
 	switch {
 	case isMeta && elephantine.IsTwirpErrorCode(err, twirp.NotFound):

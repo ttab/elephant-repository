@@ -820,14 +820,20 @@ func (s *PGDocStore) getFullDocumentHeads(
 }
 
 // CheckPermission implements DocStore.
-func (s *PGDocStore) CheckPermission(
+func (s *PGDocStore) CheckPermissions(
 	ctx context.Context, req CheckPermissionRequest,
 ) (CheckPermissionResult, error) {
-	access, err := s.reader.CheckPermission(ctx,
-		postgres.CheckPermissionParams{
-			UUID:       req.UUID,
-			URI:        req.GranteeURIs,
-			Permission: string(req.Permission),
+	ps := make([]string, len(req.Permissions))
+
+	for i := range req.Permissions {
+		ps[i] = string(req.Permissions[i])
+	}
+
+	access, err := s.reader.CheckPermissions(ctx,
+		postgres.CheckPermissionsParams{
+			UUID:        req.UUID,
+			URI:         req.GranteeURIs,
+			Permissions: ps,
 		})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PermissionCheckNoSuchDocument, nil
