@@ -322,11 +322,13 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 
 	go s.archived.Listen(ctx, archived, func(e ArchivedEvent) bool {
 		_, ok := deleteDocs[e.UUID]
+
 		return ok
 	})
 
 	for {
 		var remaining int64
+
 		for id := range deleteDocs {
 			n, err := q.GetDocumentUnarchivedCount(ctx, id)
 			if err != nil {

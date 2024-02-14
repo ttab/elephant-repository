@@ -677,8 +677,8 @@ func isTwirpError(
 
 	ok := errors.As(err, &tErr)
 
-	if !ok || slices.Contains(code, tErr.Code()) {
-		t.Fatalf("failed: expected a %q error: got %v", code, err)
+	if !ok || !slices.Contains(code, tErr.Code()) {
+		t.Fatalf("failed: expected one of the error codes %q: got %v", code, err)
 	}
 
 	if testing.Verbose() {
