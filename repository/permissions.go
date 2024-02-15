@@ -2,12 +2,12 @@ package repository
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/ttab/elephantine"
 	"github.com/twitchtv/twirp"
-	"golang.org/x/exp/slices"
 )
 
 type Permission string
