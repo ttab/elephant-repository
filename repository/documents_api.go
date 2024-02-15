@@ -1301,7 +1301,7 @@ func (a *DocumentsService) verifyMetaDocumentUpdate(
 
 	if len(req.Acl) != 0 {
 		return twirp.InvalidArgumentError(
-			"acl", "cannot set ALCs on a meta document")
+			"acl", "cannot set ACLs on a meta document")
 	}
 
 	if len(req.Status) != 0 {
