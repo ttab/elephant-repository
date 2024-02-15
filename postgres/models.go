@@ -23,6 +23,7 @@ type AclAudit struct {
 	State      []byte
 	Archived   bool
 	Type       pgtype.Text
+	Language   pgtype.Text
 }
 
 type ActiveSchema struct {
@@ -39,6 +40,8 @@ type DeleteRecord struct {
 	Created    pgtype.Timestamptz
 	CreatorUri string
 	Meta       []byte
+	MainDoc    pgtype.UUID
+	Language   pgtype.Text
 }
 
 type Document struct {
@@ -51,6 +54,8 @@ type Document struct {
 	UpdaterUri     string
 	CurrentVersion int64
 	Deleting       bool
+	MainDoc        pgtype.UUID
+	Language       pgtype.Text
 }
 
 type DocumentLink struct {
@@ -78,15 +83,16 @@ type DocumentSchema struct {
 }
 
 type DocumentStatus struct {
-	UUID       uuid.UUID
-	Name       string
-	ID         int64
-	Version    int64
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Meta       []byte
-	Archived   bool
-	Signature  pgtype.Text
+	UUID           uuid.UUID
+	Name           string
+	ID             int64
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           []byte
+	Archived       bool
+	Signature      pgtype.Text
+	MetaDocVersion pgtype.Int8
 }
 
 type DocumentVersion struct {
@@ -101,16 +107,19 @@ type DocumentVersion struct {
 }
 
 type Eventlog struct {
-	ID        int64
-	Event     string
-	UUID      uuid.UUID
-	Timestamp pgtype.Timestamptz
-	Type      pgtype.Text
-	Version   pgtype.Int8
-	Status    pgtype.Text
-	StatusID  pgtype.Int8
-	Acl       []byte
-	Updater   pgtype.Text
+	ID          int64
+	Event       string
+	UUID        uuid.UUID
+	Timestamp   pgtype.Timestamptz
+	Type        pgtype.Text
+	Version     pgtype.Int8
+	Status      pgtype.Text
+	StatusID    pgtype.Int8
+	Acl         []byte
+	Updater     pgtype.Text
+	MainDoc     pgtype.UUID
+	Language    pgtype.Text
+	OldLanguage pgtype.Text
 }
 
 type Eventsink struct {
@@ -124,6 +133,16 @@ type JobLock struct {
 	Holder    string
 	Touched   pgtype.Timestamptz
 	Iteration int64
+}
+
+type MetaType struct {
+	MetaType         string
+	ExclusiveForMeta bool
+}
+
+type MetaTypeUse struct {
+	MainType string
+	MetaType string
 }
 
 type Metric struct {
@@ -210,6 +229,7 @@ type StatusHead struct {
 	UpdaterUri string
 	Type       pgtype.Text
 	Version    pgtype.Int8
+	Language   pgtype.Text
 }
 
 type StatusRule struct {

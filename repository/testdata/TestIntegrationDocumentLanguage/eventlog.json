@@ -1,0 +1,58 @@
+{
+  "items": [
+    {
+      "event": "document",
+      "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
+      "version": 1,
+      "updater_uri": "user://test/testintegrationdocumentlanguage",
+      "type": "core/article",
+      "language": "en-GB"
+    },
+    {
+      "event": "acl",
+      "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
+      "acl": [
+        {
+          "uri": "user://test/testintegrationdocumentlanguage",
+          "permissions": [
+            "r",
+            "w"
+          ]
+        }
+      ],
+      "updater_uri": "user://test/testintegrationdocumentlanguage",
+      "type": "core/article",
+      "language": "en-GB"
+    },
+    {
+      "event": "status",
+      "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
+      "version": 1,
+      "status": "usable",
+      "status_id": 1,
+      "updater_uri": "user://test/testintegrationdocumentlanguage",
+      "type": "core/article",
+      "language": "en-GB"
+    },
+    {
+      "event": "document",
+      "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
+      "version": 2,
+      "updater_uri": "user://test/testintegrationdocumentlanguage",
+      "type": "core/article",
+      "language": "en-US",
+      "old_language": "en-GB"
+    },
+    {
+      "event": "status",
+      "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
+      "version": 2,
+      "status": "usable",
+      "status_id": 2,
+      "updater_uri": "user://test/testintegrationdocumentlanguage",
+      "type": "core/article",
+      "language": "en-US",
+      "old_language": "en-GB"
+    }
+  ]
+}

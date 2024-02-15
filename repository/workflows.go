@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/expr-lang/expr/vm"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
-	"golang.org/x/exp/slices"
 )
 
 type Workflows struct {

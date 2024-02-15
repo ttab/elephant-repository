@@ -33,16 +33,19 @@ const (
 )
 
 type Event struct {
-	ID        int64      `json:"id"`
-	Event     EventType  `json:"event"`
-	UUID      uuid.UUID  `json:"uuid"`
-	Timestamp time.Time  `json:"timestamp"`
-	Updater   string     `json:"updater"`
-	Type      string     `json:"type,omitempty"`
-	Version   int64      `json:"version,omitempty"`
-	StatusID  int64      `json:"status_id,omitempty"`
-	Status    string     `json:"status,omitempty"`
-	ACL       []ACLEntry `json:"acl,omitempty"`
+	ID           int64      `json:"id"`
+	Event        EventType  `json:"event"`
+	UUID         uuid.UUID  `json:"uuid"`
+	Timestamp    time.Time  `json:"timestamp"`
+	Updater      string     `json:"updater"`
+	Type         string     `json:"type"`
+	Language     string     `json:"language"`
+	OldLanguage  string     `json:"old_language,omitempty"`
+	MainDocument *uuid.UUID `json:"main_document,omitempty"`
+	Version      int64      `json:"version,omitempty"`
+	StatusID     int64      `json:"status_id,omitempty"`
+	Status       string     `json:"status,omitempty"`
+	ACL          []ACLEntry `json:"acl,omitempty"`
 }
 
 type replicationErrorCode string
@@ -540,12 +543,10 @@ func parseDeleteMessage(msg replMessage) (Event, error) {
 		Event: TypeDeleteDocument,
 	}
 
-	docUUID, ok := msg.NewValues["uuid"].([16]uint8)
-	if !ok {
-		return Event{}, fmt.Errorf("failed to extract uuid")
+	err := readMessageColumns(msg, &evt)
+	if err != nil {
+		return Event{}, err
 	}
-
-	evt.UUID = docUUID
 
 	created, ok := msg.NewValues["created"].(time.Time)
 	if !ok {
@@ -561,11 +562,6 @@ func parseDeleteMessage(msg replMessage) (Event, error) {
 
 	evt.Updater = creator
 
-	docType, ok := msg.NewValues["type"].(string)
-	if ok {
-		evt.Type = docType
-	}
-
 	return evt, nil
 }
 
@@ -574,12 +570,10 @@ func parseACLMessage(msg replMessage) (Event, error) {
 		Event: TypeACLUpdate,
 	}
 
-	docUUID, ok := msg.NewValues["uuid"].([16]uint8)
-	if !ok {
-		return Event{}, fmt.Errorf("failed to extract uuid")
+	err := readMessageColumns(msg, &evt)
+	if err != nil {
+		return Event{}, err
 	}
-
-	evt.UUID = docUUID
 
 	updated, ok := msg.NewValues["updated"].(time.Time)
 	if !ok {
@@ -594,11 +588,6 @@ func parseACLMessage(msg replMessage) (Event, error) {
 	}
 
 	evt.Updater = updater
-
-	docType, ok := msg.NewValues["type"].(string)
-	if ok {
-		evt.Type = docType
-	}
 
 	stateSlice, ok := msg.NewValues["state"].([]interface{})
 	if !ok {
@@ -647,6 +636,11 @@ func parseStatusHeadsMessage(log *slog.Logger, msg replMessage) (Event, error) {
 		Event: TypeNewStatus,
 	}
 
+	err := readMessageColumns(msg, &evt)
+	if err != nil {
+		return Event{}, err
+	}
+
 	id, ok := msg.NewValues["current_id"].(int64)
 	if !ok {
 		return Event{}, fmt.Errorf("failed to extract current id")
@@ -686,11 +680,6 @@ func parseStatusHeadsMessage(log *slog.Logger, msg replMessage) (Event, error) {
 
 	evt.Updater = updater
 
-	docType, ok := msg.NewValues["type"].(string)
-	if ok {
-		evt.Type = docType
-	}
-
 	docVersion, ok := msg.NewValues["version"].(int64)
 	if ok {
 		evt.Version = docVersion
@@ -703,19 +692,50 @@ func parseStatusHeadsMessage(log *slog.Logger, msg replMessage) (Event, error) {
 
 	evt.Status = name
 
+	return evt, nil
+}
+
+func readMessageColumns(msg replMessage, evt *Event) error {
 	docUUID, ok := msg.NewValues["uuid"].([16]uint8)
 	if !ok {
-		return Event{}, fmt.Errorf("failed to extract uuid")
+		return fmt.Errorf("failed to extract uuid")
 	}
 
 	evt.UUID = docUUID
 
-	return evt, nil
+	docType, ok := msg.NewValues["type"].(string)
+	if ok {
+		evt.Type = docType
+	}
+
+	docLanguage, ok := msg.NewValues["language"].(string)
+	if ok {
+		evt.Language = docLanguage
+	}
+
+	oldLanguage, ok := msg.OldValues["language"].(string)
+	if ok && oldLanguage != docLanguage {
+		evt.OldLanguage = oldLanguage
+	}
+
+	docMain, ok := msg.NewValues["main_doc"].([16]uint8)
+	if ok {
+		mu := uuid.UUID(docMain)
+
+		evt.MainDocument = &mu
+	}
+
+	return nil
 }
 
 func parseDocumentMessage(log *slog.Logger, msg replMessage) (Event, error) {
 	evt := Event{
 		Event: TypeDocumentVersion,
+	}
+
+	err := readMessageColumns(msg, &evt)
+	if err != nil {
+		return Event{}, err
 	}
 
 	deleting, ok := msg.NewValues["deleting"].(bool)
@@ -794,15 +814,25 @@ func (pr *PGReplication) recordEvent(evt Event) error {
 
 	defer pg.SafeRollback(ctx, pr.logger, tx, "eventlog insert")
 
+	var mainDocUUID pgtype.UUID
+
+	if evt.MainDocument != nil {
+		mainDocUUID.Bytes = *evt.MainDocument
+		mainDocUUID.Valid = true
+	}
+
 	row := postgres.InsertIntoEventLogParams{
-		Event:     string(evt.Event),
-		UUID:      evt.UUID,
-		Timestamp: pg.Time(evt.Timestamp),
-		Updater:   pg.TextOrNull(evt.Updater),
-		Type:      pg.TextOrNull(evt.Type),
-		Version:   pg.BigintOrNull(evt.Version),
-		Status:    pg.TextOrNull(evt.Status),
-		StatusID:  pg.BigintOrNull(evt.StatusID),
+		Event:       string(evt.Event),
+		UUID:        evt.UUID,
+		Timestamp:   pg.Time(evt.Timestamp),
+		Updater:     pg.TextOrNull(evt.Updater),
+		Type:        pg.TextOrNull(evt.Type),
+		Version:     pg.BigintOrNull(evt.Version),
+		Status:      pg.TextOrNull(evt.Status),
+		StatusID:    pg.BigintOrNull(evt.StatusID),
+		MainDoc:     mainDocUUID,
+		Language:    pg.TextOrNull(evt.Language),
+		OldLanguage: pg.TextOrNull(evt.OldLanguage),
 	}
 
 	if evt.ACL != nil {

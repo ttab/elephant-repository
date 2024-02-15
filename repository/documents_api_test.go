@@ -2,10 +2,13 @@ package repository_test
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,8 +22,10 @@ import (
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
+	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
@@ -34,7 +39,10 @@ func baseDocument(uuid, uri string) *newsdoc.Document {
 	}
 }
 
-const timestampField = "timestamp"
+const (
+	idField        = "id"
+	timestampField = "timestamp"
+)
 
 func TestIntegrationBasicCrud(t *testing.T) {
 	if testing.Short() {
@@ -233,9 +241,11 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
+	var expectedEvents int64
+
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunArchiver:   false,
-		RunReplicator: false,
+		RunReplicator: true,
 	})
 
 	client := tc.DocumentsClient(t,
@@ -254,6 +264,9 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 			Document: doc,
 		})
 		test.Must(t, err, "update a document without a language")
+
+		// Doc + ACL
+		expectedEvents += 2
 	})
 
 	t.Run("InvalidLanguage", func(t *testing.T) {
@@ -287,6 +300,8 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 	})
 
 	t.Run("LanguageAndRegion", func(t *testing.T) {
+		ctx := test.Context(t)
+
 		doc := baseDocument(
 			"00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
 			"example://00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
@@ -294,12 +309,437 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 		doc.Language = "en-GB"
 
-		_, err := client.Update(test.Context(t), &repository.UpdateRequest{
+		info1, err := client.Update(ctx, &repository.UpdateRequest{
 			Uuid:     doc.Uuid,
 			Document: doc,
 		})
 		test.Must(t, err, "update a document with a valid language and region")
+		_, err = client.Update(ctx, &repository.UpdateRequest{
+			Uuid: doc.Uuid,
+			Status: []*repository.StatusUpdate{
+				{
+					Name:    "usable",
+					Version: info1.Version,
+				},
+			},
+		})
+		test.Must(t, err, "set version one as usable")
+
+		doc.Language = "en-US"
+
+		info2, err := client.Update(ctx, &repository.UpdateRequest{
+			Uuid:     doc.Uuid,
+			Document: doc,
+		})
+		test.Must(t, err, "update a document with a new language")
+
+		_, err = client.Update(ctx, &repository.UpdateRequest{
+			Uuid: doc.Uuid,
+			Status: []*repository.StatusUpdate{
+				{
+					Name:    "usable",
+					Version: info2.Version,
+				},
+			},
+		})
+		test.Must(t, err, "set version two as usable")
+
+		expectedEvents += 5
+
+		// Wait until the expected events have been registered.
+		_, err = client.Eventlog(ctx,
+			&repository.GetEventlogRequest{
+				After: expectedEvents - 1,
+			})
+		test.Must(t, err, "wait for eventlog")
+
+		log, err := client.Eventlog(ctx,
+			&repository.GetEventlogRequest{
+				After: -5,
+			})
+		test.Must(t, err, "get eventlog")
+		test.Equal(t, 5, len(log.Items),
+			"get the expected number of events")
+
+		var golden repository.GetEventlogResponse
+
+		err = elephantine.UnmarshalFile(
+			"testdata/TestIntegrationDocumentLanguage/eventlog.json",
+			&golden)
+		test.Must(t, err, "read golden file for expected eventlog items")
+
+		diff := cmp.Diff(&golden, log,
+			protocmp.Transform(),
+			cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
+				return k == timestampField ||
+					k == idField
+			}),
+		)
+		if diff != "" {
+			t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
+		}
 	})
+}
+
+func TestDocumentsServiceMetaDocuments(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunArchiver:   true,
+		RunReplicator: true,
+	})
+
+	ctx := test.Context(t)
+
+	schema := tc.SchemasClient(t, itest.StandardClaims(t, "schema_admin"))
+
+	spec := revisor.ConstraintSet{
+		Version: 1,
+		Name:    "test_metadata",
+		Documents: []revisor.DocumentConstraint{
+			{
+				Name:     "Simple metadata",
+				Declares: "test/metadata",
+				Meta: []*revisor.BlockConstraint{
+					{
+						Declares: &revisor.BlockSignature{
+							Type: "meta/annotation",
+						},
+						Attributes: revisor.ConstraintMap{
+							"title": revisor.StringConstraint{},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	specPayload, err := json.Marshal(&spec)
+	test.Must(t, err, "marshal meta schema")
+
+	_, err = schema.Register(ctx, &repository.RegisterSchemaRequest{
+		Activate: true,
+		Schema: &repository.Schema{
+			Name:    "test/metadata",
+			Version: "v1.0.0",
+			Spec:    string(specPayload),
+		},
+	})
+	test.Must(t, err, "register metadata schema")
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
+
+	wMetaClient := tc.DocumentsClient(t,
+		itest.Claims(t, "wmc", "meta_doc_write_all"))
+
+	docA := baseDocument(
+		"14f4ba22-f7c0-46bc-9c18-73f845a4f801", "article://test/a",
+	)
+
+	docB := baseDocument(
+		"92ebfc38-5a1e-40c3-b316-3d06f488526e", "article://test/b",
+	)
+
+	metaDoc := newsdoc.Document{
+		Type:  "test/metadata",
+		Title: "A meta document",
+		Meta: []*newsdoc.Block{
+			{
+				Type:  "meta/annotation",
+				Title: "A meta block",
+			},
+		},
+	}
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:               docA.Uuid,
+		IfMatch:            -1,
+		Document:           &metaDoc,
+		UpdateMetaDocument: true,
+	})
+	isTwirpError(t, err, "create a meta doc for a document that doesn't exist",
+		twirp.FailedPrecondition)
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docA.Uuid,
+		Document: docA,
+	})
+	test.Must(t, err, "create a basic article")
+
+	_, err = wMetaClient.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docB.Uuid,
+		Document: docB,
+	})
+	isTwirpError(t, err,
+		"client with metadata write all must not be able to create normal documents",
+		twirp.PermissionDenied,
+	)
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docB.Uuid,
+		Document: docB,
+	})
+	test.Must(t, err, "create a second basic article")
+
+	_, err = wMetaClient.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docB.Uuid,
+		Document: docB,
+	})
+	isTwirpError(t, err,
+		"client with metadata write all must not be able to update normal documents",
+		twirp.PermissionDenied,
+	)
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:               docA.Uuid,
+		IfMatch:            -1,
+		Document:           &metaDoc,
+		UpdateMetaDocument: true,
+	})
+	isTwirpError(t, err, "create a meta doc for a document that doesn't have a configured meta type",
+		twirp.InvalidArgument)
+
+	_, err = schema.RegisterMetaTypeUse(ctx, &repository.RegisterMetaTypeUseRequest{
+		MainType: "core/article",
+		MetaType: "test/metadata",
+	})
+	isTwirpError(t, err, "register the meta type for use before registering the type itself",
+		twirp.InvalidArgument)
+
+	_, err = schema.RegisterMetaType(ctx, &repository.RegisterMetaTypeRequest{
+		Type:      "test/metadata",
+		Exclusive: true,
+	})
+	test.Must(t, err, "register the meta type")
+
+	_, err = schema.RegisterMetaTypeUse(ctx, &repository.RegisterMetaTypeUseRequest{
+		MainType: "core/article",
+		MetaType: "test/metadata",
+	})
+	test.Must(t, err, "register the meta type for use with articles")
+
+	mRes, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:               docA.Uuid,
+		IfMatch:            -1,
+		Document:           &metaDoc,
+		UpdateMetaDocument: true,
+	})
+	test.Must(t, err, "create a meta doc for a document")
+
+	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: mRes.Uuid,
+	})
+	test.Must(t, err, "get meta information about meta doc")
+
+	wantMeta := repository.DocumentMeta{
+		CurrentVersion: 1,
+		IsMetaDocument: true,
+		MainDocument:   docA.Uuid,
+	}
+
+	ignoreTimeVariantValues := cmpopts.IgnoreMapEntries(
+		func(k string, _ interface{}) bool {
+			switch k {
+			case "created", "modified":
+				return true
+			}
+
+			return false
+		})
+
+	cmpDiff := cmp.Diff(&wantMeta, meta.Meta,
+		protocmp.Transform(),
+		ignoreTimeVariantValues,
+	)
+	if cmpDiff != "" {
+		t.Fatalf("meta document meta mismatch (-want +got):\n%s", cmpDiff)
+	}
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:               mRes.Uuid,
+		IfMatch:            1,
+		Document:           &metaDoc,
+		UpdateMetaDocument: true,
+	})
+	isTwirpError(t, err, "must not create a meta doc for a meta doc",
+		twirp.InvalidArgument)
+
+	mDocV1, err := client.Get(ctx, &repository.GetDocumentRequest{
+		Uuid: mRes.Uuid,
+	})
+	test.Must(t, err, "be able to read meta document")
+
+	wantDoc := proto.Clone(&metaDoc).(*newsdoc.Document)
+
+	wantDoc.Uuid = mRes.Uuid
+	// Generated from main document.
+	wantDoc.Uri = fmt.Sprintf("system://%s/meta", docA.Uuid)
+	// From default language.
+	wantDoc.Language = "sv-se"
+
+	test.EqualMessage(t, &repository.GetDocumentResponse{
+		Document:       wantDoc,
+		Version:        1,
+		IsMetaDocument: true,
+		MainDocument:   docA.Uuid,
+	}, mDocV1, "get the expected document back")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docA.Uuid,
+		Status: []*repository.StatusUpdate{
+			{Name: "usable", Version: 1},
+		},
+	})
+	test.Must(t, err, "set a usable status")
+
+	mDocV2 := proto.Clone(mDocV1.Document).(*newsdoc.Document)
+	mDocV2.Title = "I am the the second"
+
+	_, err = wMetaClient.Update(ctx, &repository.UpdateRequest{
+		Uuid:     mRes.Uuid,
+		IfMatch:  1,
+		Document: mDocV2,
+	})
+	test.Must(t, err, "be able to update a meta doc directly")
+
+	sneakyDoc := proto.Clone(mDocV2).(*newsdoc.Document)
+
+	sneakyDoc.Uri = fmt.Sprintf("core://article/%s", sneakyDoc.Uuid)
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     sneakyDoc.Uuid,
+		IfMatch:  2,
+		Document: sneakyDoc,
+	})
+	isTwirpError(t, err, "must not be able to change meta doc into a normal doc",
+		twirp.InvalidArgument)
+
+	sneakyDoc2 := proto.Clone(docA).(*newsdoc.Document)
+
+	sneakyDoc2.Uri = fmt.Sprintf("system://%s/meta", docB.Uuid)
+	sneakyDoc2.Type = "test/metadata"
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docA.Uuid,
+		IfMatch:  1,
+		Document: sneakyDoc2,
+	})
+	isTwirpError(t, err, "must not be able to change a normal doc into a meta doc",
+		twirp.InvalidArgument)
+
+	docWithMetaDoc, err := client.Get(ctx, &repository.GetDocumentRequest{
+		Uuid:         docA.Uuid,
+		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
+	})
+	test.Must(t, err, "be able to fetch document with meta doc")
+
+	test.EqualMessage(t, &repository.GetDocumentResponse{
+		Document: docA,
+		Version:  1,
+		Meta: &repository.MetaDocument{
+			Version:  2,
+			Document: mDocV2,
+		},
+	}, docWithMetaDoc, "get the expected document back")
+
+	docWithStatus, err := client.Get(ctx, &repository.GetDocumentRequest{
+		Uuid:         docA.Uuid,
+		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
+		Status:       "usable",
+	})
+	test.Must(t, err, "be able to fetch document with meta doc by status")
+
+	test.EqualMessage(t, &repository.GetDocumentResponse{
+		Document: docA,
+		Version:  1,
+		// We expect the meta doc to reflect the version it had at the
+		// time the status was set.
+		Meta: &repository.MetaDocument{
+			Version:  1,
+			Document: mDocV1.Document,
+		},
+	}, docWithStatus, "get the expected document back for usable 1")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docA.Uuid,
+		Status: []*repository.StatusUpdate{
+			{Name: "usable", Version: 1},
+		},
+	})
+	test.Must(t, err, "set a second usable status")
+
+	docWithStatus2, err := client.Get(ctx, &repository.GetDocumentRequest{
+		Uuid:         docA.Uuid,
+		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
+		Status:       "usable",
+	})
+	test.Must(t, err, "be able to fetch document with meta doc by status")
+
+	test.EqualMessage(t, &repository.GetDocumentResponse{
+		Document: docA,
+		Version:  1,
+		// We expect the meta doc to reflect the version it had at the
+		// time the status was set.
+		Meta: &repository.MetaDocument{
+			Version:  2,
+			Document: mDocV2,
+		},
+	}, docWithStatus2, "get the expected document back for usable 2")
+
+	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
+		Uuid: docA.Uuid,
+	})
+	test.Must(t, err, "delete main document")
+
+	readAllClient := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read_all"))
+
+	// Check that we get not found or failed precondition for the deleted
+	// docs.
+	//
+	// TODO: wait for transition from failed precondition to not found.
+
+	_, err = readAllClient.Get(ctx, &repository.GetDocumentRequest{
+		Uuid: docA.Uuid,
+	})
+	isTwirpError(t, err, "get article", twirp.NotFound, twirp.FailedPrecondition)
+
+	_, err = readAllClient.Get(ctx, &repository.GetDocumentRequest{
+		Uuid: mDocV1.Document.Uuid,
+	})
+	isTwirpError(t, err, "get meta doc", twirp.NotFound, twirp.FailedPrecondition)
+}
+
+func isTwirpError(
+	t *testing.T, err error, message string, code ...twirp.ErrorCode,
+) {
+	t.Helper()
+
+	if err == nil {
+		t.Fatalf("failed: %s: expected one of the error codes %q, didn't get an error",
+			message, code)
+	}
+
+	var tErr twirp.Error
+
+	ok := errors.As(err, &tErr)
+
+	if !ok || !slices.Contains(code, tErr.Code()) {
+		t.Fatalf("failed: %s: expected one of the error codes %q: got %v",
+			message, code, err)
+	}
+
+	if testing.Verbose() {
+		t.Logf("success: %s: got a %q error: %v",
+			message, code, err)
+	}
 }
 
 func TestIntegrationBulkCrud(t *testing.T) {
@@ -346,7 +786,20 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	})
 	test.Must(t, err, "create articles")
 
-	test.EqualDiff(t, []int64{1, 1}, res.Version,
+	test.EqualMessage(t,
+		&repository.BulkUpdateResponse{
+			Updates: []*repository.UpdateResponse{
+				{
+					Uuid:    docA.Uuid,
+					Version: 1,
+				},
+				{
+					Uuid:    docB.Uuid,
+					Version: 1,
+				},
+			},
+		},
+		res,
 		"expected this to be the first versions")
 
 	resA, err := client.Get(ctx, &repository.GetDocumentRequest{
@@ -683,7 +1136,7 @@ func TestIntegrationStatus(t *testing.T) {
 		}),
 	)
 	if cmpDiff != "" {
-		t.Fatalf("compact eventlog mismatch (-want +got):\n%s", diff)
+		t.Fatalf("compact eventlog mismatch (-want +got):\n%s", cmpDiff)
 	}
 }
 

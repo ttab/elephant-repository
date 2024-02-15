@@ -6,7 +6,8 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "version": 1,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 2,
@@ -23,7 +24,8 @@
         }
       ],
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 3,
@@ -31,7 +33,8 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "version": 2,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 4,
@@ -41,7 +44,8 @@
       "status": "done",
       "status_id": 1,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 5,
@@ -51,7 +55,8 @@
       "status": "usable",
       "status_id": 1,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 6,
@@ -61,7 +66,8 @@
       "status": "done",
       "status_id": 2,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 7,
@@ -71,7 +77,8 @@
       "status": "usable",
       "status_id": 2,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 8,
@@ -81,7 +88,8 @@
       "status": "done",
       "status_id": 3,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 9,
@@ -91,7 +99,8 @@
       "status": "usable",
       "status_id": 3,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 10,
@@ -99,7 +108,8 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "version": 3,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 11,
@@ -109,7 +119,8 @@
       "status": "done",
       "status_id": 4,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 12,
@@ -119,7 +130,8 @@
       "status": "usable",
       "status_id": 4,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 13,
@@ -129,7 +141,8 @@
       "status": "done",
       "status_id": 5,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 14,
@@ -139,7 +152,8 @@
       "status": "usable",
       "status_id": 5,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 15,
@@ -149,7 +163,8 @@
       "status": "done",
       "status_id": 6,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 16,
@@ -159,7 +174,8 @@
       "status": "usable",
       "status_id": 6,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 17,
@@ -167,7 +183,8 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "version": 4,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 18,
@@ -177,7 +194,8 @@
       "status": "done",
       "status_id": 7,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 19,
@@ -187,7 +205,8 @@
       "status": "usable",
       "status_id": 7,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 20,
@@ -197,7 +216,8 @@
       "status": "done",
       "status_id": 8,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 21,
@@ -207,7 +227,8 @@
       "status": "usable",
       "status_id": 8,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 22,
@@ -217,7 +238,8 @@
       "status": "done",
       "status_id": 9,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 23,
@@ -227,7 +249,8 @@
       "status": "usable",
       "status_id": 9,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 24,
@@ -235,7 +258,8 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "version": 5,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 25,
@@ -245,7 +269,8 @@
       "status": "done",
       "status_id": 10,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 26,
@@ -255,7 +280,8 @@
       "status": "usable",
       "status_id": 10,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 27,
@@ -265,7 +291,8 @@
       "status": "done",
       "status_id": 11,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 28,
@@ -275,7 +302,8 @@
       "status": "usable",
       "status_id": 11,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 29,
@@ -285,7 +313,8 @@
       "status": "done",
       "status_id": 12,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     },
     {
       "id": 30,
@@ -295,7 +324,8 @@
       "status": "usable",
       "status_id": 12,
       "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article"
+      "type": "core/article",
+      "language": "en"
     }
   ]
 }

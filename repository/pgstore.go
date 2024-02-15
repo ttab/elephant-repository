@@ -277,18 +277,43 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 
 	q := postgres.New(tx)
 
-	info, err := s.updatePreflight(ctx, q, req.UUID, req.IfMatch)
+	mainInfo, err := s.updatePreflight(ctx, q, req.UUID, req.IfMatch)
 	if err != nil {
 		return err
 	}
 
-	if !info.Exists {
+	if !mainInfo.Exists {
 		return nil
 	}
 
-	lock := checkLock(info.Lock, req.LockToken)
+	lock := checkLock(mainInfo.Lock, req.LockToken)
 	if lock == lockCheckDenied {
 		return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
+	}
+
+	deleteDocs := map[uuid.UUID]*updatePrefligthInfo{
+		req.UUID: mainInfo,
+	}
+
+	deleteOrder := []uuid.UUID{
+		req.UUID,
+	}
+
+	if mainInfo.MainDoc == nil {
+		mUUID, _ := metaIdentity(req.UUID)
+
+		// Make a preflight request for the meta document.
+		mInfo, err := s.updatePreflight(ctx, q, mUUID, 0)
+		if err != nil {
+			return fmt.Errorf("meta document: %w", err)
+		}
+
+		if mInfo.Exists {
+			deleteDocs[mUUID] = mInfo
+			deleteOrder = []uuid.UUID{
+				mUUID, req.UUID,
+			}
+		}
 	}
 
 	timeout := time.After(s.opts.DeleteTimeout)
@@ -296,14 +321,23 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 	archived := make(chan ArchivedEvent)
 
 	go s.archived.Listen(ctx, archived, func(e ArchivedEvent) bool {
-		return e.UUID == req.UUID
+		_, ok := deleteDocs[e.UUID]
+
+		return ok
 	})
 
 	for {
-		remaining, err := q.GetDocumentUnarchivedCount(ctx, req.UUID)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to check archiving status: %w", err)
+		var remaining int64
+
+		for id := range deleteDocs {
+			n, err := q.GetDocumentUnarchivedCount(ctx, id)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to check archiving status for %s: %w",
+					id, err)
+			}
+
+			remaining += n
 		}
 
 		if remaining == 0 {
@@ -321,28 +355,34 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 		}
 	}
 
-	recordID, err := q.InsertDeleteRecord(ctx,
-		postgres.InsertDeleteRecordParams{
-			UUID:       req.UUID,
-			URI:        info.Info.URI,
-			Type:       info.Info.Type,
-			Version:    info.Info.CurrentVersion,
-			Created:    pg.Time(req.Updated),
-			CreatorUri: req.Updater,
-			Meta:       metaJSON,
-		})
-	if err != nil {
-		return fmt.Errorf("failed to create delete record: %w", err)
-	}
+	for _, id := range deleteOrder {
+		info := deleteDocs[id]
 
-	err = q.DeleteDocument(ctx, postgres.DeleteDocumentParams{
-		UUID:     req.UUID,
-		URI:      info.Info.URI,
-		RecordID: recordID,
-	})
-	if err != nil {
-		return fmt.Errorf(
-			"failed to delete document from database: %w", err)
+		recordID, err := q.InsertDeleteRecord(ctx,
+			postgres.InsertDeleteRecordParams{
+				UUID:       id,
+				URI:        info.Info.URI,
+				Type:       info.Info.Type,
+				Version:    info.Info.CurrentVersion,
+				Created:    pg.Time(req.Updated),
+				CreatorUri: req.Updater,
+				Meta:       metaJSON,
+				MainDoc:    pg.PUUID(info.MainDoc),
+				Language:   pg.Text(info.Language),
+			})
+		if err != nil {
+			return fmt.Errorf("failed to create delete record: %w", err)
+		}
+
+		err = q.DeleteDocument(ctx, postgres.DeleteDocumentParams{
+			UUID:     id,
+			URI:      info.Info.URI,
+			RecordID: recordID,
+		})
+		if err != nil {
+			return fmt.Errorf(
+				"failed to delete document from database: %w", err)
+		}
 	}
 
 	err = tx.Commit(ctx)
@@ -356,14 +396,21 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 // GetDocument implements DocStore.
 func (s *PGDocStore) GetDocument(
 	ctx context.Context, uuid uuid.UUID, version int64,
-) (*newsdoc.Document, error) {
+) (*newsdoc.Document, int64, error) {
 	var (
 		err  error
 		data []byte
 	)
 
 	if version == 0 {
-		data, err = s.reader.GetDocumentData(ctx, uuid)
+		res, e := s.reader.GetDocumentData(ctx, uuid)
+
+		if e == nil {
+			data = res.DocumentData
+			version = res.Version
+		}
+
+		err = e
 	} else {
 		data, err = s.reader.GetDocumentVersionData(ctx,
 			postgres.GetDocumentVersionDataParams{
@@ -373,9 +420,9 @@ func (s *PGDocStore) GetDocument(
 	}
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, DocStoreErrorf(ErrCodeNotFound, "not found")
+		return nil, 0, DocStoreErrorf(ErrCodeNotFound, "not found")
 	} else if err != nil {
-		return nil, fmt.Errorf("failed to fetch document data: %w", err)
+		return nil, 0, fmt.Errorf("failed to fetch document data: %w", err)
 	}
 
 	// TODO: check for nil data after pruning has been implemented.
@@ -384,11 +431,11 @@ func (s *PGDocStore) GetDocument(
 
 	err = json.Unmarshal(data, &d)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, 0, fmt.Errorf(
 			"got an unreadable document from the database: %w", err)
 	}
 
-	return &d, nil
+	return &d, version, nil
 }
 
 func (s *PGDocStore) GetLastEvent(
@@ -402,15 +449,18 @@ func (s *PGDocStore) GetLastEvent(
 	}
 
 	return &Event{
-		ID:        res.ID,
-		Event:     EventType(res.Event),
-		UUID:      res.UUID,
-		Timestamp: res.Timestamp.Time,
-		Updater:   res.Updater.String,
-		Type:      res.Type.String,
-		Version:   res.Version.Int64,
-		Status:    res.Status.String,
-		StatusID:  res.StatusID.Int64,
+		ID:           res.ID,
+		Event:        EventType(res.Event),
+		UUID:         res.UUID,
+		Timestamp:    res.Timestamp.Time,
+		Updater:      res.Updater.String,
+		Type:         res.Type.String,
+		Version:      res.Version.Int64,
+		Status:       res.Status.String,
+		StatusID:     res.StatusID.Int64,
+		MainDocument: pg.ToUUIDPointer(res.MainDoc),
+		Language:     res.Language.String,
+		OldLanguage:  res.OldLanguage.String,
 	}, nil
 }
 
@@ -439,17 +489,21 @@ func (s *PGDocStore) GetEventlog(
 
 	evts := make([]Event, len(res))
 
+	//nolint: dupl
 	for i := range res {
 		e := Event{
-			ID:        res[i].ID,
-			Event:     EventType(res[i].Event),
-			UUID:      res[i].UUID,
-			Timestamp: res[i].Timestamp.Time,
-			Updater:   res[i].Updater.String,
-			Type:      res[i].Type.String,
-			Version:   res[i].Version.Int64,
-			Status:    res[i].Status.String,
-			StatusID:  res[i].StatusID.Int64,
+			ID:           res[i].ID,
+			Event:        EventType(res[i].Event),
+			UUID:         res[i].UUID,
+			Timestamp:    res[i].Timestamp.Time,
+			Updater:      res[i].Updater.String,
+			Type:         res[i].Type.String,
+			Version:      res[i].Version.Int64,
+			Status:       res[i].Status.String,
+			StatusID:     res[i].StatusID.Int64,
+			MainDocument: pg.ToUUIDPointer(res[i].MainDoc),
+			Language:     res[i].Language.String,
+			OldLanguage:  res[i].OldLanguage.String,
 		}
 
 		if res[i].Acl != nil {
@@ -490,17 +544,21 @@ func (s *PGDocStore) GetCompactedEventlog(
 
 	evts := make([]Event, len(res))
 
+	//nolint: dupl
 	for i := range res {
 		e := Event{
-			ID:        res[i].ID,
-			Event:     EventType(res[i].Event),
-			UUID:      res[i].UUID,
-			Timestamp: res[i].Timestamp.Time,
-			Updater:   res[i].Updater.String,
-			Type:      res[i].Type.String,
-			Version:   res[i].Version.Int64,
-			Status:    res[i].Status.String,
-			StatusID:  res[i].StatusID.Int64,
+			ID:           res[i].ID,
+			Event:        EventType(res[i].Event),
+			UUID:         res[i].UUID,
+			Timestamp:    res[i].Timestamp.Time,
+			Updater:      res[i].Updater.String,
+			Type:         res[i].Type.String,
+			Version:      res[i].Version.Int64,
+			Status:       res[i].Status.String,
+			StatusID:     res[i].StatusID.Int64,
+			MainDocument: pg.ToUUIDPointer(res[i].MainDoc),
+			Language:     res[i].Language.String,
+			OldLanguage:  res[i].OldLanguage.String,
 		}
 
 		if res[i].Acl != nil {
@@ -651,10 +709,10 @@ func (s *PGDocStore) GetStatusHistory(
 
 // GetDocumentMeta implements DocStore.
 func (s *PGDocStore) GetDocumentMeta(
-	ctx context.Context, uuid uuid.UUID,
+	ctx context.Context, docID uuid.UUID,
 ) (*DocumentMeta, error) {
 	info, err := s.reader.GetDocumentInfo(ctx, postgres.GetDocumentInfoParams{
-		UUID: uuid,
+		UUID: docID,
 		Now:  pg.Time(time.Now()),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -667,12 +725,19 @@ func (s *PGDocStore) GetDocumentMeta(
 		return &DocumentMeta{Deleting: true}, nil
 	}
 
+	var mainDoc string
+
+	if info.MainDoc.Valid {
+		mainDoc = uuid.UUID(info.MainDoc.Bytes).String()
+	}
+
 	meta := DocumentMeta{
 		Created:        info.Created.Time,
 		Modified:       info.Updated.Time,
 		CurrentVersion: info.CurrentVersion,
 		Statuses:       make(map[string]Status),
 		Deleting:       info.Deleting,
+		MainDocument:   mainDoc,
 		Lock: Lock{
 			Token:   info.LockToken.String,
 			URI:     info.LockUri.String,
@@ -683,14 +748,14 @@ func (s *PGDocStore) GetDocumentMeta(
 		},
 	}
 
-	heads, err := s.getFullDocumentHeads(ctx, s.reader, uuid)
+	heads, err := s.getFullDocumentHeads(ctx, s.reader, docID)
 	if err != nil {
 		return nil, err
 	}
 
 	meta.Statuses = heads
 
-	acl, err := s.GetDocumentACL(ctx, uuid)
+	acl, err := s.GetDocumentACL(ctx, docID)
 	if err != nil {
 		return nil, err
 	}
@@ -732,10 +797,11 @@ func (s *PGDocStore) getFullDocumentHeads(
 
 	for _, head := range heads {
 		status := Status{
-			ID:      head.ID,
-			Version: head.Version,
-			Creator: head.CreatorUri,
-			Created: head.Created.Time,
+			ID:             head.ID,
+			Version:        head.Version,
+			Creator:        head.CreatorUri,
+			Created:        head.Created.Time,
+			MetaDocVersion: head.MetaDocVersion.Int64,
 		}
 
 		if head.Meta != nil {
@@ -754,14 +820,20 @@ func (s *PGDocStore) getFullDocumentHeads(
 }
 
 // CheckPermission implements DocStore.
-func (s *PGDocStore) CheckPermission(
+func (s *PGDocStore) CheckPermissions(
 	ctx context.Context, req CheckPermissionRequest,
 ) (CheckPermissionResult, error) {
-	access, err := s.reader.CheckPermission(ctx,
-		postgres.CheckPermissionParams{
-			UUID:       req.UUID,
-			URI:        req.GranteeURIs,
-			Permission: string(req.Permission),
+	ps := make([]string, len(req.Permissions))
+
+	for i := range req.Permissions {
+		ps[i] = string(req.Permissions[i])
+	}
+
+	access, err := s.reader.CheckPermissions(ctx,
+		postgres.CheckPermissionsParams{
+			UUID:        req.UUID,
+			URI:         req.GranteeURIs,
+			Permissions: ps,
 		})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PermissionCheckNoSuchDocument, nil
@@ -837,12 +909,37 @@ func (s *PGDocStore) Update(
 
 		state.Version = info.Info.CurrentVersion
 		state.Exists = info.Exists
+		state.Language = info.Language
 
 		if state.Exists {
 			state.Type = info.Info.Type
 		}
 
+		//nolint:nestif
 		if state.Exists && state.Doc != nil {
+			if isMetaURI(state.Doc.URI) && info.MainDoc == nil {
+				return nil, DocStoreErrorf(ErrCodeBadRequest,
+					"cannot change a normal document into a meta document")
+			}
+
+			if info.MainDoc != nil {
+				expectUUID, expectURI := metaIdentity(*info.MainDoc)
+
+				if state.UUID != expectUUID {
+					return nil, DocStoreErrorf(ErrCodeBadRequest,
+						"expected meta document to have the UUID %s based on the main document UUID %s",
+						expectUUID, *info.MainDoc,
+					)
+				}
+
+				if state.Doc.URI != expectURI {
+					return nil, DocStoreErrorf(ErrCodeBadRequest,
+						"expected meta document to have the URI %s based on the main document UUID %s",
+						expectURI, *info.MainDoc,
+					)
+				}
+			}
+
 			if state.Doc.Type != state.Type {
 				return nil, DocStoreErrorf(ErrCodeBadRequest,
 					"cannot change the document type from %q",
@@ -859,8 +956,24 @@ func (s *PGDocStore) Update(
 	for _, state := range updates {
 		if state.Doc != nil {
 			state.Version++
+			state.Language = state.Doc.Language
 
-			err = q.CreateVersion(ctx, postgres.CreateVersionParams{
+			err := q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
+				UUID:       state.Request.UUID,
+				URI:        state.Doc.URI,
+				Type:       state.Doc.Type,
+				Version:    state.Version,
+				Created:    pg.Time(state.Created),
+				CreatorUri: state.Creator,
+				Language:   pg.TextOrNull(state.Doc.Language),
+				MainDoc:    pg.PUUID(state.Request.MainDocument),
+			})
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to create document in database: %w", err)
+			}
+
+			err = q.CreateDocumentVersion(ctx, postgres.CreateDocumentVersionParams{
 				UUID:         state.Request.UUID,
 				Version:      state.Version,
 				Created:      pg.Time(state.Created),
@@ -883,6 +996,8 @@ func (s *PGDocStore) Update(
 			}
 		}
 
+		var metaDocVersion int64
+
 		statusHeads := make(map[string]Status)
 
 		if len(state.Request.Status) > 0 {
@@ -892,6 +1007,14 @@ func (s *PGDocStore) Update(
 				return nil, err
 			}
 
+			mv, err := q.GetMetaDocVersion(ctx, pg.UUID(state.UUID))
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return nil, fmt.Errorf(
+					"failed to read meta document version: %w", err)
+			}
+
+			metaDocVersion = mv
+
 			statusHeads = heads
 		}
 
@@ -899,11 +1022,12 @@ func (s *PGDocStore) Update(
 			statusID := statusHeads[stat.Name].ID + 1
 
 			status := Status{
-				ID:      statusID,
-				Creator: state.Creator,
-				Version: stat.Version,
-				Meta:    stat.Meta,
-				Created: state.Created,
+				ID:             statusID,
+				Creator:        state.Creator,
+				Version:        stat.Version,
+				Meta:           stat.Meta,
+				Created:        state.Created,
+				MetaDocVersion: metaDocVersion,
 			}
 
 			if status.Version == 0 {
@@ -937,20 +1061,37 @@ func (s *PGDocStore) Update(
 					})
 			}
 
-			err = q.CreateStatus(ctx, postgres.CreateStatusParams{
+			// TODO: language is a bit naive here, as it assumes
+			// that the status set for the referenced version is the
+			// same as the language of the latest version of the
+			// document. We should get the language from the
+			// referenced document version instead.
+			err = q.CreateStatusHead(ctx, postgres.CreateStatusHeadParams{
 				UUID:       state.Request.UUID,
 				Name:       stat.Name,
-				ID:         statusID,
-				Version:    status.Version,
 				Type:       state.Type,
+				Version:    stat.Version,
+				ID:         status.ID,
 				Created:    pg.Time(state.Created),
 				CreatorUri: state.Creator,
-				Meta:       state.StatusMeta[i],
+				Language:   state.Language,
 			})
 			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to update %q status: %w",
-					stat.Name, err)
+				return nil, fmt.Errorf("failed to create status head: %w", err)
+			}
+
+			err = q.InsertDocumentStatus(ctx, postgres.InsertDocumentStatusParams{
+				UUID:           state.Request.UUID,
+				Name:           stat.Name,
+				ID:             status.ID,
+				Version:        status.Version,
+				Created:        pg.Time(state.Created),
+				CreatorUri:     state.Creator,
+				Meta:           state.StatusMeta[i],
+				MetaDocVersion: metaDocVersion,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to insert document status: %w", err)
 			}
 		}
 
@@ -961,7 +1102,7 @@ func (s *PGDocStore) Update(
 		}
 
 		err = s.updateACL(ctx, q, state.Request.UUID,
-			state.Type, updateACL)
+			state.Type, state.Language, updateACL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update ACL: %w", err)
 		}
@@ -994,13 +1135,15 @@ type docUpdateState struct {
 	MetaJSON   []byte
 	StatusMeta [][]byte
 
-	Type   string
-	Exists bool
+	Type     string
+	Exists   bool
+	Language string
 }
 
 func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
 	state := docUpdateState{
 		DocumentUpdate: DocumentUpdate{
+			UUID:    req.UUID,
 			Created: req.Updated,
 			Creator: req.Updater,
 			Meta:    req.Meta,
@@ -1258,6 +1401,70 @@ func (err StatusRuleError) Error() string {
 		strings.Join(rules, ", "))
 }
 
+type DocumentMetaType struct {
+	MetaType       string
+	IsMetaDocument bool
+	Exists         bool
+}
+
+// GetMetaTypeForDocument implements DocStore.
+func (s *PGDocStore) GetMetaTypeForDocument(
+	ctx context.Context, uuid uuid.UUID,
+) (DocumentMetaType, error) {
+	t, err := s.reader.CheckMetaDocumentType(ctx, uuid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DocumentMetaType{}, nil
+	} else if err != nil {
+		return DocumentMetaType{}, fmt.Errorf("query failed: %w", err)
+	}
+
+	return DocumentMetaType{
+		MetaType:       t.MetaType,
+		IsMetaDocument: t.IsMetaDoc.Bool,
+		Exists:         true,
+	}, nil
+}
+
+// RegisterMetaType implements DocStore.
+func (s *PGDocStore) RegisterMetaType(
+	ctx context.Context, metaType string, exclusive bool,
+) error {
+	q := postgres.New(s.pool)
+
+	err := q.RegisterMetaType(ctx, postgres.RegisterMetaTypeParams{
+		MetaType:         metaType,
+		ExclusiveForMeta: exclusive,
+	})
+	if err != nil {
+		return fmt.Errorf("write to db: %w", err)
+	}
+
+	return nil
+}
+
+// RegisterMetaTypeUse implements DocStore.
+func (s *PGDocStore) RegisterMetaTypeUse(ctx context.Context, mainType string, metaType string) error {
+	q := postgres.New(s.pool)
+
+	err := q.RegisterMetaTypeUse(ctx, postgres.RegisterMetaTypeUseParams{
+		MainType: mainType,
+		MetaType: metaType,
+	})
+
+	switch {
+	case pg.IsConstraintError(err, "meta_type_use_meta_type_fkey"):
+		return DocStoreErrorf(ErrCodeFailedPrecondition,
+			"the meta type hasn't been registered")
+	case pg.IsConstraintError(err, "meta_type_use_pkey"):
+		return DocStoreErrorf(ErrCodeExists,
+			"the meta document use has already been registered")
+	case err != nil:
+		return fmt.Errorf("write to db: %w", err)
+	}
+
+	return nil
+}
+
 func (s *PGDocStore) GetSchemaVersions(
 	ctx context.Context,
 ) (map[string]string, error) {
@@ -1291,6 +1498,10 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 		info, err := s.updatePreflight(ctx, q, req.UUID, 0)
 		if err != nil {
 			return err
+		}
+
+		if info.MainDoc != nil {
+			return DocStoreErrorf(ErrCodeBadRequest, "meta documents cannot be locked")
 		}
 
 		if !info.Exists {
@@ -1815,19 +2026,17 @@ func (s *PGDocStore) RegisterOrReplaceMetric(ctx context.Context, metric Metric)
 			Label: metric.Label,
 			Value: metric.Value,
 		})
-		if pg.IsConstraintError(err, "metric_kind_fkey") {
+
+		switch {
+		case pg.IsConstraintError(err, "metric_kind_fkey"):
 			return DocStoreErrorf(ErrCodeNotFound, "metric kind not found")
-		}
-		if pg.IsConstraintError(err, "metric_label_fkey") {
+		case pg.IsConstraintError(err, "metric_label_fkey"):
 			return DocStoreErrorf(ErrCodeNotFound, "metric label not found")
-		}
-		if pg.IsConstraintError(err, "metric_label_kind_match") {
+		case pg.IsConstraintError(err, "metric_label_kind_match"):
 			return DocStoreErrorf(ErrCodeNotFound, "label does not apply to kind")
-		}
-		if pg.IsConstraintError(err, "metric_uuid_fkey") {
+		case pg.IsConstraintError(err, "metric_uuid_fkey"):
 			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
-		}
-		if err != nil {
+		case err != nil:
 			return fmt.Errorf("failed to save to database: %w", err)
 		}
 
@@ -1846,19 +2055,17 @@ func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metri
 			Label: metric.Label,
 			Value: metric.Value,
 		})
-		if pg.IsConstraintError(err, "metric_kind_fkey") {
+
+		switch {
+		case pg.IsConstraintError(err, "metric_kind_fkey"):
 			return DocStoreErrorf(ErrCodeNotFound, "metric kind not found")
-		}
-		if pg.IsConstraintError(err, "metric_label_fkey") {
+		case pg.IsConstraintError(err, "metric_label_fkey"):
 			return DocStoreErrorf(ErrCodeNotFound, "metric label not found")
-		}
-		if pg.IsConstraintError(err, "metric_label_kind_match") {
+		case pg.IsConstraintError(err, "metric_label_kind_match"):
 			return DocStoreErrorf(ErrCodeNotFound, "label does not apply to kind")
-		}
-		if pg.IsConstraintError(err, "metric_uuid_fkey") {
+		case pg.IsConstraintError(err, "metric_uuid_fkey"):
 			return DocStoreErrorf(ErrCodeNotFound, "document uuid not found")
-		}
-		if err != nil {
+		case err != nil:
 			return fmt.Errorf("failed to save to database: %w", err)
 		}
 
@@ -1868,7 +2075,7 @@ func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metri
 
 func (s *PGDocStore) updateACL(
 	ctx context.Context, q *postgres.Queries,
-	docUUID uuid.UUID, docType string, updateACL []ACLEntry,
+	docUUID uuid.UUID, docType string, language string, updateACL []ACLEntry,
 ) error {
 	if len(updateACL) == 0 {
 		return nil
@@ -1925,6 +2132,7 @@ func (s *PGDocStore) updateACL(
 		Type:       pg.TextOrNull(docType),
 		Updated:    pg.Time(time.Now()),
 		UpdaterUri: auth.Claims.Subject,
+		Language:   language,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to record audit trail: %w", err)
@@ -1934,17 +2142,19 @@ func (s *PGDocStore) updateACL(
 }
 
 type updatePrefligthInfo struct {
-	Info   postgres.GetDocumentForUpdateRow
-	Exists bool
-	Lock   Lock
+	Info     postgres.GetDocumentForUpdateRow
+	Exists   bool
+	Lock     Lock
+	MainDoc  *uuid.UUID
+	Language string
 }
 
 func (s *PGDocStore) updatePreflight(
 	ctx context.Context, q *postgres.Queries,
-	uuid uuid.UUID, ifMatch int64,
+	docUUID uuid.UUID, ifMatch int64,
 ) (*updatePrefligthInfo, error) {
 	info, err := q.GetDocumentForUpdate(ctx, postgres.GetDocumentForUpdateParams{
-		UUID: uuid,
+		UUID: docUUID,
 		Now:  pg.Time(time.Now()),
 	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -1977,8 +2187,10 @@ func (s *PGDocStore) updatePreflight(
 	}
 
 	return &updatePrefligthInfo{
-		Info:   info,
-		Exists: exists,
+		Info:     info,
+		Exists:   exists,
+		MainDoc:  pg.ToUUIDPointer(info.MainDoc),
+		Language: info.Language.String,
 		Lock: Lock{
 			URI:     info.LockUri.String,
 			Token:   info.LockToken.String,

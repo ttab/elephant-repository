@@ -16,7 +16,7 @@ type DocStore interface {
 		ctx context.Context, uuid uuid.UUID) (*DocumentMeta, error)
 	GetDocument(
 		ctx context.Context, uuid uuid.UUID, version int64,
-	) (*newsdoc.Document, error)
+	) (*newsdoc.Document, int64, error)
 	GetVersion(
 		ctx context.Context, uuid uuid.UUID, version int64,
 	) (DocumentUpdate, error)
@@ -30,9 +30,18 @@ type DocStore interface {
 		update []*UpdateRequest,
 	) ([]DocumentUpdate, error)
 	Delete(ctx context.Context, req DeleteRequest) error
-	CheckPermission(
+	CheckPermissions(
 		ctx context.Context, req CheckPermissionRequest,
 	) (CheckPermissionResult, error)
+	GetMetaTypeForDocument(
+		ctx context.Context, uuid uuid.UUID,
+	) (DocumentMetaType, error)
+	RegisterMetaType(
+		ctx context.Context, metaType string, exclusive bool,
+	) error
+	RegisterMetaTypeUse(
+		ctx context.Context, mainType string, metaType string,
+	) error
 	GetEventlog(
 		ctx context.Context, after int64, limit int32,
 	) ([]Event, error)
@@ -82,6 +91,12 @@ type SchemaStore interface {
 	GetActiveSchemas(ctx context.Context) ([]*Schema, error)
 	GetSchemaVersions(ctx context.Context) (map[string]string, error)
 	OnSchemaUpdate(ctx context.Context, ch chan SchemaEvent)
+	RegisterMetaType(
+		ctx context.Context, metaType string, exclusive bool,
+	) error
+	RegisterMetaTypeUse(
+		ctx context.Context, mainType string, metaType string,
+	) error
 }
 
 type WorkflowStore interface {
@@ -169,7 +184,7 @@ type RegisterSchemaRequest struct {
 type CheckPermissionRequest struct {
 	UUID        uuid.UUID
 	GranteeURIs []string
-	Permission  Permission
+	Permissions []Permission
 }
 
 type CheckPermissionResult int
@@ -181,16 +196,17 @@ const (
 )
 
 type UpdateRequest struct {
-	UUID       uuid.UUID
-	Updated    time.Time
-	Updater    string
-	Meta       newsdoc.DataMap
-	ACL        []ACLEntry
-	DefaultACL []ACLEntry
-	Status     []StatusUpdate
-	Document   *newsdoc.Document
-	IfMatch    int64
-	LockToken  string
+	UUID         uuid.UUID
+	Updated      time.Time
+	Updater      string
+	Meta         newsdoc.DataMap
+	ACL          []ACLEntry
+	DefaultACL   []ACLEntry
+	Status       []StatusUpdate
+	Document     *newsdoc.Document
+	MainDocument *uuid.UUID
+	IfMatch      int64
+	LockToken    string
 }
 
 type DeleteRequest struct {
@@ -210,6 +226,7 @@ type DocumentMeta struct {
 	Statuses       map[string]Status
 	Deleting       bool
 	Lock           Lock
+	MainDocument   string
 }
 
 type ACLEntry struct {
@@ -247,6 +264,7 @@ type UpdateLockRequest struct {
 }
 
 type DocumentUpdate struct {
+	UUID    uuid.UUID
 	Version int64
 	Creator string
 	Created time.Time
@@ -254,11 +272,12 @@ type DocumentUpdate struct {
 }
 
 type Status struct {
-	ID      int64
-	Version int64
-	Creator string
-	Created time.Time
-	Meta    newsdoc.DataMap
+	ID             int64
+	Version        int64
+	Creator        string
+	Created        time.Time
+	Meta           newsdoc.DataMap
+	MetaDocVersion int64
 }
 
 type StatusUpdate struct {

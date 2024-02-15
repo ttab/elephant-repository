@@ -24,15 +24,14 @@ require (
 	github.com/rakutentech/jwk-go v1.1.3
 	github.com/tmaxmax/go-sse v0.8.0
 	github.com/ttab/darknut v0.1.0
-	github.com/ttab/elephant-api v0.9.0
-	github.com/ttab/elephantine v0.11.4
+	github.com/ttab/elephant-api v0.10.0
+	github.com/ttab/elephantine v0.11.5
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/newsdoc v0.4.2
 	github.com/ttab/revisor v0.4.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.1
 	github.com/xuri/excelize/v2 v2.8.0
-	golang.org/x/exp v0.0.0-20240205201215-2c58cdc269a3
 	golang.org/x/mod v0.15.0
 	golang.org/x/sync v0.6.0
 	google.golang.org/protobuf v1.32.0

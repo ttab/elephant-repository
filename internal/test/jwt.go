@@ -22,7 +22,7 @@ func NewSigningKey() (*ecdsa.PrivateKey, error) {
 	return jwtKey, nil
 }
 
-func StandardClaims(t *testing.T, scope string, units ...string) elephantine.JWTClaims {
+func Claims(t *testing.T, user string, scope string, units ...string) elephantine.JWTClaims {
 	t.Helper()
 
 	return elephantine.JWTClaims{
@@ -30,12 +30,18 @@ func StandardClaims(t *testing.T, scope string, units ...string) elephantine.JWT
 			ExpiresAt: jwt.NewNumericDate(
 				time.Now().Add(10 * time.Minute)),
 			Issuer:  "test",
-			Subject: "user://test/" + strings.ToLower(t.Name()),
+			Subject: "user://test/" + user,
 		},
 		Name:  t.Name(),
 		Units: units,
 		Scope: scope,
 	}
+}
+
+func StandardClaims(t *testing.T, scope string, units ...string) elephantine.JWTClaims {
+	t.Helper()
+
+	return Claims(t, strings.ToLower(t.Name()), scope, units...)
 }
 
 func AccessKey(key *ecdsa.PrivateKey, claims elephantine.JWTClaims) (string, error) {

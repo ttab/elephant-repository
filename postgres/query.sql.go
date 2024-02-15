@@ -38,23 +38,43 @@ func (q *Queries) ActivateSchema(ctx context.Context, arg ActivateSchemaParams) 
 	return err
 }
 
-const checkPermission = `-- name: CheckPermission :one
+const checkMetaDocumentType = `-- name: CheckMetaDocumentType :one
+SELECT coalesce(meta_type, ''), NOT d.main_doc IS NULL as is_meta_doc
+FROM document AS d
+     LEFT JOIN meta_type_use AS m ON m.main_type = d.type
+WHERE d.uuid = $1
+`
+
+type CheckMetaDocumentTypeRow struct {
+	MetaType  string
+	IsMetaDoc pgtype.Bool
+}
+
+func (q *Queries) CheckMetaDocumentType(ctx context.Context, argUuid uuid.UUID) (CheckMetaDocumentTypeRow, error) {
+	row := q.db.QueryRow(ctx, checkMetaDocumentType, argUuid)
+	var i CheckMetaDocumentTypeRow
+	err := row.Scan(&i.MetaType, &i.IsMetaDoc)
+	return i, err
+}
+
+const checkPermissions = `-- name: CheckPermissions :one
 SELECT (acl.uri IS NOT NULL) = true AS has_access
 FROM document AS d
      LEFT JOIN acl
-          ON acl.uuid = d.uuid AND acl.uri = ANY($1::text[])
-          AND $2::text = ANY(permissions)
+          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
+          AND acl.uri = ANY($1::text[])
+          AND $2::text[] && permissions
 WHERE d.uuid = $3
 `
 
-type CheckPermissionParams struct {
-	URI        []string
-	Permission string
-	UUID       uuid.UUID
+type CheckPermissionsParams struct {
+	URI         []string
+	Permissions []string
+	UUID        uuid.UUID
 }
 
-func (q *Queries) CheckPermission(ctx context.Context, arg CheckPermissionParams) (bool, error) {
-	row := q.db.QueryRow(ctx, checkPermission, arg.URI, arg.Permission, arg.UUID)
+func (q *Queries) CheckPermissions(ctx context.Context, arg CheckPermissionsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, checkPermissions, arg.URI, arg.Permissions, arg.UUID)
 	var has_access bool
 	err := row.Scan(&has_access)
 	return has_access, err
@@ -121,46 +141,17 @@ func (q *Queries) ConfigureEventsink(ctx context.Context, arg ConfigureEventsink
 	return err
 }
 
-const createStatus = `-- name: CreateStatus :exec
-SELECT create_status(
-       $1::uuid, $2::varchar(32), $3::bigint, $4::bigint,
-       $5::text, $6::timestamptz, $7::text, $8::jsonb
+const createDocumentVersion = `-- name: CreateDocumentVersion :exec
+INSERT INTO document_version(
+       uuid, version,
+       created, creator_uri, meta, document_data, archived
+) VALUES (
+       $1, $2,
+       $3, $4, $5, $6, false
 )
 `
 
-type CreateStatusParams struct {
-	UUID       uuid.UUID
-	Name       string
-	ID         int64
-	Version    int64
-	Type       string
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Meta       []byte
-}
-
-func (q *Queries) CreateStatus(ctx context.Context, arg CreateStatusParams) error {
-	_, err := q.db.Exec(ctx, createStatus,
-		arg.UUID,
-		arg.Name,
-		arg.ID,
-		arg.Version,
-		arg.Type,
-		arg.Created,
-		arg.CreatorUri,
-		arg.Meta,
-	)
-	return err
-}
-
-const createVersion = `-- name: CreateVersion :exec
-SELECT create_version(
-       $1::uuid, $2::bigint, $3::timestamptz,
-       $4::text, $5::jsonb, $6::jsonb
-)
-`
-
-type CreateVersionParams struct {
+type CreateDocumentVersionParams struct {
 	UUID         uuid.UUID
 	Version      int64
 	Created      pgtype.Timestamptz
@@ -169,14 +160,55 @@ type CreateVersionParams struct {
 	DocumentData []byte
 }
 
-func (q *Queries) CreateVersion(ctx context.Context, arg CreateVersionParams) error {
-	_, err := q.db.Exec(ctx, createVersion,
+func (q *Queries) CreateDocumentVersion(ctx context.Context, arg CreateDocumentVersionParams) error {
+	_, err := q.db.Exec(ctx, createDocumentVersion,
 		arg.UUID,
 		arg.Version,
 		arg.Created,
 		arg.CreatorUri,
 		arg.Meta,
 		arg.DocumentData,
+	)
+	return err
+}
+
+const createStatusHead = `-- name: CreateStatusHead :exec
+INSERT INTO status_heads(
+       uuid, name, type, version, current_id,
+       updated, updater_uri, language
+) VALUES (
+       $1, $2, $3::text, $4::bigint, $5::bigint,
+       $6, $7, $8::text
+)
+ON CONFLICT (uuid, name) DO UPDATE
+   SET updated = $6,
+       updater_uri = $7,
+       current_id = $5::bigint,
+       version = $4::bigint,
+       language = $8::text
+`
+
+type CreateStatusHeadParams struct {
+	UUID       uuid.UUID
+	Name       string
+	Type       string
+	Version    int64
+	ID         int64
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Language   string
+}
+
+func (q *Queries) CreateStatusHead(ctx context.Context, arg CreateStatusHeadParams) error {
+	_, err := q.db.Exec(ctx, createStatusHead,
+		arg.UUID,
+		arg.Name,
+		arg.Type,
+		arg.Version,
+		arg.ID,
+		arg.Created,
+		arg.CreatorUri,
+		arg.Language,
 	)
 	return err
 }
@@ -295,6 +327,16 @@ func (q *Queries) DropACL(ctx context.Context, arg DropACLParams) error {
 	return err
 }
 
+const dropMetaType = `-- name: DropMetaType :exec
+DELETE FROM meta_type
+WHERE meta_type = $1
+`
+
+func (q *Queries) DropMetaType(ctx context.Context, metaType string) error {
+	_, err := q.db.Exec(ctx, dropMetaType, metaType)
+	return err
+}
+
 const finaliseDelete = `-- name: FinaliseDelete :execrows
 DELETE FROM document
 WHERE uuid = $1 AND deleting = true
@@ -379,17 +421,19 @@ func (q *Queries) GetActiveStatuses(ctx context.Context) ([]string, error) {
 const getCompactedEventlog = `-- name: GetCompactedEventlog :many
 SELECT
         w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
-        w.status_id, w.acl, w.updater
+        w.status_id, w.acl, w.updater, w.language, w.old_language, w.main_doc
 FROM (
      SELECT DISTINCT ON (
             e.uuid,
-            CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END
-       ) id, event, uuid, timestamp, type, version, status, status_id, acl, updater FROM eventlog AS e
+            CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END,
+            CASE WHEN NOT e.old_language IS NULL THEN null ELSE 0 END
+       ) id, event, uuid, timestamp, type, version, status, status_id, acl, updater, main_doc, language, old_language FROM eventlog AS e
      WHERE e.id > $1 AND e.id <= $2
      AND ($3::text IS NULL OR e.type = $3)
      ORDER BY
            e.uuid,
            CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END,
+           CASE WHEN NOT e.old_language IS NULL THEN null ELSE 0 END,
            e.id DESC
      ) AS w
 ORDER BY w.id ASC
@@ -404,7 +448,23 @@ type GetCompactedEventlogParams struct {
 	RowLimit  pgtype.Int4
 }
 
-func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEventlogParams) ([]Eventlog, error) {
+type GetCompactedEventlogRow struct {
+	ID          int64
+	Event       string
+	UUID        uuid.UUID
+	Timestamp   pgtype.Timestamptz
+	Type        pgtype.Text
+	Version     pgtype.Int8
+	Status      pgtype.Text
+	StatusID    pgtype.Int8
+	Acl         []byte
+	Updater     pgtype.Text
+	Language    pgtype.Text
+	OldLanguage pgtype.Text
+	MainDoc     pgtype.UUID
+}
+
+func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEventlogParams) ([]GetCompactedEventlogRow, error) {
 	rows, err := q.db.Query(ctx, getCompactedEventlog,
 		arg.After,
 		arg.Until,
@@ -416,9 +476,9 @@ func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEven
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Eventlog
+	var items []GetCompactedEventlogRow
 	for rows.Next() {
-		var i Eventlog
+		var i GetCompactedEventlogRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Event,
@@ -430,6 +490,9 @@ func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEven
 			&i.StatusID,
 			&i.Acl,
 			&i.Updater,
+			&i.Language,
+			&i.OldLanguage,
+			&i.MainDoc,
 		); err != nil {
 			return nil, err
 		}
@@ -466,18 +529,23 @@ func (q *Queries) GetDocumentACL(ctx context.Context, argUuid uuid.UUID) ([]Acl,
 }
 
 const getDocumentData = `-- name: GetDocumentData :one
-SELECT v.document_data
+SELECT v.document_data, v.version
 FROM document as d
      INNER JOIN document_version AS v ON
            v.uuid = d.uuid And v.version = d.current_version
 WHERE d.uuid = $1
 `
 
-func (q *Queries) GetDocumentData(ctx context.Context, argUuid uuid.UUID) ([]byte, error) {
+type GetDocumentDataRow struct {
+	DocumentData []byte
+	Version      int64
+}
+
+func (q *Queries) GetDocumentData(ctx context.Context, argUuid uuid.UUID) (GetDocumentDataRow, error) {
 	row := q.db.QueryRow(ctx, getDocumentData, argUuid)
-	var document_data []byte
-	err := row.Scan(&document_data)
-	return document_data, err
+	var i GetDocumentDataRow
+	err := row.Scan(&i.DocumentData, &i.Version)
+	return i, err
 }
 
 const getDocumentForDeletion = `-- name: GetDocumentForDeletion :one
@@ -501,10 +569,10 @@ func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDel
 }
 
 const getDocumentForUpdate = `-- name: GetDocumentForUpdate :one
-SELECT d.uri, d.type, d.current_version, d.deleting, l.uuid as lock_uuid, 
-        l.uri as lock_uri, l.created as lock_created,
-        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
-        l.token as lock_token
+SELECT d.uri, d.type, d.current_version, d.deleting, d.main_doc, d.language,
+       l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
+       l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
+       l.token as lock_token
 FROM document as d
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > $2
 WHERE d.uuid = $1
@@ -521,6 +589,8 @@ type GetDocumentForUpdateRow struct {
 	Type           string
 	CurrentVersion int64
 	Deleting       bool
+	MainDoc        pgtype.UUID
+	Language       pgtype.Text
 	LockUuid       pgtype.UUID
 	LockUri        pgtype.Text
 	LockCreated    pgtype.Timestamptz
@@ -538,6 +608,8 @@ func (q *Queries) GetDocumentForUpdate(ctx context.Context, arg GetDocumentForUp
 		&i.Type,
 		&i.CurrentVersion,
 		&i.Deleting,
+		&i.MainDoc,
+		&i.Language,
 		&i.LockUuid,
 		&i.LockUri,
 		&i.LockCreated,
@@ -583,9 +655,9 @@ func (q *Queries) GetDocumentHeads(ctx context.Context, argUuid uuid.UUID) ([]Ge
 const getDocumentInfo = `-- name: GetDocumentInfo :one
 SELECT
         d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
-        deleting, l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
-        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
-        l.token as lock_token
+        deleting, main_doc, l.uuid as lock_uuid, l.uri as lock_uri,
+        l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
+        l.comment as lock_comment, l.token as lock_token
 FROM document as d 
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > $1
 WHERE d.uuid = $2
@@ -605,6 +677,7 @@ type GetDocumentInfoRow struct {
 	UpdaterUri     string
 	CurrentVersion int64
 	Deleting       bool
+	MainDoc        pgtype.UUID
 	LockUuid       pgtype.UUID
 	LockUri        pgtype.Text
 	LockCreated    pgtype.Timestamptz
@@ -626,6 +699,7 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, arg GetDocumentInfoParams
 		&i.UpdaterUri,
 		&i.CurrentVersion,
 		&i.Deleting,
+		&i.MainDoc,
 		&i.LockUuid,
 		&i.LockUri,
 		&i.LockCreated,
@@ -781,7 +855,8 @@ func (q *Queries) GetDueReport(ctx context.Context) (Report, error) {
 }
 
 const getEventlog = `-- name: GetEventlog :many
-SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater
+SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater,
+       language, old_language, main_doc
 FROM eventlog
 WHERE id > $1
 ORDER BY id ASC
@@ -793,15 +868,31 @@ type GetEventlogParams struct {
 	RowLimit int32
 }
 
-func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]Eventlog, error) {
+type GetEventlogRow struct {
+	ID          int64
+	Event       string
+	UUID        uuid.UUID
+	Timestamp   pgtype.Timestamptz
+	Type        pgtype.Text
+	Version     pgtype.Int8
+	Status      pgtype.Text
+	StatusID    pgtype.Int8
+	Acl         []byte
+	Updater     pgtype.Text
+	Language    pgtype.Text
+	OldLanguage pgtype.Text
+	MainDoc     pgtype.UUID
+}
+
+func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]GetEventlogRow, error) {
 	rows, err := q.db.Query(ctx, getEventlog, arg.After, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Eventlog
+	var items []GetEventlogRow
 	for rows.Next() {
-		var i Eventlog
+		var i GetEventlogRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Event,
@@ -813,6 +904,9 @@ func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]Eve
 			&i.StatusID,
 			&i.Acl,
 			&i.Updater,
+			&i.Language,
+			&i.OldLanguage,
+			&i.MainDoc,
 		); err != nil {
 			return nil, err
 		}
@@ -871,7 +965,7 @@ func (q *Queries) GetExpiredDocumentLocks(ctx context.Context, cutoff pgtype.Tim
 
 const getFullDocumentHeads = `-- name: GetFullDocumentHeads :many
 SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
-       s.archived, s.signature
+       s.archived, s.signature, s.meta_doc_version
 FROM status_heads AS h
      INNER JOIN document_status AS s ON
            s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
@@ -897,6 +991,7 @@ func (q *Queries) GetFullDocumentHeads(ctx context.Context, argUuid uuid.UUID) (
 			&i.Meta,
 			&i.Archived,
 			&i.Signature,
+			&i.MetaDocVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -963,23 +1058,27 @@ func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, e
 }
 
 const getLastEvent = `-- name: GetLastEvent :one
-SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl
+SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl,
+       language, old_language, main_doc
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1
 `
 
 type GetLastEventRow struct {
-	ID        int64
-	Event     string
-	UUID      uuid.UUID
-	Timestamp pgtype.Timestamptz
-	Updater   pgtype.Text
-	Type      pgtype.Text
-	Version   pgtype.Int8
-	Status    pgtype.Text
-	StatusID  pgtype.Int8
-	Acl       []byte
+	ID          int64
+	Event       string
+	UUID        uuid.UUID
+	Timestamp   pgtype.Timestamptz
+	Updater     pgtype.Text
+	Type        pgtype.Text
+	Version     pgtype.Int8
+	Status      pgtype.Text
+	StatusID    pgtype.Int8
+	Acl         []byte
+	Language    pgtype.Text
+	OldLanguage pgtype.Text
+	MainDoc     pgtype.UUID
 }
 
 func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
@@ -996,6 +1095,9 @@ func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
 		&i.Status,
 		&i.StatusID,
 		&i.Acl,
+		&i.Language,
+		&i.OldLanguage,
+		&i.MainDoc,
 	)
 	return i, err
 }
@@ -1010,6 +1112,18 @@ func (q *Queries) GetLastEventID(ctx context.Context) (int64, error) {
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const getMetaDocVersion = `-- name: GetMetaDocVersion :one
+SELECT current_version FROM document
+WHERE main_doc = $1
+`
+
+func (q *Queries) GetMetaDocVersion(ctx context.Context, argUuid pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getMetaDocVersion, argUuid)
+	var current_version int64
+	err := row.Scan(&current_version)
+	return current_version, err
 }
 
 const getMetricKind = `-- name: GetMetricKind :one
@@ -1502,8 +1616,13 @@ func (q *Queries) GranteesWithPermission(ctx context.Context, arg GranteesWithPe
 }
 
 const insertACLAuditEntry = `-- name: InsertACLAuditEntry :exec
-INSERT INTO acl_audit(uuid, type, updated, updater_uri, state)
-SELECT $1::uuid, $2, $3::timestamptz, $4::text, json_agg(l)
+INSERT INTO acl_audit(
+       uuid, type, updated,
+       updater_uri, state, language
+)
+SELECT
+       $1::uuid, $2, $3::timestamptz,
+       $4::text, json_agg(l), $5::text
 FROM (
        SELECT uri, permissions
        FROM acl
@@ -1516,6 +1635,7 @@ type InsertACLAuditEntryParams struct {
 	Type       pgtype.Text
 	Updated    pgtype.Timestamptz
 	UpdaterUri string
+	Language   string
 }
 
 func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEntryParams) error {
@@ -1524,15 +1644,18 @@ func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEnt
 		arg.Type,
 		arg.Updated,
 		arg.UpdaterUri,
+		arg.Language,
 	)
 	return err
 }
 
 const insertDeleteRecord = `-- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
-       uuid, uri, type, version, created, creator_uri, meta
+       uuid, uri, type, version, created, creator_uri, meta,
+       main_doc, language
 ) VALUES(
-       $1, $2, $3, $4, $5, $6, $7
+       $1, $2, $3, $4, $5, $6, $7,
+       $8, $9
 ) RETURNING id
 `
 
@@ -1544,6 +1667,8 @@ type InsertDeleteRecordParams struct {
 	Created    pgtype.Timestamptz
 	CreatorUri string
 	Meta       []byte
+	MainDoc    pgtype.UUID
+	Language   pgtype.Text
 }
 
 func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecordParams) (int64, error) {
@@ -1555,6 +1680,8 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 		arg.Created,
 		arg.CreatorUri,
 		arg.Meta,
+		arg.MainDoc,
+		arg.Language,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -1592,24 +1719,64 @@ func (q *Queries) InsertDocumentLock(ctx context.Context, arg InsertDocumentLock
 	return err
 }
 
+const insertDocumentStatus = `-- name: InsertDocumentStatus :exec
+INSERT INTO document_status(
+       uuid, name, id, version, created,
+       creator_uri, meta, meta_doc_version
+) VALUES (
+       $1, $2, $3, $4, $5,
+       $6, $7, $8::bigint
+)
+`
+
+type InsertDocumentStatusParams struct {
+	UUID           uuid.UUID
+	Name           string
+	ID             int64
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           []byte
+	MetaDocVersion int64
+}
+
+func (q *Queries) InsertDocumentStatus(ctx context.Context, arg InsertDocumentStatusParams) error {
+	_, err := q.db.Exec(ctx, insertDocumentStatus,
+		arg.UUID,
+		arg.Name,
+		arg.ID,
+		arg.Version,
+		arg.Created,
+		arg.CreatorUri,
+		arg.Meta,
+		arg.MetaDocVersion,
+	)
+	return err
+}
+
 const insertIntoEventLog = `-- name: InsertIntoEventLog :one
 INSERT INTO eventlog(
-       event, uuid, type, timestamp, updater, version, status, status_id, acl
+       event, uuid, type, timestamp, updater, version, status, status_id, acl,
+       language, old_language, main_doc
 ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9
+       $1, $2, $3, $4, $5, $6, $7, $8, $9,
+       $10, $11, $12
 ) RETURNING id
 `
 
 type InsertIntoEventLogParams struct {
-	Event     string
-	UUID      uuid.UUID
-	Type      pgtype.Text
-	Timestamp pgtype.Timestamptz
-	Updater   pgtype.Text
-	Version   pgtype.Int8
-	Status    pgtype.Text
-	StatusID  pgtype.Int8
-	Acl       []byte
+	Event       string
+	UUID        uuid.UUID
+	Type        pgtype.Text
+	Timestamp   pgtype.Timestamptz
+	Updater     pgtype.Text
+	Version     pgtype.Int8
+	Status      pgtype.Text
+	StatusID    pgtype.Int8
+	Acl         []byte
+	Language    pgtype.Text
+	OldLanguage pgtype.Text
+	MainDoc     pgtype.UUID
 }
 
 func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLogParams) (int64, error) {
@@ -1623,6 +1790,9 @@ func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLog
 		arg.Status,
 		arg.StatusID,
 		arg.Acl,
+		arg.Language,
+		arg.OldLanguage,
+		arg.MainDoc,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -1727,6 +1897,43 @@ func (q *Queries) PingJobLock(ctx context.Context, arg PingJobLockParams) (int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const registerMetaType = `-- name: RegisterMetaType :exec
+INSERT INTO meta_type(
+       meta_type, exclusive_for_meta
+) VALUES (
+       $1, $2
+) ON CONFLICT (meta_type) DO UPDATE SET
+  exclusive_for_meta = $2
+`
+
+type RegisterMetaTypeParams struct {
+	MetaType         string
+	ExclusiveForMeta bool
+}
+
+func (q *Queries) RegisterMetaType(ctx context.Context, arg RegisterMetaTypeParams) error {
+	_, err := q.db.Exec(ctx, registerMetaType, arg.MetaType, arg.ExclusiveForMeta)
+	return err
+}
+
+const registerMetaTypeUse = `-- name: RegisterMetaTypeUse :exec
+INSERT INTO meta_type_use(
+       main_type, meta_type
+) VALUES (
+       $1, $2
+)
+`
+
+type RegisterMetaTypeUseParams struct {
+	MainType string
+	MetaType string
+}
+
+func (q *Queries) RegisterMetaTypeUse(ctx context.Context, arg RegisterMetaTypeUseParams) error {
+	_, err := q.db.Exec(ctx, registerMetaTypeUse, arg.MainType, arg.MetaType)
+	return err
 }
 
 const registerMetricKind = `-- name: RegisterMetricKind :exec
@@ -2158,6 +2365,48 @@ func (q *Queries) UpdateStatusRule(ctx context.Context, arg UpdateStatusRulePara
 		arg.AppliesTo,
 		arg.ForTypes,
 		arg.Expression,
+	)
+	return err
+}
+
+const upsertDocument = `-- name: UpsertDocument :exec
+INSERT INTO document(
+       uuid, uri, type,
+       created, creator_uri, updated, updater_uri, current_version,
+       main_doc, language
+) VALUES (
+       $1, $2, $3,
+       $4, $5, $4, $5, $6,
+       $7, $8
+) ON CONFLICT (uuid) DO UPDATE
+     SET uri = $2,
+         updated = $4,
+         updater_uri = $5,
+         current_version = $6,
+         language = $8
+`
+
+type UpsertDocumentParams struct {
+	UUID       uuid.UUID
+	URI        string
+	Type       string
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Version    int64
+	MainDoc    pgtype.UUID
+	Language   pgtype.Text
+}
+
+func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) error {
+	_, err := q.db.Exec(ctx, upsertDocument,
+		arg.UUID,
+		arg.URI,
+		arg.Type,
+		arg.Created,
+		arg.CreatorUri,
+		arg.Version,
+		arg.MainDoc,
+		arg.Language,
 	)
 	return err
 }

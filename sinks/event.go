@@ -2,10 +2,10 @@ package sinks
 
 import (
 	"regexp"
+	"slices"
 
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/newsdoc"
-	"golang.org/x/exp/slices"
 )
 
 type EventDetail struct {
