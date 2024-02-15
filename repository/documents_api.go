@@ -1336,15 +1336,15 @@ func (a *DocumentsService) verifyMetaDocumentUpdate(
 				fmt.Sprintf("uuid must be %s based on the meta URI", metaUUID))
 		}
 	} else {
-		mURI := metaURI(docUUID)
+		metaURI := metaURI(docUUID)
 
-		if req.Document.Uri != "" && req.Document.Uri != mURI {
+		if req.Document.Uri != "" && req.Document.Uri != metaURI {
 			return twirp.InvalidArgumentError(
 				"document.uri",
-				fmt.Sprintf("document URI must be %q or empty", mURI))
+				fmt.Sprintf("document URI must be %q or empty", metaURI))
 		}
 
-		req.Document.Uri = mURI
+		req.Document.Uri = metaURI
 	}
 
 	mt, err := a.store.GetMetaTypeForDocument(ctx, mainUUID)
