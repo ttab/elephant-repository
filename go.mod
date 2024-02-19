@@ -28,7 +28,7 @@ require (
 	github.com/ttab/elephantine v0.11.5
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/newsdoc v0.4.2
-	github.com/ttab/revisor v0.4.0
+	github.com/ttab/revisor v0.4.1
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.1
 	github.com/xuri/excelize/v2 v2.8.0
