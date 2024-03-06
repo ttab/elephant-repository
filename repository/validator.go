@@ -89,12 +89,12 @@ func (v *Validator) loadSchemas(ctx context.Context, loader SchemaLoader) error 
 	return nil
 }
 
-func (v *Validator) ValidateDocument(document *newsdoc.Document) []revisor.ValidationResult {
+func (v *Validator) ValidateDocument(ctx context.Context, document *newsdoc.Document) []revisor.ValidationResult {
 	v.m.RLock()
 	val := v.val
 	v.m.RUnlock()
 
-	return val.ValidateDocument(document)
+	return val.ValidateDocument(ctx, document)
 }
 
 func (v *Validator) GetValidator() *revisor.Validator {

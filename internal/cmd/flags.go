@@ -97,7 +97,7 @@ func BackendFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
 			Name:    "db",
-			Value:   "postgres://repository:pass@localhost/repository",
+			Value:   "postgres://elephant-repository:pass@localhost/elephant-repository",
 			EnvVars: []string{"CONN_STRING"},
 		},
 		&cli.StringFlag{
@@ -106,7 +106,7 @@ func BackendFlags() []cli.Flag {
 		},
 		&cli.StringFlag{
 			Name:    "reporting-db",
-			Value:   "postgres://reportuser:reportuser@localhost/repository",
+			Value:   "postgres://repository-reportuser:pass@localhost/elephant-repository",
 			EnvVars: []string{"REPORTING_CONN_STRING"},
 		},
 		&cli.StringFlag{
