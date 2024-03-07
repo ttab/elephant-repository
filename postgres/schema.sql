@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 15.3 (Debian 15.3-1.pgdg120+1)
--- Dumped by pg_dump version 15.3 (Debian 15.3-1.pgdg120+1)
+-- Dumped from database version 16.1 (Debian 16.1-1.pgdg120+1)
+-- Dumped by pg_dump version 16.1 (Debian 16.1-1.pgdg120+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -17,7 +17,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- Name: create_status(uuid, character varying, bigint, bigint, timestamp with time zone, text, jsonb); Type: FUNCTION; Schema: public; Owner: repository
+-- Name: create_status(uuid, character varying, bigint, bigint, timestamp with time zone, text, jsonb); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.create_status(uuid uuid, name character varying, current_id bigint, version bigint, created timestamp with time zone, creator_uri text, meta jsonb) RETURNS void
@@ -43,10 +43,8 @@ CREATE FUNCTION public.create_status(uuid uuid, name character varying, current_
 $$;
 
 
-ALTER FUNCTION public.create_status(uuid uuid, name character varying, current_id bigint, version bigint, created timestamp with time zone, creator_uri text, meta jsonb) OWNER TO repository;
-
 --
--- Name: create_status(uuid, character varying, bigint, bigint, text, timestamp with time zone, text, jsonb); Type: FUNCTION; Schema: public; Owner: repository
+-- Name: create_status(uuid, character varying, bigint, bigint, text, timestamp with time zone, text, jsonb); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.create_status(uuid uuid, name character varying, current_id bigint, version bigint, type text, created timestamp with time zone, creator_uri text, meta jsonb) RETURNS void
@@ -73,10 +71,8 @@ CREATE FUNCTION public.create_status(uuid uuid, name character varying, current_
 $$;
 
 
-ALTER FUNCTION public.create_status(uuid uuid, name character varying, current_id bigint, version bigint, type text, created timestamp with time zone, creator_uri text, meta jsonb) OWNER TO repository;
-
 --
--- Name: create_version(uuid, bigint, timestamp with time zone, text, jsonb, jsonb); Type: FUNCTION; Schema: public; Owner: repository
+-- Name: create_version(uuid, bigint, timestamp with time zone, text, jsonb, jsonb); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.create_version(uuid uuid, version bigint, created timestamp with time zone, creator_uri text, meta jsonb, document_data jsonb) RETURNS void
@@ -107,10 +103,8 @@ CREATE FUNCTION public.create_version(uuid uuid, version bigint, created timesta
 $$;
 
 
-ALTER FUNCTION public.create_version(uuid uuid, version bigint, created timestamp with time zone, creator_uri text, meta jsonb, document_data jsonb) OWNER TO repository;
-
 --
--- Name: delete_document(uuid, text, bigint); Type: FUNCTION; Schema: public; Owner: repository
+-- Name: delete_document(uuid, text, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.delete_document(uuid uuid, uri text, record_id bigint) RETURNS void
@@ -127,14 +121,12 @@ CREATE FUNCTION public.delete_document(uuid uuid, uri text, record_id bigint) RE
 $$;
 
 
-ALTER FUNCTION public.delete_document(uuid uuid, uri text, record_id bigint) OWNER TO repository;
-
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
 
 --
--- Name: acl; Type: TABLE; Schema: public; Owner: repository
+-- Name: acl; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.acl (
@@ -144,10 +136,8 @@ CREATE TABLE public.acl (
 );
 
 
-ALTER TABLE public.acl OWNER TO repository;
-
 --
--- Name: acl_audit; Type: TABLE; Schema: public; Owner: repository
+-- Name: acl_audit; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.acl_audit (
@@ -162,10 +152,8 @@ CREATE TABLE public.acl_audit (
 );
 
 
-ALTER TABLE public.acl_audit OWNER TO repository;
-
 --
--- Name: acl_audit_id_seq; Type: SEQUENCE; Schema: public; Owner: repository
+-- Name: acl_audit_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 ALTER TABLE public.acl_audit ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
@@ -179,7 +167,7 @@ ALTER TABLE public.acl_audit ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- Name: active_schemas; Type: TABLE; Schema: public; Owner: repository
+-- Name: active_schemas; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.active_schemas (
@@ -188,10 +176,8 @@ CREATE TABLE public.active_schemas (
 );
 
 
-ALTER TABLE public.active_schemas OWNER TO repository;
-
 --
--- Name: delete_record; Type: TABLE; Schema: public; Owner: repository
+-- Name: delete_record; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.delete_record (
@@ -208,10 +194,8 @@ CREATE TABLE public.delete_record (
 );
 
 
-ALTER TABLE public.delete_record OWNER TO repository;
-
 --
--- Name: delete_record_id_seq; Type: SEQUENCE; Schema: public; Owner: repository
+-- Name: delete_record_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 ALTER TABLE public.delete_record ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
@@ -225,7 +209,7 @@ ALTER TABLE public.delete_record ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTIT
 
 
 --
--- Name: document; Type: TABLE; Schema: public; Owner: repository
+-- Name: document; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.document (
@@ -245,10 +229,8 @@ CREATE TABLE public.document (
 ALTER TABLE ONLY public.document REPLICA IDENTITY FULL;
 
 
-ALTER TABLE public.document OWNER TO repository;
-
 --
--- Name: document_link; Type: TABLE; Schema: public; Owner: repository
+-- Name: document_link; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.document_link (
@@ -260,10 +242,8 @@ CREATE TABLE public.document_link (
 );
 
 
-ALTER TABLE public.document_link OWNER TO repository;
-
 --
--- Name: document_lock; Type: TABLE; Schema: public; Owner: repository
+-- Name: document_lock; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.document_lock (
@@ -277,10 +257,8 @@ CREATE TABLE public.document_lock (
 );
 
 
-ALTER TABLE public.document_lock OWNER TO repository;
-
 --
--- Name: document_schema; Type: TABLE; Schema: public; Owner: repository
+-- Name: document_schema; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.document_schema (
@@ -290,10 +268,8 @@ CREATE TABLE public.document_schema (
 );
 
 
-ALTER TABLE public.document_schema OWNER TO repository;
-
 --
--- Name: document_status; Type: TABLE; Schema: public; Owner: repository
+-- Name: document_status; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.document_status (
@@ -310,10 +286,8 @@ CREATE TABLE public.document_status (
 );
 
 
-ALTER TABLE public.document_status OWNER TO repository;
-
 --
--- Name: document_version; Type: TABLE; Schema: public; Owner: repository
+-- Name: document_version; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.document_version (
@@ -328,10 +302,8 @@ CREATE TABLE public.document_version (
 );
 
 
-ALTER TABLE public.document_version OWNER TO repository;
-
 --
--- Name: eventlog; Type: TABLE; Schema: public; Owner: repository
+-- Name: eventlog; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.eventlog (
@@ -351,10 +323,8 @@ CREATE TABLE public.eventlog (
 );
 
 
-ALTER TABLE public.eventlog OWNER TO repository;
-
 --
--- Name: eventlog_id_seq; Type: SEQUENCE; Schema: public; Owner: repository
+-- Name: eventlog_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 ALTER TABLE public.eventlog ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
@@ -368,7 +338,7 @@ ALTER TABLE public.eventlog ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- Name: eventsink; Type: TABLE; Schema: public; Owner: repository
+-- Name: eventsink; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.eventsink (
@@ -378,10 +348,8 @@ CREATE TABLE public.eventsink (
 );
 
 
-ALTER TABLE public.eventsink OWNER TO repository;
-
 --
--- Name: job_lock; Type: TABLE; Schema: public; Owner: repository
+-- Name: job_lock; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.job_lock (
@@ -392,10 +360,8 @@ CREATE TABLE public.job_lock (
 );
 
 
-ALTER TABLE public.job_lock OWNER TO repository;
-
 --
--- Name: meta_type; Type: TABLE; Schema: public; Owner: repository
+-- Name: meta_type; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.meta_type (
@@ -404,10 +370,8 @@ CREATE TABLE public.meta_type (
 );
 
 
-ALTER TABLE public.meta_type OWNER TO repository;
-
 --
--- Name: meta_type_use; Type: TABLE; Schema: public; Owner: repository
+-- Name: meta_type_use; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.meta_type_use (
@@ -416,10 +380,8 @@ CREATE TABLE public.meta_type_use (
 );
 
 
-ALTER TABLE public.meta_type_use OWNER TO repository;
-
 --
--- Name: metric; Type: TABLE; Schema: public; Owner: repository
+-- Name: metric; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.metric (
@@ -430,10 +392,8 @@ CREATE TABLE public.metric (
 );
 
 
-ALTER TABLE public.metric OWNER TO repository;
-
 --
--- Name: metric_kind; Type: TABLE; Schema: public; Owner: repository
+-- Name: metric_kind; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.metric_kind (
@@ -442,10 +402,8 @@ CREATE TABLE public.metric_kind (
 );
 
 
-ALTER TABLE public.metric_kind OWNER TO repository;
-
 --
--- Name: planning_assignee; Type: TABLE; Schema: public; Owner: repository
+-- Name: planning_assignee; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.planning_assignee (
@@ -456,10 +414,8 @@ CREATE TABLE public.planning_assignee (
 );
 
 
-ALTER TABLE public.planning_assignee OWNER TO repository;
-
 --
--- Name: planning_assignment; Type: TABLE; Schema: public; Owner: repository
+-- Name: planning_assignment; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.planning_assignment (
@@ -480,10 +436,8 @@ CREATE TABLE public.planning_assignment (
 );
 
 
-ALTER TABLE public.planning_assignment OWNER TO repository;
-
 --
--- Name: planning_deliverable; Type: TABLE; Schema: public; Owner: repository
+-- Name: planning_deliverable; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.planning_deliverable (
@@ -493,10 +447,8 @@ CREATE TABLE public.planning_deliverable (
 );
 
 
-ALTER TABLE public.planning_deliverable OWNER TO repository;
-
 --
--- Name: planning_item; Type: TABLE; Schema: public; Owner: repository
+-- Name: planning_item; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.planning_item (
@@ -513,10 +465,8 @@ CREATE TABLE public.planning_item (
 );
 
 
-ALTER TABLE public.planning_item OWNER TO repository;
-
 --
--- Name: report; Type: TABLE; Schema: public; Owner: repository
+-- Name: report; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.report (
@@ -527,10 +477,8 @@ CREATE TABLE public.report (
 );
 
 
-ALTER TABLE public.report OWNER TO repository;
-
 --
--- Name: schema_version; Type: TABLE; Schema: public; Owner: repository
+-- Name: schema_version; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.schema_version (
@@ -538,10 +486,8 @@ CREATE TABLE public.schema_version (
 );
 
 
-ALTER TABLE public.schema_version OWNER TO repository;
-
 --
--- Name: signing_keys; Type: TABLE; Schema: public; Owner: repository
+-- Name: signing_keys; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.signing_keys (
@@ -550,10 +496,8 @@ CREATE TABLE public.signing_keys (
 );
 
 
-ALTER TABLE public.signing_keys OWNER TO repository;
-
 --
--- Name: status; Type: TABLE; Schema: public; Owner: repository
+-- Name: status; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.status (
@@ -562,10 +506,8 @@ CREATE TABLE public.status (
 );
 
 
-ALTER TABLE public.status OWNER TO repository;
-
 --
--- Name: status_heads; Type: TABLE; Schema: public; Owner: repository
+-- Name: status_heads; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.status_heads (
@@ -582,10 +524,8 @@ CREATE TABLE public.status_heads (
 ALTER TABLE ONLY public.status_heads REPLICA IDENTITY FULL;
 
 
-ALTER TABLE public.status_heads OWNER TO repository;
-
 --
--- Name: status_rule; Type: TABLE; Schema: public; Owner: repository
+-- Name: status_rule; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.status_rule (
@@ -598,10 +538,8 @@ CREATE TABLE public.status_rule (
 );
 
 
-ALTER TABLE public.status_rule OWNER TO repository;
-
 --
--- Name: acl_audit acl_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: acl_audit acl_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.acl_audit
@@ -609,7 +547,7 @@ ALTER TABLE ONLY public.acl_audit
 
 
 --
--- Name: acl acl_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: acl acl_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.acl
@@ -617,7 +555,7 @@ ALTER TABLE ONLY public.acl
 
 
 --
--- Name: active_schemas active_schemas_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: active_schemas active_schemas_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.active_schemas
@@ -625,7 +563,7 @@ ALTER TABLE ONLY public.active_schemas
 
 
 --
--- Name: delete_record delete_record_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: delete_record delete_record_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.delete_record
@@ -633,7 +571,7 @@ ALTER TABLE ONLY public.delete_record
 
 
 --
--- Name: document_link document_link_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: document_link document_link_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_link
@@ -641,7 +579,7 @@ ALTER TABLE ONLY public.document_link
 
 
 --
--- Name: document_lock document_lock_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: document_lock document_lock_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_lock
@@ -649,7 +587,7 @@ ALTER TABLE ONLY public.document_lock
 
 
 --
--- Name: document document_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: document document_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document
@@ -657,7 +595,7 @@ ALTER TABLE ONLY public.document
 
 
 --
--- Name: document_schema document_schema_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: document_schema document_schema_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_schema
@@ -665,7 +603,7 @@ ALTER TABLE ONLY public.document_schema
 
 
 --
--- Name: document_status document_status_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: document_status document_status_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_status
@@ -673,7 +611,7 @@ ALTER TABLE ONLY public.document_status
 
 
 --
--- Name: document document_uri_key; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: document document_uri_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document
@@ -681,7 +619,7 @@ ALTER TABLE ONLY public.document
 
 
 --
--- Name: document_version document_version_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: document_version document_version_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_version
@@ -689,7 +627,7 @@ ALTER TABLE ONLY public.document_version
 
 
 --
--- Name: eventlog eventlog_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: eventlog eventlog_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.eventlog
@@ -697,7 +635,7 @@ ALTER TABLE ONLY public.eventlog
 
 
 --
--- Name: eventsink eventsink_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: eventsink eventsink_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.eventsink
@@ -705,7 +643,7 @@ ALTER TABLE ONLY public.eventsink
 
 
 --
--- Name: job_lock job_lock_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: job_lock job_lock_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.job_lock
@@ -713,7 +651,7 @@ ALTER TABLE ONLY public.job_lock
 
 
 --
--- Name: meta_type meta_type_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: meta_type meta_type_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.meta_type
@@ -721,7 +659,7 @@ ALTER TABLE ONLY public.meta_type
 
 
 --
--- Name: meta_type_use meta_type_use_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: meta_type_use meta_type_use_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.meta_type_use
@@ -729,7 +667,7 @@ ALTER TABLE ONLY public.meta_type_use
 
 
 --
--- Name: metric_kind metric_kind_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: metric_kind metric_kind_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.metric_kind
@@ -737,7 +675,7 @@ ALTER TABLE ONLY public.metric_kind
 
 
 --
--- Name: metric metric_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: metric metric_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.metric
@@ -745,7 +683,7 @@ ALTER TABLE ONLY public.metric
 
 
 --
--- Name: planning_assignee planning_assignee_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: planning_assignee planning_assignee_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.planning_assignee
@@ -753,7 +691,7 @@ ALTER TABLE ONLY public.planning_assignee
 
 
 --
--- Name: planning_assignment planning_assignment_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: planning_assignment planning_assignment_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.planning_assignment
@@ -761,7 +699,7 @@ ALTER TABLE ONLY public.planning_assignment
 
 
 --
--- Name: planning_deliverable planning_deliverable_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: planning_deliverable planning_deliverable_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.planning_deliverable
@@ -769,7 +707,7 @@ ALTER TABLE ONLY public.planning_deliverable
 
 
 --
--- Name: planning_item planning_item_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: planning_item planning_item_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.planning_item
@@ -777,7 +715,7 @@ ALTER TABLE ONLY public.planning_item
 
 
 --
--- Name: report report_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: report report_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.report
@@ -785,7 +723,7 @@ ALTER TABLE ONLY public.report
 
 
 --
--- Name: signing_keys signing_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: signing_keys signing_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.signing_keys
@@ -793,7 +731,7 @@ ALTER TABLE ONLY public.signing_keys
 
 
 --
--- Name: status_heads status_heads_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: status_heads status_heads_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.status_heads
@@ -801,7 +739,7 @@ ALTER TABLE ONLY public.status_heads
 
 
 --
--- Name: status status_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: status status_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.status
@@ -809,7 +747,7 @@ ALTER TABLE ONLY public.status
 
 
 --
--- Name: status_rule status_rule_pkey; Type: CONSTRAINT; Schema: public; Owner: repository
+-- Name: status_rule status_rule_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.status_rule
@@ -817,84 +755,84 @@ ALTER TABLE ONLY public.status_rule
 
 
 --
--- Name: delete_record_uuid_idx; Type: INDEX; Schema: public; Owner: repository
+-- Name: delete_record_uuid_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX delete_record_uuid_idx ON public.delete_record USING btree (uuid);
 
 
 --
--- Name: document_deleting; Type: INDEX; Schema: public; Owner: repository
+-- Name: document_deleting; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX document_deleting ON public.document USING btree (created) WHERE (deleting = true);
 
 
 --
--- Name: document_link_rel_idx; Type: INDEX; Schema: public; Owner: repository
+-- Name: document_link_rel_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX document_link_rel_idx ON public.document_link USING btree (rel, to_document);
 
 
 --
--- Name: document_status_archived; Type: INDEX; Schema: public; Owner: repository
+-- Name: document_status_archived; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX document_status_archived ON public.document_status USING btree (created) WHERE (archived = false);
 
 
 --
--- Name: document_version_archived; Type: INDEX; Schema: public; Owner: repository
+-- Name: document_version_archived; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX document_version_archived ON public.document_version USING btree (created) WHERE (archived = false);
 
 
 --
--- Name: planning_assignee_idx; Type: INDEX; Schema: public; Owner: repository
+-- Name: planning_assignee_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX planning_assignee_idx ON public.planning_assignee USING btree (assignee);
 
 
 --
--- Name: planning_assignment_kind_idx; Type: INDEX; Schema: public; Owner: repository
+-- Name: planning_assignment_kind_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX planning_assignment_kind_idx ON public.planning_assignment USING gin (kind);
 
 
 --
--- Name: planning_assignment_publish_idx; Type: INDEX; Schema: public; Owner: repository
+-- Name: planning_assignment_publish_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX planning_assignment_publish_idx ON public.planning_assignment USING btree (publish);
 
 
 --
--- Name: planning_assignment_publish_slot_idx; Type: INDEX; Schema: public; Owner: repository
+-- Name: planning_assignment_publish_slot_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX planning_assignment_publish_slot_idx ON public.planning_assignment USING btree (publish_slot);
 
 
 --
--- Name: planning_deliverable_idx; Type: INDEX; Schema: public; Owner: repository
+-- Name: planning_deliverable_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX planning_deliverable_idx ON public.planning_deliverable USING btree (document);
 
 
 --
--- Name: planning_item_event_idx; Type: INDEX; Schema: public; Owner: repository
+-- Name: planning_item_event_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX planning_item_event_idx ON public.planning_item USING btree (event);
 
 
 --
--- Name: acl_audit acl_audit_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: acl_audit acl_audit_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.acl_audit
@@ -902,7 +840,7 @@ ALTER TABLE ONLY public.acl_audit
 
 
 --
--- Name: acl acl_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: acl acl_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.acl
@@ -910,7 +848,7 @@ ALTER TABLE ONLY public.acl
 
 
 --
--- Name: active_schemas active_schemas_name_version_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: active_schemas active_schemas_name_version_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.active_schemas
@@ -918,7 +856,7 @@ ALTER TABLE ONLY public.active_schemas
 
 
 --
--- Name: document_link document_link_from_document_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: document_link document_link_from_document_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_link
@@ -926,7 +864,7 @@ ALTER TABLE ONLY public.document_link
 
 
 --
--- Name: document_link document_link_to_document_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: document_link document_link_to_document_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_link
@@ -934,7 +872,7 @@ ALTER TABLE ONLY public.document_link
 
 
 --
--- Name: document_lock document_lock_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: document_lock document_lock_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_lock
@@ -942,7 +880,7 @@ ALTER TABLE ONLY public.document_lock
 
 
 --
--- Name: document_status document_status_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: document_status document_status_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_status
@@ -950,7 +888,7 @@ ALTER TABLE ONLY public.document_status
 
 
 --
--- Name: document_version document_version_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: document_version document_version_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_version
@@ -958,7 +896,7 @@ ALTER TABLE ONLY public.document_version
 
 
 --
--- Name: document fk_main_doc; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: document fk_main_doc; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document
@@ -966,7 +904,7 @@ ALTER TABLE ONLY public.document
 
 
 --
--- Name: meta_type_use meta_type_use_meta_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: meta_type_use meta_type_use_meta_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.meta_type_use
@@ -974,7 +912,7 @@ ALTER TABLE ONLY public.meta_type_use
 
 
 --
--- Name: metric metric_kind_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: metric metric_kind_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.metric
@@ -982,7 +920,7 @@ ALTER TABLE ONLY public.metric
 
 
 --
--- Name: metric metric_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: metric metric_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.metric
@@ -990,7 +928,7 @@ ALTER TABLE ONLY public.metric
 
 
 --
--- Name: planning_assignee planning_assignee_assignment_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: planning_assignee planning_assignee_assignment_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.planning_assignee
@@ -998,7 +936,7 @@ ALTER TABLE ONLY public.planning_assignee
 
 
 --
--- Name: planning_assignment planning_assignment_planning_item_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: planning_assignment planning_assignment_planning_item_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.planning_assignment
@@ -1006,7 +944,7 @@ ALTER TABLE ONLY public.planning_assignment
 
 
 --
--- Name: planning_deliverable planning_deliverable_assignment_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: planning_deliverable planning_deliverable_assignment_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.planning_deliverable
@@ -1014,7 +952,7 @@ ALTER TABLE ONLY public.planning_deliverable
 
 
 --
--- Name: planning_item planning_item_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: planning_item planning_item_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.planning_item
@@ -1022,7 +960,7 @@ ALTER TABLE ONLY public.planning_item
 
 
 --
--- Name: status_heads status_heads_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: repository
+-- Name: status_heads status_heads_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.status_heads
@@ -1030,110 +968,38 @@ ALTER TABLE ONLY public.status_heads
 
 
 --
--- Name: eventlog; Type: PUBLICATION; Schema: -; Owner: repository
+-- Name: eventlog; Type: PUBLICATION; Schema: -; Owner: -
 --
 
 CREATE PUBLICATION eventlog WITH (publish = 'insert, update');
 
 
-ALTER PUBLICATION eventlog OWNER TO repository;
-
 --
--- Name: eventlog acl_audit; Type: PUBLICATION TABLE; Schema: public; Owner: repository
+-- Name: eventlog acl_audit; Type: PUBLICATION TABLE; Schema: public; Owner: -
 --
 
 ALTER PUBLICATION eventlog ADD TABLE ONLY public.acl_audit;
 
 
 --
--- Name: eventlog delete_record; Type: PUBLICATION TABLE; Schema: public; Owner: repository
+-- Name: eventlog delete_record; Type: PUBLICATION TABLE; Schema: public; Owner: -
 --
 
 ALTER PUBLICATION eventlog ADD TABLE ONLY public.delete_record;
 
 
 --
--- Name: eventlog document; Type: PUBLICATION TABLE; Schema: public; Owner: repository
+-- Name: eventlog document; Type: PUBLICATION TABLE; Schema: public; Owner: -
 --
 
 ALTER PUBLICATION eventlog ADD TABLE ONLY public.document;
 
 
 --
--- Name: eventlog status_heads; Type: PUBLICATION TABLE; Schema: public; Owner: repository
+-- Name: eventlog status_heads; Type: PUBLICATION TABLE; Schema: public; Owner: -
 --
 
 ALTER PUBLICATION eventlog ADD TABLE ONLY public.status_heads;
-
-
---
--- Name: TABLE acl; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.acl TO reporting;
-
-
---
--- Name: TABLE acl_audit; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.acl_audit TO reporting;
-
-
---
--- Name: TABLE delete_record; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.delete_record TO reporting;
-
-
---
--- Name: TABLE document; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.document TO reporting;
-
-
---
--- Name: TABLE document_status; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.document_status TO reporting;
-
-
---
--- Name: TABLE document_version; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.document_version TO reporting;
-
-
---
--- Name: TABLE metric; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.metric TO reporting;
-
-
---
--- Name: TABLE status; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.status TO reporting;
-
-
---
--- Name: TABLE status_heads; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.status_heads TO reporting;
-
-
---
--- Name: TABLE status_rule; Type: ACL; Schema: public; Owner: repository
---
-
-GRANT SELECT ON TABLE public.status_rule TO reporting;
 
 
 --
