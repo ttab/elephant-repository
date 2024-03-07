@@ -16,7 +16,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
 	github.com/jackc/pglogrepl v0.0.0-20231111135425-1627ab1b5780
-	github.com/jackc/pgx/v5 v5.5.3
+	github.com/jackc/pgx/v5 v5.5.4
 	github.com/jackc/tern/v2 v2.1.1
 	github.com/jedib0t/go-pretty/v6 v6.5.4
 	github.com/joho/godotenv v1.5.1
