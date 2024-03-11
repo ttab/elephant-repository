@@ -19,7 +19,7 @@ db-rollback:
 	$(TERN) migrate --migrations schema \
 		--conn-string $(pg_conn) --destination $(rollback_to)
 
-.PHONY: migrate
+.PHONY: db-migrate
 db-migrate:
 	$(TERN) migrate --migrations schema \
 		--conn-string $(pg_conn)
