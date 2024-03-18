@@ -5,7 +5,7 @@ go 1.22.1
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/adhocore/gronx v1.6.7
-	github.com/aws/aws-sdk-go-v2 v1.25.2
+	github.com/aws/aws-sdk-go-v2 v1.26.0
 	github.com/aws/aws-sdk-go-v2/config v1.27.6
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.6
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.30.1
