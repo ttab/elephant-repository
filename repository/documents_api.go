@@ -19,7 +19,9 @@ import (
 )
 
 type DocumentValidator interface {
-	ValidateDocument(document *newsdoc.Document) []revisor.ValidationResult
+	ValidateDocument(
+		ctx context.Context, document *newsdoc.Document,
+	) ([]revisor.ValidationResult, error)
 }
 
 type WorkflowProvider interface {
@@ -918,7 +920,7 @@ func (a *DocumentsService) Update(
 		return nil, err
 	}
 
-	up, err := a.buildUpdateRequest(auth, req)
+	up, err := a.buildUpdateRequest(ctx, auth, req)
 	if err != nil {
 		return nil, err
 	}
@@ -957,7 +959,7 @@ func (a *DocumentsService) BulkUpdate(
 
 		dedupe[update.Uuid] = true
 
-		up, err := a.buildUpdateRequest(auth, update)
+		up, err := a.buildUpdateRequest(ctx, auth, update)
 		if err != nil {
 			return nil, err
 		}
@@ -1002,6 +1004,7 @@ func twirpErrorFromDocumentUpdateError(err error) error {
 }
 
 func (a *DocumentsService) buildUpdateRequest(
+	ctx context.Context,
 	auth *elephantine.AuthInfo,
 	req *repository.UpdateRequest,
 ) (*UpdateRequest, error) {
@@ -1044,7 +1047,10 @@ func (a *DocumentsService) buildUpdateRequest(
 
 		doc.UUID = docUUID.String()
 
-		validationResult := a.validator.ValidateDocument(&doc)
+		validationResult, err := a.validator.ValidateDocument(ctx, &doc)
+		if err != nil {
+			return nil, fmt.Errorf("unable to validate document %w", err)
+		}
 
 		if len(validationResult) > 0 {
 			err := twirp.InvalidArgument.Errorf(
@@ -1378,7 +1384,7 @@ func (a *DocumentsService) verifyMetaDocumentUpdate(
 
 // Validate implements repository.Documents.
 func (a *DocumentsService) Validate(
-	_ context.Context, req *repository.ValidateRequest,
+	ctx context.Context, req *repository.ValidateRequest,
 ) (*repository.ValidateResponse, error) {
 	if req.Document == nil {
 		return nil, twirp.RequiredArgumentError("document")
@@ -1386,7 +1392,11 @@ func (a *DocumentsService) Validate(
 
 	doc := rpcdoc.DocumentFromRPC(req.Document)
 
-	validationResult := a.validator.ValidateDocument(&doc)
+	validationResult, err := a.validator.ValidateDocument(ctx, &doc)
+	if err != nil {
+		//nolint: wrapcheck
+		return nil, err
+	}
 
 	var res repository.ValidateResponse
 

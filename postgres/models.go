@@ -44,6 +44,11 @@ type DeleteRecord struct {
 	Language   pgtype.Text
 }
 
+type Deprecation struct {
+	Label    string
+	Enforced bool
+}
+
 type Document struct {
 	UUID           uuid.UUID
 	URI            string

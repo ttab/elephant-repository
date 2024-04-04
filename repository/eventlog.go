@@ -851,7 +851,10 @@ func (pr *PGReplication) recordEvent(evt Event) error {
 		return fmt.Errorf("failed to insert eventlog entry: %w", err)
 	}
 
-	notifyEventlog(ctx, pr.logger, q, id)
+	err = notifyEventlog(ctx, pr.logger, q, id)
+	if err != nil {
+		return fmt.Errorf("failed to send event log notification: %w", err)
+	}
 
 	err = tx.Commit(ctx)
 	if err != nil {

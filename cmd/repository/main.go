@@ -262,7 +262,7 @@ func runServer(c *cli.Context) error {
 	}
 
 	validator, err := repository.NewValidator(
-		c.Context, logger, store)
+		c.Context, logger, store, prometheus.DefaultRegisterer)
 	if err != nil {
 		return fmt.Errorf("failed to create validator: %w", err)
 	}

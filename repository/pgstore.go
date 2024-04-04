@@ -39,10 +39,11 @@ type PGDocStore struct {
 	reader *postgres.Queries
 	opts   PGDocStoreOptions
 
-	archived  *FanOut[ArchivedEvent]
-	schemas   *FanOut[SchemaEvent]
-	workflows *FanOut[WorkflowEvent]
-	eventlog  *FanOut[int64]
+	archived     *FanOut[ArchivedEvent]
+	schemas      *FanOut[SchemaEvent]
+	deprecations *FanOut[DeprecationEvent]
+	workflows    *FanOut[WorkflowEvent]
+	eventlog     *FanOut[int64]
 }
 
 func NewPGDocStore(
@@ -54,14 +55,15 @@ func NewPGDocStore(
 	}
 
 	return &PGDocStore{
-		logger:    logger,
-		pool:      pool,
-		reader:    postgres.New(pool),
-		opts:      options,
-		archived:  NewFanOut[ArchivedEvent](),
-		schemas:   NewFanOut[SchemaEvent](),
-		workflows: NewFanOut[WorkflowEvent](),
-		eventlog:  NewFanOut[int64](),
+		logger:       logger,
+		pool:         pool,
+		reader:       postgres.New(pool),
+		opts:         options,
+		archived:     NewFanOut[ArchivedEvent](),
+		schemas:      NewFanOut[SchemaEvent](),
+		deprecations: NewFanOut[DeprecationEvent](),
+		workflows:    NewFanOut[WorkflowEvent](),
+		eventlog:     NewFanOut[int64](),
 	}, nil
 }
 
@@ -90,6 +92,20 @@ func (s *PGDocStore) OnSchemaUpdate(
 	ctx context.Context, ch chan SchemaEvent,
 ) {
 	go s.schemas.Listen(ctx, ch, func(_ SchemaEvent) bool {
+		return true
+	})
+}
+
+// OnSchemaUpdate notifies the channel ch of all schema updates. Subscription is
+// automatically cancelled once the context is cancelled.
+//
+// Note that we don't provide any delivery guarantees for these events.
+// non-blocking send is used on ch, so if it's unbuffered events will be
+// discarded if the receiver is busy.
+func (s *PGDocStore) OnDeprecationUpdate(
+	ctx context.Context, ch chan DeprecationEvent,
+) {
+	go s.deprecations.Listen(ctx, ch, func(_ DeprecationEvent) bool {
 		return true
 	})
 }
@@ -160,6 +176,7 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 	notifications := []NotifyChannel{
 		NotifyArchived,
 		NotifySchemasUpdated,
+		NotifyDeprecationsUpdated,
 		NotifyWorkflowsUpdated,
 		NotifyEventlog,
 	}
@@ -210,6 +227,16 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 				}
 
 				s.schemas.Notify(e)
+			case NotifyDeprecationsUpdated:
+				var e DeprecationEvent
+
+				err := json.Unmarshal(
+					[]byte(notification.Payload), &e)
+				if err != nil {
+					break
+				}
+
+				s.deprecations.Notify(e)
 			case NotifyArchived:
 				var e ArchivedEvent
 
@@ -1286,10 +1313,13 @@ func (s *PGDocStore) UpdateStatus(
 			return fmt.Errorf("failed to update status: %w", err)
 		}
 
-		notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+		err = notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
 			Type: WorkflowEventTypeStatusChange,
 			Name: req.Name,
 		})
+		if err != nil {
+			return fmt.Errorf("failed to send workflow update notification: %w", err)
+		}
 
 		return nil
 	})
@@ -1340,10 +1370,13 @@ func (s *PGDocStore) UpdateStatusRule(
 			return fmt.Errorf("failed to update status rule: %w", err)
 		}
 
-		notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+		err = notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
 			Type: WorkflowEventTypeStatusRuleChange,
 			Name: rule.Name,
 		})
+		if err != nil {
+			return fmt.Errorf("failed to send workflow update notification: %w", err)
+		}
 
 		return nil
 	})
@@ -1692,10 +1725,13 @@ func (s *PGDocStore) activateSchema(
 			"failed to activate schema version: %w", err)
 	}
 
-	notifySchemaUpdated(ctx, s.logger, q, SchemaEvent{
+	err = notifySchemaUpdated(ctx, s.logger, q, SchemaEvent{
 		Type: SchemaEventTypeActivation,
 		Name: name,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to send schema update notification: %w", err)
+	}
 
 	return nil
 }
@@ -1744,10 +1780,13 @@ func (s *PGDocStore) DeactivateSchema(ctx context.Context, name string) error {
 		return fmt.Errorf("failed to remove active schema: %w", err)
 	}
 
-	notifySchemaUpdated(ctx, s.logger, q, SchemaEvent{
+	err = notifySchemaUpdated(ctx, s.logger, q, SchemaEvent{
 		Type: SchemaEventTypeDeactivation,
 		Name: name,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to send schema update notification: %w", err)
+	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
@@ -1826,6 +1865,56 @@ func (s *PGDocStore) GetSchema(
 		Version:       schema.Version,
 		Specification: spec,
 	}, nil
+}
+
+type EnforcedDeprecations map[string]bool
+
+// GetEnforcedDeprecations implements SchemaLoader.
+func (s *PGDocStore) GetEnforcedDeprecations(
+	ctx context.Context,
+) (EnforcedDeprecations, error) {
+	rows, err := s.reader.GetEnforcedDeprecations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from database: %w", err)
+	}
+
+	res := make(EnforcedDeprecations, len(rows))
+
+	for _, l := range rows {
+		res[l] = true
+	}
+
+	return res, nil
+}
+
+// UpdateDeprecation implements SchemaLoader.
+func (s *PGDocStore) UpdateDeprecation(
+	ctx context.Context, label string, enforced bool,
+) error {
+	err := s.withTX(ctx, "update deprecation", func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.UpdateDeprecation(ctx, postgres.UpdateDeprecationParams{
+			Label:    label,
+			Enforced: enforced,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to save deprecation to database: %w", err)
+		}
+
+		err = notifyDeprecationUpdated(ctx, s.logger, q,
+			DeprecationEvent{Label: label})
+		if err != nil {
+			return fmt.Errorf("failed to send deprecation update notification: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type ReportListItem struct {

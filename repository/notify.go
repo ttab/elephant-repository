@@ -3,20 +3,21 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/ttab/elephant-repository/postgres"
-	"github.com/ttab/elephantine"
 )
 
 type NotifyChannel string
 
 const (
-	NotifySchemasUpdated   NotifyChannel = "schemas"
-	NotifyArchived         NotifyChannel = "archived"
-	NotifyWorkflowsUpdated NotifyChannel = "workflows"
-	NotifyEventlog         NotifyChannel = "eventlog"
+	NotifySchemasUpdated      NotifyChannel = "schemas"
+	NotifyDeprecationsUpdated NotifyChannel = "deprecations"
+	NotifyArchived            NotifyChannel = "archived"
+	NotifyWorkflowsUpdated    NotifyChannel = "workflows"
+	NotifyEventlog            NotifyChannel = "eventlog"
 )
 
 type ArchiveEventType int
@@ -46,6 +47,10 @@ type SchemaEvent struct {
 	Name string          `json:"name"`
 }
 
+type DeprecationEvent struct {
+	Label string `json:"label"`
+}
+
 type WorkflowEventType int
 
 const (
@@ -61,40 +66,45 @@ type WorkflowEvent struct {
 func notifyArchived(
 	ctx context.Context, logger *slog.Logger, q *postgres.Queries,
 	payload ArchivedEvent,
-) {
-	pgNotify(ctx, logger, q, NotifyArchived, payload)
+) error {
+	return pgNotify(ctx, logger, q, NotifyArchived, payload)
 }
 
 func notifySchemaUpdated(
 	ctx context.Context, logger *slog.Logger, q *postgres.Queries,
 	payload SchemaEvent,
-) {
-	pgNotify(ctx, logger, q, NotifySchemasUpdated, payload)
+) error {
+	return pgNotify(ctx, logger, q, NotifySchemasUpdated, payload)
+}
+
+func notifyDeprecationUpdated(
+	ctx context.Context, logger *slog.Logger, q *postgres.Queries,
+	payload DeprecationEvent,
+) error {
+	return pgNotify(ctx, logger, q, NotifyDeprecationsUpdated, payload)
 }
 
 func notifyEventlog(
 	ctx context.Context, logger *slog.Logger, q *postgres.Queries,
 	id int64,
-) {
-	pgNotify(ctx, logger, q, NotifyEventlog, id)
+) error {
+	return pgNotify(ctx, logger, q, NotifyEventlog, id)
 }
 
 func notifyWorkflowUpdated(
 	ctx context.Context, logger *slog.Logger, q *postgres.Queries,
 	payload WorkflowEvent,
-) {
-	pgNotify(ctx, logger, q, NotifyWorkflowsUpdated, payload)
+) error {
+	return pgNotify(ctx, logger, q, NotifyWorkflowsUpdated, payload)
 }
 
 func pgNotify[T any](
-	ctx context.Context, logger *slog.Logger, q *postgres.Queries,
+	ctx context.Context, _ *slog.Logger, q *postgres.Queries,
 	channel NotifyChannel, payload T,
-) {
+) error {
 	message, err := json.Marshal(payload)
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to marshal payload for notification",
-			elephantine.LogKeyError, err,
-			elephantine.LogKeyChannel, channel)
+		return fmt.Errorf("marshal payload for notification: %w", err)
 	}
 
 	err = q.Notify(ctx, postgres.NotifyParams{
@@ -102,9 +112,8 @@ func pgNotify[T any](
 		Message: string(message),
 	})
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to marshal payload for notification",
-			elephantine.LogKeyError, err,
-			elephantine.LogKeyChannel, channel,
-			elephantine.LogKeyMessage, json.RawMessage(message))
+		return fmt.Errorf("failed to publish notification payload to channel: %w", err)
 	}
+
+	return nil
 }
