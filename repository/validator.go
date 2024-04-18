@@ -38,7 +38,9 @@ func NewValidator(
 	ctx context.Context, logger *slog.Logger,
 	loader ValidatorStore, metricsRegisterer prometheus.Registerer,
 ) (*Validator, error) {
-	v := Validator{}
+	v := Validator{
+		logger: logger,
+	}
 
 	v.deprecationsCounter = *prometheus.NewCounterVec(
 		prometheus.CounterOpts{

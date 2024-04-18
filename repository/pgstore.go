@@ -1875,7 +1875,7 @@ func (s *PGDocStore) GetEnforcedDeprecations(
 ) (EnforcedDeprecations, error) {
 	rows, err := s.reader.GetEnforcedDeprecations(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read from database: %w", err)
+		return nil, fmt.Errorf("failed to fetch enforced deprecations: %w", err)
 	}
 
 	res := make(EnforcedDeprecations, len(rows))
@@ -1887,23 +1887,46 @@ func (s *PGDocStore) GetEnforcedDeprecations(
 	return res, nil
 }
 
+// GetDeprecations implements SchemaLoader.
+func (s *PGDocStore) GetDeprecations(
+	ctx context.Context,
+) ([]*Deprecation, error) {
+	rows, err := s.reader.GetDeprecations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch deprecations: %w", err)
+	}
+
+	var res []*Deprecation
+
+	for i := range rows {
+		deprecation := &Deprecation{
+			Label:    rows[i].Label,
+			Enforced: rows[i].Enforced,
+		}
+
+		res = append(res, deprecation)
+	}
+
+	return res, nil
+}
+
 // UpdateDeprecation implements SchemaLoader.
 func (s *PGDocStore) UpdateDeprecation(
-	ctx context.Context, label string, enforced bool,
+	ctx context.Context, deprecation Deprecation,
 ) error {
 	err := s.withTX(ctx, "update deprecation", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.UpdateDeprecation(ctx, postgres.UpdateDeprecationParams{
-			Label:    label,
-			Enforced: enforced,
+			Label:    deprecation.Label,
+			Enforced: deprecation.Enforced,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to save deprecation to database: %w", err)
 		}
 
 		err = notifyDeprecationUpdated(ctx, s.logger, q,
-			DeprecationEvent{Label: label})
+			DeprecationEvent{Label: deprecation.Label})
 		if err != nil {
 			return fmt.Errorf("failed to send deprecation update notification: %w", err)
 		}

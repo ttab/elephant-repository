@@ -368,3 +368,55 @@ func (a *SchemasService) SetActive(
 
 	return &repository.SetActiveSchemaResponse{}, nil
 }
+
+// GetDeprecations implements repository.Schemas.
+func (a *SchemasService) GetDeprecations(
+	ctx context.Context, _ *repository.GetDeprecationsRequest,
+) (*repository.GetDeprecationsResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	var res repository.GetDeprecationsResponse
+
+	deprecations, err := a.store.GetDeprecations(ctx)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to list deprecations: %w", err)
+	}
+
+	res.Deprecations = make([]*repository.Deprecation, len(deprecations))
+	for i, d := range deprecations {
+		res.Deprecations[i] = &repository.Deprecation{
+			Label:    d.Label,
+			Enforced: d.Enforced,
+		}
+	}
+
+	return &res, nil
+}
+
+// UpdateDeprecation implements repository.Schemas.
+func (a *SchemasService) UpdateDeprecation(
+	ctx context.Context, req *repository.UpdateDeprecationRequest,
+) (*repository.UpdateDeprecationResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Deprecation.Label == "" {
+		return nil, twirp.RequiredArgumentError("deprecation.label")
+	}
+
+	err = a.store.UpdateDeprecation(ctx, Deprecation{
+		Label:    req.Deprecation.Label,
+		Enforced: req.Deprecation.Enforced,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update deprecation: %w", err)
+	}
+
+	return &repository.UpdateDeprecationResponse{}, nil
+}

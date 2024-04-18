@@ -97,6 +97,12 @@ type SchemaStore interface {
 	RegisterMetaTypeUse(
 		ctx context.Context, mainType string, metaType string,
 	) error
+	GetDeprecations(
+		ctx context.Context,
+	) ([]*Deprecation, error)
+	UpdateDeprecation(
+		ctx context.Context, deprecation Deprecation,
+	) error
 }
 
 type WorkflowStore interface {
@@ -179,6 +185,11 @@ type RegisterSchemaRequest struct {
 	Version       string
 	Specification revisor.ConstraintSet
 	Activate      bool
+}
+
+type Deprecation struct {
+	Label    string
+	Enforced bool
 }
 
 type CheckPermissionRequest struct {

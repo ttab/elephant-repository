@@ -315,6 +315,11 @@ SELECT label
 FROM deprecation
 WHERE enforced = true;
 
+-- name: GetDeprecations :many
+SELECT label, enforced
+FROM deprecation
+ORDER BY label;
+
 -- name: UpdateDeprecation :exec
 INSERT INTO deprecation(label, enforced)
 VALUES(@label, @enforced)

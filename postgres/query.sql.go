@@ -504,6 +504,32 @@ func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEven
 	return items, nil
 }
 
+const getDeprecations = `-- name: GetDeprecations :many
+SELECT label, enforced
+FROM deprecation
+ORDER BY label
+`
+
+func (q *Queries) GetDeprecations(ctx context.Context) ([]Deprecation, error) {
+	rows, err := q.db.Query(ctx, getDeprecations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Deprecation
+	for rows.Next() {
+		var i Deprecation
+		if err := rows.Scan(&i.Label, &i.Enforced); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDocumentACL = `-- name: GetDocumentACL :many
 SELECT uuid, uri, permissions FROM acl WHERE uuid = $1
 `
