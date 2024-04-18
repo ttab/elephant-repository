@@ -168,8 +168,6 @@ S3_ACCESS_KEY_SECRET=minioadmin
 JWT_SIGNING_KEY='MIGkAgEBBDAgdjcifmVXiJoQh7IbTnsCS81CxYHQ1r6ftXE6ykJDz1SoQJEB6LppaCLpNBJhGNugBwYFK4EEACKhZANiAAS4LqvuFUwFXUNpCPTtgeMy61hE-Pdm57OVzTaVKUz7GzzPKNoGbcTllPGDg7nzXIga9ObRNs8ytSLQMOWIO8xJW35Xko4kwPR_CVsTS5oMaoYnBCOZYEO2NXND7gU7GoM'
 ```
 
-I load this environment file using `export $(cat .env | xargs)`.
-
 The server will generate and a JWT signing key (and log a warning) if it's missing from the environment.
 
 ###  Running the repository server
@@ -184,15 +182,17 @@ go run ./cmd/repository run
 
 ### Running and DB schema ops
 
-Start a local database using the `./run-postgres.sh` script. It will create and/or start a container and launch a psql console. If the container is running it will just launch psql. Exiting psql will not stop the container.
+The repository uses [mage](https://magefile.org/) as a task runner. Start a local postgres instance using the `mage sql:postgres pg16`. Create a database using `mage sql:db`.
 
-The database schema is defined using numbered [tern](https://github.com/jackc/tern) migrations in "./schema/". The database can either be initialised by running `make db-migrate` or loading "./postgres/schema.sql" and "./postgres/schema_version.sql".
+The database schema is defined using numbered [tern](https://github.com/jackc/tern) migrations in "./schema/". Initialise the schema by running `mage sql:migrate`.
 
-Queries are defined in "./postgres/query.sql" and are compiled using [sqlc](https://sqlc.dev/) to a `Queries` struct in "./postgres/query.go". Run `make generate-sql` to compile queries.
+Create a reporting role for the reports subsystem using `mage reportinguser`. Add the necessary replication permission using `mage replicationpermissions`.
 
-Use `make db-rollback` to undo all migrations, set `rollback_to` to migrate to a specific version `rollback_to=1 make db-rollback`.
+Start a local minio instance and the necessary buckets using `mage s3:minio s3:bucket elephant-archive s3:bucket elephant-reports`.
 
-When you run `make db-migrate` tern will run migrations, and then `./dump-postgres-schema.sh` is run to write the final schema to "./postgres/schema.sql" and the current version of the schema to "./postgres/schema_version.sql". "schema.sql" is used by `sqlc` for schema and query compilation and type checking.
+Queries are defined in "./postgres/query.sql" and are compiled using [sqlc](https://sqlc.dev/) to a `Queries` struct in "./postgres/query.go". Run `make sql:generate` to compile queries.
+
+Use `mage sql:rollback 0` to undo all migrations, to migrate to a specific version, f.ex. 7, use `mage sql:rollback 7`.
 
 ### Introduction to the schema
 

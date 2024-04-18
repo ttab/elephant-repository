@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant-repository/internal/cmd"
@@ -38,6 +40,13 @@ import (
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		slog.Error("load .env file",
+			elephantine.LogKeyError, err)
+		os.Exit(1)
+	}
+
 	runCmd := cli.Command{
 		Name:        "run",
 		Description: "Runs the repository server",
