@@ -25,6 +25,8 @@ type Validator struct {
 	logger                      *slog.Logger
 	deprecationsCounter         prometheus.CounterVec
 	docsWithDeprecationsCounter prometheus.CounterVec
+	stopChannel                 chan struct{}
+	cancel                      func()
 }
 
 type ValidatorStore interface {
@@ -38,8 +40,12 @@ func NewValidator(
 	ctx context.Context, logger *slog.Logger,
 	loader ValidatorStore, metricsRegisterer prometheus.Registerer,
 ) (*Validator, error) {
+	ctx, cancel := context.WithCancel(ctx)
+
 	v := Validator{
-		logger: logger,
+		logger:      logger,
+		stopChannel: make(chan struct{}),
+		cancel:      cancel,
 	}
 
 	v.deprecationsCounter = *prometheus.NewCounterVec(
@@ -78,6 +84,8 @@ func NewValidator(
 func (v *Validator) reloadLoop(
 	ctx context.Context, logger *slog.Logger, loader ValidatorStore,
 ) {
+	defer close(v.stopChannel)
+
 	recheckInterval := 5 * time.Minute
 
 	schemaSub := make(chan SchemaEvent, 1)
@@ -197,4 +205,9 @@ func (v *Validator) GetValidator() *revisor.Validator {
 	defer v.m.RUnlock()
 
 	return v.val
+}
+
+func (v *Validator) Stop() {
+	v.cancel()
+	<-v.stopChannel
 }

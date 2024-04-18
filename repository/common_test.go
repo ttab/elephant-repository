@@ -274,6 +274,8 @@ func testingAPIServer(
 		ctx, logger, store, prometheus.NewRegistry())
 	test.Must(t, err, "create validator")
 
+	t.Cleanup(validator.Stop)
+
 	workflows, err := repository.NewWorkflows(ctx, logger, store)
 	test.Must(t, err, "create workflows")
 
