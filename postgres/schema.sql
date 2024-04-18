@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 16.1 (Debian 16.1-1.pgdg120+1)
--- Dumped by pg_dump version 16.1 (Debian 16.1-1.pgdg120+1)
+-- Dumped from database version 16.2 (Debian 16.2-1.pgdg120+2)
+-- Dumped by pg_dump version 16.2 (Debian 16.2-1.pgdg120+2)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -205,6 +205,16 @@ ALTER TABLE public.delete_record ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTIT
     NO MINVALUE
     NO MAXVALUE
     CACHE 1
+);
+
+
+--
+-- Name: deprecation; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.deprecation (
+    label text NOT NULL,
+    enforced boolean NOT NULL
 );
 
 
@@ -568,6 +578,14 @@ ALTER TABLE ONLY public.active_schemas
 
 ALTER TABLE ONLY public.delete_record
     ADD CONSTRAINT delete_record_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: deprecation deprecation_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.deprecation
+    ADD CONSTRAINT deprecation_pkey PRIMARY KEY (label);
 
 
 --

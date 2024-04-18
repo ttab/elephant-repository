@@ -32,7 +32,7 @@ require (
 	github.com/ttab/mage v0.4.1
 	github.com/ttab/newsdoc v0.4.2
 	github.com/ttab/revisor v0.7.1
-	github.com/ttab/revisorschemas v0.0.2
+	github.com/ttab/revisorschemas v0.1.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.1
 	github.com/xuri/excelize/v2 v2.8.1
@@ -134,7 +134,6 @@ require (
 	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
-	github.com/ttab/revisorschemas v0.1.0
 	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
