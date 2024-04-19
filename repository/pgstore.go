@@ -212,7 +212,7 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 
 			select {
 			case <-ctx.Done():
-				return ctx.Err() //nolint:wrapcheck
+				return ctx.Err()
 			case notification = <-received:
 			}
 
