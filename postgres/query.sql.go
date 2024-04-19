@@ -504,6 +504,32 @@ func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEven
 	return items, nil
 }
 
+const getDeprecations = `-- name: GetDeprecations :many
+SELECT label, enforced
+FROM deprecation
+ORDER BY label
+`
+
+func (q *Queries) GetDeprecations(ctx context.Context) ([]Deprecation, error) {
+	rows, err := q.db.Query(ctx, getDeprecations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Deprecation
+	for rows.Next() {
+		var i Deprecation
+		if err := rows.Scan(&i.Label, &i.Enforced); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDocumentACL = `-- name: GetDocumentACL :many
 SELECT uuid, uri, permissions FROM acl WHERE uuid = $1
 `
@@ -852,6 +878,32 @@ func (q *Queries) GetDueReport(ctx context.Context) (Report, error) {
 		&i.Spec,
 	)
 	return i, err
+}
+
+const getEnforcedDeprecations = `-- name: GetEnforcedDeprecations :many
+SELECT label
+FROM deprecation
+WHERE enforced = true
+`
+
+func (q *Queries) GetEnforcedDeprecations(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, getEnforcedDeprecations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var label string
+		if err := rows.Scan(&label); err != nil {
+			return nil, err
+		}
+		items = append(items, label)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getEventlog = `-- name: GetEventlog :many
@@ -2260,6 +2312,23 @@ func (q *Queries) StealJobLock(ctx context.Context, arg StealJobLockParams) (int
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const updateDeprecation = `-- name: UpdateDeprecation :exec
+INSERT INTO deprecation(label, enforced)
+VALUES($1, $2)
+ON CONFLICT(label) DO UPDATE SET
+   enforced = $2
+`
+
+type UpdateDeprecationParams struct {
+	Label    string
+	Enforced bool
+}
+
+func (q *Queries) UpdateDeprecation(ctx context.Context, arg UpdateDeprecationParams) error {
+	_, err := q.db.Exec(ctx, updateDeprecation, arg.Label, arg.Enforced)
+	return err
 }
 
 const updateDocumentLock = `-- name: UpdateDocumentLock :exec

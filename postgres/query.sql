@@ -310,6 +310,22 @@ FROM active_schemas AS a
 SELECT a.name, a.version
 FROM active_schemas AS a;
 
+-- name: GetEnforcedDeprecations :many
+SELECT label
+FROM deprecation
+WHERE enforced = true;
+
+-- name: GetDeprecations :many
+SELECT label, enforced
+FROM deprecation
+ORDER BY label;
+
+-- name: UpdateDeprecation :exec
+INSERT INTO deprecation(label, enforced)
+VALUES(@label, @enforced)
+ON CONFLICT(label) DO UPDATE SET
+   enforced = @enforced;
+
 -- name: GetActiveStatuses :many
 SELECT name
 FROM status

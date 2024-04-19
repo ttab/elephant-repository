@@ -19,7 +19,9 @@ import (
 )
 
 type DocumentValidator interface {
-	ValidateDocument(ctx context.Context, document *newsdoc.Document) []revisor.ValidationResult
+	ValidateDocument(
+		ctx context.Context, document *newsdoc.Document,
+	) ([]revisor.ValidationResult, error)
 }
 
 type WorkflowProvider interface {
@@ -1045,7 +1047,10 @@ func (a *DocumentsService) buildUpdateRequest(
 
 		doc.UUID = docUUID.String()
 
-		validationResult := a.validator.ValidateDocument(ctx, &doc)
+		validationResult, err := a.validator.ValidateDocument(ctx, &doc)
+		if err != nil {
+			return nil, fmt.Errorf("unable to validate document %w", err)
+		}
 
 		if len(validationResult) > 0 {
 			err := twirp.InvalidArgument.Errorf(
@@ -1387,7 +1392,11 @@ func (a *DocumentsService) Validate(
 
 	doc := rpcdoc.DocumentFromRPC(req.Document)
 
-	validationResult := a.validator.ValidateDocument(ctx, &doc)
+	validationResult, err := a.validator.ValidateDocument(ctx, &doc)
+	if err != nil {
+		//nolint: wrapcheck
+		return nil, err
+	}
 
 	var res repository.ValidateResponse
 

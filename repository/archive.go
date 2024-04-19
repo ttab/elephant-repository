@@ -531,11 +531,14 @@ func (a *Archiver) archiveDocumentVersions(
 			"failed to store archive object: %w", err)
 	}
 
-	notifyArchived(ctx, a.logger, q, ArchivedEvent{
+	err = notifyArchived(ctx, a.logger, q, ArchivedEvent{
 		Type:    ArchiveEventTypeVersion,
 		UUID:    dv.UUID,
 		Version: dv.Version,
 	})
+	if err != nil {
+		return false, fmt.Errorf("failed to send archive notification: %w", err)
+	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
@@ -658,12 +661,15 @@ func (a *Archiver) archiveDocumentStatuses(
 			"failed to store archive object: %w", err)
 	}
 
-	notifyArchived(ctx, a.logger, q, ArchivedEvent{
+	err = notifyArchived(ctx, a.logger, q, ArchivedEvent{
 		Type:    ArchiveEventTypeStatus,
 		UUID:    ds.UUID,
 		Name:    ds.Name,
 		Version: ds.ID,
 	})
+	if err != nil {
+		return false, fmt.Errorf("failed to send archive notification: %w", err)
+	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
