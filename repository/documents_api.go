@@ -995,6 +995,8 @@ func twirpErrorFromDocumentUpdateError(err error) error {
 		return twirp.PermissionDenied.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
 		return twirp.FailedPrecondition.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeDuplicateURI):
+		return twirp.AlreadyExists.Error(err.Error())
 	case err != nil:
 		return twirp.InternalErrorf(
 			"failed to update document: %w", err)

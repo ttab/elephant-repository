@@ -982,45 +982,14 @@ func (s *PGDocStore) Update(
 
 	for _, state := range updates {
 		if state.Doc != nil {
-			state.Version++
 			state.Language = state.Doc.Language
 
-			err := q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
-				UUID:       state.Request.UUID,
-				URI:        state.Doc.URI,
-				Type:       state.Doc.Type,
-				Version:    state.Version,
-				Created:    pg.Time(state.Created),
-				CreatorUri: state.Creator,
-				Language:   pg.TextOrNull(state.Doc.Language),
-				MainDoc:    pg.PUUID(state.Request.MainDocument),
-			})
+			version, err := s.createNewDocumentVersion(ctx, tx, q, state)
 			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to create document in database: %w", err)
+				return nil, err
 			}
 
-			err = q.CreateDocumentVersion(ctx, postgres.CreateDocumentVersionParams{
-				UUID:         state.Request.UUID,
-				Version:      state.Version,
-				Created:      pg.Time(state.Created),
-				CreatorUri:   state.Creator,
-				Meta:         state.MetaJSON,
-				DocumentData: state.DocJSON,
-			})
-			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to create version in database: %w", err)
-			}
-
-			if state.Doc.Type == "core/planning-item" {
-				err = planning.UpdateDatabase(ctx, tx,
-					*state.Doc, state.Version)
-				if err != nil {
-					return nil, fmt.Errorf(
-						"failed to update planning data: %w", err)
-				}
-			}
+			state.Version = version
 		}
 
 		var metaDocVersion int64
@@ -1151,6 +1120,57 @@ func (s *PGDocStore) Update(
 	}
 
 	return res, nil
+}
+
+func (s *PGDocStore) createNewDocumentVersion(
+	ctx context.Context,
+	tx pgx.Tx,
+	q *postgres.Queries,
+	state *docUpdateState,
+) (int64, error) {
+	version := state.Version + 1
+
+	err := q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
+		UUID:       state.Request.UUID,
+		URI:        state.Doc.URI,
+		Type:       state.Doc.Type,
+		Version:    version,
+		Created:    pg.Time(state.Created),
+		CreatorUri: state.Creator,
+		Language:   pg.TextOrNull(state.Doc.Language),
+		MainDoc:    pg.PUUID(state.Request.MainDocument),
+	})
+	if pg.IsConstraintError(err, "document_uri_key") {
+		return 0, DocStoreErrorf(ErrCodeDuplicateURI,
+			"duplicate URI: %s", state.Doc.URI)
+	} else if err != nil {
+		return 0, fmt.Errorf(
+			"failed to create document in database: %w", err)
+	}
+
+	err = q.CreateDocumentVersion(ctx, postgres.CreateDocumentVersionParams{
+		UUID:         state.Request.UUID,
+		Version:      version,
+		Created:      pg.Time(state.Created),
+		CreatorUri:   state.Creator,
+		Meta:         state.MetaJSON,
+		DocumentData: state.DocJSON,
+	})
+	if err != nil {
+		return 0, fmt.Errorf(
+			"failed to create version in database: %w", err)
+	}
+
+	if state.Doc.Type == "core/planning-item" {
+		err = planning.UpdateDatabase(ctx, tx,
+			*state.Doc, version)
+		if err != nil {
+			return 0, fmt.Errorf(
+				"failed to update planning data: %w", err)
+		}
+	}
+
+	return version, nil
 }
 
 type docUpdateState struct {
