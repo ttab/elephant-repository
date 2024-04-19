@@ -30,9 +30,9 @@ require (
 	github.com/ttab/elephantine v0.11.5
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.4.1
-	github.com/ttab/newsdoc v0.4.2
-	github.com/ttab/revisor v0.7.1
-	github.com/ttab/revisorschemas v0.1.0
+	github.com/ttab/newsdoc v0.5.0
+	github.com/ttab/revisor v0.7.2
+	github.com/ttab/revisorschemas v0.2.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.1
 	github.com/xuri/excelize/v2 v2.8.1
