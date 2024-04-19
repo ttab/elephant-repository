@@ -340,6 +340,7 @@ const (
 	ErrCodePermissionDenied   DocStoreErrorCode = "permission-denied"
 	ErrCodeFailedPrecondition DocStoreErrorCode = "failed-precondition"
 	ErrCodeDocumentLock       DocStoreErrorCode = "document-lock"
+	ErrCodeDuplicateURI       DocStoreErrorCode = "duplicate-uri"
 )
 
 type DocStoreError struct {

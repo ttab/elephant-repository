@@ -995,7 +995,10 @@ func (s *PGDocStore) Update(
 				Language:   pg.TextOrNull(state.Doc.Language),
 				MainDoc:    pg.PUUID(state.Request.MainDocument),
 			})
-			if err != nil {
+			if pg.IsConstraintError(err, "document_uri_key") {
+				return nil, DocStoreErrorf(ErrCodeDuplicateURI,
+					"duplicate URI: %s", state.Doc.URI)
+			} else if err != nil {
 				return nil, fmt.Errorf(
 					"failed to create document in database: %w", err)
 			}
