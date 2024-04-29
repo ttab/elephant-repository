@@ -2,7 +2,7 @@
 
 set -o pipefail
 
-data_dir="${STATE_DIR:-${XDG_DATA_DIR:-~/Library}/elephant}"
+data_dir="${STATE_DIR:-${XDG_DATA_HOME:-~/Library}/elephant}"
 data="${data_dir}/minio"
 
 containerStatus=$(docker inspect minio-server | jq -r '.[0].State.Status')

@@ -3,7 +3,7 @@
 set -euo pipefail
 mode=${1:-""}
 
-data_dir="${STATE_DIR:-${XDG_DATA_DIR:-~/Library}/elephant}"
+data_dir="${STATE_DIR:-${XDG_DATA_HOME:-~/Library}/elephant}"
 pgdata="${data_dir}/repo-pgdata"
 
 mkdir -p $pgdata
