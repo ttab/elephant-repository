@@ -7,16 +7,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	//mage:import sql
-	_ "github.com/ttab/mage/sql"
+	"github.com/ttab/mage/sql"
 	//mage:import s3
 	_ "github.com/ttab/mage/s3"
 )
+
+func ConnString() error {
+	_, _ = fmt.Fprintln(os.Stdout, sql.MustGetConnString())
+
+	return nil
+}
 
 // ReportingUser creates a reporting user for the local database.
 func ReportingUser() error {
