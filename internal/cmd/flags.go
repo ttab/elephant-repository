@@ -27,6 +27,9 @@ type BackendConfig struct {
 	NoReporter    bool
 	JWTSigningKey string
 	SharedSecret  string
+	JWKSUrl       string
+	JWTIssuer     string
+	JWTAudience   string
 }
 
 type ParameterSource func(ctx context.Context, name string) (string, error)
@@ -44,6 +47,9 @@ func BackendConfigFromContext(c *cli.Context, src ParameterSource) (BackendConfi
 		NoReplicator:  c.Bool("no-replicator"),
 		JWTSigningKey: c.String("jwt-signing-key"),
 		SharedSecret:  c.String("shared-secret"),
+		JWKSUrl:       c.String("jwks-url"),
+		JWTIssuer:     c.String("jwt-issuer"),
+		JWTAudience:   c.String("jwt-audience"),
 		S3Options: repository.S3Options{
 			Endpoint:        c.String("s3-endpoint"),
 			AccessKeyID:     c.String("s3-key-id"),
@@ -181,6 +187,21 @@ func BackendFlags() []cli.Flag {
 			Name:    "shared-secret-parameter",
 			Usage:   "Shared secret to be used in password grants",
 			EnvVars: []string{"SHARED_PASSWORD_SECRET_PARAMETER"},
+		},
+		&cli.StringFlag{
+			Name:    "jwks-url",
+			Usage:   "URL of external JWKS",
+			EnvVars: []string{"JWKS_URL"},
+		},
+		&cli.StringFlag{
+			Name:    "jwt-issuer",
+			Usage:   "String to validate the iss claim against",
+			EnvVars: []string{"JWT_ISSUER"},
+		},
+		&cli.StringFlag{
+			Name:    "jwt-audience",
+			Usage:   "String to validate the aud claim against",
+			EnvVars: []string{"JWT_AUDIENCE"},
 		},
 	}
 }

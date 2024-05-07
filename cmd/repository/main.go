@@ -118,31 +118,45 @@ func runServer(c *cli.Context) error {
 	}
 
 	var signingKey *ecdsa.PrivateKey
+	var authInfoParser *elephantine.AuthInfoParser
 
-	if conf.JWTSigningKey != "" {
-		keyData, err := base64.RawURLEncoding.DecodeString(
-			conf.JWTSigningKey)
+	if conf.JWKSUrl != "" {
+		authInfoParser, err = elephantine.NewAuthInfoParser(c.Context, conf.JWKSUrl, elephantine.ValidationClaims{
+			Issuer:   conf.JWTIssuer,
+			Audience: conf.JWTAudience,
+		})
 		if err != nil {
-			return fmt.Errorf(
-				"invalid base64 encoding for JWT signing key: %w", err)
+			return fmt.Errorf("could not create auth info parser: %w", err)
 		}
-
-		k, err := x509.ParseECPrivateKey(keyData)
-		if err != nil {
-			return fmt.Errorf(
-				"invalid JWT signing key: %w", err)
-		}
-
-		signingKey = k
 	} else {
-		logger.Warn("no configured signing key")
 
-		key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-		if err != nil {
-			return fmt.Errorf("failed to generate key: %w", err)
+		if conf.JWTSigningKey != "" {
+			keyData, err := base64.RawURLEncoding.DecodeString(
+				conf.JWTSigningKey)
+			if err != nil {
+				return fmt.Errorf(
+					"invalid base64 encoding for JWT signing key: %w", err)
+			}
+
+			k, err := x509.ParseECPrivateKey(keyData)
+			if err != nil {
+				return fmt.Errorf(
+					"invalid JWT signing key: %w", err)
+			}
+
+			signingKey = k
+		} else {
+			logger.Warn("no configured signing key")
+
+			key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+			if err != nil {
+				return fmt.Errorf("failed to generate key: %w", err)
+			}
+
+			signingKey = key
 		}
 
-		signingKey = key
+		authInfoParser = elephantine.NewDummyAuthInfoParser(signingKey.PublicKey)
 	}
 
 	instrument, err := elephantine.NewHTTPClientIntrumentation(prometheus.DefaultRegisterer)
@@ -434,7 +448,7 @@ func runServer(c *cli.Context) error {
 
 	var opts repository.ServerOptions
 
-	opts.SetJWTValidation(signingKey)
+	opts.SetJWTValidation(authInfoParser)
 
 	metrics, err := elephantine.NewTwirpMetricsHooks()
 	if err != nil {
@@ -461,8 +475,8 @@ func runServer(c *cli.Context) error {
 	}
 
 	err = repository.SetUpRouter(router,
-		repository.WithTokenEndpoint(signingKey, conf.SharedSecret),
-		repository.WithJWKSEndpoint(signingKey),
+		// repository.WithTokenEndpoint(signingKey, conf.SharedSecret),
+		// repository.WithJWKSEndpoint(signingKey),
 		repository.WithDocumentsAPI(docService, opts),
 		repository.WithSchemasAPI(schemaService, opts),
 		repository.WithWorkflowsAPI(workflowService, opts),
