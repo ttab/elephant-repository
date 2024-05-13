@@ -10,46 +10,50 @@ import (
 
 type BackendConfig struct {
 	repository.S3Options
-	DB            string
-	ReportingDB   string
-	Eventsink     string
-	ArchiveBucket string
-	ReportBucket  string
-	S3Endpoint    string
-	S3KeyID       string
-	S3KeySecret   string
-	S3Insecure    bool
-	NoArchiver    bool
-	ArchiverCount int
-	NoCoreSchema  bool
-	NoReplicator  bool
-	NoEventsink   bool
-	NoReporter    bool
-	JWTSigningKey string
-	SharedSecret  string
-	JWKSUrl       string
-	JWTIssuer     string
-	JWTAudience   string
+	DB                  string
+	ReportingDB         string
+	Eventsink           string
+	ArchiveBucket       string
+	ReportBucket        string
+	S3Endpoint          string
+	S3KeyID             string
+	S3KeySecret         string
+	S3Insecure          bool
+	NoArchiver          bool
+	ArchiverCount       int
+	NoCoreSchema        bool
+	NoReplicator        bool
+	NoEventsink         bool
+	NoReporter          bool
+	MockJWTEndpoint     bool
+	MockJWTSigningKey   string
+	MockJWTSharedSecret string
+	JWKSUrl             string
+	JWTIssuer           string
+	JWTAudience         string
+	JWTScopePrefix      string
 }
 
 type ParameterSource func(ctx context.Context, name string) (string, error)
 
 func BackendConfigFromContext(c *cli.Context, src ParameterSource) (BackendConfig, error) {
 	cfg := BackendConfig{
-		DB:            c.String("db"),
-		ReportingDB:   c.String("reporting-db"),
-		Eventsink:     c.String("eventsink"),
-		ArchiveBucket: c.String("archive-bucket"),
-		ReportBucket:  c.String("report-bucket"),
-		NoArchiver:    c.Bool("no-archiver"),
-		NoEventsink:   c.Bool("no-eventsink"),
-		NoReporter:    c.Bool("no-reporter"),
-		NoReplicator:  c.Bool("no-replicator"),
-		JWTSigningKey: c.String("jwt-signing-key"),
-		SharedSecret:  c.String("shared-secret"),
-		JWKSUrl:       c.String("jwks-url"),
-		JWTIssuer:     c.String("jwt-issuer"),
-		JWTAudience:   c.String("jwt-audience"),
+		DB:                  c.String("db"),
+		ReportingDB:         c.String("reporting-db"),
+		Eventsink:           c.String("eventsink"),
+		ArchiveBucket:       c.String("archive-bucket"),
+		ReportBucket:        c.String("report-bucket"),
+		NoArchiver:          c.Bool("no-archiver"),
+		NoEventsink:         c.Bool("no-eventsink"),
+		NoReporter:          c.Bool("no-reporter"),
+		NoReplicator:        c.Bool("no-replicator"),
+		MockJWTEndpoint:     c.Bool("mock-jwt-endpoint"),
+		MockJWTSigningKey:   c.String("mock-jwt-signing-key"),
+		MockJWTSharedSecret: c.String("mock-jwt-shared-secret"),
+		JWKSUrl:             c.String("jwks-url"),
+		JWTIssuer:           c.String("jwt-issuer"),
+		JWTAudience:         c.String("jwt-audience"),
+		JWTScopePrefix:      c.String("jwt-scope-prefix"),
 		S3Options: repository.S3Options{
 			Endpoint:        c.String("s3-endpoint"),
 			AccessKeyID:     c.String("s3-key-id"),
@@ -72,12 +76,12 @@ func BackendConfigFromContext(c *cli.Context, src ParameterSource) (BackendConfi
 
 	cfg.ReportingDB = reportingDB
 
-	sharedSecret, err := resolveParam(c, src, "shared-secret-parameter", cfg.SharedSecret)
+	sharedSecret, err := resolveParam(c, src, "mock-jwt-shared-secret-parameter", cfg.MockJWTSharedSecret)
 	if err != nil {
 		return BackendConfig{}, err
 	}
 
-	cfg.SharedSecret = sharedSecret
+	cfg.MockJWTSharedSecret = sharedSecret
 
 	return cfg, nil
 }
@@ -173,20 +177,25 @@ func BackendFlags() []cli.Flag {
 			Name:  "no-replicator",
 			Usage: "Disable the replicator",
 		},
+		&cli.BoolFlag{
+			Name:    "mock-jwt-endpoint",
+			Usage:   "Enable mock JWT endpoint for development use",
+			EnvVars: []string{"MOCK_JWT_ENDPOINT"},
+		},
 		&cli.StringFlag{
-			Name:    "jwt-signing-key",
+			Name:    "mock-jwt-signing-key",
 			Usage:   "ECDSA signing key used for mock JWTs",
-			EnvVars: []string{"JWT_SIGNING_KEY"},
+			EnvVars: []string{"MOCK_JWT_SIGNING_KEY"},
 		},
 		&cli.StringFlag{
-			Name:    "shared-secret",
-			Usage:   "Shared secret to be used in password grants",
-			EnvVars: []string{"SHARED_PASSWORD_SECRET"},
+			Name:    "mock-jwt-shared-secret",
+			Usage:   "Shared secret to be used in password grants in the mock JWT endpoint",
+			EnvVars: []string{"MOCK_JWT_SHARED_PASSWORD_SECRET"},
 		},
 		&cli.StringFlag{
-			Name:    "shared-secret-parameter",
-			Usage:   "Shared secret to be used in password grants",
-			EnvVars: []string{"SHARED_PASSWORD_SECRET_PARAMETER"},
+			Name:    "mock-jwt-shared-secret-parameter",
+			Usage:   "Shared secret to be used in password grants in the mock JWT endpoint",
+			EnvVars: []string{"MOCK_JWT_SHARED_PASSWORD_SECRET_PARAMETER"},
 		},
 		&cli.StringFlag{
 			Name:    "jwks-url",
@@ -202,6 +211,11 @@ func BackendFlags() []cli.Flag {
 			Name:    "jwt-audience",
 			Usage:   "String to validate the aud claim against",
 			EnvVars: []string{"JWT_AUDIENCE"},
+		},
+		&cli.StringFlag{
+			Name:    "jwt-scope-prefix",
+			Usage:   "Prefix to strip from JWT scopes",
+			EnvVars: []string{"JWT_SCOPE_PREFIX"},
 		},
 	}
 }

@@ -118,45 +118,29 @@ func runServer(c *cli.Context) error {
 	}
 
 	var signingKey *ecdsa.PrivateKey
+
 	var authInfoParser *elephantine.AuthInfoParser
 
+	if conf.JWKSUrl != "" && conf.MockJWTEndpoint {
+		return fmt.Errorf("cannot specify JWKS URL with mock JWT endpoint")
+	}
+
 	if conf.JWKSUrl != "" {
-		authInfoParser, err = elephantine.NewAuthInfoParser(c.Context, conf.JWKSUrl, elephantine.ValidationClaims{
-			Issuer:   conf.JWTIssuer,
-			Audience: conf.JWTAudience,
+		authInfoParser, err = elephantine.NewJWKSAuthInfoParser(c.Context, conf.JWKSUrl, elephantine.AuthInfoParserOptions{
+			Issuer:      conf.JWTIssuer,
+			Audience:    conf.JWTAudience,
+			ScopePrefix: conf.JWTScopePrefix,
 		})
 		if err != nil {
 			return fmt.Errorf("could not create auth info parser: %w", err)
 		}
-	} else {
+	}
 
-		if conf.JWTSigningKey != "" {
-			keyData, err := base64.RawURLEncoding.DecodeString(
-				conf.JWTSigningKey)
-			if err != nil {
-				return fmt.Errorf(
-					"invalid base64 encoding for JWT signing key: %w", err)
-			}
-
-			k, err := x509.ParseECPrivateKey(keyData)
-			if err != nil {
-				return fmt.Errorf(
-					"invalid JWT signing key: %w", err)
-			}
-
-			signingKey = k
-		} else {
-			logger.Warn("no configured signing key")
-
-			key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-			if err != nil {
-				return fmt.Errorf("failed to generate key: %w", err)
-			}
-
-			signingKey = key
+	if conf.MockJWTEndpoint {
+		authInfoParser, signingKey, err = newMockAuthInfoParser(conf, logger, authInfoParser)
+		if err != nil {
+			return err
 		}
-
-		authInfoParser = elephantine.NewDummyAuthInfoParser(signingKey.PublicKey)
 	}
 
 	instrument, err := elephantine.NewHTTPClientIntrumentation(prometheus.DefaultRegisterer)
@@ -474,9 +458,22 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to set up SSE server: %w", err)
 	}
 
+	if conf.MockJWTEndpoint {
+		err = repository.SetUpRouter(router,
+			repository.WithTokenEndpoint(
+				signingKey,
+				conf.MockJWTSharedSecret,
+				conf.JWTIssuer,
+				conf.JWTAudience,
+			),
+			repository.WithJWKSEndpoint(signingKey),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to set up router: %w", err)
+		}
+	}
+
 	err = repository.SetUpRouter(router,
-		// repository.WithTokenEndpoint(signingKey, conf.SharedSecret),
-		// repository.WithJWKSEndpoint(signingKey),
 		repository.WithDocumentsAPI(docService, opts),
 		repository.WithSchemasAPI(schemaService, opts),
 		repository.WithWorkflowsAPI(workflowService, opts),
@@ -624,6 +621,38 @@ func runServer(c *cli.Context) error {
 	}
 
 	return nil
+}
+
+func newMockAuthInfoParser(conf cmd.BackendConfig, logger *slog.Logger, authInfoParser *elephantine.AuthInfoParser) (*elephantine.AuthInfoParser, *ecdsa.PrivateKey, error) {
+	var signingKey *ecdsa.PrivateKey
+	if conf.MockJWTSigningKey != "" {
+		keyData, err := base64.RawURLEncoding.DecodeString(
+			conf.MockJWTSigningKey)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to generate key: %w", err)
+		}
+
+		k, err := x509.ParseECPrivateKey(keyData)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to generate key: %w", err)
+		}
+
+		signingKey = k
+	} else {
+		logger.Warn("no configured signing key")
+
+		key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to generate key: %w", err)
+		}
+
+		signingKey = key
+	}
+
+	authInfoParser = elephantine.NewStaticAuthInfoParser(signingKey.PublicKey, elephantine.AuthInfoParserOptions{
+		ScopePrefix: conf.JWTScopePrefix,
+	})
+	return authInfoParser, signingKey, nil
 }
 
 func startArchiver(

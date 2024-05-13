@@ -224,7 +224,10 @@ func WithMetricsAPI(
 }
 
 func WithTokenEndpoint(
-	jwtKey *ecdsa.PrivateKey, sharedSecret string,
+	jwtKey *ecdsa.PrivateKey,
+	sharedSecret string,
+	issuer string,
+	audience string,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
 		router.POST("/token", internal.RHandleFunc(func(
@@ -290,12 +293,18 @@ func WithTokenEndpoint(
 
 			sub, units, _ := strings.Cut(subURI, ", ")
 
+			aud := []string{}
+			if audience != "" {
+				aud = []string{audience}
+			}
+
 			claims := elephantine.JWTClaims{
 				RegisteredClaims: jwt.RegisteredClaims{
 					ExpiresAt: jwt.NewNumericDate(
 						time.Now().Add(expiresIn)),
-					Issuer:  "test",
-					Subject: sub,
+					Issuer:   issuer,
+					Audience: aud,
+					Subject:  sub,
 				},
 				Name:  name,
 				Scope: scope,
