@@ -137,7 +137,7 @@ func runServer(c *cli.Context) error {
 	}
 
 	if conf.MockJWTEndpoint {
-		authInfoParser, signingKey, err = newMockAuthInfoParser(conf, logger, authInfoParser)
+		authInfoParser, signingKey, err = newMockAuthInfoParser(conf, logger)
 		if err != nil {
 			return err
 		}
@@ -623,8 +623,12 @@ func runServer(c *cli.Context) error {
 	return nil
 }
 
-func newMockAuthInfoParser(conf cmd.BackendConfig, logger *slog.Logger, authInfoParser *elephantine.AuthInfoParser) (*elephantine.AuthInfoParser, *ecdsa.PrivateKey, error) {
+func newMockAuthInfoParser(
+	conf cmd.BackendConfig,
+	logger *slog.Logger,
+) (*elephantine.AuthInfoParser, *ecdsa.PrivateKey, error) {
 	var signingKey *ecdsa.PrivateKey
+
 	if conf.MockJWTSigningKey != "" {
 		keyData, err := base64.RawURLEncoding.DecodeString(
 			conf.MockJWTSigningKey)
@@ -649,10 +653,9 @@ func newMockAuthInfoParser(conf cmd.BackendConfig, logger *slog.Logger, authInfo
 		signingKey = key
 	}
 
-	authInfoParser = elephantine.NewStaticAuthInfoParser(signingKey.PublicKey, elephantine.AuthInfoParserOptions{
+	return elephantine.NewStaticAuthInfoParser(signingKey.PublicKey, elephantine.AuthInfoParserOptions{
 		ScopePrefix: conf.JWTScopePrefix,
-	})
-	return authInfoParser, signingKey, nil
+	}), signingKey, nil
 }
 
 func startArchiver(
