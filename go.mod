@@ -27,7 +27,7 @@ require (
 	github.com/tmaxmax/go-sse v0.8.0
 	github.com/ttab/darknut v0.1.0
 	github.com/ttab/elephant-api v0.11.2
-	github.com/ttab/elephantine v0.11.7
+	github.com/ttab/elephantine v0.11.8-0.20240513123916-86c7f1441c05
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.6.1
 	github.com/ttab/newsdoc v0.5.0
@@ -42,8 +42,6 @@ require (
 )
 
 replace github.com/tmaxmax/go-sse v0.8.0 => github.com/ttab/go-sse v0.9.0-fin-pre1
-
-replace github.com/ttab/elephantine => ../elephantine
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
