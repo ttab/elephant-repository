@@ -165,7 +165,7 @@ Then create a ".env" file containing the following values:
 S3_ENDPOINT=http://localhost:9000/
 S3_ACCESS_KEY_ID=minioadmin
 S3_ACCESS_KEY_SECRET=minioadmin
-JWT_SIGNING_KEY='MIGkAgEBBDAgdjcifmVXiJoQh7IbTnsCS81CxYHQ1r6ftXE6ykJDz1SoQJEB6LppaCLpNBJhGNugBwYFK4EEACKhZANiAAS4LqvuFUwFXUNpCPTtgeMy61hE-Pdm57OVzTaVKUz7GzzPKNoGbcTllPGDg7nzXIga9ObRNs8ytSLQMOWIO8xJW35Xko4kwPR_CVsTS5oMaoYnBCOZYEO2NXND7gU7GoM'
+MOCK_JWT_SIGNING_KEY='MIGkAgEBBDAgdjcifmVXiJoQh7IbTnsCS81CxYHQ1r6ftXE6ykJDz1SoQJEB6LppaCLpNBJhGNugBwYFK4EEACKhZANiAAS4LqvuFUwFXUNpCPTtgeMy61hE-Pdm57OVzTaVKUz7GzzPKNoGbcTllPGDg7nzXIga9ObRNs8ytSLQMOWIO8xJW35Xko4kwPR_CVsTS5oMaoYnBCOZYEO2NXND7gU7GoM'
 ```
 
 The server will generate and a JWT signing key (and log a warning) if it's missing from the environment.
@@ -175,7 +175,7 @@ The server will generate and a JWT signing key (and log a warning) if it's missi
 The repository server runs the API, archiver, and replicator. If your environment has been set up correctly (env vars, postgres, and minio) you should be able to run it like this:
 
 ``` shell
-go run ./cmd/repository run
+go run ./cmd/repository run --mock-jwt-endpoint
 ```
 
 ## The database

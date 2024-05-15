@@ -303,10 +303,12 @@ func testingAPIServer(
 		return auth.Claims.Scope
 	})
 
-	srvOpts.SetJWTValidation(jwtKey)
+	srvOpts.SetJWTValidation(elephantine.NewStaticAuthInfoParser(jwtKey.PublicKey, elephantine.AuthInfoParserOptions{
+		Issuer: "test",
+	}))
 
 	err = repository.SetUpRouter(router,
-		repository.WithTokenEndpoint(jwtKey, opts.SharedSecret),
+		repository.WithTokenEndpoint(jwtKey, opts.SharedSecret, "test", ""),
 		repository.WithDocumentsAPI(docService, srvOpts),
 		repository.WithSchemasAPI(schemaService, srvOpts),
 		repository.WithWorkflowsAPI(workflowService, srvOpts),

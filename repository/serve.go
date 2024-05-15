@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/julienschmidt/httprouter"
 	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/ttab/elephant-api/repository"
@@ -59,14 +59,13 @@ type ServerOptions struct {
 	) error
 }
 
-func (so *ServerOptions) SetJWTValidation(jwtKey *ecdsa.PrivateKey) {
+func (so *ServerOptions) SetJWTValidation(parser *elephantine.AuthInfoParser) {
 	// TODO: This feels like an initial sketch that should be further
 	// developed to address the JWT cacheing.
 	so.AuthMiddleware = func(
 		w http.ResponseWriter, r *http.Request, next http.Handler,
 	) error {
-		auth, err := elephantine.AuthInfoFromHeader(&jwtKey.PublicKey,
-			r.Header.Get("Authorization"))
+		auth, err := parser.AuthInfoFromHeader(r.Header.Get("Authorization"))
 		if err != nil && !errors.Is(err, elephantine.ErrNoAuthorization) {
 			// TODO: Move the response part to a hook instead?
 			return elephantine.HTTPErrorf(http.StatusUnauthorized,
@@ -225,7 +224,10 @@ func WithMetricsAPI(
 }
 
 func WithTokenEndpoint(
-	jwtKey *ecdsa.PrivateKey, sharedSecret string,
+	jwtKey *ecdsa.PrivateKey,
+	sharedSecret string,
+	issuer string,
+	audience string,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
 		router.POST("/token", internal.RHandleFunc(func(
@@ -291,12 +293,18 @@ func WithTokenEndpoint(
 
 			sub, units, _ := strings.Cut(subURI, ", ")
 
+			aud := []string{}
+			if audience != "" {
+				aud = []string{audience}
+			}
+
 			claims := elephantine.JWTClaims{
 				RegisteredClaims: jwt.RegisteredClaims{
 					ExpiresAt: jwt.NewNumericDate(
 						time.Now().Add(expiresIn)),
-					Issuer:  "test",
-					Subject: sub,
+					Issuer:   issuer,
+					Audience: aud,
+					Subject:  sub,
 				},
 				Name:  name,
 				Scope: scope,
