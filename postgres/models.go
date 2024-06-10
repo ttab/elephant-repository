@@ -16,14 +16,15 @@ type Acl struct {
 }
 
 type AclAudit struct {
-	ID         int64
-	UUID       uuid.UUID
-	Updated    pgtype.Timestamptz
-	UpdaterUri string
-	State      []byte
-	Archived   bool
-	Type       pgtype.Text
-	Language   pgtype.Text
+	ID          int64
+	UUID        uuid.UUID
+	Updated     pgtype.Timestamptz
+	UpdaterUri  string
+	State       []byte
+	Archived    bool
+	Type        pgtype.Text
+	Language    pgtype.Text
+	SystemState pgtype.Text
 }
 
 type ActiveSchema struct {
@@ -32,16 +33,19 @@ type ActiveSchema struct {
 }
 
 type DeleteRecord struct {
-	ID         int64
-	UUID       uuid.UUID
-	URI        string
-	Type       string
-	Version    int64
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Meta       []byte
-	MainDoc    pgtype.UUID
-	Language   pgtype.Text
+	ID            int64
+	UUID          uuid.UUID
+	URI           string
+	Type          string
+	Version       int64
+	Created       pgtype.Timestamptz
+	CreatorUri    string
+	Meta          []byte
+	MainDoc       pgtype.UUID
+	Language      pgtype.Text
+	MetaDocRecord pgtype.Int8
+	Finalised     pgtype.Timestamptz
+	Heads         []byte
 }
 
 type Deprecation struct {
@@ -58,9 +62,10 @@ type Document struct {
 	Updated        pgtype.Timestamptz
 	UpdaterUri     string
 	CurrentVersion int64
-	Deleting       bool
 	MainDoc        pgtype.UUID
 	Language       pgtype.Text
+	SystemLock     pgtype.Text
+	SystemState    pgtype.Text
 }
 
 type DocumentLink struct {
@@ -212,6 +217,14 @@ type Report struct {
 	Spec          []byte
 }
 
+type RestoreRequest struct {
+	UUID           uuid.UUID
+	DeleteRecordID int64
+	Created        pgtype.Timestamptz
+	Creator        string
+	Spec           []byte
+}
+
 type SchemaVersion struct {
 	Version int32
 }
@@ -227,14 +240,15 @@ type Status struct {
 }
 
 type StatusHead struct {
-	UUID       uuid.UUID
-	Name       string
-	CurrentID  int64
-	Updated    pgtype.Timestamptz
-	UpdaterUri string
-	Type       pgtype.Text
-	Version    pgtype.Int8
-	Language   pgtype.Text
+	UUID        uuid.UUID
+	Name        string
+	CurrentID   int64
+	Updated     pgtype.Timestamptz
+	UpdaterUri  string
+	Type        pgtype.Text
+	Version     pgtype.Int8
+	Language    pgtype.Text
+	SystemState pgtype.Text
 }
 
 type StatusRule struct {

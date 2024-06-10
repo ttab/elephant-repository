@@ -30,6 +30,7 @@ const (
 	TypeNewStatus       EventType = "status"
 	TypeACLUpdate       EventType = "acl"
 	TypeDeleteDocument  EventType = "delete_document"
+	TypeRestoreFinished EventType = "restore_finished"
 )
 
 type Event struct {
@@ -46,6 +47,7 @@ type Event struct {
 	StatusID     int64      `json:"status_id,omitempty"`
 	Status       string     `json:"status,omitempty"`
 	ACL          []ACLEntry `json:"acl,omitempty"`
+	SystemState  string     `json:"system_state,omitempty"`
 }
 
 type replicationErrorCode string
@@ -482,6 +484,18 @@ func (pr *PGReplication) handleReplicationMessage(
 
 		msg.OldValues = oldValues
 
+		oldSystState, hadSysState := oldValues["system_state"].(string)
+		_, hasSysState := values["system_state"].(string)
+
+		// System state is set on document, status_heads, acl_audit. But
+		// the only move out of a system state that we want to track is
+		// that of document moving out of SystemStateRestoring. Ignore
+		// everything else.
+		if hadSysState && !hasSysState && !(oldSystState == SystemStateRestoring &&
+			rel.RelationName == "document") {
+			return nil
+		}
+
 		return pr.handleMessage(msg)
 
 	default:
@@ -725,6 +739,11 @@ func readMessageColumns(msg replMessage, evt *Event) error {
 		evt.MainDocument = &mu
 	}
 
+	systemState, ok := msg.NewValues["system_state"].(string)
+	if ok {
+		evt.SystemState = systemState
+	}
+
 	return nil
 }
 
@@ -738,14 +757,29 @@ func parseDocumentMessage(log *slog.Logger, msg replMessage) (Event, error) {
 		return Event{}, err
 	}
 
-	deleting, ok := msg.NewValues["deleting"].(bool)
-	if !ok {
-		return Event{}, fmt.Errorf("failed to extract delete status")
+	if msg.OldValues != nil {
+		oldSystState, hadSysState := msg.OldValues["system_state"].(string)
+		_, hasSysState := msg.NewValues["system_state"].(string)
+
+		// Leaving a system state is an update where we only change the
+		// system state. We collect all values for the event as usual,
+		// but change the event to a "restore_finished" event.
+		if hadSysState && !hasSysState {
+			switch oldSystState {
+			case SystemStateRestoring:
+				evt.Event = TypeRestoreFinished
+			default:
+				return Event{}, fmt.Errorf(
+					"left unknown system state %q", oldSystState)
+			}
+		}
 	}
 
-	if deleting {
+	sysLock, _ := msg.NewValues["system_state"].(string)
+
+	if sysLock == SystemStateDeleting {
 		// Deletes are tracked through delete_record.
-		return Event{}, nil
+		return Event{Event: TypeEventIgnored}, nil
 	}
 
 	version, ok := msg.NewValues["current_version"].(int64)
@@ -753,9 +787,15 @@ func parseDocumentMessage(log *slog.Logger, msg replMessage) (Event, error) {
 		return Event{}, fmt.Errorf("failed to extract current version")
 	}
 
+	// Just a placeholder used to start the restore, should not be reflected
+	// in the eventlog.
+	if sysLock == SystemStateRestoring && version == 0 {
+		return Event{Event: TypeEventIgnored}, nil
+	}
+
 	evt.Version = version
 
-	if msg.OldValues != nil {
+	if evt.Event != TypeRestoreFinished && msg.OldValues != nil {
 		oldVersion, ok := msg.OldValues["current_version"].(int64)
 		if !ok {
 			return Event{}, fmt.Errorf("failed to extract old version")

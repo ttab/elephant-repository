@@ -43,6 +43,8 @@ require (
 
 replace github.com/tmaxmax/go-sse v0.8.0 => github.com/ttab/go-sse v0.9.0-fin-pre1
 
+replace github.com/ttab/elephant-api => ../elephant-api
+
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/IvanZagoskin/wkt v0.0.1 // indirect

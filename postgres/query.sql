@@ -1,5 +1,5 @@
 -- name: GetDocumentForUpdate :one
-SELECT d.uri, d.type, d.current_version, d.deleting, d.main_doc, d.language,
+SELECT d.uri, d.type, d.current_version, d.main_doc, d.language, d.system_state,
        l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
        l.token as lock_token
@@ -77,7 +77,7 @@ WHERE uuid = @UUID AND version = @version;
 -- name: GetDocumentInfo :one
 SELECT
         d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
-        deleting, main_doc, l.uuid as lock_uuid, l.uri as lock_uri,
+        system_state, main_doc, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token
 FROM document as d 
@@ -101,6 +101,35 @@ SELECT pg_advisory_xact_lock(@id::bigint);
 
 -- name: Notify :exec
 SELECT pg_notify(@channel::text, @message::text);
+
+-- name: InsertDocument :exec
+INSERT INTO document(
+       uuid, uri, type,
+       created, creator_uri, updated, updater_uri, current_version,
+       main_doc, language, system_state
+) VALUES (
+       @uuid, @uri, @type,
+       @created, @creator_uri, @created, @creator_uri, @version,
+       @main_doc, @language, @system_state
+);
+
+-- name: InsertRestoreRequest :exec
+INSERT INTO restore_request(
+       uuid, delete_record_id, created, creator, spec
+) VALUES(
+       @uuid, @delete_record_id, created, creator, @spec
+);
+
+-- name: GetNextRestoreRequest :one
+SELECT uuid, delete_record_id, created, creator, spec
+FROM restore_request
+WHERE restore_status = 'pending'
+ORDER BY created ASC
+FOR UPDATE SKIP LOCKED
+LIMIT 1;
+
+-- name: DeleteRestoreRequest :exec
+DELETE FROM restore_request WHERE uuid = @uuid;
 
 -- name: UpsertDocument :exec
 INSERT INTO document(
@@ -180,19 +209,40 @@ WHERE d.uuid = @uuid;
 SELECT current_version FROM document
 WHERE main_doc = @uuid;
 
--- name: DeleteDocument :exec
-SELECT delete_document(
-       @uuid::uuid, @uri::text, @record_id::bigint
+-- name: DeleteDocumentEntry :exec
+DELETE FROM document WHERE uuid = @uuid;
+
+-- name: InsertDeletionPlaceholder :exec
+insert into document(
+       uuid, uri, type, created, creator_uri, updated, updater_uri,
+       current_version, system_state
+) values (
+       @uuid, @uri, '', now(), '', now(), '', @record_id, 'deleting'
 );
 
 -- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language
+       main_doc, language, meta_doc_record, heads
 ) VALUES(
        @uuid, @uri, @type, @version, @created, @creator_uri, @meta,
-       @main_doc, @language
+       @main_doc, @language, @meta_doc_record, @heads
 ) RETURNING id;
+
+-- name: ListDeleteRecords :many
+SELECT id, uuid, uri, type, version, created, creator_uri, meta,
+       main_doc, language, meta_doc_record
+FROM delete_record AS r
+WHERE (sqlc.narg('uuid')::uuid IS NULL OR r.uuid = @uuid)
+      AND (@before_id::bigint == 0 OR r.id < @before_id)
+      AND (sqlc.narg('before_time')::timestamptz IS NULL OR r.created < @before_time)
+ORDER BY r.id DESC;
+
+-- name: GetDeleteRecord :one
+SELECT id, uuid, uri, type, version, created, creator_uri, meta,
+       main_doc, language, meta_doc_record, heads
+FROM delete_record
+WHERE id = @id AND uuid = @uuid;
 
 -- name: GetDocumentStatusForArchiving :one
 SELECT
@@ -214,10 +264,12 @@ LIMIT 1;
 -- name: GetDocumentVersionForArchiving :one
 SELECT
         v.uuid, v.version, v.created, v.creator_uri, v.meta, v.document_data,
-        p.signature AS parent_signature
+        p.signature AS parent_signature, d.main_doc
 FROM document_version AS v
      LEFT JOIN document_version AS p
           ON p.uuid = v.uuid AND p.version = v.version-1
+     INNER JOIN document AS d
+          ON d.uuid = v.uuid
 WHERE v.archived = false
 AND (v.version = 1 OR p.archived = true)
 ORDER BY v.created
@@ -225,15 +277,19 @@ FOR UPDATE OF v SKIP LOCKED
 LIMIT 1;
 
 -- name: GetDocumentForDeletion :one
-SELECT uuid, current_version AS delete_record_id FROM document
-WHERE deleting = true
-ORDER BY created
-FOR UPDATE SKIP LOCKED
+SELECT dr.id, dr.uuid
+FROM delete_record AS dr
+     INNER JOIN document AS d
+           ON d.uuid = dr.uuid
+           AND d.system_state = 'deleting'
+WHERE dr.finalised IS NULL
+ORDER BY dr.created
+FOR UPDATE SKIP LOCKED -- locks both rows
 LIMIT 1;
 
 -- name: FinaliseDelete :execrows
 DELETE FROM document
-WHERE uuid = @uuid AND deleting = true;
+WHERE uuid = @uuid AND system_state = 'deleting';
 
 -- name: SetDocumentVersionAsArchived :exec
 UPDATE document_version

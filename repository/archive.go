@@ -306,7 +306,11 @@ func (a *Archiver) loop(ctx context.Context) error {
 			return err
 		}
 
-		// TODO: Archive ACLs
+		// TODO: Archive ACLs? No, I don't think that it's worth it. We
+		// should probably make double sure that (actual) ACL changes
+		// get logged properly though. Deleted documents should be
+		// restored with an ACL that's specified at restore time, or the
+		// last ACL the document had before being deleted.
 
 		next := now.Add(1 * time.Second)
 
@@ -346,7 +350,7 @@ func (a *Archiver) processDeletes(
 
 	prefix := fmt.Sprintf("documents/%s/", deleteOrder.UUID)
 	dstPrefix := fmt.Sprintf("deleted/%s/%d/",
-		deleteOrder.UUID, deleteOrder.DeleteRecordID)
+		deleteOrder.UUID, deleteOrder.ID)
 
 	paginator := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
 		Bucket: aws.String(a.bucket),
@@ -448,6 +452,7 @@ type ArchivedDocumentVersion struct {
 	CreatorURI      string          `json:"creator_uri"`
 	Meta            json.RawMessage `json:"meta,omitempty"`
 	DocumentData    json.RawMessage `json:"document_data"`
+	MainDocument    *uuid.UUID      `json:"main_document,omitempty"`
 	ParentSignature string          `json:"parent_signature,omitempty"`
 }
 
@@ -480,6 +485,7 @@ func (a *Archiver) archiveDocumentVersions(
 		CreatorURI:      unarchived.CreatorUri,
 		Meta:            unarchived.Meta,
 		DocumentData:    unarchived.DocumentData,
+		MainDocument:    pg.ToUUIDPointer(unarchived.MainDoc),
 		ParentSignature: unarchived.ParentSignature.String,
 	}
 
@@ -709,12 +715,19 @@ func (a *Archiver) ensureSigningKeys(ctx context.Context) error {
 		return fmt.Errorf("failed to acquire signing keys lock: %w", err)
 	}
 
+	var set SigningKeySet
+
+	const (
+		days              = 24 * time.Hour
+		validFor          = 180 * days
+		headsUpPeriod     = 2 * days
+		generateNewMargin = 7 * days
+	)
+
 	keys, err := q.GetSigningKeys(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch signing keys: %w", err)
 	}
-
-	var set SigningKeySet
 
 	for i := range keys {
 		var spec SigningKey
@@ -725,32 +738,36 @@ func (a *Archiver) ensureSigningKeys(ctx context.Context) error {
 				keys[i].Kid, err)
 		}
 
+		if spec.NotAfter.IsZero() {
+			spec.NotAfter = spec.NotBefore.Add(validFor)
+		}
+
 		set.Keys = append(set.Keys, spec)
 	}
 
-	validFor := 180 * 24 * time.Hour
-	headsUpPeriod := 30 * 24 * time.Hour
-	generateNewAfter := validFor - headsUpPeriod
-	notBefore := time.Now()
-
 	var keyID int64
 
-	currentKey := set.LatestKey()
-	if currentKey != nil {
-		cid, err := strconv.ParseInt(currentKey.Spec.KeyID, 36, 64)
+	latestKey := set.LatestKey()
+	if latestKey != nil {
+		cid, err := strconv.ParseInt(latestKey.Spec.KeyID, 36, 64)
 		if err != nil {
 			return fmt.Errorf("invalid key ID in keyset: %w", err)
 		}
 
 		keyID = cid
-
-		notBefore = notBefore.Add(headsUpPeriod)
 	}
 
-	if currentKey == nil || time.Since(currentKey.NotBefore) > generateNewAfter {
+	if latestKey == nil || time.Until(latestKey.NotAfter) < generateNewMargin {
 		key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 		if err != nil {
 			return fmt.Errorf("failed to generate key: %w", err)
+		}
+
+		notBefore := time.Now()
+
+		// Only add a heads up period if we have keys.
+		if latestKey != nil {
+			notBefore = notBefore.Add(headsUpPeriod)
 		}
 
 		signingKey := SigningKey{
@@ -759,6 +776,7 @@ func (a *Archiver) ensureSigningKeys(ctx context.Context) error {
 			),
 			IssuedAt:  time.Now(),
 			NotBefore: notBefore,
+			NotAfter:  notBefore.Add(validFor),
 		}
 
 		specData, err := json.Marshal(&signingKey)

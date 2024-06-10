@@ -30,6 +30,10 @@ type DocStore interface {
 		update []*UpdateRequest,
 	) ([]DocumentUpdate, error)
 	Delete(ctx context.Context, req DeleteRequest) error
+	ListDeleteRecords(
+		ctx context.Context, docUUID *uuid.UUID,
+		beforeID int64, startDate *time.Time,
+	) ([]DeleteRecord, error)
 	CheckPermissions(
 		ctx context.Context, req CheckPermissionRequest,
 	) (CheckPermissionResult, error)
@@ -243,13 +247,33 @@ type DeleteRequest struct {
 	LockToken string
 }
 
+type SystemState string
+
+const (
+	SystemStateDeleting  = "deleting"
+	SystemStateRestoring = "restoring"
+)
+
+type DeleteRecord struct {
+	ID           int64
+	UUID         uuid.UUID
+	URI          string
+	Type         string
+	Language     string
+	Version      int64
+	Created      time.Time
+	Creator      string
+	Meta         newsdoc.DataMap
+	MainDocument *uuid.UUID
+}
+
 type DocumentMeta struct {
 	Created        time.Time
 	Modified       time.Time
 	CurrentVersion int64
 	ACL            []ACLEntry
 	Statuses       map[string]Status
-	Deleting       bool
+	SystemLock     SystemState
 	Lock           Lock
 	MainDocument   string
 }
@@ -356,6 +380,7 @@ const (
 	ErrCodeNoSuchLock         DocStoreErrorCode = "no-such-lock"
 	ErrCodeOptimisticLock     DocStoreErrorCode = "optimistic-lock"
 	ErrCodeDeleteLock         DocStoreErrorCode = "delete-lock"
+	ErrCodeSystemLock         DocStoreErrorCode = "system-lock"
 	ErrCodeBadRequest         DocStoreErrorCode = "bad-request"
 	ErrCodeExists             DocStoreErrorCode = "exists"
 	ErrCodePermissionDenied   DocStoreErrorCode = "permission-denied"

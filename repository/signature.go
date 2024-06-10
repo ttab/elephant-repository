@@ -20,6 +20,11 @@ type SigningKey struct {
 	// Key timestamps
 	IssuedAt  time.Time `json:"iat"`
 	NotBefore time.Time `json:"nbf"`
+	NotAfter  time.Time `json:"naf"`
+}
+
+func (k *SigningKey) UsableAt(t time.Time) bool {
+	return t.After(k.NotBefore) && t.Before(k.NotAfter)
 }
 
 type SigningKeySet struct {
@@ -62,7 +67,7 @@ func (s *SigningKeySet) CurrentKey(t time.Time) *SigningKey {
 	var c *SigningKey
 
 	for i := range s.Keys {
-		valid := t.After(s.Keys[i].NotBefore)
+		valid := s.Keys[i].UsableAt(t)
 
 		if c == nil {
 			if valid {
