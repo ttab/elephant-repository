@@ -16,12 +16,14 @@ const (
 	ReadPermission      Permission = "r"
 	WritePermission     Permission = "w"
 	MetaWritePermission Permission = "m"
+	SetStatusPermission Permission = "s"
 )
 
 var vailidPermissions = []Permission{
 	ReadPermission,
 	WritePermission,
 	MetaWritePermission,
+	SetStatusPermission,
 }
 
 func IsValidPermission(p Permission) bool {
@@ -36,6 +38,8 @@ func (p Permission) Name() string {
 		return "write"
 	case MetaWritePermission:
 		return "meta write"
+	case SetStatusPermission:
+		return "set status"
 	}
 
 	return strconv.Quote(string(p))

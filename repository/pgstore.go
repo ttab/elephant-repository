@@ -1263,7 +1263,10 @@ func (s *PGDocStore) buildStatusRuleInput(
 	} else if d == nil {
 		d, meta, err := s.loadDocument(
 			ctx, q, uuid, status.Version)
-		if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return StatusRuleInput{}, DocStoreErrorf(
+				ErrCodeNotFound, "cannot set a status for a version that doesn't exist")
+		} else if err != nil {
 			return StatusRuleInput{}, fmt.Errorf(
 				"failed to retrieve document for rule evaluation: %w", err)
 		}
