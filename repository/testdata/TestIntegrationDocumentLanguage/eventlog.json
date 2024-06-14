@@ -6,7 +6,7 @@
       "version": 1,
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
-      "language": "en-GB"
+      "language": "en-gb"
     },
     {
       "event": "acl",
@@ -22,7 +22,7 @@
       ],
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
-      "language": "en-GB"
+      "language": "en-gb"
     },
     {
       "event": "status",
@@ -32,7 +32,7 @@
       "status_id": 1,
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
-      "language": "en-GB"
+      "language": "en-gb"
     },
     {
       "event": "document",
@@ -40,8 +40,8 @@
       "version": 2,
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
-      "language": "en-US",
-      "old_language": "en-GB"
+      "language": "en-us",
+      "old_language": "en-gb"
     },
     {
       "event": "status",
@@ -51,8 +51,8 @@
       "status_id": 2,
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
-      "language": "en-US",
-      "old_language": "en-GB"
+      "language": "en-us",
+      "old_language": "en-gb"
     }
   ]
 }
