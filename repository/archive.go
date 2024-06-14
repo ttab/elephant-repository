@@ -51,6 +51,7 @@ func S3Client(
 	)
 
 	if opts.Endpoint != "" {
+		//nolint: staticcheck
 		customResolver := aws.EndpointResolverWithOptionsFunc(func(
 			service, region string, _ ...interface{},
 		) (aws.Endpoint, error) {
@@ -65,6 +66,7 @@ func S3Client(
 			return aws.Endpoint{}, &aws.EndpointNotFoundError{}
 		})
 
+		//nolint: staticcheck
 		options = append(options,
 			config.WithEndpointResolverWithOptions(customResolver),
 			config.WithRegion("auto"),
