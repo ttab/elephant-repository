@@ -1051,6 +1051,8 @@ func (a *DocumentsService) buildUpdateRequest(
 
 		doc.UUID = docUUID.String()
 
+		doc.Language = strings.ToLower(doc.Language)
+
 		validationResult, err := a.validator.ValidateDocument(ctx, &doc)
 		if err != nil {
 			return nil, fmt.Errorf("unable to validate document %w", err)
