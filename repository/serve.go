@@ -190,14 +190,28 @@ func WithSSE(
 	opt ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
+		// TODO: Configurable hosts
+		corsHandler := elephantine.CORSMiddleware(elephantine.CORSOptions{
+			AllowInsecure:          false,
+			AllowInsecureLocalhost: true,
+			Hosts:                  []string{"localhost", "tt.se"},
+			AllowedMethods:         []string{"GET"},
+			AllowedHeaders:         []string{"Authorization", "Content-Type"},
+		}, handler)
+
 		router.GET("/sse", internal.RHandleFunc(func(
 			w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		) error {
-			if opt.AuthMiddleware != nil {
-				return opt.AuthMiddleware(w, r, handler)
+			token := r.URL.Query().Get("token")
+			if token != "" {
+				r.Header.Set("Authorization", "Bearer "+token)
 			}
 
-			handler.ServeHTTP(w, r)
+			if opt.AuthMiddleware != nil {
+				return opt.AuthMiddleware(w, r, corsHandler)
+			}
+
+			corsHandler.ServeHTTP(w, r)
 
 			return nil
 		}))
