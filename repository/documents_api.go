@@ -1101,8 +1101,13 @@ func (a *DocumentsService) buildUpdateRequest(
 
 	if !isMeta {
 		for _, e := range req.Acl {
+			uri := e.Uri
+			if uri == "" {
+				uri = auth.Claims.Subject
+			}
+
 			up.ACL = append(up.ACL, ACLEntry{
-				URI:         e.Uri,
+				URI:         uri,
 				Permissions: e.Permissions,
 			})
 		}
@@ -1258,12 +1263,6 @@ func (a *DocumentsService) verifyUpdateRequest(
 			return twirp.InvalidArgumentError(
 				fmt.Sprintf("acl.%d", i),
 				"an ACL entry cannot be nil")
-		}
-
-		if e.Uri == "" {
-			return twirp.InvalidArgumentError(
-				fmt.Sprintf("acl.%d.uri", i),
-				"an ACL grantee URI cannot be empty")
 		}
 
 		for _, p := range e.Permissions {
