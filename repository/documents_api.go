@@ -995,6 +995,8 @@ func twirpErrorFromDocumentUpdateError(err error) error {
 		return twirp.PermissionDenied.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
 		return twirp.FailedPrecondition.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeNotFound):
+		return twirp.NotFoundError(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeDuplicateURI):
 		return twirp.AlreadyExists.Error(err.Error())
 	case err != nil:
@@ -1288,10 +1290,23 @@ func (a *DocumentsService) verifyUpdateRequest(
 			return err
 		}
 	} else {
-		// Check for ACL write permissions, but allow the write if no
+		perm := []Permission{
+			WritePermission,
+		}
+
+		onlyStatus := len(req.Status) > 0 &&
+			req.Document == nil && len(req.Acl) == 0
+
+		// Include the set status permission if the update request only
+		// sets statuses.
+		if onlyStatus {
+			perm = append(perm, SetStatusPermission)
+		}
+
+		// Check for ACL permissions, but allow the write if no
 		// document is found, as we want to allow the creation of new
 		// documents.
-		err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+		err = a.accessCheck(ctx, auth, docUUID, perm...)
 		if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
 			return err
 		}

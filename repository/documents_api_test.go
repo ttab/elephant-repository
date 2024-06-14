@@ -232,6 +232,93 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	}
 }
 
+func TestIntegrationStatusPermissions(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete"))
+
+	statusClaims := itest.Claims(t, "status-guy", "doc_write")
+	statusClient := tc.DocumentsClient(t, statusClaims)
+
+	randoClient := tc.DocumentsClient(t,
+		itest.Claims(t, "random-guy", "doc_write"))
+
+	ctx := test.Context(t)
+
+	const (
+		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI  = "article://test/123"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	// Create a document that Mr status-guy is allowed to set statuses on.
+	res, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+		Acl: []*repository.ACLEntry{
+			{
+				Uri:         statusClaims.Subject,
+				Permissions: []string{"s"},
+			},
+		},
+	})
+	test.Must(t, err, "create article")
+
+	// Set a status as Mr status-guy.
+	_, err = statusClient.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*repository.StatusUpdate{
+			{
+				Name:    "done",
+				Version: res.Version,
+			},
+		},
+	})
+	test.Must(t, err, "set article status")
+
+	// Check that we're not letting any rando set statuses.
+	_, err = randoClient.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*repository.StatusUpdate{
+			{
+				Name:    "usable",
+				Version: res.Version,
+			},
+		},
+	})
+	test.MustNot(t, err, "let random user set article status")
+
+	// Verify that we don't let Mr status-guy mess with the contents of
+	// documents.
+	_, err = statusClient.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	itest.IsTwirpError(t, err, twirp.PermissionDenied)
+
+	// Don't allow a status to be set for a document that doesn't exist.
+	_, err = statusClient.Update(ctx, &repository.UpdateRequest{
+		Uuid: "a71c719b-d42e-4a60-95ea-3e6f7e897812",
+		Status: []*repository.StatusUpdate{
+			{
+				Name:    "usable",
+				Version: 1,
+			},
+		},
+	})
+	itest.IsTwirpError(t, err, twirp.NotFound)
+}
+
 func TestIntegrationDocumentLanguage(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
