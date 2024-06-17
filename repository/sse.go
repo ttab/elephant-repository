@@ -62,19 +62,15 @@ func NewSSE(ctx context.Context, logger *slog.Logger, store DocStore) (*SSE, err
 	sseServer := &sse.Server{
 		Provider: sseProvider,
 		OnSession: func(sess *sse.Session) (sse.Subscription, bool) {
-			auth, ok := elephantine.GetAuthInfo(sess.Req.Context())
-			if !ok {
-				sess.Res.WriteHeader(http.StatusUnauthorized)
-
-				return sse.Subscription{}, false
-			}
-
-			hasAccess := auth.Claims.HasAnyScope(
+			_, err := RequireAnyScope(sess.Req.Context(),
 				ScopeEventlogRead,
 				ScopeDocumentAdmin,
 			)
-			if !hasAccess {
-				sess.Res.WriteHeader(http.StatusForbidden)
+			if err != nil {
+				code := elephantine.TwirpErrorToHTTPStatusCode(err)
+
+				sess.Res.WriteHeader(code)
+				_, _ = sess.Res.Write([]byte(err.Error()))
 
 				return sse.Subscription{}, false
 			}
