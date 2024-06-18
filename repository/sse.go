@@ -87,6 +87,7 @@ func NewSSE(ctx context.Context, logger *slog.Logger, store DocStore) (*SSE, err
 
 	return &SSE{
 		logger: logger,
+		lastID: lastID,
 		store:  store,
 		server: sseServer,
 		stop:   make(chan struct{}),
