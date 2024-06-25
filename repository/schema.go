@@ -1,10 +1,7 @@
 package repository
 
 import (
-	"bytes"
 	"context"
-	"embed"
-	"encoding/json"
 	"fmt"
 
 	"github.com/Masterminds/semver/v3"
@@ -13,7 +10,7 @@ import (
 )
 
 func EnsureCoreSchema(ctx context.Context, store SchemaStore) error {
-	core, err := decodeConstraintSetsFS(revisorschemas.Files(),
+	core, err := revisor.DecodeConstraintSetsFS(revisorschemas.Files(),
 		"core.json", "core-planning.json")
 	if err != nil {
 		return fmt.Errorf("invalid embedded core schemas: %w", err)
@@ -73,49 +70,6 @@ func EnsureSchema(
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("failed to register schema: %w", err)
-	}
-
-	return nil
-}
-
-// TODO: When revisor doesn't depend on revisorschemas we can remove this and
-// add the functionality to revisorschemas instead. Today that would create a
-// dependency loop.
-func decodeConstraintSetsFS(
-	sFS embed.FS, names ...string,
-) ([]revisor.ConstraintSet, error) {
-	var constraints []revisor.ConstraintSet
-
-	for _, n := range names {
-		data, err := sFS.ReadFile(n)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"load constraints from %q: %w",
-				n, err)
-		}
-
-		var c revisor.ConstraintSet
-
-		err = decodeBytes(data, &c)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"parse constraints in %q: %w",
-				n, err)
-		}
-
-		constraints = append(constraints, c)
-	}
-
-	return constraints, nil
-}
-
-func decodeBytes(data []byte, o interface{}) error {
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-
-	err := dec.Decode(o)
-	if err != nil {
-		return fmt.Errorf("invalid JSON: %w", err)
 	}
 
 	return nil

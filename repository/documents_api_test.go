@@ -498,9 +498,10 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 						Declares: &revisor.BlockSignature{
 							Type: "meta/annotation",
 						},
-						Attributes: revisor.ConstraintMap{
-							"title": revisor.StringConstraint{},
-						},
+						Attributes: revisor.MakeConstraintMap(
+							map[string]revisor.StringConstraint{
+								"title": {},
+							}),
 					},
 				},
 			},
