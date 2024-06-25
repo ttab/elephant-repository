@@ -42,9 +42,18 @@ func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
 		h.ServeHTTP(w, r.WithContext(ctx))
 	}
 
+	// TODO: Configurable hosts
+	corsHandler := elephantine.CORSMiddleware(elephantine.CORSOptions{
+		AllowInsecure:          false,
+		AllowInsecureLocalhost: true,
+		Hosts:                  []string{"localhost", "tt.se"},
+		AllowedMethods:         []string{"GET", "POST"},
+		AllowedHeaders:         []string{"Authorization", "Content-Type"},
+	}, handler)
+
 	server := http.Server{
 		Addr:              addr,
-		Handler:           handler,
+		Handler:           corsHandler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -190,15 +199,6 @@ func WithSSE(
 	opt ServerOptions,
 ) RouterOption {
 	return func(router *httprouter.Router) error {
-		// TODO: Configurable hosts
-		corsHandler := elephantine.CORSMiddleware(elephantine.CORSOptions{
-			AllowInsecure:          false,
-			AllowInsecureLocalhost: true,
-			Hosts:                  []string{"localhost", "tt.se"},
-			AllowedMethods:         []string{"GET"},
-			AllowedHeaders:         []string{"Authorization", "Content-Type"},
-		}, handler)
-
 		router.GET("/sse", internal.RHandleFunc(func(
 			w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		) error {
@@ -208,10 +208,10 @@ func WithSSE(
 			}
 
 			if opt.AuthMiddleware != nil {
-				return opt.AuthMiddleware(w, r, corsHandler)
+				return opt.AuthMiddleware(w, r, handler)
 			}
 
-			corsHandler.ServeHTTP(w, r)
+			handler.ServeHTTP(w, r)
 
 			return nil
 		}))
