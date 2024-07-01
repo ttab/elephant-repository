@@ -68,7 +68,7 @@ type DocStore interface {
 		ctx context.Context,
 		uuids []uuid.UUID, statuses []string,
 		getMeta bool,
-	) (map[uuid.UUID]StatusOverviewItem, error)
+	) ([]StatusOverviewItem, error)
 	GetDocumentACL(
 		ctx context.Context, uuid uuid.UUID,
 	) ([]ACLEntry, error)

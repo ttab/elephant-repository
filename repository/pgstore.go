@@ -763,16 +763,16 @@ func (s *PGDocStore) BulkCheckPermissions(
 func (s *PGDocStore) GetStatusOverview(
 	ctx context.Context, uuids []uuid.UUID, statuses []string,
 	getMeta bool,
-) (map[uuid.UUID]StatusOverviewItem, error) {
+) ([]StatusOverviewItem, error) {
 	versions, err := s.reader.GetCurrentDocumentVersions(ctx, uuids)
 	if err != nil {
 		return nil, fmt.Errorf("get current versions: %w", err)
 	}
 
-	res := make(map[uuid.UUID]StatusOverviewItem, len(versions))
+	collected := make(map[uuid.UUID]*StatusOverviewItem, len(versions))
 
 	for _, v := range versions {
-		res[v.UUID] = StatusOverviewItem{
+		collected[v.UUID] = &StatusOverviewItem{
 			UUID:           v.UUID,
 			CurrentVersion: v.CurrentVersion,
 			Updated:        v.Updated.Time,
@@ -790,7 +790,7 @@ func (s *PGDocStore) GetStatusOverview(
 	}
 
 	for _, h := range heads {
-		doc := res[h.UUID]
+		doc := collected[h.UUID]
 		if doc.Heads == nil {
 			doc.Heads = make(map[string]Status)
 		}
@@ -814,8 +814,17 @@ func (s *PGDocStore) GetStatusOverview(
 			Meta:           meta,
 			MetaDocVersion: h.MetaDocVersion.Int64,
 		}
+	}
 
-		res[h.UUID] = doc
+	var res []StatusOverviewItem
+
+	for _, id := range uuids {
+		item, ok := collected[id]
+		if !ok {
+			continue
+		}
+
+		res = append(res, *item)
 	}
 
 	return res, nil
