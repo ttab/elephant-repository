@@ -32,7 +32,7 @@ require (
 	github.com/ttab/mage v0.6.2
 	github.com/ttab/newsdoc v0.5.0
 	github.com/ttab/revisor v0.8.2
-	github.com/ttab/revisorschemas v0.3.4
+	github.com/ttab/revisorschemas v0.3.5
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.2
 	github.com/xuri/excelize/v2 v2.8.1
