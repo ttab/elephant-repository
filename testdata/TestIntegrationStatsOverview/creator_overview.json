@@ -1,0 +1,26 @@
+{
+  "items": [
+    {
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "version": 1,
+      "modified": "2024-06-28T20:54:00+02:00",
+      "heads": {
+        "done": {
+          "id": 1,
+          "version": 1,
+          "creator": "user://test/testintegrationstatsoverview",
+          "created": "2024-06-28T20:54:00+02:00"
+        },
+        "usable": {
+          "id": 1,
+          "version": 1,
+          "creator": "user://test/testintegrationstatsoverview",
+          "created": "2024-06-28T20:54:00+02:00",
+          "meta": {
+            "user": "defined"
+          }
+        }
+      }
+    }
+  ]
+}

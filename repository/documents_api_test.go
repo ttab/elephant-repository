@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -1920,4 +1922,185 @@ func TestDocumentLocking(t *testing.T) {
 		LockToken: lock.Token,
 	})
 	test.Must(t, err, "unlock non-existing document")
+}
+
+func TestIntegrationStatsOverview(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	regenerate := os.Getenv("REGENERATE") == "true"
+	dataDir := filepath.Join(
+		"..", "testdata", "TestIntegrationStatsOverview")
+
+	if regenerate {
+		test.Must(t, os.MkdirAll(dataDir, 0o700),
+			"create test data directory")
+	}
+
+	ctx := test.Context(t)
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write"))
+
+	otherClaims := itest.StandardClaims(t,
+		"doc_read",
+		"unit://some/group")
+
+	otherClaims.Subject = "user://test/other-user"
+
+	otherClient := tc.DocumentsClient(t, otherClaims)
+
+	adminClaims := itest.StandardClaims(t, "doc_admin", "unit://some/group")
+	adminClaims.Subject = "user://test/admin-user"
+
+	adminClient := tc.DocumentsClient(t, adminClaims)
+
+	const (
+		docUUID  = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI   = "article://test/123"
+		doc2UUID = "93bd1a10-8136-4ace-8722-f4cc10bdb3e9"
+		doc2URI  = "article://test/123-b"
+	)
+
+	// The repository only returns modification times with second precision,
+	// truncate out acceptable creation time range accordingly.
+	creationStart := time.Now().Truncate(1 * time.Second)
+
+	doc := baseDocument(docUUID, docURI)
+
+	_, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+		Status: []*repository.StatusUpdate{
+			{Name: "usable", Meta: map[string]string{
+				"user": "defined",
+			}},
+			{Name: "done"},
+		},
+	})
+	test.Must(t, err, "create first article")
+
+	doc2 := baseDocument(doc2UUID, doc2URI)
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     doc2UUID,
+		Document: doc2,
+		Status: []*repository.StatusUpdate{
+			{Name: "usable"},
+		},
+		Acl: []*repository.ACLEntry{
+			{
+				Uri:         "user://test/other-user",
+				Permissions: []string{"r"},
+			},
+		},
+	})
+	test.Must(t, err, "create second article")
+
+	creationEnd := time.Now().Add(1 * time.Second).Truncate(1 * time.Second)
+
+	type tCase struct {
+		Name   string
+		File   string
+		Req    *repository.GetStatusOverviewRequest
+		Client repository.Documents
+	}
+
+	cases := []tCase{
+		{
+			Name:   "creator",
+			File:   "creator_overview.json",
+			Client: client,
+			Req: &repository.GetStatusOverviewRequest{
+				Uuids:    []string{docUUID, doc2UUID},
+				Statuses: []string{"usable", "done"},
+				GetMeta:  true,
+			},
+		},
+		{
+			Name:   "other",
+			File:   "other_overview.json",
+			Client: otherClient,
+			Req: &repository.GetStatusOverviewRequest{
+				Uuids:    []string{docUUID, doc2UUID},
+				Statuses: []string{"usable"},
+			},
+		},
+		{
+			Name:   "admin",
+			File:   "admin_overview.json",
+			Client: adminClient,
+			Req: &repository.GetStatusOverviewRequest{
+				Uuids:    []string{docUUID, doc2UUID},
+				Statuses: []string{"usable"},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.Name, func(t *testing.T) {
+			ctx := test.Context(t)
+
+			res, err := c.Client.GetStatusOverview(ctx, c.Req)
+			test.Must(t, err, "fatech status overview")
+
+			goldenFile := filepath.Join(dataDir, c.File)
+
+			if regenerate {
+				test.Must(t, elephantine.MarshalFile(goldenFile, res),
+					"write golden file")
+			}
+
+			var golden repository.GetStatusOverviewResponse
+
+			test.Must(t, elephantine.UnmarshalFile(goldenFile, &golden),
+				"read golden file")
+
+			diff := cmp.Diff(&golden, res,
+				protocmp.Transform(),
+				protocmp.IgnoreFields(&repository.StatusOverviewItem{},
+					"modified"),
+				protocmp.IgnoreFields(&repository.Status{},
+					"created"),
+			)
+			if diff != "" {
+				t.Fatalf("response mismatch (-want +got):\n%s", diff)
+			}
+
+			for _, item := range res.Items {
+				mod, err := time.Parse(time.RFC3339, item.Modified)
+				test.Must(t, err,
+					"return a valid modified timestamp for %s",
+					item.Uuid)
+
+				t.Log(mod)
+
+				// Checking the timestamp ranges not specific to
+				// StatusOverview, but rather verifies the
+				// behaviour of updates. So that's where any
+				// error fixing efforts should be directed if
+				// the range checks fail.
+				if mod.Before(creationStart) || mod.After(creationEnd) {
+					t.Fatalf("modified timestamp of %s must be between creation start and end", item.Uuid)
+				}
+
+				for status, s := range item.Heads {
+					created, err := time.Parse(time.RFC3339, s.Created)
+					test.Must(t, err,
+						"return a valid created timestamp for %q of %s",
+						status, item.Uuid)
+
+					if created.Before(creationStart) || created.After(creationEnd) {
+						t.Fatalf("creation timestamp of %s must be between creation start and end", item.Uuid)
+					}
+				}
+			}
+		})
+	}
 }

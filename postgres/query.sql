@@ -35,6 +35,21 @@ SELECT SUM(num) FROM (
 -- name: GetDocumentACL :many
 SELECT uuid, uri, permissions FROM acl WHERE uuid = $1;
 
+-- name: GetCurrentDocumentVersions :many
+SELECT uuid, current_version, updated
+FROM document
+WHERE uuid = ANY(@uuids::uuid[]);
+
+-- name: GetMultipleStatusHeads :many
+SELECT h.uuid, h.name, h.current_id, h.updated, h.updater_uri, s.version,
+       s.meta_doc_version,
+       CASE WHEN @get_meta::bool THEN s.meta ELSE NULL::jsonb END AS meta
+FROM status_heads AS h
+     INNER JOIN document_status AS s
+           ON s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
+WHERE h.uuid = ANY(@uuids::uuid[])
+AND h.name = ANY(@statuses::text[]);
+
 -- name: GetStatuses :many
 SELECT uuid, name, id, version, created, creator_uri, meta
 FROM document_status
@@ -253,6 +268,15 @@ FROM document AS d
           AND acl.uri = ANY(@uri::text[])
           AND @permissions::text[] && permissions
 WHERE d.uuid = @uuid;
+
+-- name: BulkCheckPermissions :many
+SELECT d.uuid
+FROM document AS d
+     INNER JOIN acl
+          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
+          AND acl.uri = ANY(@uri::text[])
+          AND @permissions::text[] && permissions
+WHERE d.uuid = ANY(@uuids::uuid[]);
 
 -- name: InsertACLAuditEntry :exec
 INSERT INTO acl_audit(

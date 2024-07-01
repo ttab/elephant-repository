@@ -38,6 +38,42 @@ func (q *Queries) ActivateSchema(ctx context.Context, arg ActivateSchemaParams) 
 	return err
 }
 
+const bulkCheckPermissions = `-- name: BulkCheckPermissions :many
+SELECT d.uuid
+FROM document AS d
+     INNER JOIN acl
+          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
+          AND acl.uri = ANY($1::text[])
+          AND $2::text[] && permissions
+WHERE d.uuid = ANY($3::uuid[])
+`
+
+type BulkCheckPermissionsParams struct {
+	URI         []string
+	Permissions []string
+	Uuids       []uuid.UUID
+}
+
+func (q *Queries) BulkCheckPermissions(ctx context.Context, arg BulkCheckPermissionsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, bulkCheckPermissions, arg.URI, arg.Permissions, arg.Uuids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var uuid uuid.UUID
+		if err := rows.Scan(&uuid); err != nil {
+			return nil, err
+		}
+		items = append(items, uuid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const checkMetaDocumentType = `-- name: CheckMetaDocumentType :one
 SELECT coalesce(meta_type, ''), NOT d.main_doc IS NULL as is_meta_doc
 FROM document AS d
@@ -494,6 +530,38 @@ func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEven
 			&i.OldLanguage,
 			&i.MainDoc,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCurrentDocumentVersions = `-- name: GetCurrentDocumentVersions :many
+SELECT uuid, current_version, updated
+FROM document
+WHERE uuid = ANY($1::uuid[])
+`
+
+type GetCurrentDocumentVersionsRow struct {
+	UUID           uuid.UUID
+	CurrentVersion int64
+	Updated        pgtype.Timestamptz
+}
+
+func (q *Queries) GetCurrentDocumentVersions(ctx context.Context, uuids []uuid.UUID) ([]GetCurrentDocumentVersionsRow, error) {
+	rows, err := q.db.Query(ctx, getCurrentDocumentVersions, uuids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCurrentDocumentVersionsRow
+	for rows.Next() {
+		var i GetCurrentDocumentVersionsRow
+		if err := rows.Scan(&i.UUID, &i.CurrentVersion, &i.Updated); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1207,6 +1275,63 @@ func (q *Queries) GetMetricKinds(ctx context.Context) ([]MetricKind, error) {
 	for rows.Next() {
 		var i MetricKind
 		if err := rows.Scan(&i.Name, &i.Aggregation); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMultipleStatusHeads = `-- name: GetMultipleStatusHeads :many
+SELECT h.uuid, h.name, h.current_id, h.updated, h.updater_uri, s.version,
+       s.meta_doc_version,
+       CASE WHEN $1::bool THEN s.meta ELSE NULL::jsonb END AS meta
+FROM status_heads AS h
+     INNER JOIN document_status AS s
+           ON s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
+WHERE h.uuid = ANY($2::uuid[])
+AND h.name = ANY($3::text[])
+`
+
+type GetMultipleStatusHeadsParams struct {
+	GetMeta  bool
+	Uuids    []uuid.UUID
+	Statuses []string
+}
+
+type GetMultipleStatusHeadsRow struct {
+	UUID           uuid.UUID
+	Name           string
+	CurrentID      int64
+	Updated        pgtype.Timestamptz
+	UpdaterUri     string
+	Version        int64
+	MetaDocVersion pgtype.Int8
+	Meta           []byte
+}
+
+func (q *Queries) GetMultipleStatusHeads(ctx context.Context, arg GetMultipleStatusHeadsParams) ([]GetMultipleStatusHeadsRow, error) {
+	rows, err := q.db.Query(ctx, getMultipleStatusHeads, arg.GetMeta, arg.Uuids, arg.Statuses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMultipleStatusHeadsRow
+	for rows.Next() {
+		var i GetMultipleStatusHeadsRow
+		if err := rows.Scan(
+			&i.UUID,
+			&i.Name,
+			&i.CurrentID,
+			&i.Updated,
+			&i.UpdaterUri,
+			&i.Version,
+			&i.MetaDocVersion,
+			&i.Meta,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

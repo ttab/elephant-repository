@@ -33,6 +33,9 @@ type DocStore interface {
 	CheckPermissions(
 		ctx context.Context, req CheckPermissionRequest,
 	) (CheckPermissionResult, error)
+	BulkCheckPermissions(
+		ctx context.Context, req BulkCheckPermissionRequest,
+	) ([]uuid.UUID, error)
 	GetMetaTypeForDocument(
 		ctx context.Context, uuid uuid.UUID,
 	) (DocumentMetaType, error)
@@ -61,6 +64,11 @@ type DocStore interface {
 		ctx context.Context, uuid uuid.UUID,
 		name string, before int64, count int,
 	) ([]Status, error)
+	GetStatusOverview(
+		ctx context.Context,
+		uuids []uuid.UUID, statuses []string,
+		getMeta bool,
+	) (map[uuid.UUID]StatusOverviewItem, error)
 	GetDocumentACL(
 		ctx context.Context, uuid uuid.UUID,
 	) ([]ACLEntry, error)
@@ -198,6 +206,12 @@ type CheckPermissionRequest struct {
 	Permissions []Permission
 }
 
+type BulkCheckPermissionRequest struct {
+	UUIDs       []uuid.UUID
+	GranteeURIs []string
+	Permissions []Permission
+}
+
 type CheckPermissionResult int
 
 const (
@@ -289,6 +303,13 @@ type Status struct {
 	Created        time.Time
 	Meta           newsdoc.DataMap
 	MetaDocVersion int64
+}
+
+type StatusOverviewItem struct {
+	UUID           uuid.UUID
+	CurrentVersion int64
+	Updated        time.Time
+	Heads          map[string]Status
 }
 
 type StatusUpdate struct {
