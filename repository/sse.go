@@ -77,10 +77,15 @@ func NewSSE(ctx context.Context, logger *slog.Logger, store DocStore) (*SSE, err
 
 			query := sess.Req.URL.Query()
 
+			topics := query["topic"]
+			if len(topics) == 0 {
+				topics = []string{"firehose"}
+			}
+
 			return sse.Subscription{
 				Client:      sess,
 				LastEventID: sess.LastEventID,
-				Topics:      query["topic"],
+				Topics:      topics,
 			}, true
 		},
 	}
