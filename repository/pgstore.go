@@ -33,6 +33,9 @@ type PGDocStoreOptions struct {
 	DeleteTimeout time.Duration
 }
 
+// Interface guard.
+var _ DocStore = &PGDocStore{}
+
 type PGDocStore struct {
 	logger *slog.Logger
 	pool   *pgxpool.Pool
@@ -732,6 +735,99 @@ func (s *PGDocStore) GetStatusHistory(
 	}
 
 	return statuses, nil
+}
+
+// BulkCheckPermissions implements DocStore.
+func (s *PGDocStore) BulkCheckPermissions(
+	ctx context.Context, req BulkCheckPermissionRequest,
+) ([]uuid.UUID, error) {
+	perms := make([]string, len(req.Permissions))
+
+	for i := range req.Permissions {
+		perms[i] = string(req.Permissions[i])
+	}
+
+	uuids, err := s.reader.BulkCheckPermissions(ctx, postgres.BulkCheckPermissionsParams{
+		URI:         req.GranteeURIs,
+		Permissions: perms,
+		Uuids:       req.UUIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("check acls: %w", err)
+	}
+
+	return uuids, nil
+}
+
+// GetStatusOverview implements DocStore.
+func (s *PGDocStore) GetStatusOverview(
+	ctx context.Context, uuids []uuid.UUID, statuses []string,
+	getMeta bool,
+) ([]StatusOverviewItem, error) {
+	versions, err := s.reader.GetCurrentDocumentVersions(ctx, uuids)
+	if err != nil {
+		return nil, fmt.Errorf("get current versions: %w", err)
+	}
+
+	collected := make(map[uuid.UUID]*StatusOverviewItem, len(versions))
+
+	for _, v := range versions {
+		collected[v.UUID] = &StatusOverviewItem{
+			UUID:           v.UUID,
+			CurrentVersion: v.CurrentVersion,
+			Updated:        v.Updated.Time,
+		}
+	}
+
+	heads, err := s.reader.GetMultipleStatusHeads(ctx,
+		postgres.GetMultipleStatusHeadsParams{
+			Uuids:    uuids,
+			Statuses: statuses,
+			GetMeta:  getMeta,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("get document heads: %w", err)
+	}
+
+	for _, h := range heads {
+		doc := collected[h.UUID]
+		if doc.Heads == nil {
+			doc.Heads = make(map[string]Status)
+		}
+
+		var meta newsdoc.DataMap
+
+		if len(h.Meta) != 0 {
+			err := json.Unmarshal(h.Meta, &meta)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"unmarshal metadata for %s status %q: %w",
+					h.UUID, h.Name, err)
+			}
+		}
+
+		doc.Heads[h.Name] = Status{
+			ID:             h.CurrentID,
+			Version:        h.Version,
+			Creator:        h.UpdaterUri,
+			Created:        h.Updated.Time,
+			Meta:           meta,
+			MetaDocVersion: h.MetaDocVersion.Int64,
+		}
+	}
+
+	var res []StatusOverviewItem
+
+	for _, id := range uuids {
+		item, ok := collected[id]
+		if !ok {
+			continue
+		}
+
+		res = append(res, *item)
+	}
+
+	return res, nil
 }
 
 // GetDocumentMeta implements DocStore.
@@ -2336,6 +2432,3 @@ func (s *PGDocStore) updatePreflight(
 		},
 	}, nil
 }
-
-// Interface guard.
-var _ DocStore = &PGDocStore{}

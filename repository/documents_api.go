@@ -53,6 +53,92 @@ func NewDocumentsService(
 // Interface guard.
 var _ repository.Documents = &DocumentsService{}
 
+// GetStatusOverview implements repository.Documents.
+func (a *DocumentsService) GetStatusOverview(
+	ctx context.Context, req *repository.GetStatusOverviewRequest,
+) (*repository.GetStatusOverviewResponse, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(req.Uuids) == 0 {
+		return nil, twirp.RequiredArgumentError("uuids")
+	}
+
+	if len(req.Statuses) == 0 {
+		return nil, twirp.RequiredArgumentError("statuses")
+	}
+
+	uuids := make([]uuid.UUID, len(req.Uuids))
+
+	for i := range req.Uuids {
+		id, err := uuid.Parse(req.Uuids[i])
+		if err != nil {
+			return nil, twirp.InvalidArgument.Errorf(
+				"uuids: the %dnth UUID is invalid: %v",
+				i+i, err)
+		}
+
+		uuids[i] = id
+	}
+
+	aclBypass := auth.Claims.HasAnyScope(
+		ScopeDocumentReadAll, ScopeDocumentAdmin)
+
+	// If the caller doesn't have an ACL bypassing permission we filter down
+	// the given UUIDs to the ones they have permission to.
+	if !aclBypass {
+		ident := append([]string{auth.Claims.Subject}, auth.Claims.Units...)
+
+		permitted, err := a.store.BulkCheckPermissions(ctx,
+			BulkCheckPermissionRequest{
+				UUIDs:       uuids,
+				GranteeURIs: ident,
+				Permissions: []Permission{ReadPermission},
+			})
+		if err != nil {
+			return nil, twirp.InternalErrorf("check ACL access: %v", err)
+		}
+
+		uuids = permitted
+	}
+
+	data, err := a.store.GetStatusOverview(
+		ctx, uuids, req.Statuses, req.GetMeta)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"get overview from database: %v", err)
+	}
+
+	var res repository.GetStatusOverviewResponse
+
+	for _, di := range data {
+		ri := repository.StatusOverviewItem{
+			Uuid:     di.UUID.String(),
+			Version:  di.CurrentVersion,
+			Modified: di.Updated.Format(time.RFC3339),
+			Heads:    make(map[string]*repository.Status, len(di.Heads)),
+		}
+
+		for name, status := range di.Heads {
+			ri.Heads[name] = &repository.Status{
+				Id:      status.ID,
+				Version: status.Version,
+				Creator: status.Creator,
+				Created: status.Created.Format(time.RFC3339),
+				Meta:    status.Meta,
+			}
+		}
+
+		res.Items = append(res.Items, &ri)
+	}
+
+	return &res, nil
+}
+
 // GetStatusHistory returns the history of a status for a document.
 func (a *DocumentsService) GetStatusHistory(
 	ctx context.Context, req *repository.GetStatusHistoryRequest,
