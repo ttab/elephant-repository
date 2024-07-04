@@ -751,9 +751,9 @@ func (a *DocumentsService) Restore(
 			"uuid", err.Error())
 	}
 
-	// TODO: Default ACL? We're not currently archiving ACLs, should we? Or
-	// would it be enough to include the last ACL in the delete record and
-	// use that as the default.
+	// TODO: ACL should not be required, we should be able to restore
+	// permissions as well. Not the full history, but as it was at the time
+	// of deletion.
 	if len(req.Acl) == 0 {
 		return nil, twirp.RequiredArgumentError("acl")
 	}
