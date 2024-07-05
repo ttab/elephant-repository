@@ -43,6 +43,7 @@ type DeleteRecord struct {
 	Meta          []byte
 	MainDoc       pgtype.UUID
 	Language      pgtype.Text
+	Acls          []byte
 	MetaDocRecord pgtype.Int8
 	Finalised     pgtype.Timestamptz
 	Heads         []byte
@@ -64,7 +65,6 @@ type Document struct {
 	CurrentVersion int64
 	MainDoc        pgtype.UUID
 	Language       pgtype.Text
-	SystemLock     pgtype.Text
 	SystemState    pgtype.Text
 }
 
@@ -114,6 +114,7 @@ type DocumentVersion struct {
 	DocumentData []byte
 	Archived     bool
 	Signature    pgtype.Text
+	Language     pgtype.Text
 }
 
 type Eventlog struct {
@@ -130,6 +131,7 @@ type Eventlog struct {
 	MainDoc     pgtype.UUID
 	Language    pgtype.Text
 	OldLanguage pgtype.Text
+	SystemState pgtype.Text
 }
 
 type Eventsink struct {
@@ -217,12 +219,23 @@ type Report struct {
 	Spec          []byte
 }
 
+type Restore struct {
+	ID         int64
+	UUID       uuid.UUID
+	DeleteID   int64
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Acls       []byte
+}
+
 type RestoreRequest struct {
+	ID             int64
 	UUID           uuid.UUID
 	DeleteRecordID int64
 	Created        pgtype.Timestamptz
 	Creator        string
 	Spec           []byte
+	Finished       pgtype.Timestamptz
 }
 
 type SchemaVersion struct {

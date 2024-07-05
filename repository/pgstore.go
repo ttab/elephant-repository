@@ -501,8 +501,26 @@ func (s *PGDocStore) RestoreDocument(
 		ID:   deleteRecordID,
 		UUID: docUUID,
 	})
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DocStoreErrorf(ErrCodeNotFound,
+			"delete record doesn't exist")
+	} else if err != nil {
 		return fmt.Errorf("read delete record: %w", err)
+	}
+
+	state, err := q.ReadForRestore(ctx, docUUID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("check document status: %w", err)
+	}
+
+	if !errors.Is(err, pgx.ErrNoRows) {
+		if !state.Valid {
+			return DocStoreErrorf(ErrCodeExists,
+				"document already exists")
+		}
+
+		return DocStoreErrorf(ErrCodeFailedPrecondition,
+			"document is currently locked for %q", state.String)
 	}
 
 	// Insert a placeholder document row vith the state restoring and
@@ -517,7 +535,10 @@ func (s *PGDocStore) RestoreDocument(
 		Language:    record.Language,
 		SystemState: pg.Text(SystemStateRestoring),
 	})
-	if err != nil {
+	if pg.IsConstraintError(err, "document_pkey") {
+		return DocStoreErrorf(ErrCodeFailedPrecondition,
+			"document already exists")
+	} else if err != nil {
 		return fmt.Errorf("insert restore placeholder: %w", err)
 	}
 
@@ -525,6 +546,8 @@ func (s *PGDocStore) RestoreDocument(
 		postgres.InsertRestoreRequestParams{
 			UUID:           docUUID,
 			DeleteRecordID: deleteRecordID,
+			Created:        pg.Time(time.Now()),
+			Creator:        creator,
 			Spec:           specData,
 		})
 	if err != nil {
@@ -707,6 +730,7 @@ func (s *PGDocStore) GetEventlog(
 			MainDocument: pg.ToUUIDPointer(res[i].MainDoc),
 			Language:     res[i].Language.String,
 			OldLanguage:  res[i].OldLanguage.String,
+			SystemState:  res[i].SystemState.String,
 		}
 
 		if res[i].Acl != nil {
@@ -762,6 +786,7 @@ func (s *PGDocStore) GetCompactedEventlog(
 			MainDocument: pg.ToUUIDPointer(res[i].MainDoc),
 			Language:     res[i].Language.String,
 			OldLanguage:  res[i].OldLanguage.String,
+			SystemState:  res[i].SystemState.String,
 		}
 
 		if res[i].Acl != nil {
@@ -1149,7 +1174,10 @@ func (s *PGDocStore) CheckPermissions(
 			"failed check acl: %w", err)
 	}
 
-	if !access {
+	switch {
+	case access.SystemState.String != "":
+		return PermissionCheckSystemLock, nil
+	case !access.HasAccess:
 		return PermissionCheckDenied, nil
 	}
 
@@ -1353,11 +1381,28 @@ func (s *PGDocStore) Update(
 					})
 			}
 
-			// TODO: `language` is a bit naive here, as it assumes
-			// that the status set for the referenced version is the
-			// same as the language of the latest version of the
-			// document. We should get the language from the
-			// referenced document version instead.
+			lang := state.Language
+
+			// If the status is referencing a specific version we'll
+			// have to fetch the language of it so that the status
+			// language reflects the language of the document.
+			if status.Version != -1 && status.Version != state.Version {
+				l, err := q.GetVersionLanguage(ctx,
+					postgres.GetVersionLanguageParams{
+						UUID:    state.Request.UUID,
+						Version: status.Version,
+					})
+				if err != nil {
+					return nil, fmt.Errorf(
+						"read language of status %q document version: %w",
+						stat.Name, err)
+				}
+
+				if l.Valid {
+					lang = l.String
+				}
+			}
+
 			err = q.CreateStatusHead(ctx, postgres.CreateStatusHeadParams{
 				UUID:       state.Request.UUID,
 				Name:       stat.Name,
@@ -1366,7 +1411,7 @@ func (s *PGDocStore) Update(
 				ID:         status.ID,
 				Created:    pg.Time(state.Created),
 				CreatorUri: state.Creator,
-				Language:   state.Language,
+				Language:   lang,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("failed to create status head: %w", err)
@@ -1463,6 +1508,7 @@ func createNewDocumentVersion(
 		Created:      pg.Time(props.Created),
 		CreatorUri:   props.Creator,
 		Meta:         props.MetaJSON,
+		Language:     pg.Text(props.Language),
 		DocumentData: props.DocJSON,
 	})
 	if err != nil {

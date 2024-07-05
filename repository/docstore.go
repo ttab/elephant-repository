@@ -34,6 +34,10 @@ type DocStore interface {
 		ctx context.Context, docUUID *uuid.UUID,
 		beforeID int64, startDate *time.Time,
 	) ([]DeleteRecord, error)
+	RestoreDocument(
+		ctx context.Context, docUUID uuid.UUID, deleteRecordID int64,
+		creator string, acl []ACLEntry,
+	) error
 	CheckPermissions(
 		ctx context.Context, req CheckPermissionRequest,
 	) (CheckPermissionResult, error)
@@ -222,6 +226,7 @@ const (
 	PermissionCheckDenied = iota
 	PermissionCheckAllowed
 	PermissionCheckNoSuchDocument
+	PermissionCheckSystemLock
 )
 
 type UpdateRequest struct {

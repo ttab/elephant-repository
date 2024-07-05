@@ -585,6 +585,7 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		MainDocument: mainDoc,
 		Language:     evt.Language,
 		OldLanguage:  evt.OldLanguage,
+		SystemState:  evt.SystemState,
 	}
 }
 
@@ -763,9 +764,24 @@ func (a *DocumentsService) Restore(
 		return nil, err
 	}
 
-	println(auth.Claims.Subject, docUUID.String())
+	acl := aclListFromRPC(req.Acl, auth.Claims.Subject)
 
-	return nil, nil
+	err = a.store.RestoreDocument(ctx,
+		docUUID, req.DeleteRecordId,
+		auth.Claims.Subject, acl)
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeExists):
+		return nil, twirp.AlreadyExists.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
+		return nil, twirp.FailedPrecondition.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeNotFound):
+		return nil, twirp.NotFoundError(err.Error())
+	case err != nil:
+		return nil, twirp.InternalErrorf(
+			"failed to start restore process: %v", err)
+	}
+
+	return &repository.RestoreResponse{}, nil
 }
 
 // Get implements repository.Documents.
@@ -1015,6 +1031,9 @@ func (a *DocumentsService) accessCheck(
 		return twirp.PermissionDenied.Errorf(
 			"no %s permission for the document",
 			strings.Join(names, " or "))
+	case PermissionCheckSystemLock:
+		return twirp.FailedPrecondition.Error(
+			"the document is temporarily locked by the system")
 	case PermissionCheckAllowed:
 	}
 
@@ -1309,17 +1328,7 @@ func (a *DocumentsService) buildUpdateRequest(
 		(req.Document != nil && isMetaURI(req.Document.Uri))
 
 	if !isMeta {
-		for _, e := range req.Acl {
-			uri := e.Uri
-			if uri == "" {
-				uri = auth.Claims.Subject
-			}
-
-			up.ACL = append(up.ACL, ACLEntry{
-				URI:         uri,
-				Permissions: e.Permissions,
-			})
-		}
+		up.ACL = aclListFromRPC(req.Acl, auth.Claims.Subject)
 
 		up.DefaultACL = append(up.DefaultACL, ACLEntry{
 			URI:         updater,
@@ -1335,6 +1344,24 @@ func (a *DocumentsService) buildUpdateRequest(
 	}
 
 	return &up, nil
+}
+
+func aclListFromRPC(acl []*repository.ACLEntry, callerSubject string) []ACLEntry {
+	list := make([]ACLEntry, len(acl))
+
+	for i, e := range acl {
+		uri := e.Uri
+		if uri == "" {
+			uri = callerSubject
+		}
+
+		list[i] = ACLEntry{
+			URI:         uri,
+			Permissions: e.Permissions,
+		}
+	}
+
+	return list
 }
 
 // verifyUpdateRequest verifies that a set of update request are correct, and
@@ -1520,12 +1547,6 @@ func verifyACLParam(acl []*repository.ACLEntry) error {
 			return twirp.InvalidArgumentError(
 				fmt.Sprintf("acl.%d", i),
 				"an ACL entry cannot be nil")
-		}
-
-		if e.Uri == "" {
-			return twirp.InvalidArgumentError(
-				fmt.Sprintf("acl.%d.uri", i),
-				"an ACL grantee URI cannot be empty")
 		}
 
 		for _, p := range e.Permissions {

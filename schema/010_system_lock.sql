@@ -8,6 +8,12 @@ ALTER TABLE document
       ADD COLUMN system_state text,
       DROP COLUMN deleting;
 
+ALTER TABLE document_version
+      ADD COLUMN language text;
+
+ALTER TABLE eventlog
+      ADD COLUMN system_state text;
+
 ALTER TABLE status_heads
       ADD COLUMN system_state text;
 
@@ -26,14 +32,20 @@ WHERE finalised IS NULL;
 DROP FUNCTION delete_document(uuid, text, bigint);
 
 CREATE TABLE restore_request(
-       uuid uuid PRIMARY KEY,
+       id bigint generated always as identity primary key,
+       uuid uuid NOT NULL,
        delete_record_id bigint NOT NULL,
        created timestamptz NOT NULL,
        creator text NOT NULL,
        spec jsonb NOT NULL,
+       finished timestamptz,
        FOREIGN KEY (delete_record_id) REFERENCES delete_record(id)
                ON DELETE RESTRICT
 );
+
+CREATE INDEX restores_to_perform
+ON restore_request (created ASC)
+WHERE finished IS NULL;
 
 ---- create above / drop below ----
 
@@ -41,12 +53,18 @@ ALTER TABLE document
       DROP COLUMN IF EXISTS system_state,
       ADD COLUMN IF NOT EXISTS deleting bool not null default false;
 
+ALTER TABLE document_version
+      DROP COLUMN IF EXISTS language;
+
 ALTER TABLE delete_record
       DROP COLUMN IF EXISTS meta_doc_record,
       DROP COLUMN IF EXISTS finalised,
       DROP COLUMN IF EXISTS heads;
 
 ALTER TABLE status_heads
+      DROP COLUMN IF EXISTS system_state;
+
+ALTER TABLE eventlog
       DROP COLUMN IF EXISTS system_state;
 
 ALTER TABLE acl_audit

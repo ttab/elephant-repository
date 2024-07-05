@@ -117,11 +117,13 @@ type Archiver struct {
 	pool               *pgxpool.Pool
 	signingKeys        SigningKeySet
 	signingKeysChecked time.Time
+	reader             *ArchiveReader
 
-	versionsArchived *prometheus.CounterVec
-	statusesArchived *prometheus.CounterVec
-	deletesProcessed *prometheus.CounterVec
-	restarts         prometheus.Counter
+	versionsArchived  *prometheus.CounterVec
+	statusesArchived  *prometheus.CounterVec
+	deletesProcessed  *prometheus.CounterVec
+	restoresProcessed *prometheus.CounterVec
+	restarts          prometheus.Counter
 
 	cancel  func()
 	stopped chan struct{}
@@ -165,6 +167,17 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
 
+	restoresProcessed := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "elephant_archiver_restores_total",
+			Help: "Number of document restores processed.",
+		},
+		[]string{"status"},
+	)
+	if err := opts.MetricsRegisterer.Register(restoresProcessed); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
 	restarts := prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "elephant_archiver_restarts_total",
@@ -175,16 +188,25 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
 
-	return &Archiver{
-		logger:           opts.Logger,
-		s3:               opts.S3,
-		pool:             opts.DB,
-		bucket:           opts.Bucket,
-		versionsArchived: versionsArchived,
-		statusesArchived: statusesArchived,
-		deletesProcessed: deletesProcessed,
-		restarts:         restarts,
-	}, nil
+	a := Archiver{
+		logger:            opts.Logger,
+		s3:                opts.S3,
+		pool:              opts.DB,
+		bucket:            opts.Bucket,
+		versionsArchived:  versionsArchived,
+		statusesArchived:  statusesArchived,
+		deletesProcessed:  deletesProcessed,
+		restoresProcessed: restoresProcessed,
+		restarts:          restarts,
+	}
+
+	a.reader = NewArchiveReader(ArchiveReaderOptions{
+		S3:          opts.S3,
+		Bucket:      opts.Bucket,
+		SigningKeys: &a.signingKeys,
+	})
+
+	return &a, nil
 }
 
 func (a *Archiver) Run(ctx context.Context) error {
@@ -306,6 +328,13 @@ func (a *Archiver) loop(ctx context.Context) error {
 			return err
 		}
 
+		err = runWithDelay(
+			"process document restores", now, 500*time.Millisecond,
+			a.restoresProcessed, a.processRestores)
+		if err != nil {
+			return err
+		}
+
 		// TODO: Archive ACLs? No, I don't think that it's worth it. We
 		// should probably make double sure that (actual) ACL changes
 		// get logged properly though. Deleted documents should be
@@ -337,7 +366,7 @@ func (a *Archiver) processDeletes(
 	}
 
 	defer pg.SafeRollback(ctx, a.logger, tx,
-		"document version archiving")
+		"document delete processing")
 
 	q := postgres.New(tx)
 
@@ -349,7 +378,7 @@ func (a *Archiver) processDeletes(
 	}
 
 	prefix := fmt.Sprintf("documents/%s/", deleteOrder.UUID)
-	dstPrefix := fmt.Sprintf("deleted/%s/%d/",
+	dstPrefix := fmt.Sprintf("deleted/%s/%019d/",
 		deleteOrder.UUID, deleteOrder.ID)
 
 	paginator := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
@@ -418,6 +447,289 @@ func (a *Archiver) processDeletes(
 	return true, nil
 }
 
+func (a *Archiver) processRestores(
+	ctx context.Context,
+) (bool, error) {
+	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin transaction: %w", err)
+	}
+
+	defer pg.SafeRollback(ctx, a.logger, tx,
+		"document restores")
+
+	q := postgres.New(tx)
+
+	req, err := q.GetNextRestoreRequest(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("get next restore request: %w", err)
+	}
+
+	var spec RestoreSpec
+
+	err = json.Unmarshal(req.Spec, &spec)
+	if err != nil {
+		return false, fmt.Errorf("unmarshal restore spec: %w", err)
+	}
+
+	requestPrefix := fmt.Sprintf("deleted/%s/%019d/",
+		req.UUID, req.DeleteRecordID)
+	versionsPrefix := requestPrefix + "versions/"
+	statusesPrefix := requestPrefix + "statuses/"
+
+	versionsPages := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
+		Bucket: aws.String(a.bucket),
+		Prefix: aws.String(versionsPrefix),
+	})
+
+	var (
+		parentSig string
+		parentID  int64
+	)
+
+	for versionsPages.HasMorePages() {
+		page, err := versionsPages.NextPage(ctx)
+		if err != nil {
+			return false, fmt.Errorf(
+				"get s3 listing of document versions: %w", err)
+		}
+
+		for _, o := range page.Contents {
+			if !strings.HasSuffix(*o.Key, ".json") {
+				continue
+			}
+
+			// Trim prefix and suffix so that we're left with the
+			// version number.
+			vStr := strings.TrimSuffix(
+				strings.TrimPrefix(*o.Key, versionsPrefix),
+				".json")
+
+			id, err := strconv.ParseInt(vStr, 10, 64)
+			if err != nil {
+				return false, fmt.Errorf(
+					"invalid version object name: %w", err)
+			}
+
+			if id != parentID+1 {
+				return false, fmt.Errorf(
+					"expected version %d, got %d",
+					parentID+1, id)
+			}
+
+			sig, err := a.restoreDocumentVersion(
+				ctx, q, &parentSig, id, req, spec, *o.Key)
+			if err != nil {
+				return false, fmt.Errorf(
+					"restore version %d: %w", id, err)
+			}
+
+			parentID = id
+			parentSig = sig
+		}
+	}
+
+	statusesPages := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
+		Bucket: aws.String(a.bucket),
+		Prefix: aws.String(statusesPrefix),
+	})
+
+	var lastStatus string
+
+	for statusesPages.HasMorePages() {
+		page, err := statusesPages.NextPage(ctx)
+		if err != nil {
+			return false, fmt.Errorf(
+				"get s3 listing of document statuses: %w", err)
+		}
+
+		for _, o := range page.Contents {
+			if !strings.HasSuffix(*o.Key, ".json") {
+				continue
+			}
+
+			// Trim prefix and suffix so that we're left with the
+			// status name and ID.
+			identStr := strings.TrimSuffix(
+				strings.TrimPrefix(*o.Key, statusesPrefix),
+				".json")
+
+			name, idStr, ok := strings.Cut(identStr, "/")
+			if !ok {
+				// We only want objects in subfolders.
+				continue
+			}
+
+			// Reset the chain if we're on a new status.
+			if name != lastStatus {
+				parentID = 0
+				parentSig = ""
+				lastStatus = name
+			}
+
+			id, err := strconv.ParseInt(idStr, 10, 64)
+			if err != nil {
+				return false, fmt.Errorf(
+					"invalid status ID in object key: %w", err)
+			}
+
+			sig, err := a.restoreDocumentStatus(
+				ctx, q, &parentSig, id, req, spec, *o.Key)
+			if err != nil {
+				return false, fmt.Errorf(
+					"restore status %q %d: %w", name, id, err)
+			}
+
+			parentID = id
+			parentSig = sig
+		}
+	}
+
+	var acls []postgres.ACLUpdateParams
+
+	for _, acl := range spec.ACL {
+		acls = append(acls, postgres.ACLUpdateParams{
+			UUID:        req.UUID,
+			URI:         acl.URI,
+			Permissions: acl.Permissions,
+		})
+	}
+
+	docInfo, err := q.GetDocumentRow(ctx, req.UUID)
+	if err != nil {
+		return false, fmt.Errorf(
+			"read document information after restore: %w", err)
+	}
+
+	var aclErrors []error
+
+	q.ACLUpdate(ctx, acls).Exec(func(_ int, err error) {
+		if err != nil {
+			aclErrors = append(aclErrors, err)
+		}
+	})
+
+	if len(aclErrors) > 0 {
+		return false, fmt.Errorf("failed to update ACLs: %w",
+			errors.Join(aclErrors...))
+	}
+
+	err = q.InsertACLAuditEntry(ctx, postgres.InsertACLAuditEntryParams{
+		UUID:        req.UUID,
+		Type:        pg.TextOrNull(docInfo.Type),
+		Updated:     pg.Time(time.Now()),
+		UpdaterUri:  docInfo.UpdaterUri,
+		Language:    docInfo.Language.String,
+		SystemState: pg.Text(SystemStateRestoring),
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to record audit trail: %w", err)
+	}
+
+	err = q.ClearSystemState(ctx, req.UUID)
+	if err != nil {
+		return false, fmt.Errorf("clear system state: %w", err)
+	}
+
+	err = q.FinishRestoreRequest(ctx, postgres.FinishRestoreRequestParams{
+		ID:       req.ID,
+		Finished: pg.Time(time.Now()),
+	})
+	if err != nil {
+		return false, fmt.Errorf("set restore as finished: %w", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return false, fmt.Errorf("commit restore: %w", err)
+	}
+
+	return false, nil
+}
+
+func (a *Archiver) restoreDocumentVersion(
+	ctx context.Context, q *postgres.Queries, parentSig *string,
+	id int64, req postgres.GetNextRestoreRequestRow, spec RestoreSpec,
+	key string,
+) (string, error) {
+	dv, sig, err := a.reader.ReadDocumentVersion(ctx, key, parentSig)
+	if err != nil {
+		return "", fmt.Errorf("read archived version: %w", err)
+	}
+
+	err = q.CreateDocumentVersion(ctx, postgres.CreateDocumentVersionParams{
+		UUID:         dv.UUID,
+		Version:      id,
+		Created:      pg.Time(dv.Created),
+		CreatorUri:   dv.CreatorURI,
+		Meta:         dv.Meta,
+		DocumentData: dv.DocumentData,
+	})
+	if err != nil {
+		return "", fmt.Errorf("create document version: %w", err)
+	}
+
+	err = q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
+		UUID:       dv.UUID,
+		URI:        dv.URI,
+		Type:       dv.Type,
+		Created:    pg.Time(dv.Created),
+		CreatorUri: dv.CreatorURI,
+		Version:    id,
+		MainDoc:    pg.PUUID(dv.MainDocument),
+		Language:   pg.Text(dv.Language),
+	})
+	if err != nil {
+		return "", fmt.Errorf("update document row: %w", err)
+	}
+
+	return sig, nil
+}
+
+func (a *Archiver) restoreDocumentStatus(
+	ctx context.Context, q *postgres.Queries, parentSig *string,
+	id int64, req postgres.GetNextRestoreRequestRow, spec RestoreSpec,
+	key string,
+) (string, error) {
+	stat, sig, err := a.reader.ReadDocumentStatus(ctx, key, parentSig)
+	if err != nil {
+		return "", fmt.Errorf("read archived status: %w", err)
+	}
+
+	err = q.CreateStatusHead(ctx, postgres.CreateStatusHeadParams{
+		UUID:        stat.UUID,
+		Name:        stat.Name,
+		Type:        stat.Type,
+		Version:     stat.Version,
+		ID:          id,
+		Created:     pg.Time(stat.Created),
+		CreatorUri:  stat.CreatorURI,
+		Language:    stat.Language,
+		SystemState: pg.TextOrNull(SystemStateRestoring),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create status head: %w", err)
+	}
+
+	err = q.InsertDocumentStatus(ctx, postgres.InsertDocumentStatusParams{
+		UUID:           stat.UUID,
+		Name:           stat.Name,
+		ID:             id,
+		Version:        stat.Version,
+		Created:        pg.Time(stat.Created),
+		CreatorUri:     stat.CreatorURI,
+		Meta:           stat.Meta,
+		MetaDocVersion: stat.MetaDocVersion,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to insert document status: %w", err)
+	}
+
+	return sig, nil
+}
+
 func (a *Archiver) moveDeletedObject(
 	ctx context.Context, key string, dstKey string,
 ) error {
@@ -445,8 +757,16 @@ func (a *Archiver) moveDeletedObject(
 	return nil
 }
 
+type ArchivedObject interface {
+	GetArchivedTime() time.Time
+	GetParentSignature() string
+}
+
 type ArchivedDocumentVersion struct {
 	UUID            uuid.UUID       `json:"uuid"`
+	URI             string          `json:"uri"`
+	Type            string          `json:"type"`
+	Language        string          `json:"language"`
 	Version         int64           `json:"version"`
 	Created         time.Time       `json:"created"`
 	CreatorURI      string          `json:"creator_uri"`
@@ -454,6 +774,15 @@ type ArchivedDocumentVersion struct {
 	DocumentData    json.RawMessage `json:"document_data"`
 	MainDocument    *uuid.UUID      `json:"main_document,omitempty"`
 	ParentSignature string          `json:"parent_signature,omitempty"`
+	Archived        time.Time       `json:"archived"`
+}
+
+func (av *ArchivedDocumentVersion) GetArchivedTime() time.Time {
+	return av.Archived
+}
+
+func (av *ArchivedDocumentVersion) GetParentSignature() string {
+	return av.ParentSignature
 }
 
 func (a *Archiver) archiveDocumentVersions(
@@ -480,6 +809,9 @@ func (a *Archiver) archiveDocumentVersions(
 
 	dv := ArchivedDocumentVersion{
 		UUID:            unarchived.UUID,
+		URI:             unarchived.URI,
+		Type:            unarchived.Type,
+		Language:        unarchived.Language.String,
 		Version:         unarchived.Version,
 		Created:         unarchived.Created.Time,
 		CreatorURI:      unarchived.CreatorUri,
@@ -487,6 +819,7 @@ func (a *Archiver) archiveDocumentVersions(
 		DocumentData:    unarchived.DocumentData,
 		MainDocument:    pg.ToUUIDPointer(unarchived.MainDoc),
 		ParentSignature: unarchived.ParentSignature.String,
+		Archived:        time.Now(),
 	}
 
 	objectBody, err := json.Marshal(&dv)
@@ -497,7 +830,7 @@ func (a *Archiver) archiveDocumentVersions(
 
 	checksum := sha256.Sum256(objectBody)
 
-	signingKey := a.signingKeys.CurrentKey(time.Now())
+	signingKey := a.signingKeys.CurrentKey(dv.Archived)
 	if signingKey == nil {
 		return false, fmt.Errorf(
 			"no signing keys have been configured: %w", err)
@@ -508,7 +841,7 @@ func (a *Archiver) archiveDocumentVersions(
 		return false, fmt.Errorf("failed to sign archive data: %w", err)
 	}
 
-	key := fmt.Sprintf("documents/%s/versions/%d.json", dv.UUID, dv.Version)
+	key := fmt.Sprintf("documents/%s/versions/%019d.json", dv.UUID, dv.Version)
 
 	err = q.SetDocumentVersionAsArchived(ctx, postgres.SetDocumentVersionAsArchivedParams{
 		UUID:      dv.UUID,
@@ -573,12 +906,24 @@ type ArchivedDocumentStatus struct {
 	UUID             uuid.UUID       `json:"uuid"`
 	Name             string          `json:"name"`
 	ID               int64           `json:"id"`
+	Type             string          `json:"type"`
 	Version          int64           `json:"version"`
 	Created          time.Time       `json:"created"`
 	CreatorURI       string          `json:"creator_uri"`
 	Meta             json.RawMessage `json:"meta,omitempty"`
 	ParentSignature  string          `json:"parent_signature,omitempty"`
 	VersionSignature string          `json:"version_signature"`
+	Archived         time.Time       `json:"archived"`
+	Language         string          `json:"language"`
+	MetaDocVersion   int64           `json:"meta_doc_version,omitempty"`
+}
+
+func (as *ArchivedDocumentStatus) GetArchivedTime() time.Time {
+	return as.Archived
+}
+
+func (as *ArchivedDocumentStatus) GetParentSignature() string {
+	return as.ParentSignature
 }
 
 func (a *Archiver) archiveDocumentStatuses(
@@ -594,9 +939,6 @@ func (a *Archiver) archiveDocumentStatuses(
 
 	q := postgres.New(tx)
 
-	// TODO: Update query so that it takes into account that version can be
-	// -1. Potentially update the schema & code so that version is nullable
-	// instead.
 	unarchived, err := q.GetDocumentStatusForArchiving(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
@@ -610,12 +952,16 @@ func (a *Archiver) archiveDocumentStatuses(
 		UUID:             unarchived.UUID,
 		Name:             unarchived.Name,
 		ID:               unarchived.ID,
+		Type:             unarchived.Type,
 		Version:          unarchived.Version,
 		Created:          unarchived.Created.Time,
 		CreatorURI:       unarchived.CreatorUri,
 		Meta:             unarchived.Meta,
 		ParentSignature:  unarchived.ParentSignature.String,
 		VersionSignature: unarchived.VersionSignature.String,
+		Archived:         time.Now(),
+		Language:         unarchived.Language.String,
+		MetaDocVersion:   unarchived.MetaDocVersion.Int64,
 	}
 
 	objectBody, err := json.Marshal(&ds)
@@ -637,11 +983,12 @@ func (a *Archiver) archiveDocumentStatuses(
 		return false, fmt.Errorf("failed to sign archive data: %w", err)
 	}
 
-	key := fmt.Sprintf("documents/%s/statuses/%s/%d.json",
+	key := fmt.Sprintf("documents/%s/statuses/%s/%019d.json",
 		ds.UUID, ds.Name, ds.ID)
 
 	err = q.SetDocumentStatusAsArchived(ctx, postgres.SetDocumentStatusAsArchivedParams{
 		UUID:      ds.UUID,
+		Name:      ds.Name,
 		ID:        ds.ID,
 		Signature: signature.String(),
 	})

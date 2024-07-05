@@ -174,6 +174,7 @@ CREATE TABLE public.delete_record (
     meta jsonb,
     main_doc uuid,
     language text,
+    acls jsonb,
     meta_doc_record bigint,
     finalised timestamp with time zone,
     heads jsonb
@@ -219,7 +220,6 @@ CREATE TABLE public.document (
     current_version bigint NOT NULL,
     main_doc uuid,
     language text,
-    system_lock text,
     system_state text
 );
 
@@ -295,7 +295,8 @@ CREATE TABLE public.document_version (
     meta jsonb,
     document_data jsonb,
     archived boolean DEFAULT false NOT NULL,
-    signature text
+    signature text,
+    language text
 );
 
 
@@ -316,7 +317,8 @@ CREATE TABLE public.eventlog (
     updater text,
     main_doc uuid,
     language text,
-    old_language text
+    old_language text,
+    system_state text
 );
 
 
@@ -475,15 +477,59 @@ CREATE TABLE public.report (
 
 
 --
+-- Name: restore; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.restore (
+    id bigint NOT NULL,
+    uuid uuid NOT NULL,
+    delete_id bigint NOT NULL,
+    created timestamp with time zone NOT NULL,
+    creator_uri text NOT NULL,
+    acls jsonb
+);
+
+
+--
+-- Name: restore_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.restore ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.restore_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: restore_request; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.restore_request (
+    id bigint NOT NULL,
     uuid uuid NOT NULL,
     delete_record_id bigint NOT NULL,
     created timestamp with time zone NOT NULL,
     creator text NOT NULL,
-    spec jsonb NOT NULL
+    spec jsonb NOT NULL,
+    finished timestamp with time zone
+);
+
+
+--
+-- Name: restore_request_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.restore_request ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.restore_request_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
 );
 
 
@@ -742,11 +788,19 @@ ALTER TABLE ONLY public.report
 
 
 --
+-- Name: restore restore_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.restore
+    ADD CONSTRAINT restore_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: restore_request restore_request_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.restore_request
-    ADD CONSTRAINT restore_request_pkey PRIMARY KEY (uuid);
+    ADD CONSTRAINT restore_request_pkey PRIMARY KEY (id);
 
 
 --
@@ -856,6 +910,13 @@ CREATE INDEX planning_deliverable_idx ON public.planning_deliverable USING btree
 --
 
 CREATE INDEX planning_item_event_idx ON public.planning_item USING btree (event);
+
+
+--
+-- Name: restores_to_perform; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX restores_to_perform ON public.restore_request USING btree (created) WHERE (finished IS NULL);
 
 
 --

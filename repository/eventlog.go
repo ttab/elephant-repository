@@ -873,6 +873,7 @@ func (pr *PGReplication) recordEvent(evt Event) error {
 		MainDoc:     mainDocUUID,
 		Language:    pg.TextOrNull(evt.Language),
 		OldLanguage: pg.TextOrNull(evt.OldLanguage),
+		SystemState: pg.TextOrNull(evt.SystemState),
 	}
 
 	if evt.ACL != nil {
