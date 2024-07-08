@@ -290,7 +290,7 @@ LIMIT 1;
 SELECT
         v.uuid, v.version, v.created, v.creator_uri, v.meta, v.document_data,
         p.signature AS parent_signature, d.main_doc, d.uri, d.type,
-        (v.document_data->>'language')::text AS language
+        v.language AS language
 FROM document_version AS v
      LEFT JOIN document_version AS p
           ON p.uuid = v.uuid AND p.version = v.version-1
