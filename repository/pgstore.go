@@ -340,6 +340,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 
 		if mInfo.Exists {
 			metaInfo = mInfo
+
 			deleteDocs = append(deleteDocs, metaUUID)
 		}
 	}
@@ -386,7 +387,8 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 	if metaInfo != nil {
 		mdr, err := s.insertDeleteRecord(
 			ctx, q, req.Updated, req.Updater,
-			metaUUID, metaInfo, metaJSON, 0,
+			metaUUID, metaInfo.Info.CurrentVersion, metaInfo,
+			metaJSON, 0, nil,
 		)
 		if err != nil {
 			return fmt.Errorf(
@@ -396,9 +398,15 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 		metaDocRecord = mdr
 	}
 
+	acl, err := s.GetDocumentACL(ctx, req.UUID)
+	if err != nil {
+		return fmt.Errorf("get ACLs for archiving: %w", err)
+	}
+
 	_, err = s.insertDeleteRecord(
 		ctx, q, req.Updated, req.Updater,
-		req.UUID, mainInfo, metaJSON, metaDocRecord,
+		req.UUID, mainInfo.Info.CurrentVersion, mainInfo,
+		metaJSON, metaDocRecord, acl,
 	)
 	if err != nil {
 		return fmt.Errorf(
@@ -416,10 +424,11 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 func (s *PGDocStore) insertDeleteRecord(
 	ctx context.Context, q *postgres.Queries,
 	updated time.Time, updater string,
-	id uuid.UUID,
+	id uuid.UUID, currentVersion int64,
 	pf *UpdatePrefligthInfo,
 	metaJSON []byte,
 	metaDocRecord int64,
+	acls []ACLEntry,
 ) (int64, error) {
 	heads, err := q.GetDocumentHeads(ctx, id)
 	if err != nil {
@@ -437,6 +446,11 @@ func (s *PGDocStore) insertDeleteRecord(
 		return 0, fmt.Errorf("marshal document heads: %w", err)
 	}
 
+	aclData, err := json.Marshal(acls)
+	if err != nil {
+		return 0, fmt.Errorf("marshal ACL data: %w", err)
+	}
+
 	recordID, err := q.InsertDeleteRecord(ctx,
 		postgres.InsertDeleteRecordParams{
 			UUID:          id,
@@ -450,6 +464,11 @@ func (s *PGDocStore) insertDeleteRecord(
 			MetaDocRecord: pg.BigintOrNull(metaDocRecord),
 			Language:      pg.Text(pf.Language),
 			Heads:         headsData,
+			Acl:           aclData,
+			CurrentVersion: pgtype.Int8{
+				Int64: currentVersion,
+				Valid: true,
+			},
 		})
 	if err != nil {
 		return 0, fmt.Errorf("create delete record: %w", err)
@@ -1407,7 +1426,7 @@ func (s *PGDocStore) Update(
 				UUID:       state.Request.UUID,
 				Name:       stat.Name,
 				Type:       state.Type,
-				Version:    stat.Version,
+				Version:    status.Version,
 				ID:         status.ID,
 				Created:    pg.Time(state.Created),
 				CreatorUri: state.Creator,

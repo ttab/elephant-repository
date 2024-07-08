@@ -33,6 +33,13 @@ const (
 	TypeRestoreFinished EventType = "restore_finished"
 )
 
+const (
+	tableDocument     = "document"
+	tableStatusHeads  = "status_heads"
+	tableDeleteRecord = "delete_record"
+	tableACLAudit     = "acl_audit"
+)
+
 type Event struct {
 	ID           int64      `json:"id"`
 	Event        EventType  `json:"event"`
@@ -450,8 +457,8 @@ func (pr *PGReplication) handleReplicationMessage(
 		}
 
 		switch rel.RelationName {
-		case "document":
-		case "status_heads":
+		case tableDocument:
+		case tableStatusHeads:
 		default:
 			// Ignore updates for everything else.
 			return nil
@@ -492,7 +499,7 @@ func (pr *PGReplication) handleReplicationMessage(
 		// that of document moving out of SystemStateRestoring. Ignore
 		// everything else.
 		if hadSysState && !hasSysState && !(oldSystState == SystemStateRestoring &&
-			rel.RelationName == "document") {
+			rel.RelationName == tableDocument) {
 			return nil
 		}
 
@@ -509,7 +516,7 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 	var evt Event
 
 	switch msg.Table {
-	case "document":
+	case tableDocument:
 		e, err := parseDocumentMessage(pr.logger, msg)
 		if err != nil {
 			return fmt.Errorf(
@@ -517,7 +524,7 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 		}
 
 		evt = e
-	case "status_heads":
+	case tableStatusHeads:
 		e, err := parseStatusHeadsMessage(pr.logger, msg)
 		if err != nil {
 			return fmt.Errorf(
@@ -525,7 +532,7 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 		}
 
 		evt = e
-	case "delete_record":
+	case tableDeleteRecord:
 		e, err := parseDeleteMessage(msg)
 		if err != nil {
 			return fmt.Errorf(
@@ -533,7 +540,7 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 		}
 
 		evt = e
-	case "acl_audit":
+	case tableACLAudit:
 		e, err := parseACLMessage(msg)
 		if err != nil {
 			return fmt.Errorf(
@@ -785,6 +792,14 @@ func parseDocumentMessage(log *slog.Logger, msg replMessage) (Event, error) {
 	version, ok := msg.NewValues["current_version"].(int64)
 	if !ok {
 		return Event{}, fmt.Errorf("failed to extract current version")
+	}
+
+	// We're getting OldValues from the first document insert that just
+	// reserves the the document as restoring, ignore this for the purposes
+	// of comparison with "previous version".
+	if version == 1 && evt.SystemState == SystemStateRestoring {
+		msg.OldValues = nil
+		evt.OldLanguage = ""
 	}
 
 	// Just a placeholder used to start the restore, should not be reflected

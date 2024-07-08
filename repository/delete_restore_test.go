@@ -59,6 +59,7 @@ func TestDeleteRestore(t *testing.T) {
 		},
 	})
 
+	// Create document (gen A).
 	_, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: docA,
@@ -74,12 +75,14 @@ func TestDeleteRestore(t *testing.T) {
 		},
 	})
 
+	// Create version 2 (gen A).
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: docA2,
 	})
 	test.Must(t, err, "update article")
 
+	// Delete gen A.
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
@@ -108,6 +111,7 @@ func TestDeleteRestore(t *testing.T) {
 	for !genBCreated {
 		time.Sleep(100 * time.Millisecond)
 
+		// Create document (gen B).
 		_, err = client.Update(ctx, &repository.UpdateRequest{
 			Uuid:     docUUID,
 			Document: docB,
@@ -132,13 +136,15 @@ func TestDeleteRestore(t *testing.T) {
 
 	docB2.Language = "en-gb"
 
-	docB2.Content = append(docB.Content, &newsdoc.Block{
+	docB2.Content = append(docB2.Content, &newsdoc.Block{
 		Type: "core/text",
 		Data: map[string]string{
 			"text": "Because I don't accept the current state of affairs as the natural order of things.",
 		},
 	})
 
+	// Create version 2 (gen B) with language changed to en-gb, and setting
+	// v2 as usable and v1 as done.
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: docB2,
@@ -162,6 +168,7 @@ func TestDeleteRestore(t *testing.T) {
 	})
 	test.IsTwirpError(t, err, twirp.AlreadyExists)
 
+	// Delete gen B.
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
@@ -174,11 +181,15 @@ func TestDeleteRestore(t *testing.T) {
 
 	test.Equal(t, 2, len(deletesB.Deletes), "expect two delete records")
 
-	record := deletesA.Deletes[0]
+	// Pick out the last deleted document version (gen B).
+	record := deletesB.Deletes[0]
+
+	test.Equal(t, 2, record.Id, "expect the first record to have the ID 2")
 
 	var restoreStarted bool
 
 	for !restoreStarted {
+		// Restore gen B.
 		_, err = client.Restore(ctx, &repository.RestoreRequest{
 			Uuid:           docUUID,
 			DeleteRecordId: record.Id,
@@ -202,6 +213,7 @@ func TestDeleteRestore(t *testing.T) {
 	var doc *newsdoc.Document
 
 	for doc == nil {
+		// Read the current version of the document.
 		res, err := client.Get(ctx, &repository.GetDocumentRequest{
 			Uuid: docUUID,
 		})
@@ -228,6 +240,7 @@ func TestDeleteRestore(t *testing.T) {
 
 	eventPollStarted := time.Now()
 
+	// Read the eventlog until we get a "restore_finished" event.
 	for !gotFinEvent {
 		if time.Since(eventPollStarted) > 10*time.Second {
 			t.Fatal("timed out waiting for restore finished event")
@@ -253,7 +266,24 @@ func TestDeleteRestore(t *testing.T) {
 	goldenPath := filepath.Join(dataDir, "eventlog.json")
 
 	if regenerate {
-		err := elephantine.MarshalFile(goldenPath, events)
+		pureGold := make([]*repository.EventlogItem, len(events))
+
+		start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+		// Avoid git diff noise in the golden file when
+		// regenerating. The time will be ignored in the diff test, but
+		// the changed timestamps will be misleading in PRs.
+		for i := range events {
+			e := test.CloneMessage(events[i])
+
+			e.Timestamp = start.Add(
+				time.Duration(i) * time.Second,
+			).Format(time.RFC3339)
+
+			pureGold[i] = e
+		}
+
+		err := elephantine.MarshalFile(goldenPath, pureGold)
 		test.Must(t, err, "update golden file for eventlog")
 	}
 

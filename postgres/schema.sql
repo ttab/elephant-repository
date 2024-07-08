@@ -177,7 +177,9 @@ CREATE TABLE public.delete_record (
     acls jsonb,
     meta_doc_record bigint,
     finalised timestamp with time zone,
-    heads jsonb
+    acl jsonb,
+    heads jsonb,
+    current_version bigint
 );
 
 

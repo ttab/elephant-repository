@@ -1,0 +1,199 @@
+[
+  {
+    "id": 1,
+    "event": "document",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:00Z",
+    "version": 1,
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en"
+  },
+  {
+    "id": 2,
+    "event": "acl",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:01Z",
+    "acl": [
+      {
+        "uri": "user://test/testdeleterestore",
+        "permissions": [
+          "r",
+          "w"
+        ]
+      }
+    ],
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en"
+  },
+  {
+    "id": 3,
+    "event": "document",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:02Z",
+    "version": 2,
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en"
+  },
+  {
+    "id": 4,
+    "event": "delete_document",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:03Z",
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en"
+  },
+  {
+    "id": 5,
+    "event": "document",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:04Z",
+    "version": 1,
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en"
+  },
+  {
+    "id": 6,
+    "event": "acl",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:05Z",
+    "acl": [
+      {
+        "uri": "user://test/testdeleterestore",
+        "permissions": [
+          "r",
+          "w"
+        ]
+      }
+    ],
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en"
+  },
+  {
+    "id": 7,
+    "event": "document",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:06Z",
+    "version": 2,
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en-gb",
+    "old_language": "en"
+  },
+  {
+    "id": 8,
+    "event": "status",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:07Z",
+    "version": 2,
+    "status": "usable",
+    "status_id": 1,
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en-gb"
+  },
+  {
+    "id": 9,
+    "event": "status",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:08Z",
+    "version": 1,
+    "status": "done",
+    "status_id": 1,
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en"
+  },
+  {
+    "id": 10,
+    "event": "delete_document",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:09Z",
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en-gb"
+  },
+  {
+    "id": 11,
+    "event": "document",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:10Z",
+    "version": 1,
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en",
+    "system_state": "restoring"
+  },
+  {
+    "id": 12,
+    "event": "document",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:11Z",
+    "version": 2,
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en-gb",
+    "old_language": "en",
+    "system_state": "restoring"
+  },
+  {
+    "id": 13,
+    "event": "status",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:12Z",
+    "version": 1,
+    "status": "done",
+    "status_id": 1,
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en",
+    "system_state": "restoring"
+  },
+  {
+    "id": 14,
+    "event": "status",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:13Z",
+    "version": 2,
+    "status": "usable",
+    "status_id": 1,
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en-gb",
+    "system_state": "restoring"
+  },
+  {
+    "id": 15,
+    "event": "acl",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:14Z",
+    "acl": [
+      {
+        "uri": "user://test/testdeleterestore",
+        "permissions": [
+          "r",
+          "w"
+        ]
+      }
+    ],
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en-gb",
+    "system_state": "restoring"
+  },
+  {
+    "id": 16,
+    "event": "restore_finished",
+    "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+    "timestamp": "2024-01-01T00:00:15Z",
+    "version": 2,
+    "updater_uri": "user://test/testdeleterestore",
+    "type": "core/article",
+    "language": "en-gb"
+  }
+]

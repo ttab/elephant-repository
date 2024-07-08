@@ -31,6 +31,7 @@ import (
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/newsdoc"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -98,6 +99,10 @@ func S3Client(
 	client := s3.NewFromConfig(cfg, s3Options...)
 
 	return client, nil
+}
+
+type RestoreSpec struct {
+	ACL []ACLEntry
 }
 
 type ArchiverOptions struct {
@@ -266,7 +271,7 @@ func (a *Archiver) loop(ctx context.Context) error {
 	r := mrand.New(mrand.NewSource(time.Now().Unix()))
 
 	runWithDelay := func(
-		name string, now time.Time, d time.Duration,
+		name string, now time.Time,
 		metric *prometheus.CounterVec,
 		fn func(ctx context.Context) (bool, error),
 	) error {
@@ -283,6 +288,8 @@ func (a *Archiver) loop(ctx context.Context) error {
 		}
 
 		if !ok {
+			d := 500 * time.Millisecond
+
 			n := d / 2
 			d = n + (time.Duration(r.Int()) % n)
 
@@ -308,28 +315,28 @@ func (a *Archiver) loop(ctx context.Context) error {
 		now := time.Now()
 
 		err := runWithDelay(
-			"archive document versions", now, 500*time.Millisecond,
+			"archive document versions", now,
 			a.versionsArchived, a.archiveDocumentVersions)
 		if err != nil {
 			return err
 		}
 
 		err = runWithDelay(
-			"archive document statuses", now, 500*time.Millisecond,
+			"archive document statuses", now,
 			a.statusesArchived, a.archiveDocumentStatuses)
 		if err != nil {
 			return err
 		}
 
 		err = runWithDelay(
-			"process document deletes", now, 500*time.Millisecond,
+			"process document deletes", now,
 			a.deletesProcessed, a.processDeletes)
 		if err != nil {
 			return err
 		}
 
 		err = runWithDelay(
-			"process document restores", now, 500*time.Millisecond,
+			"process document restores", now,
 			a.restoresProcessed, a.processRestores)
 		if err != nil {
 			return err
@@ -357,9 +364,24 @@ func (a *Archiver) loop(ctx context.Context) error {
 	}
 }
 
+type DeleteManifest struct {
+	LastVersion int64            `json:"last_version"`
+	Heads       map[string]int64 `json:"heads"`
+	ACL         []ACLEntry       `json:"acl"`
+	Archived    time.Time        `json:"archived"`
+}
+
+func (m *DeleteManifest) GetArchivedTime() time.Time {
+	return m.Archived
+}
+
+func (m *DeleteManifest) GetParentSignature() string {
+	return ""
+}
+
 func (a *Archiver) processDeletes(
 	ctx context.Context,
-) (bool, error) {
+) (_ bool, outErr error) {
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to begin transaction: %w", err)
@@ -429,14 +451,54 @@ func (a *Archiver) processDeletes(
 		return false, fmt.Errorf("failed to move all document objects: %w", err)
 	}
 
-	count, err := q.FinaliseDelete(ctx, deleteOrder.UUID)
+	manifest := DeleteManifest{
+		Archived:    time.Now(),
+		LastVersion: deleteOrder.CurrentVersion.Int64,
+	}
+
+	err = json.Unmarshal(deleteOrder.Acl, &manifest.ACL)
 	if err != nil {
-		return false, fmt.Errorf("failed to finalise delete: %w", err)
+		return false, fmt.Errorf("unmarshal delete order ACL: %w", err)
+	}
+
+	err = json.Unmarshal(deleteOrder.Heads, &manifest.Heads)
+	if err != nil {
+		return false, fmt.Errorf("unmarshal delete order heads: %w", err)
+	}
+
+	ref, err := a.storeArchiveObject(
+		ctx, dstPrefix+"manifest.json", &manifest,
+	)
+	if err != nil {
+		return false, fmt.Errorf("store delete manifest")
+	}
+
+	// We try to clean up the S3 object if the operation fails.
+	defer func() {
+		if outErr == nil {
+			return
+		}
+
+		ref.Remove(ctx)
+	}()
+
+	count, err := q.FinaliseDocumentDelete(ctx, deleteOrder.UUID)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete document row: %w", err)
 	}
 
 	if count != 1 {
 		return false, errors.New(
 			"no match for document delete, database might be inconsisten")
+	}
+
+	err = q.FinaliseDeleteRecord(ctx, postgres.FinaliseDeleteRecordParams{
+		UUID:      deleteOrder.UUID,
+		ID:        deleteOrder.ID,
+		Finalised: pg.Time(time.Now()),
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to set delete record as finished: %w", err)
 	}
 
 	err = tx.Commit(ctx)
@@ -445,6 +507,73 @@ func (a *Archiver) processDeletes(
 	}
 
 	return true, nil
+}
+
+type archiveObjectRef struct {
+	Signature string
+	Remove    func(ctx context.Context)
+}
+
+func (a *Archiver) storeArchiveObject(
+	ctx context.Context, key string, v ArchivedObject,
+) (*archiveObjectRef, error) {
+	objectBody, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"delete manifest to JSON: %w", err)
+	}
+
+	checksum := sha256.Sum256(objectBody)
+
+	signingKey := a.signingKeys.CurrentKey(v.GetArchivedTime())
+	if signingKey == nil {
+		return nil, fmt.Errorf(
+			"no signing keys have been configured: %w", err)
+	}
+
+	signature, err := NewArchiveSignature(signingKey, checksum)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign archive data: %w", err)
+	}
+
+	putRes, err := a.s3.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:            aws.String(a.bucket),
+		Key:               aws.String(key),
+		Body:              bytes.NewReader(objectBody),
+		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+		ChecksumSHA256: aws.String(
+			base64.StdEncoding.EncodeToString(checksum[:]),
+		),
+		ContentType:   aws.String("application/json"),
+		ContentLength: aws.Int64(int64(len(objectBody))),
+		Metadata: map[string]string{
+			"elephant-signature": signature.String(),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to store archive object: %w", err)
+	}
+
+	ref := archiveObjectRef{
+		Signature: signature.String(),
+		Remove: func(ctx context.Context) {
+			_, cErr := a.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
+				Bucket:    aws.String(a.bucket),
+				Key:       aws.String(key),
+				VersionId: putRes.VersionId,
+			})
+			if cErr != nil {
+				a.logger.ErrorContext(ctx,
+					"failed to clean up archive object after failure",
+					elephantine.LogKeyError, cErr,
+					elephantine.LogKeyBucket, a.bucket,
+					elephantine.LogKeyObjectKey, key)
+			}
+		},
+	}
+
+	return &ref, nil
 }
 
 func (a *Archiver) processRestores(
@@ -476,8 +605,14 @@ func (a *Archiver) processRestores(
 
 	requestPrefix := fmt.Sprintf("deleted/%s/%019d/",
 		req.UUID, req.DeleteRecordID)
+	manifestKey := requestPrefix + "manifest.json"
 	versionsPrefix := requestPrefix + "versions/"
 	statusesPrefix := requestPrefix + "statuses/"
+
+	manifest, _, err := a.reader.ReadDeleteManifest(ctx, manifestKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to read manifest: %w", err)
+	}
 
 	versionsPages := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
 		Bucket: aws.String(a.bucket),
@@ -486,7 +621,7 @@ func (a *Archiver) processRestores(
 
 	var (
 		parentSig string
-		parentID  int64
+		lastID    int64
 	)
 
 	for versionsPages.HasMorePages() {
@@ -513,22 +648,27 @@ func (a *Archiver) processRestores(
 					"invalid version object name: %w", err)
 			}
 
-			if id != parentID+1 {
+			if id != lastID+1 {
 				return false, fmt.Errorf(
 					"expected version %d, got %d",
-					parentID+1, id)
+					lastID+1, id)
 			}
 
 			sig, err := a.restoreDocumentVersion(
-				ctx, q, &parentSig, id, req, spec, *o.Key)
+				ctx, q, &parentSig, id, req, *o.Key)
 			if err != nil {
 				return false, fmt.Errorf(
 					"restore version %d: %w", id, err)
 			}
 
-			parentID = id
+			lastID = id
 			parentSig = sig
 		}
+	}
+
+	if lastID != manifest.LastVersion {
+		return false, fmt.Errorf("expected %d versions, got %d",
+			manifest.LastVersion, lastID)
 	}
 
 	statusesPages := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
@@ -537,6 +677,8 @@ func (a *Archiver) processRestores(
 	})
 
 	var lastStatus string
+
+	observedHeads := make(map[string]int64)
 
 	for statusesPages.HasMorePages() {
 		page, err := statusesPages.NextPage(ctx)
@@ -562,9 +704,16 @@ func (a *Archiver) processRestores(
 				continue
 			}
 
+			_, expected := manifest.Heads[name]
+			if !expected {
+				return false, fmt.Errorf(
+					"the status %q was not included in the delete manifest",
+					name)
+			}
+
 			// Reset the chain if we're on a new status.
 			if name != lastStatus {
-				parentID = 0
+				lastID = 0
 				parentSig = ""
 				lastStatus = name
 			}
@@ -575,16 +724,33 @@ func (a *Archiver) processRestores(
 					"invalid status ID in object key: %w", err)
 			}
 
+			if id != lastID+1 {
+				return false, fmt.Errorf(
+					"expected version %d, got %d",
+					lastID+1, id)
+			}
+
 			sig, err := a.restoreDocumentStatus(
-				ctx, q, &parentSig, id, req, spec, *o.Key)
+				ctx, q, &parentSig, id, *o.Key)
 			if err != nil {
 				return false, fmt.Errorf(
 					"restore status %q %d: %w", name, id, err)
 			}
 
-			parentID = id
+			lastID = id
 			parentSig = sig
+			observedHeads[name] = id
 		}
+	}
+
+	// Verify the restored statuses against the manifest.
+	for name, head := range manifest.Heads {
+		if observedHeads[name] == head {
+			continue
+		}
+
+		return false, fmt.Errorf("expected %d %q statuses, got %d",
+			head, name, observedHeads[name])
 	}
 
 	var acls []postgres.ACLUpdateParams
@@ -651,12 +817,20 @@ func (a *Archiver) processRestores(
 
 func (a *Archiver) restoreDocumentVersion(
 	ctx context.Context, q *postgres.Queries, parentSig *string,
-	id int64, req postgres.GetNextRestoreRequestRow, spec RestoreSpec,
-	key string,
+	id int64, req postgres.GetNextRestoreRequestRow, key string,
 ) (string, error) {
 	dv, sig, err := a.reader.ReadDocumentVersion(ctx, key, parentSig)
 	if err != nil {
 		return "", fmt.Errorf("read archived version: %w", err)
+	}
+
+	updatedMetaData, err := annotateMeta(dv.Meta, newsdoc.DataMap{
+		"restored_at": time.Now().Format(time.RFC3339),
+		"restored_by": req.Creator,
+	})
+	if err != nil {
+		return "", fmt.Errorf(
+			"annotate metadata: %w", err)
 	}
 
 	err = q.CreateDocumentVersion(ctx, postgres.CreateDocumentVersionParams{
@@ -664,7 +838,7 @@ func (a *Archiver) restoreDocumentVersion(
 		Version:      id,
 		Created:      pg.Time(dv.Created),
 		CreatorUri:   dv.CreatorURI,
-		Meta:         dv.Meta,
+		Meta:         updatedMetaData,
 		DocumentData: dv.DocumentData,
 	})
 	if err != nil {
@@ -688,10 +862,34 @@ func (a *Archiver) restoreDocumentVersion(
 	return sig, nil
 }
 
+func annotateMeta(originalMeta []byte, add newsdoc.DataMap) ([]byte, error) {
+	var meta newsdoc.DataMap
+
+	if originalMeta != nil {
+		err := json.Unmarshal(originalMeta, &meta)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"invalid original metadata: %w", err)
+		}
+	} else {
+		meta = make(newsdoc.DataMap, len(add))
+	}
+
+	for k, v := range add {
+		meta[k] = v
+	}
+
+	updatedMetaData, err := json.Marshal(meta)
+	if err != nil {
+		return nil, fmt.Errorf("marshal updated metadata: %w", err)
+	}
+
+	return updatedMetaData, nil
+}
+
 func (a *Archiver) restoreDocumentStatus(
 	ctx context.Context, q *postgres.Queries, parentSig *string,
-	id int64, req postgres.GetNextRestoreRequestRow, spec RestoreSpec,
-	key string,
+	id int64, key string,
 ) (string, error) {
 	stat, sig, err := a.reader.ReadDocumentStatus(ctx, key, parentSig)
 	if err != nil {
@@ -787,7 +985,7 @@ func (av *ArchivedDocumentVersion) GetParentSignature() string {
 
 func (a *Archiver) archiveDocumentVersions(
 	ctx context.Context,
-) (bool, error) {
+) (_ bool, outErr error) {
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to begin transaction: %w", err)
@@ -811,7 +1009,7 @@ func (a *Archiver) archiveDocumentVersions(
 		UUID:            unarchived.UUID,
 		URI:             unarchived.URI,
 		Type:            unarchived.Type,
-		Language:        unarchived.Language.String,
+		Language:        unarchived.Language,
 		Version:         unarchived.Version,
 		Created:         unarchived.Created.Time,
 		CreatorURI:      unarchived.CreatorUri,
@@ -822,54 +1020,30 @@ func (a *Archiver) archiveDocumentVersions(
 		Archived:        time.Now(),
 	}
 
-	objectBody, err := json.Marshal(&dv)
-	if err != nil {
-		return false, fmt.Errorf(
-			"failed to marshal archive data to JSON: %w", err)
-	}
-
-	checksum := sha256.Sum256(objectBody)
-
-	signingKey := a.signingKeys.CurrentKey(dv.Archived)
-	if signingKey == nil {
-		return false, fmt.Errorf(
-			"no signing keys have been configured: %w", err)
-	}
-
-	signature, err := NewArchiveSignature(signingKey, checksum)
-	if err != nil {
-		return false, fmt.Errorf("failed to sign archive data: %w", err)
-	}
-
 	key := fmt.Sprintf("documents/%s/versions/%019d.json", dv.UUID, dv.Version)
+
+	ref, err := a.storeArchiveObject(ctx, key, &dv)
+	if err != nil {
+		return false, err
+	}
+
+	// We try to clean up the S3 object if the operation fails.
+	defer func() {
+		if outErr == nil {
+			return
+		}
+
+		ref.Remove(ctx)
+	}()
 
 	err = q.SetDocumentVersionAsArchived(ctx, postgres.SetDocumentVersionAsArchivedParams{
 		UUID:      dv.UUID,
 		Version:   dv.Version,
-		Signature: signature.String(),
+		Signature: ref.Signature,
 	})
 	if err != nil {
 		return false, fmt.Errorf("failed to update archived status in db: %w",
 			err)
-	}
-
-	putRes, err := a.s3.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:            aws.String(a.bucket),
-		Key:               aws.String(key),
-		Body:              bytes.NewReader(objectBody),
-		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
-		ChecksumSHA256: aws.String(
-			base64.StdEncoding.EncodeToString(checksum[:]),
-		),
-		ContentType:   aws.String("application/json"),
-		ContentLength: aws.Int64(int64(len(objectBody))),
-		Metadata: map[string]string{
-			"elephant-signature": signature.String(),
-		},
-	})
-	if err != nil {
-		return false, fmt.Errorf(
-			"failed to store archive object: %w", err)
 	}
 
 	err = notifyArchived(ctx, a.logger, q, ArchivedEvent{
@@ -883,19 +1057,6 @@ func (a *Archiver) archiveDocumentVersions(
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		_, cErr := a.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
-			Bucket:    aws.String(a.bucket),
-			Key:       aws.String(key),
-			VersionId: putRes.VersionId,
-		})
-		if cErr != nil {
-			a.logger.ErrorContext(ctx,
-				"failed to clean up archive object after commit failed",
-				elephantine.LogKeyError, cErr,
-				elephantine.LogKeyBucket, a.bucket,
-				elephantine.LogKeyObjectKey, key)
-		}
-
 		return false, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -928,7 +1089,7 @@ func (as *ArchivedDocumentStatus) GetParentSignature() string {
 
 func (a *Archiver) archiveDocumentStatuses(
 	ctx context.Context,
-) (bool, error) {
+) (_ bool, outErr error) {
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to begin transaction: %w", err)
@@ -964,56 +1125,32 @@ func (a *Archiver) archiveDocumentStatuses(
 		MetaDocVersion:   unarchived.MetaDocVersion.Int64,
 	}
 
-	objectBody, err := json.Marshal(&ds)
-	if err != nil {
-		return false, fmt.Errorf(
-			"failed to marshal archive data to JSON: %w", err)
-	}
-
-	checksum := sha256.Sum256(objectBody)
-
-	signingKey := a.signingKeys.CurrentKey(time.Now())
-	if signingKey == nil {
-		return false, fmt.Errorf(
-			"no signing keys have been configured: %w", err)
-	}
-
-	signature, err := NewArchiveSignature(signingKey, checksum)
-	if err != nil {
-		return false, fmt.Errorf("failed to sign archive data: %w", err)
-	}
-
 	key := fmt.Sprintf("documents/%s/statuses/%s/%019d.json",
 		ds.UUID, ds.Name, ds.ID)
+
+	ref, err := a.storeArchiveObject(ctx, key, &ds)
+	if err != nil {
+		return false, err
+	}
+
+	// We try to clean up the S3 object if the operation fails.
+	defer func() {
+		if outErr == nil {
+			return
+		}
+
+		ref.Remove(ctx)
+	}()
 
 	err = q.SetDocumentStatusAsArchived(ctx, postgres.SetDocumentStatusAsArchivedParams{
 		UUID:      ds.UUID,
 		Name:      ds.Name,
 		ID:        ds.ID,
-		Signature: signature.String(),
-	})
-	if err != nil {
-		return false, fmt.Errorf("failed to update archived status in db: %w",
-			err)
-	}
-
-	putRes, err := a.s3.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:            aws.String(a.bucket),
-		Key:               aws.String(key),
-		Body:              bytes.NewReader(objectBody),
-		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
-		ChecksumSHA256: aws.String(
-			base64.StdEncoding.EncodeToString(checksum[:]),
-		),
-		ContentType:   aws.String("application/json"),
-		ContentLength: aws.Int64(int64(len(objectBody))),
-		Metadata: map[string]string{
-			"elephant-signature": signature.String(),
-		},
+		Signature: ref.Signature,
 	})
 	if err != nil {
 		return false, fmt.Errorf(
-			"failed to store archive object: %w", err)
+			"failed to update archived status in db: %w", err)
 	}
 
 	err = notifyArchived(ctx, a.logger, q, ArchivedEvent{
@@ -1028,19 +1165,6 @@ func (a *Archiver) archiveDocumentStatuses(
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		_, cErr := a.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
-			Bucket:    aws.String(a.bucket),
-			Key:       aws.String(key),
-			VersionId: putRes.VersionId,
-		})
-		if cErr != nil {
-			a.logger.ErrorContext(ctx,
-				"failed to clean up archive object after commit failed",
-				elephantine.LogKeyError, cErr,
-				elephantine.LogKeyBucket, a.bucket,
-				elephantine.LogKeyObjectKey, key)
-		}
-
 		return false, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 

@@ -138,7 +138,7 @@ INSERT INTO restore_request(
 SELECT id, uuid, delete_record_id, created, creator, spec
 FROM restore_request
 WHERE finished IS NULL
-ORDER BY created ASC
+ORDER BY id ASC
 FOR UPDATE SKIP LOCKED
 LIMIT 1;
 
@@ -239,10 +239,10 @@ insert into document(
 -- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads
+       main_doc, language, meta_doc_record, heads, acl, current_version
 ) VALUES(
        @uuid, @uri, @type, @version, @created, @creator_uri, @meta,
-       @main_doc, @language, @meta_doc_record, @heads
+       @main_doc, @language, @meta_doc_record, @heads, @acl, @current_version
 ) RETURNING id;
 
 -- name: ListDeleteRecords :many
@@ -289,7 +289,8 @@ LIMIT 1;
 -- name: GetDocumentVersionForArchiving :one
 SELECT
         v.uuid, v.version, v.created, v.creator_uri, v.meta, v.document_data,
-        p.signature AS parent_signature, d.main_doc, d.uri, d.type, d.language
+        p.signature AS parent_signature, d.main_doc, d.uri, d.type,
+        (v.document_data->>'language')::text AS language
 FROM document_version AS v
      LEFT JOIN document_version AS p
           ON p.uuid = v.uuid AND p.version = v.version-1
@@ -302,17 +303,18 @@ FOR UPDATE OF v SKIP LOCKED
 LIMIT 1;
 
 -- name: GetDocumentForDeletion :one
-SELECT dr.id, dr.uuid
+SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.current_version
 FROM delete_record AS dr
-     INNER JOIN document AS d
-           ON d.uuid = dr.uuid
-           AND d.system_state = 'deleting'
 WHERE dr.finalised IS NULL
 ORDER BY dr.created
 FOR UPDATE SKIP LOCKED -- locks both rows
 LIMIT 1;
 
--- name: FinaliseDelete :execrows
+-- name: FinaliseDeleteRecord :exec
+UPDATE delete_record SET finalised = @finalised
+WHERE uuid = @uuid AND id = @id;
+
+-- name: FinaliseDocumentDelete :execrows
 DELETE FROM document
 WHERE uuid = @uuid AND system_state = 'deleting';
 

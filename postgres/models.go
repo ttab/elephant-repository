@@ -33,20 +33,22 @@ type ActiveSchema struct {
 }
 
 type DeleteRecord struct {
-	ID            int64
-	UUID          uuid.UUID
-	URI           string
-	Type          string
-	Version       int64
-	Created       pgtype.Timestamptz
-	CreatorUri    string
-	Meta          []byte
-	MainDoc       pgtype.UUID
-	Language      pgtype.Text
-	Acls          []byte
-	MetaDocRecord pgtype.Int8
-	Finalised     pgtype.Timestamptz
-	Heads         []byte
+	ID             int64
+	UUID           uuid.UUID
+	URI            string
+	Type           string
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           []byte
+	MainDoc        pgtype.UUID
+	Language       pgtype.Text
+	Acls           []byte
+	MetaDocRecord  pgtype.Int8
+	Finalised      pgtype.Timestamptz
+	Acl            []byte
+	Heads          []byte
+	CurrentVersion pgtype.Int8
 }
 
 type Deprecation struct {

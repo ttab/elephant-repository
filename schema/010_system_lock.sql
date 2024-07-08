@@ -23,7 +23,9 @@ ALTER TABLE acl_audit
 ALTER TABLE delete_record
       ADD COLUMN meta_doc_record bigint,
       ADD COLUMN finalised timestamptz,
-      ADD COLUMN heads jsonb;
+      ADD COLUMN acl jsonb,
+      ADD COLUMN heads jsonb,
+      ADD COLUMN current_version bigint;
 
 CREATE INDEX deletes_to_finalise
 ON delete_record (created)
@@ -59,7 +61,9 @@ ALTER TABLE document_version
 ALTER TABLE delete_record
       DROP COLUMN IF EXISTS meta_doc_record,
       DROP COLUMN IF EXISTS finalised,
-      DROP COLUMN IF EXISTS heads;
+      DROP COLUMN IF EXISTS acl,
+      DROP COLUMN IF EXISTS heads,
+      DROP COLUMN IF EXISTS current_version;
 
 ALTER TABLE status_heads
       DROP COLUMN IF EXISTS system_state;

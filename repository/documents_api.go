@@ -676,6 +676,7 @@ func (a *DocumentsService) ListDeleted(
 	}
 
 	tz := time.UTC
+
 	if req.Timezone != "" {
 		l, err := time.LoadLocation(req.Timezone)
 		if err != nil {
@@ -769,6 +770,7 @@ func (a *DocumentsService) Restore(
 	err = a.store.RestoreDocument(ctx,
 		docUUID, req.DeleteRecordId,
 		auth.Claims.Subject, acl)
+
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeExists):
 		return nil, twirp.AlreadyExists.Error(err.Error())
@@ -1495,6 +1497,9 @@ func (a *DocumentsService) verifyUpdateRequest(
 	}
 
 	err = verifyACLParam(req.Acl)
+	if err != nil {
+		return err
+	}
 
 	if isMeta {
 		// For meta documents the access check is made against the main
