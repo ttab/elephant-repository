@@ -614,6 +614,11 @@ func (a *Archiver) processRestores(
 		return false, fmt.Errorf("failed to read manifest: %w", err)
 	}
 
+	// Default to using the previous ACL.
+	if len(spec.ACL) == 0 {
+		spec.ACL = manifest.ACL
+	}
+
 	versionsPages := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
 		Bucket: aws.String(a.bucket),
 		Prefix: aws.String(versionsPrefix),

@@ -159,12 +159,6 @@ func TestDeleteRestore(t *testing.T) {
 	_, err = client.Restore(ctx, &repository.RestoreRequest{
 		Uuid:           docUUID,
 		DeleteRecordId: deletesA.Deletes[0].Id,
-		Acl: []*repository.ACLEntry{
-			{
-				Uri:         "core://unit/redaktionen",
-				Permissions: []string{"r", "w"},
-			},
-		},
 	})
 	test.IsTwirpError(t, err, twirp.AlreadyExists)
 
@@ -194,7 +188,10 @@ func TestDeleteRestore(t *testing.T) {
 			Uuid:           docUUID,
 			DeleteRecordId: record.Id,
 			Acl: []*repository.ACLEntry{
-				{Permissions: []string{"r", "w"}},
+				{
+					Uri:         "core://unit/redaktionen",
+					Permissions: []string{"r", "w"},
+				},
 			},
 		})
 		if elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition) {

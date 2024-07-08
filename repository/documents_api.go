@@ -753,13 +753,6 @@ func (a *DocumentsService) Restore(
 			"uuid", err.Error())
 	}
 
-	// TODO: ACL should not be required, we should be able to restore
-	// permissions as well. Not the full history, but as it was at the time
-	// of deletion.
-	if len(req.Acl) == 0 {
-		return nil, twirp.RequiredArgumentError("acl")
-	}
-
 	err = verifyACLParam(req.Acl)
 	if err != nil {
 		return nil, err
