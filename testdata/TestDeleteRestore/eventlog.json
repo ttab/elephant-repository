@@ -174,7 +174,7 @@
     "timestamp": "2024-01-01T00:00:14Z",
     "acl": [
       {
-        "uri": "user://test/testdeleterestore",
+        "uri": "core://unit/redaktionen",
         "permissions": [
           "r",
           "w"
