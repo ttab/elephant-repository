@@ -585,6 +585,7 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		MainDocument: mainDoc,
 		Language:     evt.Language,
 		OldLanguage:  evt.OldLanguage,
+		SystemState:  evt.SystemState,
 	}
 }
 
@@ -647,6 +648,133 @@ func (a *DocumentsService) Delete(
 	return &repository.DeleteDocumentResponse{}, nil
 }
 
+// ListDeleted implements repository.Documents.
+func (a *DocumentsService) ListDeleted(
+	ctx context.Context, req *repository.ListDeletedRequest,
+) (*repository.ListDeletedResponse, error) {
+	_, err := RequireAnyScope(ctx,
+		ScopeDocumentRestore,
+		ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		docUUID    *uuid.UUID
+		beforeTime *time.Time
+	)
+
+	if req.Uuid != "" {
+		u, err := uuid.Parse(req.Uuid)
+		if err != nil {
+			return nil, twirp.InvalidArgumentError(
+				"uuid", err.Error())
+		}
+
+		docUUID = &u
+	}
+
+	tz := time.UTC
+
+	if req.Timezone != "" {
+		l, err := time.LoadLocation(req.Timezone)
+		if err != nil {
+			return nil, twirp.InvalidArgumentError(
+				"timezone", "unknown timezone")
+		}
+
+		tz = l
+	}
+
+	if req.BeforeDate != "" {
+		t, err := time.ParseInLocation("2006-01-02", req.BeforeDate, tz)
+		if err != nil {
+			return nil, twirp.InvalidArgumentError(
+				"start_at_date", err.Error())
+		}
+
+		beforeTime = &t
+	}
+
+	deleted, err := a.store.ListDeleteRecords(ctx, docUUID, req.BeforeId, beforeTime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list delete records: %w", err)
+	}
+
+	res := repository.ListDeletedResponse{
+		Deletes: make([]*repository.DeleteRecord, len(deleted)),
+	}
+
+	for i, d := range deleted {
+		res.Deletes[i] = &repository.DeleteRecord{
+			Id:       d.ID,
+			Uuid:     d.UUID.String(),
+			Uri:      d.URI,
+			Type:     d.Type,
+			Language: d.Language,
+			Version:  d.Version,
+			Created:  d.Created.Format(time.RFC3339),
+			Creator:  d.Creator,
+			Meta:     d.Meta,
+		}
+	}
+
+	return &res, nil
+}
+
+// Restore implements repository.Documents.
+func (a *DocumentsService) Restore(
+	ctx context.Context, req *repository.RestoreRequest,
+) (*repository.RestoreResponse, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRestore,
+		ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Uuid == "" {
+		return nil, twirp.RequiredArgumentError("uuid")
+	}
+
+	if req.DeleteRecordId == 0 {
+		return nil, twirp.RequiredArgumentError("delete_record_id")
+	}
+
+	docUUID, err := uuid.Parse(req.Uuid)
+	if err != nil {
+		return nil, twirp.InvalidArgumentError(
+			"uuid", err.Error())
+	}
+
+	err = verifyACLParam(req.Acl)
+	if err != nil {
+		return nil, err
+	}
+
+	acl := aclListFromRPC(req.Acl, auth.Claims.Subject)
+
+	err = a.store.RestoreDocument(ctx,
+		docUUID, req.DeleteRecordId,
+		auth.Claims.Subject, acl)
+
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeExists):
+		return nil, twirp.AlreadyExists.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
+		return nil, twirp.FailedPrecondition.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeNotFound):
+		return nil, twirp.NotFoundError(err.Error())
+	case err != nil:
+		return nil, twirp.InternalErrorf(
+			"failed to start restore process: %v", err)
+	}
+
+	return &repository.RestoreResponse{}, nil
+}
+
 // Get implements repository.Documents.
 func (a *DocumentsService) Get(
 	ctx context.Context, req *repository.GetDocumentRequest,
@@ -701,9 +829,9 @@ func (a *DocumentsService) Get(
 			"failed to load document metadata: %w", err)
 	}
 
-	if meta.Deleting {
-		return nil, twirp.FailedPrecondition.Error(
-			"document is being deleted")
+	if meta.SystemLock != "" {
+		return nil, twirp.FailedPrecondition.Errorf(
+			"document is locked for %q", meta.SystemLock)
 	}
 
 	var (
@@ -894,6 +1022,9 @@ func (a *DocumentsService) accessCheck(
 		return twirp.PermissionDenied.Errorf(
 			"no %s permission for the document",
 			strings.Join(names, " or "))
+	case PermissionCheckSystemLock:
+		return twirp.FailedPrecondition.Error(
+			"the document is temporarily locked by the system")
 	case PermissionCheckAllowed:
 	}
 
@@ -1083,6 +1214,8 @@ func twirpErrorFromDocumentUpdateError(err error) error {
 		return twirp.FailedPrecondition.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeNotFound):
 		return twirp.NotFoundError(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeSystemLock):
+		return twirp.FailedPrecondition.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeDuplicateURI):
 		return twirp.AlreadyExists.Error(err.Error())
 	case err != nil:
@@ -1186,17 +1319,7 @@ func (a *DocumentsService) buildUpdateRequest(
 		(req.Document != nil && isMetaURI(req.Document.Uri))
 
 	if !isMeta {
-		for _, e := range req.Acl {
-			uri := e.Uri
-			if uri == "" {
-				uri = auth.Claims.Subject
-			}
-
-			up.ACL = append(up.ACL, ACLEntry{
-				URI:         uri,
-				Permissions: e.Permissions,
-			})
-		}
+		up.ACL = aclListFromRPC(req.Acl, auth.Claims.Subject)
 
 		up.DefaultACL = append(up.DefaultACL, ACLEntry{
 			URI:         updater,
@@ -1212,6 +1335,24 @@ func (a *DocumentsService) buildUpdateRequest(
 	}
 
 	return &up, nil
+}
+
+func aclListFromRPC(acl []*repository.ACLEntry, callerSubject string) []ACLEntry {
+	list := make([]ACLEntry, len(acl))
+
+	for i, e := range acl {
+		uri := e.Uri
+		if uri == "" {
+			uri = callerSubject
+		}
+
+		list[i] = ACLEntry{
+			URI:         uri,
+			Permissions: e.Permissions,
+		}
+	}
+
+	return list
 }
 
 // verifyUpdateRequest verifies that a set of update request are correct, and
@@ -1344,20 +1485,9 @@ func (a *DocumentsService) verifyUpdateRequest(
 		}
 	}
 
-	for i, e := range req.Acl {
-		if e == nil {
-			return twirp.InvalidArgumentError(
-				fmt.Sprintf("acl.%d", i),
-				"an ACL entry cannot be nil")
-		}
-
-		for _, p := range e.Permissions {
-			if !IsValidPermission(Permission(p)) {
-				return twirp.InvalidArgumentError(
-					fmt.Sprintf("acl.%d.permissions", i),
-					fmt.Sprintf("%q is not a valid permission", p))
-			}
-		}
+	err = verifyACLParam(req.Acl)
+	if err != nil {
+		return err
 	}
 
 	if isMeta {
@@ -1396,6 +1526,29 @@ func (a *DocumentsService) verifyUpdateRequest(
 		err = a.accessCheck(ctx, auth, docUUID, perm...)
 		if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// Verifies an ACL parameter, error message assumes that the parameter is named
+// "acl". If you want to use the function to validate a requets where the ACL
+// param has a differen name you have to add an argument for the parameter name.
+func verifyACLParam(acl []*repository.ACLEntry) error {
+	for i, e := range acl {
+		if e == nil {
+			return twirp.InvalidArgumentError(
+				fmt.Sprintf("acl.%d", i),
+				"an ACL entry cannot be nil")
+		}
+
+		for _, p := range e.Permissions {
+			if !IsValidPermission(Permission(p)) {
+				return twirp.InvalidArgumentError(
+					fmt.Sprintf("acl.%d.permissions", i),
+					fmt.Sprintf("%q is not a valid permission", p))
+			}
 		}
 	}
 

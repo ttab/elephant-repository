@@ -94,7 +94,7 @@ func (q *Queries) CheckMetaDocumentType(ctx context.Context, argUuid uuid.UUID) 
 }
 
 const checkPermissions = `-- name: CheckPermissions :one
-SELECT (acl.uri IS NOT NULL) = true AS has_access
+SELECT (acl.uri IS NOT NULL) = true AS has_access, d.system_state
 FROM document AS d
      LEFT JOIN acl
           ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
@@ -109,11 +109,16 @@ type CheckPermissionsParams struct {
 	UUID        uuid.UUID
 }
 
-func (q *Queries) CheckPermissions(ctx context.Context, arg CheckPermissionsParams) (bool, error) {
+type CheckPermissionsRow struct {
+	HasAccess   bool
+	SystemState pgtype.Text
+}
+
+func (q *Queries) CheckPermissions(ctx context.Context, arg CheckPermissionsParams) (CheckPermissionsRow, error) {
 	row := q.db.QueryRow(ctx, checkPermissions, arg.URI, arg.Permissions, arg.UUID)
-	var has_access bool
-	err := row.Scan(&has_access)
-	return has_access, err
+	var i CheckPermissionsRow
+	err := row.Scan(&i.HasAccess, &i.SystemState)
+	return i, err
 }
 
 const cleanUpAssignees = `-- name: CleanUpAssignees :exec
@@ -161,6 +166,16 @@ func (q *Queries) CleanUpDeliverables(ctx context.Context, arg CleanUpDeliverabl
 	return err
 }
 
+const clearSystemState = `-- name: ClearSystemState :exec
+UPDATE document SET system_state = NULL
+WHERE uuid = $1 AND NOT system_state IS NULL
+`
+
+func (q *Queries) ClearSystemState(ctx context.Context, argUuid uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearSystemState, argUuid)
+	return err
+}
+
 const configureEventsink = `-- name: ConfigureEventsink :exec
 INSERT INTO eventsink(name, configuration) VALUES($1, $2)
 ON CONFLICT (name) DO UPDATE SET
@@ -180,10 +195,10 @@ func (q *Queries) ConfigureEventsink(ctx context.Context, arg ConfigureEventsink
 const createDocumentVersion = `-- name: CreateDocumentVersion :exec
 INSERT INTO document_version(
        uuid, version,
-       created, creator_uri, meta, document_data, archived
+       created, creator_uri, meta, document_data, archived, language
 ) VALUES (
        $1, $2,
-       $3, $4, $5, $6, false
+       $3, $4, $5, $6, false, $7
 )
 `
 
@@ -194,6 +209,7 @@ type CreateDocumentVersionParams struct {
 	CreatorUri   string
 	Meta         []byte
 	DocumentData []byte
+	Language     pgtype.Text
 }
 
 func (q *Queries) CreateDocumentVersion(ctx context.Context, arg CreateDocumentVersionParams) error {
@@ -204,6 +220,7 @@ func (q *Queries) CreateDocumentVersion(ctx context.Context, arg CreateDocumentV
 		arg.CreatorUri,
 		arg.Meta,
 		arg.DocumentData,
+		arg.Language,
 	)
 	return err
 }
@@ -211,10 +228,10 @@ func (q *Queries) CreateDocumentVersion(ctx context.Context, arg CreateDocumentV
 const createStatusHead = `-- name: CreateStatusHead :exec
 INSERT INTO status_heads(
        uuid, name, type, version, current_id,
-       updated, updater_uri, language
+       updated, updater_uri, language, system_state
 ) VALUES (
        $1, $2, $3::text, $4::bigint, $5::bigint,
-       $6, $7, $8::text
+       $6, $7, $8::text, $9
 )
 ON CONFLICT (uuid, name) DO UPDATE
    SET updated = $6,
@@ -225,14 +242,15 @@ ON CONFLICT (uuid, name) DO UPDATE
 `
 
 type CreateStatusHeadParams struct {
-	UUID       uuid.UUID
-	Name       string
-	Type       string
-	Version    int64
-	ID         int64
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Language   string
+	UUID        uuid.UUID
+	Name        string
+	Type        string
+	Version     int64
+	ID          int64
+	Created     pgtype.Timestamptz
+	CreatorUri  string
+	Language    string
+	SystemState pgtype.Text
 }
 
 func (q *Queries) CreateStatusHead(ctx context.Context, arg CreateStatusHeadParams) error {
@@ -245,6 +263,7 @@ func (q *Queries) CreateStatusHead(ctx context.Context, arg CreateStatusHeadPara
 		arg.Created,
 		arg.CreatorUri,
 		arg.Language,
+		arg.SystemState,
 	)
 	return err
 }
@@ -259,20 +278,12 @@ func (q *Queries) DeactivateSchema(ctx context.Context, name string) error {
 	return err
 }
 
-const deleteDocument = `-- name: DeleteDocument :exec
-SELECT delete_document(
-       $1::uuid, $2::text, $3::bigint
-)
+const deleteDocumentEntry = `-- name: DeleteDocumentEntry :exec
+DELETE FROM document WHERE uuid = $1
 `
 
-type DeleteDocumentParams struct {
-	UUID     uuid.UUID
-	URI      string
-	RecordID int64
-}
-
-func (q *Queries) DeleteDocument(ctx context.Context, arg DeleteDocumentParams) error {
-	_, err := q.db.Exec(ctx, deleteDocument, arg.UUID, arg.URI, arg.RecordID)
+func (q *Queries) DeleteDocumentEntry(ctx context.Context, argUuid uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteDocumentEntry, argUuid)
 	return err
 }
 
@@ -373,17 +384,49 @@ func (q *Queries) DropMetaType(ctx context.Context, metaType string) error {
 	return err
 }
 
-const finaliseDelete = `-- name: FinaliseDelete :execrows
-DELETE FROM document
-WHERE uuid = $1 AND deleting = true
+const finaliseDeleteRecord = `-- name: FinaliseDeleteRecord :exec
+UPDATE delete_record SET finalised = $1
+WHERE uuid = $2 AND id = $3
 `
 
-func (q *Queries) FinaliseDelete(ctx context.Context, argUuid uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, finaliseDelete, argUuid)
+type FinaliseDeleteRecordParams struct {
+	Finalised pgtype.Timestamptz
+	UUID      uuid.UUID
+	ID        int64
+}
+
+func (q *Queries) FinaliseDeleteRecord(ctx context.Context, arg FinaliseDeleteRecordParams) error {
+	_, err := q.db.Exec(ctx, finaliseDeleteRecord, arg.Finalised, arg.UUID, arg.ID)
+	return err
+}
+
+const finaliseDocumentDelete = `-- name: FinaliseDocumentDelete :execrows
+DELETE FROM document
+WHERE uuid = $1 AND system_state = 'deleting'
+`
+
+func (q *Queries) FinaliseDocumentDelete(ctx context.Context, argUuid uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, finaliseDocumentDelete, argUuid)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const finishRestoreRequest = `-- name: FinishRestoreRequest :exec
+UPDATE restore_request
+SET finished = $1
+WHERE id = $2
+`
+
+type FinishRestoreRequestParams struct {
+	Finished pgtype.Timestamptz
+	ID       int64
+}
+
+func (q *Queries) FinishRestoreRequest(ctx context.Context, arg FinishRestoreRequestParams) error {
+	_, err := q.db.Exec(ctx, finishRestoreRequest, arg.Finished, arg.ID)
+	return err
 }
 
 const getActiveSchema = `-- name: GetActiveSchema :one
@@ -457,13 +500,14 @@ func (q *Queries) GetActiveStatuses(ctx context.Context) ([]string, error) {
 const getCompactedEventlog = `-- name: GetCompactedEventlog :many
 SELECT
         w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
-        w.status_id, w.acl, w.updater, w.language, w.old_language, w.main_doc
+        w.status_id, w.acl, w.updater, w.language, w.old_language, w.main_doc,
+        w.system_state
 FROM (
      SELECT DISTINCT ON (
             e.uuid,
             CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END,
             CASE WHEN NOT e.old_language IS NULL THEN null ELSE 0 END
-       ) id, event, uuid, timestamp, type, version, status, status_id, acl, updater, main_doc, language, old_language FROM eventlog AS e
+       ) id, event, uuid, timestamp, type, version, status, status_id, acl, updater, main_doc, language, old_language, system_state FROM eventlog AS e
      WHERE e.id > $1 AND e.id <= $2
      AND ($3::text IS NULL OR e.type = $3)
      ORDER BY
@@ -498,6 +542,7 @@ type GetCompactedEventlogRow struct {
 	Language    pgtype.Text
 	OldLanguage pgtype.Text
 	MainDoc     pgtype.UUID
+	SystemState pgtype.Text
 }
 
 func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEventlogParams) ([]GetCompactedEventlogRow, error) {
@@ -529,6 +574,7 @@ func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEven
 			&i.Language,
 			&i.OldLanguage,
 			&i.MainDoc,
+			&i.SystemState,
 		); err != nil {
 			return nil, err
 		}
@@ -570,6 +616,53 @@ func (q *Queries) GetCurrentDocumentVersions(ctx context.Context, uuids []uuid.U
 		return nil, err
 	}
 	return items, nil
+}
+
+const getDeleteRecord = `-- name: GetDeleteRecord :one
+SELECT id, uuid, uri, type, version, created, creator_uri, meta,
+       main_doc, language, meta_doc_record, heads
+FROM delete_record
+WHERE id = $1 AND uuid = $2
+`
+
+type GetDeleteRecordParams struct {
+	ID   int64
+	UUID uuid.UUID
+}
+
+type GetDeleteRecordRow struct {
+	ID            int64
+	UUID          uuid.UUID
+	URI           string
+	Type          string
+	Version       int64
+	Created       pgtype.Timestamptz
+	CreatorUri    string
+	Meta          []byte
+	MainDoc       pgtype.UUID
+	Language      pgtype.Text
+	MetaDocRecord pgtype.Int8
+	Heads         []byte
+}
+
+func (q *Queries) GetDeleteRecord(ctx context.Context, arg GetDeleteRecordParams) (GetDeleteRecordRow, error) {
+	row := q.db.QueryRow(ctx, getDeleteRecord, arg.ID, arg.UUID)
+	var i GetDeleteRecordRow
+	err := row.Scan(
+		&i.ID,
+		&i.UUID,
+		&i.URI,
+		&i.Type,
+		&i.Version,
+		&i.Created,
+		&i.CreatorUri,
+		&i.Meta,
+		&i.MainDoc,
+		&i.Language,
+		&i.MetaDocRecord,
+		&i.Heads,
+	)
+	return i, err
 }
 
 const getDeprecations = `-- name: GetDeprecations :many
@@ -643,27 +736,37 @@ func (q *Queries) GetDocumentData(ctx context.Context, argUuid uuid.UUID) (GetDo
 }
 
 const getDocumentForDeletion = `-- name: GetDocumentForDeletion :one
-SELECT uuid, current_version AS delete_record_id FROM document
-WHERE deleting = true
-ORDER BY created
-FOR UPDATE SKIP LOCKED
+SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.current_version
+FROM delete_record AS dr
+WHERE dr.finalised IS NULL
+ORDER BY dr.created
+FOR UPDATE SKIP LOCKED -- locks both rows
 LIMIT 1
 `
 
 type GetDocumentForDeletionRow struct {
+	ID             int64
 	UUID           uuid.UUID
-	DeleteRecordID int64
+	Heads          []byte
+	Acl            []byte
+	CurrentVersion pgtype.Int8
 }
 
 func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDeletionRow, error) {
 	row := q.db.QueryRow(ctx, getDocumentForDeletion)
 	var i GetDocumentForDeletionRow
-	err := row.Scan(&i.UUID, &i.DeleteRecordID)
+	err := row.Scan(
+		&i.ID,
+		&i.UUID,
+		&i.Heads,
+		&i.Acl,
+		&i.CurrentVersion,
+	)
 	return i, err
 }
 
 const getDocumentForUpdate = `-- name: GetDocumentForUpdate :one
-SELECT d.uri, d.type, d.current_version, d.deleting, d.main_doc, d.language,
+SELECT d.uri, d.type, d.current_version, d.main_doc, d.language, d.system_state,
        l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
        l.token as lock_token
@@ -682,9 +785,9 @@ type GetDocumentForUpdateRow struct {
 	URI            string
 	Type           string
 	CurrentVersion int64
-	Deleting       bool
 	MainDoc        pgtype.UUID
 	Language       pgtype.Text
+	SystemState    pgtype.Text
 	LockUuid       pgtype.UUID
 	LockUri        pgtype.Text
 	LockCreated    pgtype.Timestamptz
@@ -701,9 +804,9 @@ func (q *Queries) GetDocumentForUpdate(ctx context.Context, arg GetDocumentForUp
 		&i.URI,
 		&i.Type,
 		&i.CurrentVersion,
-		&i.Deleting,
 		&i.MainDoc,
 		&i.Language,
+		&i.SystemState,
 		&i.LockUuid,
 		&i.LockUri,
 		&i.LockCreated,
@@ -749,7 +852,7 @@ func (q *Queries) GetDocumentHeads(ctx context.Context, argUuid uuid.UUID) ([]Ge
 const getDocumentInfo = `-- name: GetDocumentInfo :one
 SELECT
         d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
-        deleting, main_doc, l.uuid as lock_uuid, l.uri as lock_uri,
+        system_state, main_doc, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token
 FROM document as d 
@@ -770,7 +873,7 @@ type GetDocumentInfoRow struct {
 	Updated        pgtype.Timestamptz
 	UpdaterUri     string
 	CurrentVersion int64
-	Deleting       bool
+	SystemState    pgtype.Text
 	MainDoc        pgtype.UUID
 	LockUuid       pgtype.UUID
 	LockUri        pgtype.Text
@@ -792,7 +895,7 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, arg GetDocumentInfoParams
 		&i.Updated,
 		&i.UpdaterUri,
 		&i.CurrentVersion,
-		&i.Deleting,
+		&i.SystemState,
 		&i.MainDoc,
 		&i.LockUuid,
 		&i.LockUri,
@@ -805,19 +908,48 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, arg GetDocumentInfoParams
 	return i, err
 }
 
+const getDocumentRow = `-- name: GetDocumentRow :one
+SELECT uuid, uri, type, created, creator_uri, updated, updater_uri,
+       current_version, main_doc, language, system_state
+FROM document
+WHERE uuid = $1
+`
+
+func (q *Queries) GetDocumentRow(ctx context.Context, argUuid uuid.UUID) (Document, error) {
+	row := q.db.QueryRow(ctx, getDocumentRow, argUuid)
+	var i Document
+	err := row.Scan(
+		&i.UUID,
+		&i.URI,
+		&i.Type,
+		&i.Created,
+		&i.CreatorUri,
+		&i.Updated,
+		&i.UpdaterUri,
+		&i.CurrentVersion,
+		&i.MainDoc,
+		&i.Language,
+		&i.SystemState,
+	)
+	return i, err
+}
+
 const getDocumentStatusForArchiving = `-- name: GetDocumentStatusForArchiving :one
 SELECT
         s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
-        p.signature AS parent_signature, v.signature AS version_signature
+        p.signature AS parent_signature, v.signature AS version_signature,
+        d.type, v.language, s.meta_doc_version
 FROM document_status AS s
-     INNER JOIN document_version AS v
+     INNER JOIN document AS d
+           ON d.uuid = s.uuid
+     LEFT JOIN document_version AS v
            ON v.uuid = s.uuid
               AND v.version = s.version
-              AND v.signature IS NOT NULL
      LEFT JOIN document_status AS p
           ON p.uuid = s.uuid AND p.name = s.name AND p.id = s.id-1
 WHERE s.archived = false
 AND (s.id = 1 OR p.archived = true)
+AND (s.version = -1 OR v.signature IS NOT NULL)
 ORDER BY s.created
 FOR UPDATE OF s SKIP LOCKED
 LIMIT 1
@@ -833,8 +965,13 @@ type GetDocumentStatusForArchivingRow struct {
 	Meta             []byte
 	ParentSignature  pgtype.Text
 	VersionSignature pgtype.Text
+	Type             string
+	Language         pgtype.Text
+	MetaDocVersion   pgtype.Int8
 }
 
+// Any parent has to have been archived.
+// Accept null signature for the referenced version if we have a nil version.
 func (q *Queries) GetDocumentStatusForArchiving(ctx context.Context) (GetDocumentStatusForArchivingRow, error) {
 	row := q.db.QueryRow(ctx, getDocumentStatusForArchiving)
 	var i GetDocumentStatusForArchivingRow
@@ -848,6 +985,9 @@ func (q *Queries) GetDocumentStatusForArchiving(ctx context.Context) (GetDocumen
 		&i.Meta,
 		&i.ParentSignature,
 		&i.VersionSignature,
+		&i.Type,
+		&i.Language,
+		&i.MetaDocVersion,
 	)
 	return i, err
 }
@@ -892,10 +1032,13 @@ func (q *Queries) GetDocumentVersionData(ctx context.Context, arg GetDocumentVer
 const getDocumentVersionForArchiving = `-- name: GetDocumentVersionForArchiving :one
 SELECT
         v.uuid, v.version, v.created, v.creator_uri, v.meta, v.document_data,
-        p.signature AS parent_signature
+        p.signature AS parent_signature, d.main_doc, d.uri, d.type,
+        (v.document_data->>'language')::text AS language
 FROM document_version AS v
      LEFT JOIN document_version AS p
           ON p.uuid = v.uuid AND p.version = v.version-1
+     INNER JOIN document AS d
+          ON d.uuid = v.uuid
 WHERE v.archived = false
 AND (v.version = 1 OR p.archived = true)
 ORDER BY v.created
@@ -911,6 +1054,10 @@ type GetDocumentVersionForArchivingRow struct {
 	Meta            []byte
 	DocumentData    []byte
 	ParentSignature pgtype.Text
+	MainDoc         pgtype.UUID
+	URI             string
+	Type            string
+	Language        string
 }
 
 func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context) (GetDocumentVersionForArchivingRow, error) {
@@ -924,6 +1071,10 @@ func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context) (GetDocume
 		&i.Meta,
 		&i.DocumentData,
 		&i.ParentSignature,
+		&i.MainDoc,
+		&i.URI,
+		&i.Type,
+		&i.Language,
 	)
 	return i, err
 }
@@ -976,7 +1127,7 @@ func (q *Queries) GetEnforcedDeprecations(ctx context.Context) ([]string, error)
 
 const getEventlog = `-- name: GetEventlog :many
 SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater,
-       language, old_language, main_doc
+       language, old_language, main_doc, system_state
 FROM eventlog
 WHERE id > $1
 ORDER BY id ASC
@@ -1002,6 +1153,7 @@ type GetEventlogRow struct {
 	Language    pgtype.Text
 	OldLanguage pgtype.Text
 	MainDoc     pgtype.UUID
+	SystemState pgtype.Text
 }
 
 func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]GetEventlogRow, error) {
@@ -1027,6 +1179,7 @@ func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]Get
 			&i.Language,
 			&i.OldLanguage,
 			&i.MainDoc,
+			&i.SystemState,
 		); err != nil {
 			return nil, err
 		}
@@ -1353,6 +1506,38 @@ func (q *Queries) GetNextReportDueTime(ctx context.Context) (pgtype.Timestamptz,
 	var column_1 pgtype.Timestamptz
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const getNextRestoreRequest = `-- name: GetNextRestoreRequest :one
+SELECT id, uuid, delete_record_id, created, creator, spec
+FROM restore_request
+WHERE finished IS NULL
+ORDER BY id ASC
+FOR UPDATE SKIP LOCKED
+LIMIT 1
+`
+
+type GetNextRestoreRequestRow struct {
+	ID             int64
+	UUID           uuid.UUID
+	DeleteRecordID int64
+	Created        pgtype.Timestamptz
+	Creator        string
+	Spec           []byte
+}
+
+func (q *Queries) GetNextRestoreRequest(ctx context.Context) (GetNextRestoreRequestRow, error) {
+	row := q.db.QueryRow(ctx, getNextRestoreRequest)
+	var i GetNextRestoreRequestRow
+	err := row.Scan(
+		&i.ID,
+		&i.UUID,
+		&i.DeleteRecordID,
+		&i.Created,
+		&i.Creator,
+		&i.Spec,
+	)
+	return i, err
 }
 
 const getPlanningAssignment = `-- name: GetPlanningAssignment :one
@@ -1712,6 +1897,23 @@ func (q *Queries) GetVersion(ctx context.Context, arg GetVersionParams) (GetVers
 	return i, err
 }
 
+const getVersionLanguage = `-- name: GetVersionLanguage :one
+SELECT language FROM document_version
+WHERE uuid = $1 AND version = $2
+`
+
+type GetVersionLanguageParams struct {
+	UUID    uuid.UUID
+	Version int64
+}
+
+func (q *Queries) GetVersionLanguage(ctx context.Context, arg GetVersionLanguageParams) (pgtype.Text, error) {
+	row := q.db.QueryRow(ctx, getVersionLanguage, arg.UUID, arg.Version)
+	var language pgtype.Text
+	err := row.Scan(&language)
+	return language, err
+}
+
 const getVersions = `-- name: GetVersions :many
 SELECT version, created, creator_uri, meta, archived
 FROM document_version
@@ -1795,11 +1997,13 @@ func (q *Queries) GranteesWithPermission(ctx context.Context, arg GranteesWithPe
 const insertACLAuditEntry = `-- name: InsertACLAuditEntry :exec
 INSERT INTO acl_audit(
        uuid, type, updated,
-       updater_uri, state, language
+       updater_uri, state, language,
+       system_state
 )
 SELECT
        $1::uuid, $2, $3::timestamptz,
-       $4::text, json_agg(l), $5::text
+       $4::text, json_agg(l), $5::text,
+       $6
 FROM (
        SELECT uri, permissions
        FROM acl
@@ -1808,11 +2012,12 @@ FROM (
 `
 
 type InsertACLAuditEntryParams struct {
-	UUID       uuid.UUID
-	Type       pgtype.Text
-	Updated    pgtype.Timestamptz
-	UpdaterUri string
-	Language   string
+	UUID        uuid.UUID
+	Type        pgtype.Text
+	Updated     pgtype.Timestamptz
+	UpdaterUri  string
+	Language    string
+	SystemState pgtype.Text
 }
 
 func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEntryParams) error {
@@ -1822,6 +2027,7 @@ func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEnt
 		arg.Updated,
 		arg.UpdaterUri,
 		arg.Language,
+		arg.SystemState,
 	)
 	return err
 }
@@ -1829,23 +2035,27 @@ func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEnt
 const insertDeleteRecord = `-- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language
+       main_doc, language, meta_doc_record, heads, acl, current_version
 ) VALUES(
        $1, $2, $3, $4, $5, $6, $7,
-       $8, $9
+       $8, $9, $10, $11, $12, $13
 ) RETURNING id
 `
 
 type InsertDeleteRecordParams struct {
-	UUID       uuid.UUID
-	URI        string
-	Type       string
-	Version    int64
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Meta       []byte
-	MainDoc    pgtype.UUID
-	Language   pgtype.Text
+	UUID           uuid.UUID
+	URI            string
+	Type           string
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           []byte
+	MainDoc        pgtype.UUID
+	Language       pgtype.Text
+	MetaDocRecord  pgtype.Int8
+	Heads          []byte
+	Acl            []byte
+	CurrentVersion pgtype.Int8
 }
 
 func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecordParams) (int64, error) {
@@ -1859,10 +2069,73 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 		arg.Meta,
 		arg.MainDoc,
 		arg.Language,
+		arg.MetaDocRecord,
+		arg.Heads,
+		arg.Acl,
+		arg.CurrentVersion,
 	)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const insertDeletionPlaceholder = `-- name: InsertDeletionPlaceholder :exec
+insert into document(
+       uuid, uri, type, created, creator_uri, updated, updater_uri,
+       current_version, system_state
+) values (
+       $1, $2, '', now(), '', now(), '', $3, 'deleting'
+)
+`
+
+type InsertDeletionPlaceholderParams struct {
+	UUID     uuid.UUID
+	URI      string
+	RecordID int64
+}
+
+func (q *Queries) InsertDeletionPlaceholder(ctx context.Context, arg InsertDeletionPlaceholderParams) error {
+	_, err := q.db.Exec(ctx, insertDeletionPlaceholder, arg.UUID, arg.URI, arg.RecordID)
+	return err
+}
+
+const insertDocument = `-- name: InsertDocument :exec
+INSERT INTO document(
+       uuid, uri, type,
+       created, creator_uri, updated, updater_uri, current_version,
+       main_doc, language, system_state
+) VALUES (
+       $1, $2, $3,
+       $4, $5, $4, $5, $6,
+       $7, $8, $9
+)
+`
+
+type InsertDocumentParams struct {
+	UUID        uuid.UUID
+	URI         string
+	Type        string
+	Created     pgtype.Timestamptz
+	CreatorUri  string
+	Version     int64
+	MainDoc     pgtype.UUID
+	Language    pgtype.Text
+	SystemState pgtype.Text
+}
+
+func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) error {
+	_, err := q.db.Exec(ctx, insertDocument,
+		arg.UUID,
+		arg.URI,
+		arg.Type,
+		arg.Created,
+		arg.CreatorUri,
+		arg.Version,
+		arg.MainDoc,
+		arg.Language,
+		arg.SystemState,
+	)
+	return err
 }
 
 const insertDocumentLock = `-- name: InsertDocumentLock :exec
@@ -1934,10 +2207,10 @@ func (q *Queries) InsertDocumentStatus(ctx context.Context, arg InsertDocumentSt
 const insertIntoEventLog = `-- name: InsertIntoEventLog :one
 INSERT INTO eventlog(
        event, uuid, type, timestamp, updater, version, status, status_id, acl,
-       language, old_language, main_doc
+       language, old_language, main_doc, system_state
 ) VALUES (
        $1, $2, $3, $4, $5, $6, $7, $8, $9,
-       $10, $11, $12
+       $10, $11, $12, $13
 ) RETURNING id
 `
 
@@ -1954,6 +2227,7 @@ type InsertIntoEventLogParams struct {
 	Language    pgtype.Text
 	OldLanguage pgtype.Text
 	MainDoc     pgtype.UUID
+	SystemState pgtype.Text
 }
 
 func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLogParams) (int64, error) {
@@ -1970,6 +2244,7 @@ func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLog
 		arg.Language,
 		arg.OldLanguage,
 		arg.MainDoc,
+		arg.SystemState,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -1994,6 +2269,33 @@ func (q *Queries) InsertJobLock(ctx context.Context, arg InsertJobLockParams) (i
 	return iteration, err
 }
 
+const insertRestoreRequest = `-- name: InsertRestoreRequest :exec
+INSERT INTO restore_request(
+       uuid, delete_record_id, created, creator, spec
+) VALUES(
+       $1, $2, $3, $4, $5
+)
+`
+
+type InsertRestoreRequestParams struct {
+	UUID           uuid.UUID
+	DeleteRecordID int64
+	Created        pgtype.Timestamptz
+	Creator        string
+	Spec           []byte
+}
+
+func (q *Queries) InsertRestoreRequest(ctx context.Context, arg InsertRestoreRequestParams) error {
+	_, err := q.db.Exec(ctx, insertRestoreRequest,
+		arg.UUID,
+		arg.DeleteRecordID,
+		arg.Created,
+		arg.Creator,
+		arg.Spec,
+	)
+	return err
+}
+
 const insertSigningKey = `-- name: InsertSigningKey :exec
 INSERT INTO signing_keys(kid, spec) VALUES($1, $2)
 `
@@ -2006,6 +2308,68 @@ type InsertSigningKeyParams struct {
 func (q *Queries) InsertSigningKey(ctx context.Context, arg InsertSigningKeyParams) error {
 	_, err := q.db.Exec(ctx, insertSigningKey, arg.Kid, arg.Spec)
 	return err
+}
+
+const listDeleteRecords = `-- name: ListDeleteRecords :many
+SELECT id, uuid, uri, type, version, created, creator_uri, meta,
+       main_doc, language, meta_doc_record
+FROM delete_record AS r
+WHERE ($1::uuid IS NULL OR r.uuid = $1)
+      AND ($2::bigint = 0 OR r.id < $2)
+      AND ($3::timestamptz IS NULL OR r.created < $3)
+ORDER BY r.id DESC
+`
+
+type ListDeleteRecordsParams struct {
+	UUID       pgtype.UUID
+	BeforeID   int64
+	BeforeTime pgtype.Timestamptz
+}
+
+type ListDeleteRecordsRow struct {
+	ID            int64
+	UUID          uuid.UUID
+	URI           string
+	Type          string
+	Version       int64
+	Created       pgtype.Timestamptz
+	CreatorUri    string
+	Meta          []byte
+	MainDoc       pgtype.UUID
+	Language      pgtype.Text
+	MetaDocRecord pgtype.Int8
+}
+
+func (q *Queries) ListDeleteRecords(ctx context.Context, arg ListDeleteRecordsParams) ([]ListDeleteRecordsRow, error) {
+	rows, err := q.db.Query(ctx, listDeleteRecords, arg.UUID, arg.BeforeID, arg.BeforeTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDeleteRecordsRow
+	for rows.Next() {
+		var i ListDeleteRecordsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UUID,
+			&i.URI,
+			&i.Type,
+			&i.Version,
+			&i.Created,
+			&i.CreatorUri,
+			&i.Meta,
+			&i.MainDoc,
+			&i.Language,
+			&i.MetaDocRecord,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listReports = `-- name: ListReports :many
@@ -2074,6 +2438,18 @@ func (q *Queries) PingJobLock(ctx context.Context, arg PingJobLockParams) (int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const readForRestore = `-- name: ReadForRestore :one
+SELECT system_state FROM document
+WHERE uuid = $1
+`
+
+func (q *Queries) ReadForRestore(ctx context.Context, argUuid uuid.UUID) (pgtype.Text, error) {
+	row := q.db.QueryRow(ctx, readForRestore, argUuid)
+	var system_state pgtype.Text
+	err := row.Scan(&system_state)
+	return system_state, err
 }
 
 const registerMetaType = `-- name: RegisterMetaType :exec
@@ -2214,17 +2590,23 @@ func (q *Queries) ReleaseJobLock(ctx context.Context, arg ReleaseJobLockParams) 
 const setDocumentStatusAsArchived = `-- name: SetDocumentStatusAsArchived :exec
 UPDATE document_status
 SET archived = true, signature = $1::text
-WHERE uuid = $2 AND id = $3
+WHERE uuid = $2 AND name = $3 AND id = $4
 `
 
 type SetDocumentStatusAsArchivedParams struct {
 	Signature string
 	UUID      uuid.UUID
+	Name      string
 	ID        int64
 }
 
 func (q *Queries) SetDocumentStatusAsArchived(ctx context.Context, arg SetDocumentStatusAsArchivedParams) error {
-	_, err := q.db.Exec(ctx, setDocumentStatusAsArchived, arg.Signature, arg.UUID, arg.ID)
+	_, err := q.db.Exec(ctx, setDocumentStatusAsArchived,
+		arg.Signature,
+		arg.UUID,
+		arg.Name,
+		arg.ID,
+	)
 	return err
 }
 

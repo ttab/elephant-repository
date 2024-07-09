@@ -103,24 +103,6 @@ CREATE FUNCTION public.create_version(uuid uuid, version bigint, created timesta
 $$;
 
 
---
--- Name: delete_document(uuid, text, bigint); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.delete_document(uuid uuid, uri text, record_id bigint) RETURNS void
-    LANGUAGE sql
-    AS $$
-   delete from document where uuid = delete_document.uuid;
-
-   insert into document(
-          uuid, uri, type, created, creator_uri, updated, updater_uri,
-          current_version, deleting
-   ) values (
-     uuid, uri, '', now(), '', now(), '', record_id, true
-   );
-$$;
-
-
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -148,7 +130,8 @@ CREATE TABLE public.acl_audit (
     state jsonb NOT NULL,
     archived boolean DEFAULT false NOT NULL,
     type text,
-    language text
+    language text,
+    system_state text
 );
 
 
@@ -190,7 +173,13 @@ CREATE TABLE public.delete_record (
     creator_uri text NOT NULL,
     meta jsonb,
     main_doc uuid,
-    language text
+    language text,
+    acls jsonb,
+    meta_doc_record bigint,
+    finalised timestamp with time zone,
+    acl jsonb,
+    heads jsonb,
+    current_version bigint
 );
 
 
@@ -231,9 +220,9 @@ CREATE TABLE public.document (
     updated timestamp with time zone NOT NULL,
     updater_uri text NOT NULL,
     current_version bigint NOT NULL,
-    deleting boolean DEFAULT false NOT NULL,
     main_doc uuid,
-    language text
+    language text,
+    system_state text
 );
 
 ALTER TABLE ONLY public.document REPLICA IDENTITY FULL;
@@ -308,7 +297,8 @@ CREATE TABLE public.document_version (
     meta jsonb,
     document_data jsonb,
     archived boolean DEFAULT false NOT NULL,
-    signature text
+    signature text,
+    language text
 );
 
 
@@ -329,7 +319,8 @@ CREATE TABLE public.eventlog (
     updater text,
     main_doc uuid,
     language text,
-    old_language text
+    old_language text,
+    system_state text
 );
 
 
@@ -488,6 +479,63 @@ CREATE TABLE public.report (
 
 
 --
+-- Name: restore; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.restore (
+    id bigint NOT NULL,
+    uuid uuid NOT NULL,
+    delete_id bigint NOT NULL,
+    created timestamp with time zone NOT NULL,
+    creator_uri text NOT NULL,
+    acls jsonb
+);
+
+
+--
+-- Name: restore_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.restore ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.restore_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: restore_request; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.restore_request (
+    id bigint NOT NULL,
+    uuid uuid NOT NULL,
+    delete_record_id bigint NOT NULL,
+    created timestamp with time zone NOT NULL,
+    creator text NOT NULL,
+    spec jsonb NOT NULL,
+    finished timestamp with time zone
+);
+
+
+--
+-- Name: restore_request_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.restore_request ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.restore_request_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: schema_version; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -528,7 +576,8 @@ CREATE TABLE public.status_heads (
     updater_uri text NOT NULL,
     type text,
     version bigint,
-    language text
+    language text,
+    system_state text
 );
 
 ALTER TABLE ONLY public.status_heads REPLICA IDENTITY FULL;
@@ -741,6 +790,22 @@ ALTER TABLE ONLY public.report
 
 
 --
+-- Name: restore restore_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.restore
+    ADD CONSTRAINT restore_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: restore_request restore_request_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.restore_request
+    ADD CONSTRAINT restore_request_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: signing_keys signing_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -780,10 +845,10 @@ CREATE INDEX delete_record_uuid_idx ON public.delete_record USING btree (uuid);
 
 
 --
--- Name: document_deleting; Type: INDEX; Schema: public; Owner: -
+-- Name: deletes_to_finalise; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX document_deleting ON public.document USING btree (created) WHERE (deleting = true);
+CREATE INDEX deletes_to_finalise ON public.delete_record USING btree (created) WHERE (finalised IS NULL);
 
 
 --
@@ -847,6 +912,13 @@ CREATE INDEX planning_deliverable_idx ON public.planning_deliverable USING btree
 --
 
 CREATE INDEX planning_item_event_idx ON public.planning_item USING btree (event);
+
+
+--
+-- Name: restores_to_perform; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX restores_to_perform ON public.restore_request USING btree (created) WHERE (finished IS NULL);
 
 
 --
@@ -975,6 +1047,14 @@ ALTER TABLE ONLY public.planning_deliverable
 
 ALTER TABLE ONLY public.planning_item
     ADD CONSTRAINT planning_item_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: restore_request restore_request_delete_record_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.restore_request
+    ADD CONSTRAINT restore_request_delete_record_id_fkey FOREIGN KEY (delete_record_id) REFERENCES public.delete_record(id) ON DELETE RESTRICT;
 
 
 --
