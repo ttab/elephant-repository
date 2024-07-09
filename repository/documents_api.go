@@ -687,16 +687,12 @@ func (a *DocumentsService) ListDeleted(
 		tz = l
 	}
 
-	if req.StartAtDate != "" {
-		t, err := time.ParseInLocation("2006-01-02", req.StartAtDate, tz)
+	if req.BeforeDate != "" {
+		t, err := time.ParseInLocation("2006-01-02", req.BeforeDate, tz)
 		if err != nil {
 			return nil, twirp.InvalidArgumentError(
 				"start_at_date", err.Error())
 		}
-
-		// Starting at date translates to being before the next day
-		// relative the date.
-		t = t.Add(24 * time.Hour)
 
 		beforeTime = &t
 	}
