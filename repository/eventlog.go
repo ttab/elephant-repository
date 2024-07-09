@@ -569,6 +569,21 @@ func parseDeleteMessage(msg replMessage) (Event, error) {
 		return Event{}, err
 	}
 
+	version, ok := msg.NewValues["version"].(int64)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract version")
+	}
+
+	evt.Version = version
+
+	// If the delete record version is zero it has been purged and should
+	// not get an eventlog entry.
+	if evt.Version == 0 {
+		return Event{
+			Event: TypeEventIgnored,
+		}, nil
+	}
+
 	created, ok := msg.NewValues["created"].(time.Time)
 	if !ok {
 		return Event{}, fmt.Errorf("failed to extract created time")

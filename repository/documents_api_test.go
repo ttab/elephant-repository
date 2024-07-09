@@ -1931,7 +1931,7 @@ func TestIntegrationStatsOverview(t *testing.T) {
 
 	t.Parallel()
 
-	regenerate := os.Getenv("REGENERATE") == "true"
+	regenerate := regenerateTestFixtures()
 	dataDir := filepath.Join(
 		"..", "testdata", "TestIntegrationStatsOverview")
 

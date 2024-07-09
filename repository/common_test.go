@@ -25,6 +25,10 @@ import (
 	"github.com/twitchtv/twirp"
 )
 
+func regenerateTestFixtures() bool {
+	return os.Getenv("REGENERATE") == "true"
+}
+
 const bearerPrefix = "Bearer "
 
 type TestContext struct {

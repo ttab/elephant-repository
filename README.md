@@ -363,3 +363,14 @@ The archiver looks for documents with pending deletes and then moves the objects
 #### Restoring documents
 
 When a restore is initiated a system locked document row is created in documents (system_state == "restoring"). This is not reflected in the eventlog, but all the restored document versions and status updates will be, and when the restore is finished a "restore_finished" will be emitted. All event log events that result from a restore will have "system_state" set to "restoring" so that they can be ignored by event processors. 
+
+#### Purging documents
+
+When a document has been deleted the archived information associated with it can be purged. This will remove all objects in S3 and clear information about status heads, ACLs, and the document version from the delete record. The information that will remain is:
+
+* UUID and URI of the document
+* Type of the document
+* The time the document was deleted and who deleted it
+* The time the document was purged
+
+So what remains is the bare-bones information that something existed, and an audit trail related to its removal.

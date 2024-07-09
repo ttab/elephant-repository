@@ -74,6 +74,21 @@ func (q *Queries) BulkCheckPermissions(ctx context.Context, arg BulkCheckPermiss
 	return items, nil
 }
 
+const checkForPendingPurge = `-- name: CheckForPendingPurge :one
+SELECT EXISTS (
+       SELECT 1 FROM purge_request
+       WHERE delete_record_id = $1
+       AND finished IS NULL
+)
+`
+
+func (q *Queries) CheckForPendingPurge(ctx context.Context, deleteRecordID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, checkForPendingPurge, deleteRecordID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const checkMetaDocumentType = `-- name: CheckMetaDocumentType :one
 SELECT coalesce(meta_type, ''), NOT d.main_doc IS NULL as is_meta_doc
 FROM document AS d
@@ -374,6 +389,21 @@ func (q *Queries) DropACL(ctx context.Context, arg DropACLParams) error {
 	return err
 }
 
+const dropInvalidRestoreRequests = `-- name: DropInvalidRestoreRequests :exec
+DELETE FROM restore_request AS rr
+WHERE rr.finished IS NULL
+AND rr.delete_record_id = ANY(
+    SELECT dr.id FROM delete_record AS dr
+    WHERE dr.id = rr.delete_record_id
+    AND dr.purged IS NOT NULL
+)
+`
+
+func (q *Queries) DropInvalidRestoreRequests(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, dropInvalidRestoreRequests)
+	return err
+}
+
 const dropMetaType = `-- name: DropMetaType :exec
 DELETE FROM meta_type
 WHERE meta_type = $1
@@ -381,6 +411,21 @@ WHERE meta_type = $1
 
 func (q *Queries) DropMetaType(ctx context.Context, metaType string) error {
 	_, err := q.db.Exec(ctx, dropMetaType, metaType)
+	return err
+}
+
+const dropRedundantPurgeRequests = `-- name: DropRedundantPurgeRequests :exec
+DELETE FROM purge_request AS pr
+WHERE pr.finished IS NULL
+AND pr.delete_record_id = ANY(
+    SELECT dr.id FROM delete_record AS dr
+    WHERE dr.id = pr.delete_record_id
+    AND dr.purged IS NOT NULL
+)
+`
+
+func (q *Queries) DropRedundantPurgeRequests(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, dropRedundantPurgeRequests)
 	return err
 }
 
@@ -411,6 +456,22 @@ func (q *Queries) FinaliseDocumentDelete(ctx context.Context, argUuid uuid.UUID)
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const finishPurgeRequest = `-- name: FinishPurgeRequest :exec
+UPDATE purge_request
+SET finished = $1
+WHERE id = $2
+`
+
+type FinishPurgeRequestParams struct {
+	Finished pgtype.Timestamptz
+	ID       int64
+}
+
+func (q *Queries) FinishPurgeRequest(ctx context.Context, arg FinishPurgeRequestParams) error {
+	_, err := q.db.Exec(ctx, finishPurgeRequest, arg.Finished, arg.ID)
+	return err
 }
 
 const finishRestoreRequest = `-- name: FinishRestoreRequest :exec
@@ -618,19 +679,20 @@ func (q *Queries) GetCurrentDocumentVersions(ctx context.Context, uuids []uuid.U
 	return items, nil
 }
 
-const getDeleteRecord = `-- name: GetDeleteRecord :one
+const getDeleteRecordForUpdate = `-- name: GetDeleteRecordForUpdate :one
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads
+       main_doc, language, meta_doc_record, heads, finalised, purged
 FROM delete_record
 WHERE id = $1 AND uuid = $2
+FOR UPDATE
 `
 
-type GetDeleteRecordParams struct {
+type GetDeleteRecordForUpdateParams struct {
 	ID   int64
 	UUID uuid.UUID
 }
 
-type GetDeleteRecordRow struct {
+type GetDeleteRecordForUpdateRow struct {
 	ID            int64
 	UUID          uuid.UUID
 	URI           string
@@ -643,11 +705,13 @@ type GetDeleteRecordRow struct {
 	Language      pgtype.Text
 	MetaDocRecord pgtype.Int8
 	Heads         []byte
+	Finalised     pgtype.Timestamptz
+	Purged        pgtype.Timestamptz
 }
 
-func (q *Queries) GetDeleteRecord(ctx context.Context, arg GetDeleteRecordParams) (GetDeleteRecordRow, error) {
-	row := q.db.QueryRow(ctx, getDeleteRecord, arg.ID, arg.UUID)
-	var i GetDeleteRecordRow
+func (q *Queries) GetDeleteRecordForUpdate(ctx context.Context, arg GetDeleteRecordForUpdateParams) (GetDeleteRecordForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getDeleteRecordForUpdate, arg.ID, arg.UUID)
+	var i GetDeleteRecordForUpdateRow
 	err := row.Scan(
 		&i.ID,
 		&i.UUID,
@@ -661,6 +725,8 @@ func (q *Queries) GetDeleteRecord(ctx context.Context, arg GetDeleteRecordParams
 		&i.Language,
 		&i.MetaDocRecord,
 		&i.Heads,
+		&i.Finalised,
+		&i.Purged,
 	)
 	return i, err
 }
@@ -736,7 +802,7 @@ func (q *Queries) GetDocumentData(ctx context.Context, argUuid uuid.UUID) (GetDo
 }
 
 const getDocumentForDeletion = `-- name: GetDocumentForDeletion :one
-SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.current_version
+SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.version
 FROM delete_record AS dr
 WHERE dr.finalised IS NULL
 ORDER BY dr.created
@@ -745,11 +811,11 @@ LIMIT 1
 `
 
 type GetDocumentForDeletionRow struct {
-	ID             int64
-	UUID           uuid.UUID
-	Heads          []byte
-	Acl            []byte
-	CurrentVersion pgtype.Int8
+	ID      int64
+	UUID    uuid.UUID
+	Heads   []byte
+	Acl     []byte
+	Version int64
 }
 
 func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDeletionRow, error) {
@@ -760,7 +826,7 @@ func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDel
 		&i.UUID,
 		&i.Heads,
 		&i.Acl,
-		&i.CurrentVersion,
+		&i.Version,
 	)
 	return i, err
 }
@@ -1033,7 +1099,7 @@ const getDocumentVersionForArchiving = `-- name: GetDocumentVersionForArchiving 
 SELECT
         v.uuid, v.version, v.created, v.creator_uri, v.meta, v.document_data,
         p.signature AS parent_signature, d.main_doc, d.uri, d.type,
-        (v.document_data->>'language')::text AS language
+        v.language AS language
 FROM document_version AS v
      LEFT JOIN document_version AS p
           ON p.uuid = v.uuid AND p.version = v.version-1
@@ -1057,7 +1123,7 @@ type GetDocumentVersionForArchivingRow struct {
 	MainDoc         pgtype.UUID
 	URI             string
 	Type            string
-	Language        string
+	Language        pgtype.Text
 }
 
 func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context) (GetDocumentVersionForArchivingRow, error) {
@@ -1310,6 +1376,36 @@ func (q *Queries) GetFullVersion(ctx context.Context, arg GetFullVersionParams) 
 	return i, err
 }
 
+const getInvalidRestoreRequests = `-- name: GetInvalidRestoreRequests :many
+SELECT r.id
+FROM restore_request AS r
+     INNER JOIN delete_record AS dr
+           ON dr.id = r.delete_record_id
+WHERE r.finished IS NULL AND dr.purged IS NOT NULL
+ORDER BY r.id ASC
+FOR UPDATE SKIP LOCKED
+`
+
+func (q *Queries) GetInvalidRestoreRequests(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.Query(ctx, getInvalidRestoreRequests)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getJobLock = `-- name: GetJobLock :one
 SELECT holder, touched, iteration
 FROM job_lock
@@ -1495,6 +1591,38 @@ func (q *Queries) GetMultipleStatusHeads(ctx context.Context, arg GetMultipleSta
 	return items, nil
 }
 
+const getNextPurgeRequest = `-- name: GetNextPurgeRequest :one
+SELECT p.id, p.uuid, p.delete_record_id, p.created
+FROM purge_request AS p
+     INNER JOIN delete_record AS dr
+           ON dr.id = p.delete_record_id
+WHERE p.finished IS NULL
+      AND dr.purged IS NULL
+      AND dr.finalised IS NOT NULL
+ORDER BY p.id ASC
+FOR UPDATE SKIP LOCKED
+LIMIT 1
+`
+
+type GetNextPurgeRequestRow struct {
+	ID             int64
+	UUID           uuid.UUID
+	DeleteRecordID int64
+	Created        pgtype.Timestamptz
+}
+
+func (q *Queries) GetNextPurgeRequest(ctx context.Context) (GetNextPurgeRequestRow, error) {
+	row := q.db.QueryRow(ctx, getNextPurgeRequest)
+	var i GetNextPurgeRequestRow
+	err := row.Scan(
+		&i.ID,
+		&i.UUID,
+		&i.DeleteRecordID,
+		&i.Created,
+	)
+	return i, err
+}
+
 const getNextReportDueTime = `-- name: GetNextReportDueTime :one
 SELECT MIN(next_execution)::timestamptz
 FROM report
@@ -1509,10 +1637,12 @@ func (q *Queries) GetNextReportDueTime(ctx context.Context) (pgtype.Timestamptz,
 }
 
 const getNextRestoreRequest = `-- name: GetNextRestoreRequest :one
-SELECT id, uuid, delete_record_id, created, creator, spec
-FROM restore_request
-WHERE finished IS NULL
-ORDER BY id ASC
+SELECT r.id, r.uuid, r.delete_record_id, r.created, r.creator, r.spec
+FROM restore_request AS r
+     INNER JOIN delete_record AS dr
+           ON dr.id = r.delete_record_id
+WHERE r.finished IS NULL AND dr.purged IS NULL
+ORDER BY r.id ASC
 FOR UPDATE SKIP LOCKED
 LIMIT 1
 `
@@ -2035,27 +2165,26 @@ func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEnt
 const insertDeleteRecord = `-- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads, acl, current_version
+       main_doc, language, meta_doc_record, heads, acl
 ) VALUES(
        $1, $2, $3, $4, $5, $6, $7,
-       $8, $9, $10, $11, $12, $13
+       $8, $9, $10, $11, $12
 ) RETURNING id
 `
 
 type InsertDeleteRecordParams struct {
-	UUID           uuid.UUID
-	URI            string
-	Type           string
-	Version        int64
-	Created        pgtype.Timestamptz
-	CreatorUri     string
-	Meta           []byte
-	MainDoc        pgtype.UUID
-	Language       pgtype.Text
-	MetaDocRecord  pgtype.Int8
-	Heads          []byte
-	Acl            []byte
-	CurrentVersion pgtype.Int8
+	UUID          uuid.UUID
+	URI           string
+	Type          string
+	Version       int64
+	Created       pgtype.Timestamptz
+	CreatorUri    string
+	Meta          []byte
+	MainDoc       pgtype.UUID
+	Language      pgtype.Text
+	MetaDocRecord pgtype.Int8
+	Heads         []byte
+	Acl           []byte
 }
 
 func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecordParams) (int64, error) {
@@ -2072,7 +2201,6 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 		arg.MetaDocRecord,
 		arg.Heads,
 		arg.Acl,
-		arg.CurrentVersion,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -2269,6 +2397,31 @@ func (q *Queries) InsertJobLock(ctx context.Context, arg InsertJobLockParams) (i
 	return iteration, err
 }
 
+const insertPurgeRequest = `-- name: InsertPurgeRequest :exec
+INSERT INTO purge_request(
+       uuid, delete_record_id, created, creator
+) VALUES(
+       $1, $2, $3, $4
+)
+`
+
+type InsertPurgeRequestParams struct {
+	UUID           uuid.UUID
+	DeleteRecordID int64
+	Created        pgtype.Timestamptz
+	Creator        string
+}
+
+func (q *Queries) InsertPurgeRequest(ctx context.Context, arg InsertPurgeRequestParams) error {
+	_, err := q.db.Exec(ctx, insertPurgeRequest,
+		arg.UUID,
+		arg.DeleteRecordID,
+		arg.Created,
+		arg.Creator,
+	)
+	return err
+}
+
 const insertRestoreRequest = `-- name: InsertRestoreRequest :exec
 INSERT INTO restore_request(
        uuid, delete_record_id, created, creator, spec
@@ -2312,7 +2465,7 @@ func (q *Queries) InsertSigningKey(ctx context.Context, arg InsertSigningKeyPara
 
 const listDeleteRecords = `-- name: ListDeleteRecords :many
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record
+       main_doc, language, meta_doc_record, finalised, purged
 FROM delete_record AS r
 WHERE ($1::uuid IS NULL OR r.uuid = $1)
       AND ($2::bigint = 0 OR r.id < $2)
@@ -2338,6 +2491,8 @@ type ListDeleteRecordsRow struct {
 	MainDoc       pgtype.UUID
 	Language      pgtype.Text
 	MetaDocRecord pgtype.Int8
+	Finalised     pgtype.Timestamptz
+	Purged        pgtype.Timestamptz
 }
 
 func (q *Queries) ListDeleteRecords(ctx context.Context, arg ListDeleteRecordsParams) ([]ListDeleteRecordsRow, error) {
@@ -2361,6 +2516,8 @@ func (q *Queries) ListDeleteRecords(ctx context.Context, arg ListDeleteRecordsPa
 			&i.MainDoc,
 			&i.Language,
 			&i.MetaDocRecord,
+			&i.Finalised,
+			&i.Purged,
 		); err != nil {
 			return nil, err
 		}
@@ -2438,6 +2595,24 @@ func (q *Queries) PingJobLock(ctx context.Context, arg PingJobLockParams) (int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const purgeDeleteRecordDetails = `-- name: PurgeDeleteRecordDetails :exec
+UPDATE delete_record SET
+       meta = NULL, acl = NULL, heads = NULL, version = 0,
+       language = NULL, 
+       purged = $1
+WHERE id = $2
+`
+
+type PurgeDeleteRecordDetailsParams struct {
+	PurgedTime pgtype.Timestamptz
+	ID         int64
+}
+
+func (q *Queries) PurgeDeleteRecordDetails(ctx context.Context, arg PurgeDeleteRecordDetailsParams) error {
+	_, err := q.db.Exec(ctx, purgeDeleteRecordDetails, arg.PurgedTime, arg.ID)
+	return err
 }
 
 const readForRestore = `-- name: ReadForRestore :one

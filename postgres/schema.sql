@@ -174,12 +174,11 @@ CREATE TABLE public.delete_record (
     meta jsonb,
     main_doc uuid,
     language text,
-    acls jsonb,
     meta_doc_record bigint,
     finalised timestamp with time zone,
     acl jsonb,
     heads jsonb,
-    current_version bigint
+    purged timestamp with time zone
 );
 
 
@@ -463,6 +462,34 @@ CREATE TABLE public.planning_item (
     end_date date NOT NULL,
     priority smallint,
     event uuid
+);
+
+
+--
+-- Name: purge_request; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.purge_request (
+    id bigint NOT NULL,
+    uuid uuid NOT NULL,
+    delete_record_id bigint NOT NULL,
+    created timestamp with time zone NOT NULL,
+    creator text NOT NULL,
+    finished timestamp with time zone
+);
+
+
+--
+-- Name: purge_request_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.purge_request ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.purge_request_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
 );
 
 
@@ -782,6 +809,14 @@ ALTER TABLE ONLY public.planning_item
 
 
 --
+-- Name: purge_request purge_request_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purge_request
+    ADD CONSTRAINT purge_request_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: report report_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -873,6 +908,13 @@ CREATE INDEX document_version_archived ON public.document_version USING btree (c
 
 
 --
+-- Name: pending_purges; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX pending_purges ON public.purge_request USING btree (delete_record_id) WHERE (finished IS NULL);
+
+
+--
 -- Name: planning_assignee_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -915,10 +957,17 @@ CREATE INDEX planning_item_event_idx ON public.planning_item USING btree (event)
 
 
 --
+-- Name: purges_to_perform; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX purges_to_perform ON public.purge_request USING btree (id) WHERE (finished IS NULL);
+
+
+--
 -- Name: restores_to_perform; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX restores_to_perform ON public.restore_request USING btree (created) WHERE (finished IS NULL);
+CREATE INDEX restores_to_perform ON public.restore_request USING btree (id) WHERE (finished IS NULL);
 
 
 --
@@ -1047,6 +1096,14 @@ ALTER TABLE ONLY public.planning_deliverable
 
 ALTER TABLE ONLY public.planning_item
     ADD CONSTRAINT planning_item_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: purge_request purge_request_delete_record_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purge_request
+    ADD CONSTRAINT purge_request_delete_record_id_fkey FOREIGN KEY (delete_record_id) REFERENCES public.delete_record(id) ON DELETE RESTRICT;
 
 
 --

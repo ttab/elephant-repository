@@ -1,0 +1,40 @@
+[
+  {
+    "id": 1,
+    "event": "document",
+    "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
+    "timestamp": "2024-01-01T00:00:01Z",
+    "version": 1,
+    "updater_uri": "user://test/testpurge",
+    "type": "core/article",
+    "language": "en"
+  },
+  {
+    "id": 2,
+    "event": "acl",
+    "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
+    "timestamp": "2024-01-01T00:00:02Z",
+    "acl": [
+      {
+        "uri": "user://test/testpurge",
+        "permissions": [
+          "r",
+          "w"
+        ]
+      }
+    ],
+    "updater_uri": "user://test/testpurge",
+    "type": "core/article",
+    "language": "en"
+  },
+  {
+    "id": 3,
+    "event": "delete_document",
+    "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
+    "timestamp": "2024-01-01T00:00:03Z",
+    "version": 1,
+    "updater_uri": "user://test/testpurge",
+    "type": "core/article",
+    "language": "en"
+  }
+]

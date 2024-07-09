@@ -51,6 +51,7 @@ const (
 	ScopeDocumentRead         = "doc_read"
 	ScopeDocumentDelete       = "doc_delete"
 	ScopeDocumentRestore      = "doc_restore"
+	ScopeDocumentPurge        = "doc_purge"
 	ScopeDocumentWrite        = "doc_write"
 	ScopeMetaDocumentWriteAll = "meta_doc_write_all"
 	ScopeDocumentImport       = "doc_import"

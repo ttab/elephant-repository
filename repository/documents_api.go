@@ -655,6 +655,7 @@ func (a *DocumentsService) ListDeleted(
 	_, err := RequireAnyScope(ctx,
 		ScopeDocumentRestore,
 		ScopeDocumentAdmin,
+		ScopeDocumentPurge,
 	)
 	if err != nil {
 		return nil, err
@@ -707,7 +708,7 @@ func (a *DocumentsService) ListDeleted(
 	}
 
 	for i, d := range deleted {
-		res.Deletes[i] = &repository.DeleteRecord{
+		r := repository.DeleteRecord{
 			Id:       d.ID,
 			Uuid:     d.UUID.String(),
 			Uri:      d.URI,
@@ -718,6 +719,16 @@ func (a *DocumentsService) ListDeleted(
 			Creator:  d.Creator,
 			Meta:     d.Meta,
 		}
+
+		if d.Finalised != nil {
+			r.Finalised = d.Finalised.Format(time.RFC3339)
+		}
+
+		if d.Purged != nil {
+			r.Purged = d.Purged.Format(time.RFC3339)
+		}
+
+		res.Deletes[i] = &r
 	}
 
 	return &res, nil
@@ -765,6 +776,8 @@ func (a *DocumentsService) Restore(
 		return nil, twirp.AlreadyExists.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
 		return nil, twirp.FailedPrecondition.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
+		return nil, twirp.InvalidArgument.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeNotFound):
 		return nil, twirp.NotFoundError(err.Error())
 	case err != nil:
@@ -773,6 +786,49 @@ func (a *DocumentsService) Restore(
 	}
 
 	return &repository.RestoreResponse{}, nil
+}
+
+// Purge implements repository.Documents.
+func (a *DocumentsService) Purge(
+	ctx context.Context, req *repository.PurgeRequest,
+) (*repository.PurgeResponse, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentPurge,
+		ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Uuid == "" {
+		return nil, twirp.RequiredArgumentError("uuid")
+	}
+
+	if req.DeleteRecordId == 0 {
+		return nil, twirp.RequiredArgumentError("delete_record_id")
+	}
+
+	docUUID, err := uuid.Parse(req.Uuid)
+	if err != nil {
+		return nil, twirp.InvalidArgumentError(
+			"uuid", err.Error())
+	}
+
+	err = a.store.PurgeDocument(ctx,
+		docUUID, req.DeleteRecordId,
+		auth.Claims.Subject)
+
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
+		return nil, twirp.FailedPrecondition.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeNotFound):
+		return nil, twirp.NotFoundError(err.Error())
+	case err != nil:
+		return nil, twirp.InternalErrorf(
+			"failed to start purge process: %v", err)
+	}
+
+	return &repository.PurgeResponse{}, nil
 }
 
 // Get implements repository.Documents.

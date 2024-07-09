@@ -127,6 +127,13 @@ WHERE uuid = @uuid;
 UPDATE document SET system_state = NULL
 WHERE uuid = @uuid AND NOT system_state IS NULL;
 
+-- name: CheckForPendingPurge :one
+SELECT EXISTS (
+       SELECT 1 FROM purge_request
+       WHERE delete_record_id = @delete_record_id
+       AND finished IS NULL
+);
+
 -- name: InsertRestoreRequest :exec
 INSERT INTO restore_request(
        uuid, delete_record_id, created, creator, spec
@@ -135,15 +142,75 @@ INSERT INTO restore_request(
 );
 
 -- name: GetNextRestoreRequest :one
-SELECT id, uuid, delete_record_id, created, creator, spec
-FROM restore_request
-WHERE finished IS NULL
-ORDER BY id ASC
+SELECT r.id, r.uuid, r.delete_record_id, r.created, r.creator, r.spec
+FROM restore_request AS r
+     INNER JOIN delete_record AS dr
+           ON dr.id = r.delete_record_id
+WHERE r.finished IS NULL AND dr.purged IS NULL
+ORDER BY r.id ASC
 FOR UPDATE SKIP LOCKED
 LIMIT 1;
 
+-- name: GetInvalidRestoreRequests :many
+SELECT r.id
+FROM restore_request AS r
+     INNER JOIN delete_record AS dr
+           ON dr.id = r.delete_record_id
+WHERE r.finished IS NULL AND dr.purged IS NOT NULL
+ORDER BY r.id ASC
+FOR UPDATE SKIP LOCKED;
+
+-- name: DropInvalidRestoreRequests :exec
+DELETE FROM restore_request AS rr
+WHERE rr.finished IS NULL
+AND rr.delete_record_id = ANY(
+    SELECT dr.id FROM delete_record AS dr
+    WHERE dr.id = rr.delete_record_id
+    AND dr.purged IS NOT NULL
+);
+
 -- name: FinishRestoreRequest :exec
 UPDATE restore_request
+SET finished = @finished
+WHERE id = @id;
+
+-- name: InsertPurgeRequest :exec
+INSERT INTO purge_request(
+       uuid, delete_record_id, created, creator
+) VALUES(
+       @uuid, @delete_record_id, @created, @creator
+);
+
+-- name: GetNextPurgeRequest :one
+SELECT p.id, p.uuid, p.delete_record_id, p.created
+FROM purge_request AS p
+     INNER JOIN delete_record AS dr
+           ON dr.id = p.delete_record_id
+WHERE p.finished IS NULL
+      AND dr.purged IS NULL
+      AND dr.finalised IS NOT NULL
+ORDER BY p.id ASC
+FOR UPDATE SKIP LOCKED
+LIMIT 1;
+
+-- name: DropRedundantPurgeRequests :exec
+DELETE FROM purge_request AS pr
+WHERE pr.finished IS NULL
+AND pr.delete_record_id = ANY(
+    SELECT dr.id FROM delete_record AS dr
+    WHERE dr.id = pr.delete_record_id
+    AND dr.purged IS NOT NULL
+);
+
+-- name: PurgeDeleteRecordDetails :exec
+UPDATE delete_record SET
+       meta = NULL, acl = NULL, heads = NULL, version = 0,
+       language = NULL, 
+       purged = @purged_time
+WHERE id = @id;
+
+-- name: FinishPurgeRequest :exec
+UPDATE purge_request
 SET finished = @finished
 WHERE id = @id;
 
@@ -239,26 +306,27 @@ insert into document(
 -- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads, acl, current_version
+       main_doc, language, meta_doc_record, heads, acl
 ) VALUES(
        @uuid, @uri, @type, @version, @created, @creator_uri, @meta,
-       @main_doc, @language, @meta_doc_record, @heads, @acl, @current_version
+       @main_doc, @language, @meta_doc_record, @heads, @acl
 ) RETURNING id;
 
 -- name: ListDeleteRecords :many
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record
+       main_doc, language, meta_doc_record, finalised, purged
 FROM delete_record AS r
 WHERE (sqlc.narg('uuid')::uuid IS NULL OR r.uuid = @uuid)
       AND (@before_id::bigint = 0 OR r.id < @before_id)
       AND (sqlc.narg('before_time')::timestamptz IS NULL OR r.created < @before_time)
 ORDER BY r.id DESC;
 
--- name: GetDeleteRecord :one
+-- name: GetDeleteRecordForUpdate :one
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads
+       main_doc, language, meta_doc_record, heads, finalised, purged
 FROM delete_record
-WHERE id = @id AND uuid = @uuid;
+WHERE id = @id AND uuid = @uuid
+FOR UPDATE;
 
 -- name: GetVersionLanguage :one
 SELECT language FROM document_version
@@ -303,7 +371,7 @@ FOR UPDATE OF v SKIP LOCKED
 LIMIT 1;
 
 -- name: GetDocumentForDeletion :one
-SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.current_version
+SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.version
 FROM delete_record AS dr
 WHERE dr.finalised IS NULL
 ORDER BY dr.created
