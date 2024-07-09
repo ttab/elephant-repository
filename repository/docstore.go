@@ -38,6 +38,10 @@ type DocStore interface {
 		ctx context.Context, docUUID uuid.UUID, deleteRecordID int64,
 		creator string, acl []ACLEntry,
 	) error
+	PurgeDocument(
+		ctx context.Context, docUUID uuid.UUID, deleteRecordID int64,
+		creator string,
+	) error
 	CheckPermissions(
 		ctx context.Context, req CheckPermissionRequest,
 	) (CheckPermissionResult, error)
@@ -270,6 +274,8 @@ type DeleteRecord struct {
 	Creator      string
 	Meta         newsdoc.DataMap
 	MainDocument *uuid.UUID
+	Finalised    *time.Time
+	Purged       *time.Time
 }
 
 type DocumentMeta struct {

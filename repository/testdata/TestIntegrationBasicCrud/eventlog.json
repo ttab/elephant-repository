@@ -45,7 +45,8 @@
       "timestamp": "2023-04-19T08:45:40+02:00",
       "updater_uri": "user://test/testintegrationbasiccrud",
       "type": "core/article",
-      "language": "en"
+      "language": "en",
+      "version": 2
     }
   ]
 }

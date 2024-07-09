@@ -387,7 +387,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 	if metaInfo != nil {
 		mdr, err := s.insertDeleteRecord(
 			ctx, q, req.Updated, req.Updater,
-			metaUUID, metaInfo.Info.CurrentVersion, metaInfo,
+			metaUUID, metaInfo,
 			metaJSON, 0, nil,
 		)
 		if err != nil {
@@ -405,7 +405,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 
 	_, err = s.insertDeleteRecord(
 		ctx, q, req.Updated, req.Updater,
-		req.UUID, mainInfo.Info.CurrentVersion, mainInfo,
+		req.UUID, mainInfo,
 		metaJSON, metaDocRecord, acl,
 	)
 	if err != nil {
@@ -424,7 +424,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 func (s *PGDocStore) insertDeleteRecord(
 	ctx context.Context, q *postgres.Queries,
 	updated time.Time, updater string,
-	id uuid.UUID, currentVersion int64,
+	id uuid.UUID,
 	pf *UpdatePrefligthInfo,
 	metaJSON []byte,
 	metaDocRecord int64,
@@ -465,10 +465,6 @@ func (s *PGDocStore) insertDeleteRecord(
 			Language:      pg.Text(pf.Language),
 			Heads:         headsData,
 			Acl:           aclData,
-			CurrentVersion: pgtype.Int8{
-				Int64: currentVersion,
-				Valid: true,
-			},
 		})
 	if err != nil {
 		return 0, fmt.Errorf("create delete record: %w", err)
@@ -516,15 +512,31 @@ func (s *PGDocStore) RestoreDocument(
 
 	q := postgres.New(tx)
 
-	record, err := q.GetDeleteRecord(ctx, postgres.GetDeleteRecordParams{
-		ID:   deleteRecordID,
-		UUID: docUUID,
-	})
+	record, err := q.GetDeleteRecordForUpdate(ctx,
+		postgres.GetDeleteRecordForUpdateParams{
+			ID:   deleteRecordID,
+			UUID: docUUID,
+		})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DocStoreErrorf(ErrCodeNotFound,
 			"delete record doesn't exist")
 	} else if err != nil {
 		return fmt.Errorf("read delete record: %w", err)
+	}
+
+	if record.Purged.Valid {
+		return DocStoreErrorf(ErrCodeBadRequest,
+			"delete record has been purged")
+	}
+
+	pendingPurge, err := q.CheckForPendingPurge(ctx, deleteRecordID)
+	if err != nil {
+		return fmt.Errorf("check for pending purges: %w", err)
+	}
+
+	if pendingPurge {
+		return DocStoreErrorf(ErrCodeBadRequest,
+			"delete record has been queued for purging")
 	}
 
 	state, err := q.ReadForRestore(ctx, docUUID)
@@ -581,6 +593,66 @@ func (s *PGDocStore) RestoreDocument(
 	return nil
 }
 
+func (s *PGDocStore) PurgeDocument(
+	ctx context.Context, docUUID uuid.UUID, deleteRecordID int64,
+	creator string,
+) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+
+	// We defer a rollback, rollback after commit won't be treated as an
+	// error.
+	defer pg.SafeRollback(ctx, s.logger, tx, "document restore")
+
+	q := postgres.New(tx)
+
+	record, err := q.GetDeleteRecordForUpdate(ctx,
+		postgres.GetDeleteRecordForUpdateParams{
+			ID:   deleteRecordID,
+			UUID: docUUID,
+		})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DocStoreErrorf(ErrCodeNotFound,
+			"delete record doesn't exist")
+	} else if err != nil {
+		return fmt.Errorf("read delete record: %w", err)
+	}
+
+	if record.Purged.Valid {
+		// Treat this as ok, the end goal has been achieved after all.
+		return nil
+	}
+
+	pendingPurge, err := q.CheckForPendingPurge(ctx, deleteRecordID)
+	if err != nil {
+		return fmt.Errorf("check for pending purges: %w", err)
+	}
+
+	if pendingPurge {
+		// Likewise ok.
+		return nil
+	}
+
+	err = q.InsertPurgeRequest(ctx, postgres.InsertPurgeRequestParams{
+		UUID:           docUUID,
+		DeleteRecordID: deleteRecordID,
+		Created:        pg.Time(time.Now()),
+		Creator:        creator,
+	})
+	if err != nil {
+		return fmt.Errorf("insert purge request: %w", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("commit restore: %w", err)
+	}
+
+	return nil
+}
+
 func (s *PGDocStore) ListDeleteRecords(
 	ctx context.Context, docUUID *uuid.UUID,
 	beforeID int64, beforeTime *time.Time,
@@ -614,11 +686,23 @@ func (s *PGDocStore) ListDeleteRecords(
 			}
 		}
 
-		var mainDoc *uuid.UUID
+		var (
+			mainDoc   *uuid.UUID
+			finalised *time.Time
+			purged    *time.Time
+		)
 
 		if row.MainDoc.Valid {
 			var id uuid.UUID = row.MainDoc.Bytes
 			mainDoc = &id
+		}
+
+		if row.Finalised.Valid {
+			finalised = &row.Finalised.Time
+		}
+
+		if row.Purged.Valid {
+			purged = &row.Purged.Time
 		}
 
 		res[i] = DeleteRecord{
@@ -632,6 +716,8 @@ func (s *PGDocStore) ListDeleteRecords(
 			Creator:      row.CreatorUri,
 			Meta:         meta,
 			MainDocument: mainDoc,
+			Finalised:    finalised,
+			Purged:       purged,
 		}
 	}
 

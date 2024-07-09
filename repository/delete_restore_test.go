@@ -22,7 +22,7 @@ func TestDeleteRestore(t *testing.T) {
 		t.SkipNow()
 	}
 
-	regenerate := os.Getenv("REGENERATE") == "true"
+	regenerate := regenerateTestFixtures()
 	dataDir := filepath.Join("..", "testdata", t.Name())
 
 	test.Must(t, os.MkdirAll(dataDir, 0o700),
@@ -265,7 +265,7 @@ func TestDeleteRestore(t *testing.T) {
 	if regenerate {
 		pureGold := make([]*repository.EventlogItem, len(events))
 
-		start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+		it := newIncrementalTime()
 
 		// Avoid git diff noise in the golden file when
 		// regenerating. The time will be ignored in the diff test, but
@@ -273,9 +273,8 @@ func TestDeleteRestore(t *testing.T) {
 		for i := range events {
 			e := test.CloneMessage(events[i])
 
-			e.Timestamp = start.Add(
-				time.Duration(i) * time.Second,
-			).Format(time.RFC3339)
+			e.Timestamp = it.NextTimestamp(
+				t, "event timestamp", e.Timestamp)
 
 			pureGold[i] = e
 		}

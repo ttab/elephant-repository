@@ -128,6 +128,7 @@ type Archiver struct {
 	statusesArchived  *prometheus.CounterVec
 	deletesProcessed  *prometheus.CounterVec
 	restoresProcessed *prometheus.CounterVec
+	purgesProcessed   *prometheus.CounterVec
 	restarts          prometheus.Counter
 
 	cancel  func()
@@ -183,6 +184,17 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
 
+	purgesProcessed := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "elephant_archiver_purges_total",
+			Help: "Number of document purges processed.",
+		},
+		[]string{"status"},
+	)
+	if err := opts.MetricsRegisterer.Register(purgesProcessed); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
 	restarts := prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "elephant_archiver_restarts_total",
@@ -202,6 +214,7 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		statusesArchived:  statusesArchived,
 		deletesProcessed:  deletesProcessed,
 		restoresProcessed: restoresProcessed,
+		purgesProcessed:   purgesProcessed,
 		restarts:          restarts,
 	}
 
@@ -342,11 +355,12 @@ func (a *Archiver) loop(ctx context.Context) error {
 			return err
 		}
 
-		// TODO: Archive ACLs? No, I don't think that it's worth it. We
-		// should probably make double sure that (actual) ACL changes
-		// get logged properly though. Deleted documents should be
-		// restored with an ACL that's specified at restore time, or the
-		// last ACL the document had before being deleted.
+		err = runWithDelay(
+			"process document purges", now,
+			a.purgesProcessed, a.processPurges)
+		if err != nil {
+			return err
+		}
 
 		next := now.Add(1 * time.Second)
 
@@ -453,7 +467,7 @@ func (a *Archiver) processDeletes(
 
 	manifest := DeleteManifest{
 		Archived:    time.Now(),
-		LastVersion: deleteOrder.CurrentVersion.Int64,
+		LastVersion: deleteOrder.Version,
 	}
 
 	err = json.Unmarshal(deleteOrder.Acl, &manifest.ACL)
@@ -588,6 +602,12 @@ func (a *Archiver) processRestores(
 		"document restores")
 
 	q := postgres.New(tx)
+
+	// Drop restore requests whose delete record has been purged.
+	err = q.DropInvalidRestoreRequests(ctx)
+	if err != nil {
+		return false, fmt.Errorf("")
+	}
 
 	req, err := q.GetNextRestoreRequest(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -933,6 +953,104 @@ func (a *Archiver) restoreDocumentStatus(
 	return sig, nil
 }
 
+func (a *Archiver) processPurges(
+	ctx context.Context,
+) (bool, error) {
+	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin transaction: %w", err)
+	}
+
+	defer pg.SafeRollback(ctx, a.logger, tx,
+		"document purges")
+
+	q := postgres.New(tx)
+
+	// Drop purge requests whose delete record has already been purged.
+	err = q.DropRedundantPurgeRequests(ctx)
+	if err != nil {
+		return false, fmt.Errorf("drop redundant purge requests: %w", err)
+	}
+
+	req, err := q.GetNextPurgeRequest(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("get next purge request: %w", err)
+	}
+
+	prefix := fmt.Sprintf("deleted/%s/%019d/",
+		req.UUID, req.DeleteRecordID)
+
+	paginator := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
+		Bucket: aws.String(a.bucket),
+		Prefix: aws.String(prefix),
+		// 1000 is the default, but I want this to be explicitly
+		// enforced as the limit for DeleteObjects is 1000. If the
+		// object pagination default changed that could break the delete
+		// calls.
+		MaxKeys: aws.Int32(1000),
+	})
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return false, fmt.Errorf("list archived objects: %w", err)
+		}
+
+		var objects []types.ObjectIdentifier
+
+		for _, obj := range page.Contents {
+			objects = append(objects, types.ObjectIdentifier{
+				Key: aws.String(*obj.Key),
+			})
+		}
+
+		if len(objects) == 0 {
+			break
+		}
+
+		res, err := a.s3.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: &a.bucket,
+			Delete: &types.Delete{Objects: objects},
+		})
+		if err != nil {
+			return false, fmt.Errorf("delete objects: %w", err)
+		}
+
+		if len(res.Errors) > 0 {
+			return false, fmt.Errorf(
+				"%d objects failed to delete", len(res.Errors))
+		}
+	}
+
+	purgedTime := time.Now()
+
+	err = q.PurgeDeleteRecordDetails(ctx,
+		postgres.PurgeDeleteRecordDetailsParams{
+			ID:         req.DeleteRecordID,
+			PurgedTime: pg.Time(purgedTime),
+		})
+	if err != nil {
+		return false, fmt.Errorf("purge delete record details: %w", err)
+	}
+
+	err = q.FinishPurgeRequest(ctx, postgres.FinishPurgeRequestParams{
+		ID:       req.DeleteRecordID,
+		Finished: pg.Time(purgedTime),
+	})
+	if err != nil {
+		return false, fmt.Errorf("mark purge request as finished: %w", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return false, fmt.Errorf("commit purge: %w", err)
+	}
+
+	return true, nil
+}
+
 func (a *Archiver) moveDeletedObject(
 	ctx context.Context, key string, dstKey string,
 ) error {
@@ -1014,7 +1132,7 @@ func (a *Archiver) archiveDocumentVersions(
 		UUID:            unarchived.UUID,
 		URI:             unarchived.URI,
 		Type:            unarchived.Type,
-		Language:        unarchived.Language,
+		Language:        unarchived.Language.String,
 		Version:         unarchived.Version,
 		Created:         unarchived.Created.Time,
 		CreatorURI:      unarchived.CreatorUri,

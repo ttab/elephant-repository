@@ -42,6 +42,7 @@
     "event": "delete_document",
     "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
     "timestamp": "2024-01-01T00:00:03Z",
+    "version": 2,
     "updater_uri": "user://test/testdeleterestore",
     "type": "core/article",
     "language": "en"
@@ -114,6 +115,7 @@
     "event": "delete_document",
     "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
     "timestamp": "2024-01-01T00:00:09Z",
+    "version": 2,
     "updater_uri": "user://test/testdeleterestore",
     "type": "core/article",
     "language": "en-gb"

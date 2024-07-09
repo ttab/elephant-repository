@@ -1,0 +1,10 @@
+{
+  "id": 1,
+  "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
+  "uri": "article://test/abc",
+  "type": "core/article",
+  "created": "2024-01-01T00:00:01Z",
+  "creator": "user://test/testpurge",
+  "finalised": "2024-01-01T00:00:02Z",
+  "purged": "2024-01-01T00:00:03Z"
+}
