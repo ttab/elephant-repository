@@ -48,7 +48,7 @@ func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
 		AllowInsecureLocalhost: true,
 		Hosts:                  []string{"localhost", "tt.se"},
 		AllowedMethods:         []string{"GET", "POST"},
-		AllowedHeaders:         []string{"Authorization", "Content-Type"},
+		AllowedHeaders:         []string{"Authorization", "Content-Type", "Last-Event-ID"},
 	}, handler)
 
 	server := http.Server{
