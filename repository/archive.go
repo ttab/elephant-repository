@@ -503,7 +503,7 @@ func (a *Archiver) processDeletes(
 
 	if count != 1 {
 		return false, errors.New(
-			"no match for document delete, database might be inconsisten")
+			"no match for document delete, database might be inconsistent")
 	}
 
 	err = q.FinaliseDeleteRecord(ctx, postgres.FinaliseDeleteRecordParams{
