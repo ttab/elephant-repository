@@ -8,6 +8,7 @@ import (
 
 	"github.com/adhocore/gronx"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-repository/internal"
 	"github.com/twitchtv/twirp"
 )
 
@@ -375,7 +376,8 @@ func int32SliceToInt(s []int32) []int {
 	return res
 }
 
-// Converts an int slice to int32, normalises zero length slices to nil.
+// Converts an int slice to int32, normalises zero length slices to nil. Panics
+// if any of the integers overflow a int32.
 func intSliceToInt32(s []int) []int32 {
 	if len(s) == 0 {
 		return nil
@@ -384,7 +386,7 @@ func intSliceToInt32(s []int) []int32 {
 	res := make([]int32, len(s))
 
 	for i := range s {
-		res[i] = int32(s[i])
+		res[i] = internal.MustInt32(s[i])
 	}
 
 	return res

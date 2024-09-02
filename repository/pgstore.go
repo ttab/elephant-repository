@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/ttab/elephant-repository/internal"
 	"github.com/ttab/elephant-repository/planning"
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
@@ -968,10 +969,15 @@ func (s *PGDocStore) GetVersionHistory(
 	ctx context.Context, uuid uuid.UUID,
 	before int64, count int,
 ) ([]DocumentUpdate, error) {
+	if count > VersionHistoryMaxCount {
+		return nil, fmt.Errorf("count cannot be greater than %d",
+			VersionHistoryMaxCount)
+	}
+
 	history, err := s.reader.GetVersions(ctx, postgres.GetVersionsParams{
 		UUID:   uuid,
 		Before: before,
-		Count:  int32(count),
+		Count:  internal.MustInt32(count),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch version history: %w", err)
@@ -1005,11 +1011,16 @@ func (s *PGDocStore) GetStatusHistory(
 	ctx context.Context, uuid uuid.UUID,
 	name string, before int64, count int,
 ) ([]Status, error) {
+	if count > StatusHistoryMaxCount {
+		return nil, fmt.Errorf("count cannot be greater than %d",
+			StatusHistoryMaxCount)
+	}
+
 	history, err := s.reader.GetStatusVersions(ctx, postgres.GetStatusVersionsParams{
 		UUID:   uuid,
 		Name:   name,
 		Before: before,
-		Count:  int32(count),
+		Count:  internal.MustInt32(count),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch status history: %w", err)

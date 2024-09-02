@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	rpcdoc "github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-repository/internal"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/langos"
 	"github.com/ttab/newsdoc"
@@ -403,8 +404,8 @@ func (a *DocumentsService) Eventlog(
 
 	if limit == 0 && after < 0 {
 		// Default limit to abs(after) when after is negative. Don't
-		// exceed the normal default though.
-		limit = int32(min(defaultEventlogBatchSize, -after))
+		// exceed the normal default though (so, no overflow gosec...)
+		limit = internal.MustInt32(min(defaultEventlogBatchSize, -after))
 	} else if limit == 0 {
 		limit = defaultEventlogBatchSize
 	}
@@ -476,7 +477,12 @@ func (a *DocumentsService) eventlogWaitLoop(
 		case <-newEvent:
 		}
 
-		evts, err := a.store.GetEventlog(ctx, after, limit-int32(len(res.Items)))
+		evts, err := a.store.GetEventlog(
+			ctx, after,
+			// Limited in practice by maxEventlogBatchSize, so no
+			// integer overflow.
+			limit-internal.MustInt32(len(res.Items)),
+		)
 		if err != nil {
 			return nil, twirp.InternalErrorf(
 				"failed to fetch events from store: %w", err)

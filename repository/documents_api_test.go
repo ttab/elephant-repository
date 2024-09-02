@@ -21,6 +21,7 @@ import (
 	"github.com/tmaxmax/go-sse"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-repository/internal"
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
@@ -194,7 +195,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	events, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
 		// One more event than we expect, so that we catch the
 		// unexpected.
-		BatchSize:   int32(len(golden.Items)) + 1,
+		BatchSize:   internal.MustInt32(len(golden.Items)) + 1,
 		BatchWaitMs: 200,
 	})
 	test.Must(t, err, "get eventlog")
@@ -1181,7 +1182,7 @@ func TestIntegrationStatus(t *testing.T) {
 	events, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
 		// One more event than we expect, so that we catch the
 		// unexpected.
-		BatchSize:   int32(len(golden.Items)) + 1,
+		BatchSize:   internal.MustInt32(len(golden.Items)) + 1,
 		BatchWaitMs: 200,
 	})
 	test.Must(t, err, "get eventlog")
