@@ -1487,6 +1487,8 @@ func (a *DocumentsService) verifyUpdateRequest(
 	}
 
 	if req.Document != nil {
+		req.Document.Uuid = strings.ToLower(req.Document.Uuid)
+
 		if req.Document.Uuid == "" {
 			req.Document.Uuid = docUUID.String()
 		} else if req.Document.Uuid != docUUID.String() {
