@@ -1734,7 +1734,7 @@ func (s *PGDocStore) buildStatusRuleInput(
 	if d != nil && status.Version == up.Version {
 		input.Document = *d
 		input.VersionMeta = versionMeta
-	} else if d == nil {
+	} else if d == nil && input.Status.Version != -1 {
 		d, meta, err := s.loadDocument(
 			ctx, q, uuid, status.Version)
 		if errors.Is(err, pgx.ErrNoRows) {

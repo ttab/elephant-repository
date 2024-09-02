@@ -1522,10 +1522,11 @@ func (a *DocumentsService) verifyUpdateRequest(
 				"a status cannot have an empty name")
 		}
 
-		if s.Version < 0 {
+		if s.Version < -1 {
 			return twirp.InvalidArgumentError(
 				fmt.Sprintf("status.%d.version", i),
-				"cannot be negative")
+				"must be -1 or greater",
+			)
 		}
 
 		if req.Document == nil && s.Version == 0 {
