@@ -1,12 +1,12 @@
 linters:
   enable:
   - bodyclose
+  - copyloopvar
   - dogsled
   - dupl
   - errcheck
   - errorlint
   - exhaustive
-  - exportloopref
   - forbidigo
   - gci
   - gochecknoinits

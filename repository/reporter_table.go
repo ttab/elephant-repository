@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/ttab/elephant-repository/internal"
 )
 
 type TableReporter struct {
@@ -113,8 +114,9 @@ func (h *sumHelper) Add(v any) {
 	case uint32:
 		h.vI += int64(vv)
 	case uint64:
-		// TODO: Yeah, but this won't be used for that large numbers...
-		h.vI += int64(vv)
+		// Will panic on overflow, but this won't be used for that large
+		// numbers...
+		h.vI += internal.MustInt64(vv)
 	case float32:
 		h.isFloat = true
 		h.vF += float64(vv)

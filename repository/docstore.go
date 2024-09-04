@@ -11,6 +11,11 @@ import (
 	"github.com/ttab/revisor"
 )
 
+const (
+	VersionHistoryMaxCount = 50
+	StatusHistoryMaxCount  = 50
+)
+
 type DocStore interface {
 	GetDocumentMeta(
 		ctx context.Context, uuid uuid.UUID) (*DocumentMeta, error)
@@ -20,6 +25,8 @@ type DocStore interface {
 	GetVersion(
 		ctx context.Context, uuid uuid.UUID, version int64,
 	) (DocumentUpdate, error)
+	// GetVersionHistory of a document. Count cannot be greater than
+	// VersionHistoryMaxCount.
 	GetVersionHistory(
 		ctx context.Context, uuid uuid.UUID,
 		before int64, count int,
@@ -72,6 +79,8 @@ type DocStore interface {
 	OnEventlog(
 		ctx context.Context, ch chan int64,
 	)
+	// GetStatusHistory of a document. Count cannot be greater than
+	// StatusHistoryMaxCount.
 	GetStatusHistory(
 		ctx context.Context, uuid uuid.UUID,
 		name string, before int64, count int,
