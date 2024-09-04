@@ -2105,3 +2105,52 @@ func TestIntegrationStatsOverview(t *testing.T) {
 		})
 	}
 }
+
+func TestUUIDNormalisation(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunReplicator: true,
+	})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
+
+	ctx := test.Context(t)
+
+	const (
+		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI  = "article://test/123"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	// Uppercase request UUID.
+	_, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     strings.ToUpper(docUUID),
+		Document: doc,
+	})
+	test.Must(t, err, "create article, uppercase req.uuid")
+
+	doc.Uuid = strings.ToUpper(doc.Uuid)
+
+	// Uppercase doc UUID.
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.Must(t, err, "update article, uppercase doc.uuid")
+
+	// Both uppercase.
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     strings.ToUpper(docUUID),
+		Document: doc,
+	})
+	test.Must(t, err, "update article, both uppercase")
+}
