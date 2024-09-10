@@ -36,7 +36,7 @@ require (
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.4
 	github.com/xuri/excelize/v2 v2.8.1
-	golang.org/x/mod v0.20.0
+	golang.org/x/mod v0.21.0
 	golang.org/x/sync v0.8.0
 	google.golang.org/protobuf v1.34.2
 )
