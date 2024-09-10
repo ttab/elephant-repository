@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.27.32
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.31
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.33.6
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.61.1
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.61.2
 	github.com/expr-lang/expr v1.16.9
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/go-cmp v0.6.0
