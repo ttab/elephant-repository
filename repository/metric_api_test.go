@@ -99,6 +99,12 @@ func TestIntegrationMetrics(t *testing.T) {
 			Type:     "core/article",
 			Uri:      "article://test/123",
 			Language: "en",
+			Meta: []*newsdoc.Block{
+				{
+					Type:  "core/newsvalue",
+					Value: "3",
+				},
+			},
 		},
 	})
 	test.Must(t, err, "create test document")
