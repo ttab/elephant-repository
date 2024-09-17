@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "deprecation",
+  "documents": [
+    {
+      "declares": "test/deprecation",
+      "meta": [
+        {
+          "declares": {"type":"test/meta"},
+          "attributes": {
+            "value": {
+              "format": "int",
+              "optional": true
+            }
+          },
+          "data": {
+            "value": {
+              "format": "int",
+              "optional": true,
+              "deprecated": {
+                "label": "data-value",
+                "doc": "use value attribute instead"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

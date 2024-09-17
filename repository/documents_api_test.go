@@ -39,6 +39,12 @@ func baseDocument(uuid, uri string) *newsdoc.Document {
 		Type:     "core/article",
 		Uri:      uri,
 		Language: "en",
+		Meta: []*newsdoc.Block{
+			{
+				Type:  "core/newsvalue",
+				Value: "3",
+			},
+		},
 	}
 }
 
@@ -108,7 +114,8 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	doc2 := test.CloneMessage(doc)
 
 	doc2.Content = append(doc2.Content, &newsdoc.Block{
-		Type: "core/heading-1",
+		Type: "core/text",
+		Role: "heading-1",
 		Data: map[string]string{
 			"text": "The headline of the year",
 		},
@@ -1551,7 +1558,7 @@ or Heads.approved_legal.Version == Status.Version`,
 	docV2 := test.CloneMessage(doc)
 
 	docV2.Content = append(docV2.Content, &newsdoc.Block{
-		Type: "core/paragraph",
+		Type: "core/text",
 		Data: map[string]string{
 			"text": "Some sensitive stuff",
 		},

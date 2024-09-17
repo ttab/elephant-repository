@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
+	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 )
 
@@ -189,6 +191,7 @@ type testingServerOptions struct {
 	RunArchiver   bool
 	RunReplicator bool
 	SharedSecret  string
+	ExtraSchemas  []string
 }
 
 func testingAPIServer(
@@ -230,6 +233,17 @@ func testingAPIServer(
 
 	err = repository.EnsureCoreSchema(ctx, store)
 	test.Must(t, err, "ensure core schema")
+
+	for _, name := range opts.ExtraSchemas {
+		var constraints revisor.ConstraintSet
+
+		err := elephantine.UnmarshalFile(name, &constraints)
+		test.Must(t, err, "decode schema in %q", name)
+
+		err = repository.EnsureSchema(ctx, store,
+			filepath.Base(name), "v0.0.0", constraints)
+		test.Must(t, err, "register the schema %q", name)
+	}
 
 	sse, err := repository.NewSSE(ctx, logger.With(
 		elephantine.LogKeyComponent, "sse",

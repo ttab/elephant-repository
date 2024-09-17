@@ -9,7 +9,7 @@ func MustInt32[T ~int | ~int64](n T) int32 {
 		panic("value overflows int32")
 	}
 
-	return int32(n) //nolint: gosec
+	return int32(n)
 }
 
 func MustInt64(n uint64) int64 {
@@ -17,5 +17,5 @@ func MustInt64(n uint64) int64 {
 		panic("value overflows int64")
 	}
 
-	return int64(n) //nolint: gosec
+	return int64(n)
 }
