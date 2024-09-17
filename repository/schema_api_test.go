@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"log/slog"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -20,7 +21,11 @@ func TestDeprecations(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
-	tc := testingAPIServer(t, logger, testingServerOptions{})
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		ExtraSchemas: []string{
+			filepath.Join("..", "testdata", "schemas", "deprecation.json"),
+		},
+	})
 
 	client := tc.SchemasClient(t, itest.StandardClaims(t, "schema_admin"))
 
@@ -30,13 +35,13 @@ func TestDeprecations(t *testing.T) {
 
 	doc := &newsdoc.Document{
 		Uuid: "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
-		Type: "core/article",
-		Uri:  "article://test/123",
+		Type: "test/deprecation",
+		Uri:  "test://123",
 		Meta: []*newsdoc.Block{
 			{
-				Type: "core/newsvalue",
+				Type: "test/meta",
 				Data: map[string]string{
-					"score": "5",
+					"value": "2",
 				},
 			},
 		},
@@ -51,7 +56,7 @@ func TestDeprecations(t *testing.T) {
 
 	_, err = client.UpdateDeprecation(ctx, &repository.UpdateDeprecationRequest{
 		Deprecation: &repository.Deprecation{
-			Label:    "newsvalue-score",
+			Label:    "data-value",
 			Enforced: true,
 		},
 	})
@@ -62,7 +67,7 @@ func TestDeprecations(t *testing.T) {
 	test.EqualMessage(t, &repository.GetDeprecationsResponse{
 		Deprecations: []*repository.Deprecation{
 			{
-				Label:    "newsvalue-score",
+				Label:    "data-value",
 				Enforced: true,
 			},
 		},
@@ -90,7 +95,7 @@ func TestDeprecations(t *testing.T) {
 
 	_, err = client.UpdateDeprecation(ctx, &repository.UpdateDeprecationRequest{
 		Deprecation: &repository.Deprecation{
-			Label:    "newsvalue-score",
+			Label:    "data-value",
 			Enforced: false,
 		},
 	})
@@ -101,7 +106,7 @@ func TestDeprecations(t *testing.T) {
 	test.EqualMessage(t, &repository.GetDeprecationsResponse{
 		Deprecations: []*repository.Deprecation{
 			{
-				Label:    "newsvalue-score",
+				Label:    "data-value",
 				Enforced: false,
 			},
 		},
