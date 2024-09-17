@@ -1558,7 +1558,7 @@ or Heads.approved_legal.Version == Status.Version`,
 	docV2 := test.CloneMessage(doc)
 
 	docV2.Content = append(docV2.Content, &newsdoc.Block{
-		Type: "core/paragraph",
+		Type: "core/text",
 		Data: map[string]string{
 			"text": "Some sensitive stuff",
 		},
