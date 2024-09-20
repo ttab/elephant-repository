@@ -285,6 +285,11 @@ func (r *EventForwarder) enrichEvent(
 		return detail, nil
 	}
 
+	// Recognise nil statuses.
+	if detail.Event.Event == repo.TypeNewStatus && detail.Event.Version == -1 {
+		return detail, nil
+	}
+
 	docRes, err := r.documents.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:    detail.Event.UUID.String(),
 		Version: detail.Event.Version,
