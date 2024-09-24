@@ -2,19 +2,11 @@ package repository
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/julienschmidt/httprouter"
-	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-repository/internal"
 	"github.com/ttab/elephantine"
@@ -167,33 +159,6 @@ func WithReportsAPI(
 	}
 }
 
-func WithJWKSEndpoint(jwtKey *ecdsa.PrivateKey) RouterOption {
-	return func(router *httprouter.Router) error {
-		key := jwk.NewSpec(jwtKey)
-
-		key.Algorithm = jwt.SigningMethodES384.Alg()
-		key.Use = "sig"
-
-		keySet := jwk.KeySpecSet{
-			Keys: []jwk.KeySpec{*key},
-		}
-
-		payload, err := keySet.MarshalPublicJSON()
-		if err != nil {
-			return fmt.Errorf("failed to create JWKs payload: %w", err)
-		}
-
-		router.GET("/.well-known/jwks.json", httprouter.Handle(func(
-			w http.ResponseWriter, _ *http.Request, _ httprouter.Params,
-		) {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write(payload)
-		}))
-
-		return nil
-	}
-}
-
 func WithSSE(
 	handler http.Handler,
 	opt ServerOptions,
@@ -232,127 +197,6 @@ func WithMetricsAPI(
 		)
 
 		registerAPI(router, opts, api)
-
-		return nil
-	}
-}
-
-func WithTokenEndpoint(
-	jwtKey *ecdsa.PrivateKey,
-	sharedSecret string,
-	issuer string,
-	audience string,
-) RouterOption {
-	return func(router *httprouter.Router) error {
-		router.POST("/token", internal.RHandleFunc(func(
-			w http.ResponseWriter, r *http.Request, _ httprouter.Params,
-		) error {
-			err := r.ParseForm()
-			if err != nil {
-				return elephantine.HTTPErrorf(http.StatusBadRequest,
-					"invalid form data: %v", err)
-			}
-
-			form := r.Form
-
-			switch form.Get("grant_type") {
-			case "password":
-			case "refresh_token":
-				if form.Get("refresh_token") == "" {
-					return elephantine.HTTPErrorf(http.StatusBadRequest,
-						"missing 'refresh_token'")
-				}
-
-				rData, err := base64.RawStdEncoding.DecodeString(
-					form.Get("refresh_token"))
-				if err != nil {
-					return elephantine.HTTPErrorf(http.StatusBadRequest,
-						"invalid refresh token: %v", err)
-				}
-
-				f, err := url.ParseQuery(string(rData))
-				if err != nil {
-					return elephantine.HTTPErrorf(http.StatusBadRequest,
-						"invalid refresh contents: %v", err)
-				}
-
-				form = f
-			default:
-				return elephantine.HTTPErrorf(http.StatusBadRequest,
-					"we only support the \"password\" and \"refresh_token\" grant_type")
-			}
-
-			username := form.Get("username")
-			if username == "" {
-				return elephantine.HTTPErrorf(http.StatusBadRequest,
-					"missing 'username'")
-			}
-
-			password := form.Get("password")
-			if password != sharedSecret {
-				return elephantine.HTTPErrorf(http.StatusUnauthorized,
-					"invalid password")
-			}
-
-			scope := form.Get("scope")
-
-			name, uriPart, ok := strings.Cut(username, " <")
-			if !ok || !strings.HasSuffix(uriPart, ">") {
-				return elephantine.HTTPErrorf(http.StatusBadRequest,
-					"username must be in the format \"Name <some://sub/uri>\"")
-			}
-
-			subURI := strings.TrimSuffix(uriPart, ">")
-			expiresIn := 10 * time.Minute
-
-			sub, units, _ := strings.Cut(subURI, ", ")
-
-			aud := []string{}
-			if audience != "" {
-				aud = []string{audience}
-			}
-
-			claims := elephantine.JWTClaims{
-				RegisteredClaims: jwt.RegisteredClaims{
-					ExpiresAt: jwt.NewNumericDate(
-						time.Now().Add(expiresIn)),
-					Issuer:   issuer,
-					Audience: aud,
-					Subject:  sub,
-				},
-				Name:  name,
-				Scope: scope,
-			}
-
-			if len(units) > 0 {
-				claims.Units = strings.Split(units, ", ")
-			}
-
-			token := jwt.NewWithClaims(jwt.SigningMethodES384, claims)
-
-			ss, err := token.SignedString(jwtKey)
-			if err != nil {
-				return elephantine.HTTPErrorf(http.StatusInternalServerError,
-					"failed to sign JWT token")
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-
-			err = json.NewEncoder(w).Encode(TokenResponse{
-				AccessToken: ss,
-				RefreshToken: base64.RawURLEncoding.EncodeToString(
-					[]byte(form.Encode()),
-				),
-				TokenType: "Bearer",
-				ExpiresIn: int(expiresIn.Seconds()),
-			})
-			if err != nil {
-				return elephantine.HTTPErrorf(http.StatusInternalServerError,
-					"failed encode token response")
-			}
-
-			return nil
-		}))
 
 		return nil
 	}

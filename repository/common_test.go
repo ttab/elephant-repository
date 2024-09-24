@@ -326,7 +326,6 @@ func testingAPIServer(
 	}))
 
 	err = repository.SetUpRouter(router,
-		repository.WithTokenEndpoint(jwtKey, opts.SharedSecret, "test", ""),
 		repository.WithDocumentsAPI(docService, srvOpts),
 		repository.WithSchemasAPI(schemaService, srvOpts),
 		repository.WithWorkflowsAPI(workflowService, srvOpts),

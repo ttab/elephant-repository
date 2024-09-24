@@ -2,11 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -76,7 +71,79 @@ func main() {
 				Name:    "ensure-schema",
 				EnvVars: []string{"ENSURE_SCHEMA"},
 			},
-		}, cmd.BackendFlags()...),
+			&cli.StringFlag{
+				Name:    "db",
+				Value:   "postgres://elephant-repository:pass@localhost/elephant-repository",
+				EnvVars: []string{"CONN_STRING"},
+			},
+			&cli.StringFlag{
+				Name:    "db-parameter",
+				EnvVars: []string{"CONN_STRING_PARAMETER"},
+			},
+			&cli.StringFlag{
+				Name:    "reporting-db",
+				Value:   "postgres://repository-reportuser:pass@localhost/elephant-repository",
+				EnvVars: []string{"REPORTING_CONN_STRING"},
+			},
+			&cli.StringFlag{
+				Name:    "reporting-db-parameter",
+				EnvVars: []string{"REPORTING_CONN_STRING_PARAMETER"},
+			},
+			&cli.StringFlag{
+				Name:    "eventsink",
+				Value:   "aws-eventbridge",
+				EnvVars: []string{"EVENTSINK"},
+			},
+			&cli.StringFlag{
+				Name:    "archive-bucket",
+				Value:   "elephant-archive",
+				EnvVars: []string{"ARCHIVE_BUCKET"},
+			},
+			&cli.StringFlag{
+				Name:    "report-bucket",
+				Value:   "elephant-reports",
+				EnvVars: []string{"REPORT_BUCKET"},
+			},
+			&cli.StringFlag{
+				Name:    "s3-endpoint",
+				Usage:   "Override the S3 endpoint for use with Minio",
+				EnvVars: []string{"S3_ENDPOINT"},
+			},
+			&cli.StringFlag{
+				Name:    "s3-key-id",
+				Usage:   "Access key ID to use as a static credential with Minio",
+				EnvVars: []string{"S3_ACCESS_KEY_ID"},
+			},
+			&cli.StringFlag{
+				Name:    "s3-key-secret",
+				Usage:   "Access key secret to use as a static credential with Minio",
+				EnvVars: []string{"S3_ACCESS_KEY_SECRET"},
+			},
+			&cli.BoolFlag{
+				Name:  "s3-insecure",
+				Usage: "Disable https for S3 access when using minio",
+			},
+			&cli.BoolFlag{
+				Name:  "no-core-schema",
+				Usage: "Don't register the built in core schema",
+			},
+			&cli.BoolFlag{
+				Name:  "no-archiver",
+				Usage: "Disable the archiver",
+			},
+			&cli.BoolFlag{
+				Name:  "no-eventsink",
+				Usage: "Disable the eventsink",
+			},
+			&cli.BoolFlag{
+				Name:  "no-reporter",
+				Usage: "Disable the reporter",
+			},
+			&cli.BoolFlag{
+				Name:  "no-replicator",
+				Usage: "Disable the replicator",
+			},
+		}, elephantine.OpenIDConnectParameters()...),
 	}
 
 	app := cli.App{
@@ -112,35 +179,16 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("invalid default language: %w", err)
 	}
 
-	conf, err := cmd.BackendConfigFromContext(c, paramSource.GetParameterValue)
+	conf, err := cmd.BackendConfigFromContext(c, paramSource)
 	if err != nil {
 		return fmt.Errorf("failed to read configuration: %w", err)
 	}
 
-	var signingKey *ecdsa.PrivateKey
-
-	var authInfoParser *elephantine.AuthInfoParser
-
-	if conf.JWKSUrl != "" && conf.MockJWTEndpoint {
-		return fmt.Errorf("cannot specify JWKS URL with mock JWT endpoint")
-	}
-
-	if conf.JWKSUrl != "" {
-		authInfoParser, err = elephantine.NewJWKSAuthInfoParser(c.Context, conf.JWKSUrl, elephantine.AuthInfoParserOptions{
-			Issuer:      conf.JWTIssuer,
-			Audience:    conf.JWTAudience,
-			ScopePrefix: conf.JWTScopePrefix,
-		})
-		if err != nil {
-			return fmt.Errorf("could not create auth info parser: %w", err)
-		}
-	}
-
-	if conf.MockJWTEndpoint {
-		authInfoParser, signingKey, err = newMockAuthInfoParser(conf, logger)
-		if err != nil {
-			return err
-		}
+	auth, err := elephantine.AuthenticationConfigFromCLI(
+		c, paramSource, nil,
+	)
+	if err != nil {
+		return fmt.Errorf("set up authentication: %w", err)
 	}
 
 	instrument, err := elephantine.NewHTTPClientIntrumentation(prometheus.DefaultRegisterer)
@@ -432,7 +480,7 @@ func runServer(c *cli.Context) error {
 
 	var opts repository.ServerOptions
 
-	opts.SetJWTValidation(authInfoParser)
+	opts.SetJWTValidation(auth.AuthParser)
 
 	metrics, err := elephantine.NewTwirpMetricsHooks()
 	if err != nil {
@@ -456,21 +504,6 @@ func runServer(c *cli.Context) error {
 	), store)
 	if err != nil {
 		return fmt.Errorf("failed to set up SSE server: %w", err)
-	}
-
-	if conf.MockJWTEndpoint {
-		err = repository.SetUpRouter(router,
-			repository.WithTokenEndpoint(
-				signingKey,
-				conf.MockJWTSharedSecret,
-				conf.JWTIssuer,
-				conf.JWTAudience,
-			),
-			repository.WithJWKSEndpoint(signingKey),
-		)
-		if err != nil {
-			return fmt.Errorf("failed to set up router: %w", err)
-		}
 	}
 
 	err = repository.SetUpRouter(router,
@@ -621,41 +654,6 @@ func runServer(c *cli.Context) error {
 	}
 
 	return nil
-}
-
-func newMockAuthInfoParser(
-	conf cmd.BackendConfig,
-	logger *slog.Logger,
-) (*elephantine.AuthInfoParser, *ecdsa.PrivateKey, error) {
-	var signingKey *ecdsa.PrivateKey
-
-	if conf.MockJWTSigningKey != "" {
-		keyData, err := base64.RawURLEncoding.DecodeString(
-			conf.MockJWTSigningKey)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to generate key: %w", err)
-		}
-
-		k, err := x509.ParseECPrivateKey(keyData)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to generate key: %w", err)
-		}
-
-		signingKey = k
-	} else {
-		logger.Warn("no configured signing key")
-
-		key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to generate key: %w", err)
-		}
-
-		signingKey = key
-	}
-
-	return elephantine.NewStaticAuthInfoParser(signingKey.PublicKey, elephantine.AuthInfoParserOptions{
-		ScopePrefix: conf.JWTScopePrefix,
-	}), signingKey, nil
 }
 
 func startArchiver(
