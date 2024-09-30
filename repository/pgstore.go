@@ -770,6 +770,60 @@ func (s *PGDocStore) GetDocument(
 	return &d, version, nil
 }
 
+type BulkGetReference struct {
+	UUID    uuid.UUID
+	Version int64
+}
+
+type BulkGetItem struct {
+	Document newsdoc.Document
+	Version  int64
+}
+
+// BulkGetDocuments implements DocStore.
+func (s *PGDocStore) BulkGetDocuments(
+	ctx context.Context, documents []BulkGetReference,
+) ([]BulkGetItem, error) {
+	ids := make([]uuid.UUID, len(documents))
+	versions := make([]int64, len(documents))
+
+	for i, ref := range documents {
+		ids[i] = ref.UUID
+		versions[i] = ref.Version
+	}
+
+	docs, err := s.reader.BulkGetDocumentData(ctx,
+		postgres.BulkGetDocumentDataParams{
+			Uuids:    ids,
+			Versions: versions,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("load documents from database: %w", err)
+	}
+
+	result := make([]BulkGetItem, 0, len(docs))
+
+	for _, row := range docs {
+		var d newsdoc.Document
+
+		// TODO: check for nil data after pruning has been implemented.
+
+		err = json.Unmarshal(row.DocumentData, &d)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"got an unreadable document from the database for %q v%d: %w",
+				row.UUID, row.Version, err)
+		}
+
+		result = append(result, BulkGetItem{
+			Document: d,
+			Version:  row.Version,
+		})
+	}
+
+	return result, nil
+}
+
 func (s *PGDocStore) GetLastEvent(
 	ctx context.Context,
 ) (*Event, error) {

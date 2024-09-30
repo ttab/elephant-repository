@@ -22,6 +22,9 @@ type DocStore interface {
 	GetDocument(
 		ctx context.Context, uuid uuid.UUID, version int64,
 	) (*newsdoc.Document, int64, error)
+	BulkGetDocuments(
+		ctx context.Context, documents []BulkGetReference,
+	) ([]BulkGetItem, error)
 	GetVersion(
 		ctx context.Context, uuid uuid.UUID, version int64,
 	) (DocumentUpdate, error)

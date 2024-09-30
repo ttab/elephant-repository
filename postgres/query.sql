@@ -102,6 +102,20 @@ SELECT document_data
 FROM document_version
 WHERE uuid = $1 AND version = $2;
 
+-- name: BulkGetDocumentData :many
+WITH refs AS (
+     SELECT unnest(@uuids::uuid[]) AS uuid,
+            unnest(@versions::bigint[]) AS version
+)
+SELECT v.uuid, v.version, v.document_data
+FROM refs AS r
+     INNER JOIN document as d ON d.uuid = r.uuid
+     INNER JOIN document_version AS v ON
+           v.uuid = d.uuid AND (
+                  (r.version = 0 AND v.version = d.current_version)
+                  OR v.version = r.version
+           );
+
 -- name: AcquireTXLock :exec
 SELECT pg_advisory_xact_lock(@id::bigint);
 

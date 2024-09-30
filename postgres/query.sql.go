@@ -74,6 +74,52 @@ func (q *Queries) BulkCheckPermissions(ctx context.Context, arg BulkCheckPermiss
 	return items, nil
 }
 
+const bulkGetDocumentData = `-- name: BulkGetDocumentData :many
+WITH refs AS (
+     SELECT unnest($1::uuid[]) AS uuid,
+            unnest($2::bigint[]) AS version
+)
+SELECT v.uuid, v.version, v.document_data
+FROM refs AS r
+     INNER JOIN document as d ON d.uuid = r.uuid
+     INNER JOIN document_version AS v ON
+           v.uuid = d.uuid AND (
+                  (r.version = 0 AND v.version = d.current_version)
+                  OR v.version = r.version
+           )
+`
+
+type BulkGetDocumentDataParams struct {
+	Uuids    []uuid.UUID
+	Versions []int64
+}
+
+type BulkGetDocumentDataRow struct {
+	UUID         uuid.UUID
+	Version      int64
+	DocumentData []byte
+}
+
+func (q *Queries) BulkGetDocumentData(ctx context.Context, arg BulkGetDocumentDataParams) ([]BulkGetDocumentDataRow, error) {
+	rows, err := q.db.Query(ctx, bulkGetDocumentData, arg.Uuids, arg.Versions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkGetDocumentDataRow
+	for rows.Next() {
+		var i BulkGetDocumentDataRow
+		if err := rows.Scan(&i.UUID, &i.Version, &i.DocumentData); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const checkForPendingPurge = `-- name: CheckForPendingPurge :one
 SELECT EXISTS (
        SELECT 1 FROM purge_request

@@ -977,6 +977,115 @@ func (a *DocumentsService) Get(
 	return &res, nil
 }
 
+// BulkGet implements repository.Documents.
+func (a *DocumentsService) BulkGet(
+	ctx context.Context, req *repository.BulkGetRequest,
+) (*repository.BulkGetResponse, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll,
+		ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(req.Documents) == 0 {
+		return nil, twirp.RequiredArgumentError("documents")
+	}
+
+	if len(req.Documents) > 200 {
+		return nil, twirp.InvalidArgumentError("documents",
+			"bulk loading of more than 200 documents is not allowed")
+	}
+
+	refs := make([]BulkGetReference, len(req.Documents))
+	uuids := make([]uuid.UUID, len(req.Documents))
+
+	for i, ref := range req.Documents {
+		if ref.Uuid == "" {
+			return nil, twirp.RequiredArgumentError(
+				fmt.Sprintf("documents.%d.uuid", i))
+		}
+
+		docUUID, err := uuid.Parse(ref.Uuid)
+		if err != nil {
+			return nil, twirp.InvalidArgumentError(
+				fmt.Sprintf("documents.%d.uuid", i), err.Error())
+		}
+
+		if ref.Version < 0 {
+			return nil, twirp.InvalidArgumentError(
+				fmt.Sprintf("documents.%d.version", i),
+				"cannot be a negative number")
+		}
+
+		uuids[i] = docUUID
+		refs[i] = BulkGetReference{
+			UUID:    docUUID,
+			Version: ref.Version,
+		}
+	}
+
+	aclBypass := auth.Claims.HasAnyScope(
+		ScopeDocumentReadAll, ScopeDocumentAdmin)
+
+	// If the caller doesn't have an ACL bypassing permission we filter down
+	// the given UUIDs to the ones they have permission to.
+	if !aclBypass {
+		permitted := make(map[uuid.UUID]bool, len(uuids))
+
+		ident := append([]string{auth.Claims.Subject}, auth.Claims.Units...)
+
+		p, err := a.store.BulkCheckPermissions(ctx,
+			BulkCheckPermissionRequest{
+				UUIDs:       uuids,
+				GranteeURIs: ident,
+				Permissions: []Permission{ReadPermission},
+			})
+		if err != nil {
+			return nil, twirp.InternalErrorf("check ACL access: %v", err)
+		}
+
+		for _, id := range p {
+			permitted[id] = true
+		}
+
+		accepted := make([]BulkGetReference, 0, len(req.Documents))
+
+		for _, ref := range refs {
+			if !permitted[ref.UUID] {
+				continue
+			}
+
+			accepted = append(accepted, ref)
+		}
+
+		refs = accepted
+	}
+
+	docs, err := a.store.BulkGetDocuments(ctx, refs)
+	if err != nil {
+		return nil, twirp.InternalErrorf("load documents: %w", err)
+	}
+
+	resp := repository.BulkGetResponse{
+		Items: make([]*repository.BulkGetItem, len(docs)),
+	}
+
+	// TODO: return a partial flag to inform the user when they didn't get
+	// all the requested documents. This could be caused by permission
+	// filtering or documents that have been deleted.
+
+	for i, d := range docs {
+		resp.Items[i] = &repository.BulkGetItem{
+			Document: rpcdoc.DocumentToRPC(d.Document),
+			Version:  d.Version,
+		}
+	}
+
+	return &resp, nil
+}
+
 // GetHistory implements repository.Documents.
 func (a *DocumentsService) GetHistory(
 	ctx context.Context, req *repository.GetHistoryRequest,
