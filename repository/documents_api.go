@@ -1603,6 +1603,7 @@ func (a *DocumentsService) verifyUpdateRequest(
 
 	var docType string
 
+	//nolint: nestif
 	if req.Document != nil {
 		req.Document.Uuid = strings.ToLower(req.Document.Uuid)
 		docType = req.Document.Type
