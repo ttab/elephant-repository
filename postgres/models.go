@@ -267,10 +267,10 @@ type StatusHead struct {
 }
 
 type StatusRule struct {
+	Type        string
 	Name        string
 	Description string
 	AccessRule  bool
 	AppliesTo   []string
-	ForTypes    []string
 	Expression  string
 }

@@ -588,11 +588,11 @@ ALTER TABLE ONLY public.status_heads REPLICA IDENTITY FULL;
 --
 
 CREATE TABLE public.status_rule (
+    type text NOT NULL,
     name text NOT NULL,
     description text NOT NULL,
     access_rule boolean NOT NULL,
     applies_to text[] NOT NULL,
-    for_types text[] NOT NULL,
     expression text NOT NULL
 );
 
@@ -834,7 +834,7 @@ ALTER TABLE ONLY public.status
 --
 
 ALTER TABLE ONLY public.status_rule
-    ADD CONSTRAINT status_rule_pkey PRIMARY KEY (name);
+    ADD CONSTRAINT status_rule_pkey PRIMARY KEY (type, name);
 
 
 --

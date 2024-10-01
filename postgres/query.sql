@@ -8,6 +8,11 @@ LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
 WHERE d.uuid = $1
 FOR UPDATE OF d;
 
+-- name: GetTypeOfDocument :one
+SELECT type
+FROM document
+WHERE uuid = @uuid;
+
 -- name: GetDocumentHeads :many
 SELECT name, current_id
 FROM status_heads
@@ -518,32 +523,32 @@ ON CONFLICT(label) DO UPDATE SET
    enforced = @enforced;
 
 -- name: GetActiveStatuses :many
-SELECT name
+SELECT type, name
 FROM status
 WHERE disabled = false;
 
 -- name: UpdateStatus :exec
-INSERT INTO status(name, disabled)
-VALUES(@name, @disabled)
-ON CONFLICT(name) DO UPDATE SET
+INSERT INTO status(type, name, disabled)
+VALUES(@type, @name, @disabled)
+ON CONFLICT(type, name) DO UPDATE SET
    disabled = @disabled;
 
 -- name: GetStatusRules :many
-SELECT name, description, access_rule, applies_to, for_types, expression
+SELECT type, name, description, access_rule, applies_to, expression
 FROM status_rule;
 
 -- name: UpdateStatusRule :exec
 INSERT INTO status_rule(
-       name, description, access_rule, applies_to, for_types, expression
+       type, name, description, access_rule, applies_to, expression
 ) VALUES(
-       @name, @description, @access_rule, @applies_to, @for_types, @expression
-) ON CONFLICT(name)
+       @type, @name, @description, @access_rule, @applies_to, @expression
+) ON CONFLICT(type, name)
   DO UPDATE SET
      description = @description, access_rule = @access_rule,
-     applies_to = @applies_to, for_types = @for_types, expression = @expression;
+     applies_to = @applies_to, expression = @expression;
 
 -- name: DeleteStatusRule :exec
-DELETE FROM status_rule WHERE name = $1;
+DELETE FROM status_rule WHERE type = @type AND name = @name;
 
 -- name: InsertDocumentLock :exec
 INSERT INTO document_lock(

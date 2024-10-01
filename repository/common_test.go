@@ -188,10 +188,11 @@ func (tc *TestContext) MetricsClient(
 }
 
 type testingServerOptions struct {
-	RunArchiver   bool
-	RunReplicator bool
-	SharedSecret  string
-	ExtraSchemas  []string
+	RunArchiver        bool
+	RunReplicator      bool
+	SharedSecret       string
+	ExtraSchemas       []string
+	NoStandardStatuses bool
 }
 
 func testingAPIServer(
@@ -339,7 +340,7 @@ func testingAPIServer(
 
 	t.Cleanup(server.Close)
 
-	return TestContext{
+	tc := TestContext{
 		SigningKey:       jwtKey,
 		Server:           server,
 		Documents:        docService,
@@ -348,6 +349,36 @@ func testingAPIServer(
 		WorkflowProvider: workflows,
 		Env:              env,
 	}
+
+	if !opts.NoStandardStatuses {
+		wf := tc.WorkflowsClient(t,
+			itest.StandardClaims(t, repository.ScopeWorkflowAdmin))
+
+		for _, status := range []string{"usable", "done", "approved"} {
+			_, err := wf.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
+				Type: "core/article",
+				Name: status,
+			})
+			test.Must(t, err, "create status %q", status)
+		}
+
+		workflowDeadline := time.After(1 * time.Second)
+
+		// Wait until the workflow provider notices the change.
+		for {
+			if tc.WorkflowProvider.HasStatus("core/article", "approved") {
+				break
+			}
+
+			select {
+			case <-workflowDeadline:
+				t.Fatal("workflow didn't get updated in time")
+			case <-time.After(1 * time.Millisecond):
+			}
+		}
+	}
+
+	return tc
 }
 
 func TestMain(m *testing.M) {

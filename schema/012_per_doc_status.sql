@@ -19,6 +19,19 @@ DROP TABLE status;
 ALTER TABLE status_new RENAME TO status;
 ALTER TABLE status RENAME CONSTRAINT status_new_pkey TO status_pkey;
 
+-- Not in active use, just drop it.
+DROP TABLE status_rule;
+
+CREATE TABLE status_rule(
+       type text NOT NULL,
+       name text NOT NULL,
+       description text NOT NULL,
+       access_rule bool NOT NULL,
+       applies_to text[] NOT NULL,
+       expression text NOT NULL,
+       PRIMARY KEY(type, name)
+);
+
 ---- create above / drop below ----
 
 CREATE TABLE status_old(
@@ -34,3 +47,16 @@ SELECT name, BOOL_AND(disabled) FROM status GROUP BY name;
 DROP TABLE status;
 ALTER TABLE status_old RENAME TO status;
 ALTER TABLE status RENAME CONSTRAINT status_old_pkey TO status_pkey;
+
+-- Not in active use, just drop it.
+DROP TABLE status_rule;
+
+CREATE TABLE status_rule(
+       name text NOT NULL,
+       description text NOT NULL,
+       access_rule bool NOT NULL,
+       applies_to text[] NOT NULL,
+       for_types text[] NOT NULL,
+       expression text NOT NULL,
+       PRIMARY KEY(name)
+);

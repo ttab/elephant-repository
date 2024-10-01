@@ -59,8 +59,9 @@ const (
 )
 
 type WorkflowEvent struct {
-	Type WorkflowEventType `json:"type"`
-	Name string            `json:"name"`
+	Type    WorkflowEventType `json:"type"`
+	DocType string            `json:"doc_type"`
+	Name    string            `json:"name"`
 }
 
 func notifyArchived(

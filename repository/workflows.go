@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"slices"
 	"sync"
 	"time"
 
@@ -80,7 +79,8 @@ func (w *Workflows) loadWorkflows(
 	statusMap := make(map[string]DocumentStatus)
 
 	for i := range statuses {
-		statusMap[statuses[i].Name] = statuses[i]
+		key := typeScopedKey(statuses[i].Type, statuses[i].Name)
+		statusMap[key] = statuses[i]
 	}
 
 	rules, err := loader.GetStatusRules(ctx)
@@ -120,12 +120,18 @@ func (w *Workflows) loadWorkflows(
 	return nil
 }
 
-func (w *Workflows) HasStatus(name string) bool {
+func (w *Workflows) HasStatus(docType string, name string) bool {
+	key := typeScopedKey(docType, name)
+
 	w.m.RLock()
-	status, ok := w.statuses[name]
+	status, ok := w.statuses[key]
 	w.m.RUnlock()
 
 	return ok && !status.Disabled
+}
+
+func typeScopedKey(docType string, name string) string {
+	return docType + ":" + name
 }
 
 type StatusRuleInput struct {
@@ -164,7 +170,7 @@ func (w *Workflows) EvaluateRules(
 	var violations []StatusRuleViolation
 
 	for i := range rules {
-		if !slices.Contains(rules[i].ForTypes, input.Document.Type) {
+		if rules[i].Type != input.Document.Type {
 			continue
 		}
 

@@ -1196,6 +1196,7 @@ func TestIntegrationStatuses(t *testing.T) {
 
 	_, err := untrustedWorkflowClient.UpdateStatus(ctx,
 		&repository.UpdateStatusRequest{
+			Type: "core/article",
 			Name: "usable",
 		})
 	test.MustNot(t, err,
@@ -1205,11 +1206,13 @@ func TestIntegrationStatuses(t *testing.T) {
 		itest.StandardClaims(t, "workflow_admin"))
 
 	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
+		Type: "core/article",
 		Name: "usable",
 	})
 	test.Must(t, err, "create usable status")
 
 	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
+		Type: "core/article",
 		Name: "done",
 	})
 	test.Must(t, err, "create done status")
@@ -1219,7 +1222,7 @@ func TestIntegrationStatuses(t *testing.T) {
 
 	// Wait until the workflow provider notices the change.
 	for {
-		if tc.WorkflowProvider.HasStatus("done") {
+		if tc.WorkflowProvider.HasStatus("core/article", "done") {
 			t.Logf("had to wait %v for workflow upate",
 				time.Since(t0))
 
@@ -1327,51 +1330,54 @@ func TestIntegrationStatusRules(t *testing.T) {
 
 	_, err := workflowClient.CreateStatusRule(ctx, &repository.CreateStatusRuleRequest{
 		Rule: &repository.StatusRule{
+			Type:        "core/article",
 			Name:        approvalName,
 			Description: "Articles must be approved before they're published",
 			Expression:  `Heads.approved.Version == Status.Version`,
 			AppliesTo:   []string{"usable"},
-			ForTypes:    []string{"core/article"},
 		},
 	})
 	test.Must(t, err, "create approval rule")
 
 	_, err = workflowClient.CreateStatusRule(ctx, &repository.CreateStatusRuleRequest{
 		Rule: &repository.StatusRule{
+			Type:        "core/article",
 			Name:        requireLegalName,
 			Description: "Require legal signoff if requested",
 			Expression: `
 Heads.approved.Meta.legal_approval != "required"
 or Heads.approved_legal.Version == Status.Version`,
 			AppliesTo: []string{"usable"},
-			ForTypes:  []string{"core/article"},
 		},
 	})
 	test.Must(t, err, "create legal approval rule")
 
 	_, err = workflowClient.CreateStatusRule(ctx, &repository.CreateStatusRuleRequest{
 		Rule: &repository.StatusRule{
+			Type:        "core/article",
 			Name:        "require-publish-scope",
 			Description: "publish scope is required for setting usable",
 			Expression:  `User.HasScope("publish")`,
 			AccessRule:  true,
 			AppliesTo:   []string{"usable"},
-			ForTypes:    []string{"core/article"},
 		},
 	})
 	test.Must(t, err, "create publish permission rule")
 
 	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
+		Type: "core/article",
 		Name: "approved_legal",
 	})
-	test.Must(t, err, "create usable status")
+	test.Must(t, err, "create approved_legal status")
 
 	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
+		Type: "core/article",
 		Name: "usable",
 	})
 	test.Must(t, err, "create usable status")
 
 	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
+		Type: "core/article",
 		Name: "approved",
 	})
 	test.Must(t, err, "create approved status")
@@ -1381,7 +1387,7 @@ or Heads.approved_legal.Version == Status.Version`,
 
 	// Wait until the workflow provider notices the change.
 	for {
-		if tc.WorkflowProvider.HasStatus("approved") {
+		if tc.WorkflowProvider.HasStatus("core/article", "approved") {
 			t.Logf("had to wait %v for workflow upate",
 				time.Since(t0))
 
