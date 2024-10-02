@@ -420,6 +420,17 @@ FOR UPDATE;
 SELECT language FROM document_version
 WHERE uuid = @uuid AND version = @version;
 
+-- name: SetEventlogArchiver :exec
+INSERT INTO eventlog_archiver(size, position, last_signature)
+       VALUES (@size, @position, @signature)
+ON CONFLICT (size) DO UPDATE
+   SET position = @position,
+       last_signature = @signature;
+
+-- name: GetEventlogArchiver :one
+SELECT position, last_signature FROM eventlog_archiver
+WHERE size = @size;
+
 -- name: GetDocumentStatusForArchiving :one
 SELECT
         s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,

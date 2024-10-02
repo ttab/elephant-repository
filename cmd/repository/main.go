@@ -380,29 +380,6 @@ func runServer(c *cli.Context) error {
 			}
 		}()
 	}
-
-	if !conf.NoArchiver {
-		log := logger.With(elephantine.LogKeyComponent, "archiver")
-
-		logger.Debug("starting archiver")
-
-		group.Go(func() error {
-			archiver, err := startArchiver(c.Context, gCtx,
-				log, conf, dbpool)
-			if err != nil {
-				return err
-			}
-
-			go func() {
-				<-grace.ShouldStop()
-				archiver.Stop()
-				logger.Info("stopped archiver")
-			}()
-
-			return nil
-		})
-	}
-
 	if !conf.NoEventsink && conf.Eventsink != "" {
 		var sink sinks.EventSink
 
@@ -621,6 +598,22 @@ func runServer(c *cli.Context) error {
 
 	serverGroup, gCtx := errgroup.WithContext(grace.CancelOnQuit(c.Context))
 
+	if !conf.NoArchiver {
+		log := logger.With(elephantine.LogKeyComponent, "archiver")
+
+		logger.Debug("starting archiver")
+
+		serverGroup.Go(func() error {
+			err := startArchiver(grace.CancelOnStop(gCtx),
+				log, conf, dbpool, store, grace)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		})
+	}
+
 	serverGroup.Go(func() error {
 		logger.Debug("starting API server")
 
@@ -667,12 +660,13 @@ func runServer(c *cli.Context) error {
 }
 
 func startArchiver(
-	ctx context.Context, setupCtx context.Context, logger *slog.Logger,
-	conf cmd.BackendConfig, dbpool *pgxpool.Pool,
-) (*repository.Archiver, error) {
-	aS3, err := repository.S3Client(setupCtx, conf.S3Options)
+	ctx context.Context, logger *slog.Logger,
+	conf cmd.BackendConfig, dbpool *pgxpool.Pool, store *repository.PGDocStore,
+	grace *elephantine.GracefulShutdown,
+) error {
+	aS3, err := repository.S3Client(ctx, conf.S3Options)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create S3 client: %w", err)
+		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
 	archiver, err := repository.NewArchiver(repository.ArchiverOptions{
@@ -683,13 +677,13 @@ func startArchiver(
 		DB:          dbpool,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create archiver: %w", err)
+		return fmt.Errorf("failed to create archiver: %w", err)
 	}
 
 	err = archiver.Run(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to run archiver: %w", err)
+		return fmt.Errorf("failed to run archiver: %w", err)
 	}
 
-	return archiver, nil
+	return nil
 }

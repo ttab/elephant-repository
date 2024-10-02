@@ -165,6 +165,12 @@ type Eventlog struct {
 	Extra              *EventlogExtra
 }
 
+type EventlogArchiver struct {
+	Size          int64
+	Position      int64
+	LastSignature string
+}
+
 type Eventsink struct {
 	Name          string
 	Position      int64

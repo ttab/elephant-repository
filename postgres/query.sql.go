@@ -1875,6 +1875,23 @@ func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]Get
 	return items, nil
 }
 
+const getEventlogArchiver = `-- name: GetEventlogArchiver :one
+SELECT position, last_signature FROM eventlog_archiver
+WHERE size = $1
+`
+
+type GetEventlogArchiverRow struct {
+	Position      int64
+	LastSignature string
+}
+
+func (q *Queries) GetEventlogArchiver(ctx context.Context, size int64) (GetEventlogArchiverRow, error) {
+	row := q.db.QueryRow(ctx, getEventlogArchiver, size)
+	var i GetEventlogArchiverRow
+	err := row.Scan(&i.Position, &i.LastSignature)
+	return i, err
+}
+
 const getEventsinkPosition = `-- name: GetEventsinkPosition :one
 SELECT position FROM eventsink WHERE name = $1
 `
@@ -3839,6 +3856,25 @@ func (q *Queries) SetDocumentWorkflow(ctx context.Context, arg SetDocumentWorkfl
 		arg.UpdaterUri,
 		arg.Configuration,
 	)
+	return err
+}
+
+const setEventlogArchiver = `-- name: SetEventlogArchiver :exec
+INSERT INTO eventlog_archiver(size, position, last_signature)
+       VALUES ($1, $2, $3)
+ON CONFLICT (size) DO UPDATE
+   SET position = $2,
+       last_signature = $3
+`
+
+type SetEventlogArchiverParams struct {
+	Size      int64
+	Position  int64
+	Signature string
+}
+
+func (q *Queries) SetEventlogArchiver(ctx context.Context, arg SetEventlogArchiverParams) error {
+	_, err := q.db.Exec(ctx, setEventlogArchiver, arg.Size, arg.Position, arg.Signature)
 	return err
 }
 

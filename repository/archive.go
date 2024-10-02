@@ -14,16 +14,12 @@ import (
 	"log/slog"
 	"maps"
 	mrand "math/rand"
-	"net/http"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
@@ -38,62 +34,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type S3Options struct {
-	Endpoint        string
-	AccessKeyID     string
-	AccessKeySecret string
-	HTTPClient      *http.Client
-}
-
-func S3Client(
-	ctx context.Context, opts S3Options,
-) (*s3.Client, error) {
-	var (
-		options   []func(*config.LoadOptions) error
-		s3Options []func(*s3.Options)
-	)
-
-	if opts.Endpoint != "" {
-		endpointURL, err := url.Parse(opts.Endpoint)
-		if err != nil {
-			return nil, fmt.Errorf("invalid S3 endpoint URL: %w", err)
-		}
-
-		insecure := endpointURL.Scheme == "http"
-
-		options = append(options,
-			config.WithRegion("auto"),
-		)
-
-		s3Options = append(s3Options, func(o *s3.Options) {
-			o.EndpointOptions.DisableHTTPS = insecure
-			o.BaseEndpoint = &opts.Endpoint
-			o.UsePathStyle = true
-		})
-	}
-
-	if opts.AccessKeyID != "" {
-		creds := credentials.NewStaticCredentialsProvider(
-			opts.AccessKeyID, opts.AccessKeySecret, "")
-
-		options = append(options,
-			config.WithCredentialsProvider(creds))
-	}
-
-	if opts.HTTPClient != nil {
-		options = append(options, config.WithHTTPClient(opts.HTTPClient))
-	}
-
-	cfg, err := config.LoadDefaultConfig(ctx, options...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS SDK config: %w", err)
-	}
-
-	client := s3.NewFromConfig(cfg, s3Options...)
-
-	return client, nil
-}
-
 type RestoreSpec struct {
 	ACL []ACLEntry
 }
@@ -105,6 +45,8 @@ type ArchiverOptions struct {
 	AssetBucket       string
 	DB                *pgxpool.Pool
 	MetricsRegisterer prometheus.Registerer
+	Store             DocStore
+	TolerateGaps      bool
 }
 
 // Archiver reads unarchived document versions, and statuses and writes a copy
@@ -118,7 +60,10 @@ type Archiver struct {
 	signingKeys        SigningKeySet
 	signingKeysChecked time.Time
 	reader             *ArchiveReader
+	store              DocStore
+	tolerateGaps       bool
 
+	eventsArchiver    prometheus.Gauge
 	versionsArchived  *prometheus.CounterVec
 	statusesArchived  *prometheus.CounterVec
 	deletesProcessed  *prometheus.CounterVec
@@ -137,6 +82,16 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 
 	if opts.AssetBucket == "" {
 		return nil, errors.New("missing required asset bucket option")
+	}
+
+	eventsArchiver := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "elephant_archiver_event_archiver_position",
+			Help: "Eventlog archiver position.",
+		},
+	)
+	if err := opts.MetricsRegisterer.Register(eventsArchiver); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
 
 	versionsArchived := prometheus.NewCounterVec(
@@ -208,14 +163,17 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		logger:            opts.Logger,
 		s3:                opts.S3,
 		pool:              opts.DB,
+		store:             opts.Store,
 		bucket:            opts.Bucket,
 		assetBucket:       opts.AssetBucket,
+		eventsArchiver:    eventsArchiver,
 		versionsArchived:  versionsArchived,
 		statusesArchived:  statusesArchived,
 		deletesProcessed:  deletesProcessed,
 		restoresProcessed: restoresProcessed,
 		purgesProcessed:   purgesProcessed,
 		restarts:          restarts,
+		tolerateGaps:      opts.TolerateGaps,
 	}
 
 	a.reader = NewArchiveReader(ArchiveReaderOptions{
@@ -228,53 +186,236 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 }
 
 func (a *Archiver) Run(ctx context.Context) error {
+	a.stopped = make(chan struct{})
+	defer close(a.stopped)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	a.cancel = cancel
+
 	err := a.ensureSigningKeys(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to ensure signing keys: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	grp := elephantine.NewErrGroup(ctx, a.logger)
 
-	a.cancel = cancel
-	a.stopped = make(chan struct{})
+	grp.GoWithRetries("run poll loop",
+		// Try 30 times, bail after approximately 5 minutes of retries.
+		30, elephantine.StaticBackoff(10*time.Second),
+		1*time.Hour,
+		a.runPollLoop)
 
-	go a.run(ctx)
+	grp.GoWithRetries("run eventlog archiver",
+		30, elephantine.StaticBackoff(10*time.Second),
+		1*time.Hour,
+		a.runEventlogArchiver)
 
-	return nil
+	return grp.Wait() //nolint: wrapcheck
 }
 
-func (a *Archiver) Stop() {
+func (a *Archiver) Stop(ctx context.Context) error {
 	a.cancel()
-	<-a.stopped
+
+	select {
+	case <-a.stopped:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
-func (a *Archiver) run(ctx context.Context) {
-	const restartWaitSeconds = 10
+func (a *Archiver) runEventlogArchiver(ctx context.Context) error {
+	lock, err := pg.NewJobLock(a.pool, a.logger, "eventlog-archiver",
+		pg.JobLockOptions{})
+	if err != nil {
+		return fmt.Errorf("acquire job lock: %w", err)
+	}
 
-	defer close(a.stopped)
+	return lock.RunWithContext(ctx, a.archiveEventlog)
+}
+
+type ArchivedEventlogItem struct {
+	Event           Event     `json:"event"`
+	ParentSignature string    `json:"parent_signature,omitempty"`
+	Archived        time.Time `json:"archived"`
+}
+
+func (av *ArchivedEventlogItem) GetArchivedTime() time.Time {
+	return av.Archived
+}
+
+func (av *ArchivedEventlogItem) GetParentSignature() string {
+	return av.ParentSignature
+}
+
+type ArchivedEventlogBatch struct {
+	Events          []Event   `json:"events"`
+	ParentSignature string    `json:"parent_signature,omitempty"`
+	Archived        time.Time `json:"archived"`
+}
+
+func (av *ArchivedEventlogBatch) GetArchivedTime() time.Time {
+	return av.Archived
+}
+
+func (av *ArchivedEventlogBatch) GetParentSignature() string {
+	return av.ParentSignature
+}
+
+func (a *Archiver) archiveEventlog(ctx context.Context) error {
+	q := postgres.New(a.pool)
+
+	newEvents := make(chan int64, 1)
+	a.store.OnEventlog(ctx, newEvents)
+
+	lastID, err := q.GetLastEventID(ctx)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("get last event ID: %w", err)
+	}
+
+	state, err := q.GetEventlogArchiver(ctx, 1)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("get current position: %w", err)
+	}
+
+	const batchSize = 1000
+
+	kState, err := q.GetEventlogArchiver(ctx, batchSize)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("get batch arcive state: %w", err)
+	}
 
 	for {
-		err := a.loop(ctx)
-		if errors.Is(err, context.Canceled) {
-			return
-		} else if err != nil {
-			a.restarts.Inc()
-
-			a.logger.ErrorContext(ctx, "archiver error, restarting",
-				elephantine.LogKeyError, err,
-				elephantine.LogKeyDelay, slog.DurationValue(restartWaitSeconds),
-			)
+		items, err := q.GetEventlog(ctx, postgres.GetEventlogParams{
+			After:    state.Position,
+			RowLimit: 100,
+		})
+		if err != nil {
+			return fmt.Errorf("read eventlog: %w", err)
 		}
 
-		select {
-		case <-time.After(restartWaitSeconds * time.Second):
-		case <-ctx.Done():
-			return
+		for _, item := range items {
+			if item.ID != state.Position+1 && !a.tolerateGaps {
+				return fmt.Errorf(
+					"inconsistent eventlog, expected event %d, got %d",
+					state.Position+1, item.ID)
+			}
+
+			event, err := eventlogRowToEvent(item)
+			if err != nil {
+				return fmt.Errorf(
+					"invalid event log item %d: %w", item.ID, err)
+			}
+
+			archiveItem := ArchivedEventlogItem{
+				Event:           event,
+				ParentSignature: state.LastSignature,
+				Archived:        time.Now(),
+			}
+
+			key := fmt.Sprintf("events/%020d.json", item.ID)
+
+			ref, err := a.storeArchiveObject(ctx, key, &archiveItem)
+			if err != nil {
+				return fmt.Errorf("archive log item %d: %w",
+					item.ID, err)
+			}
+
+			if item.ID%batchSize == 0 && kState.Position < item.ID {
+				signature, err := a.archiveEventlogBatch(ctx, q, kState, item.ID, batchSize)
+				if err != nil {
+					return fmt.Errorf("archive eventlog batch %d: %w", item.ID, err)
+				}
+
+				err = q.SetEventlogArchiver(ctx,
+					postgres.SetEventlogArchiverParams{
+						Size:      batchSize,
+						Position:  item.ID,
+						Signature: signature,
+					})
+				if err != nil {
+					return fmt.Errorf("update batch archiver state: %w", err)
+				}
+			}
+
+			err = q.SetEventlogArchiver(ctx,
+				postgres.SetEventlogArchiverParams{
+					Size:      1,
+					Position:  item.ID,
+					Signature: ref.Signature,
+				})
+			if err != nil {
+				return fmt.Errorf("update archiver state: %w", err)
+			}
+
+			state.Position = item.ID
+
+			a.eventsArchiver.Set(float64(item.ID))
+
+			if item.ID < lastID {
+				continue
+			}
+
+			select {
+			case <-newEvents:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	}
 }
 
-func (a *Archiver) loop(ctx context.Context) error {
+func (a *Archiver) archiveEventlogBatch(
+	ctx context.Context, q *postgres.Queries,
+	state postgres.GetEventlogArchiverRow,
+	before int64, size int64,
+) (string, error) {
+	start := max(before-size, 1)
+	after := start - 1
+	length := before - start
+
+	items, err := q.GetEventlog(ctx, postgres.GetEventlogParams{
+		After:    after,
+		RowLimit: int32(length), //nolint: gosec
+	})
+	if err != nil {
+		return "", fmt.Errorf("read eventlog chunk: %w", err)
+	}
+
+	if int64(len(items)) != length && !a.tolerateGaps {
+		return "", fmt.Errorf("inconsisten eventlog, missing %d events:",
+			length-int64(len(items)))
+	}
+
+	archiveItem := ArchivedEventlogBatch{
+		ParentSignature: state.LastSignature,
+		Archived:        time.Now(),
+	}
+
+	for _, row := range items {
+		event, err := eventlogRowToEvent(row)
+		if err != nil {
+			return "", fmt.Errorf(
+				"invalid event log item %d: %w", event.ID, err)
+		}
+
+		archiveItem.Events = append(archiveItem.Events, event)
+	}
+
+	key := fmt.Sprintf("events-%d/%020d.json", size, before)
+
+	ref, err := a.storeArchiveObject(ctx, key, &archiveItem)
+	if err != nil {
+		return "", fmt.Errorf("archive log item batch: %w",
+			err)
+	}
+
+	return ref.Signature, nil
+}
+
+func (a *Archiver) runPollLoop(ctx context.Context) error {
 	wait := make(map[string]time.Time)
 
 	// This is fine, pseudorandom is enough, we're not using this for crypto

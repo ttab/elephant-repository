@@ -403,6 +403,17 @@ CREATE TABLE public.eventlog (
 
 
 --
+-- Name: eventlog_archiver; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.eventlog_archiver (
+    size bigint NOT NULL,
+    "position" bigint NOT NULL,
+    last_signature text NOT NULL
+);
+
+
+--
 -- Name: eventlog_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -822,6 +833,13 @@ ALTER TABLE ONLY public.document_version
 
 ALTER TABLE ONLY public.event_outbox_item
     ADD CONSTRAINT event_outbox_item_pkey PRIMARY KEY (id);
+
+--
+-- Name: eventlog_archiver eventlog_archiver_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.eventlog_archiver
+    ADD CONSTRAINT eventlog_archiver_pkey PRIMARY KEY (size);
 
 
 --

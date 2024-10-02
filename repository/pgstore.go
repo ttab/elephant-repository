@@ -809,44 +809,53 @@ func (s *PGDocStore) GetEventlog(
 
 	//nolint: dupl
 	for i := range res {
-		e := Event{
-			ID:                 res[i].ID,
-			Event:              EventType(res[i].Event),
-			UUID:               res[i].UUID,
-			Timestamp:          res[i].Timestamp.Time,
-			Updater:            res[i].Updater.String,
-			Type:               res[i].Type.String,
-			Version:            res[i].Version.Int64,
-			Status:             res[i].Status.String,
-			StatusID:           res[i].StatusID.Int64,
-			MainDocument:       pg.ToUUIDPointer(res[i].MainDoc),
-			MainDocumentType:   res[i].MainDocType.String,
-			Language:           res[i].Language.String,
-			OldLanguage:        res[i].OldLanguage.String,
-			SystemState:        res[i].SystemState.String,
-			WorkflowStep:       res[i].WorkflowState.String,
-			WorkflowCheckpoint: res[i].WorkflowCheckpoint.String,
-		}
-
-		extra := res[i].Extra
-		if extra != nil {
-			e.AttachedObjects = extra.AttachedObjects
-			e.DetachedObjects = extra.DetachedObjects
-			e.DeleteRecordID = extra.DeleteRecordID
-		}
-
-		if res[i].Acl != nil {
-			err := json.Unmarshal(res[i].Acl, &e.ACL)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to unmarshal event ACL: %w", err)
-			}
+		e, err := eventlogRowToEvent(res[i])
+		if err != nil {
+			return nil, fmt.Errorf("read event %d: %w", res[i].ID, err)
 		}
 
 		evts[i] = e
 	}
 
 	return evts, nil
+}
+
+func eventlogRowToEvent(r postgres.GetEventlogRow) (Event, error) {
+	e := Event{
+		ID:                 res[i].ID,
+		Event:              EventType(res[i].Event),
+		UUID:               res[i].UUID,
+		Timestamp:          res[i].Timestamp.Time,
+		Updater:            res[i].Updater.String,
+		Type:               res[i].Type.String,
+		Version:            res[i].Version.Int64,
+		Status:             res[i].Status.String,
+		StatusID:           res[i].StatusID.Int64,
+		MainDocument:       pg.ToUUIDPointer(res[i].MainDoc),
+		MainDocumentType:   res[i].MainDocType.String,
+		Language:           res[i].Language.String,
+		OldLanguage:        res[i].OldLanguage.String,
+		SystemState:        res[i].SystemState.String,
+		WorkflowStep:       res[i].WorkflowState.String,
+		WorkflowCheckpoint: res[i].WorkflowCheckpoint.String,
+	}
+
+	extra := res[i].Extra
+	if extra != nil {
+		e.AttachedObjects = extra.AttachedObjects
+		e.DetachedObjects = extra.DetachedObjects
+		e.DeleteRecordID = extra.DeleteRecordID
+	}
+
+	if r.Acl != nil {
+		err := json.Unmarshal(r.Acl, &e.ACL)
+		if err != nil {
+			return Event{}, fmt.Errorf(
+				"failed to unmarshal event ACL: %w", err)
+		}
+	}
+
+	return e, nil
 }
 
 func (s *PGDocStore) GetCompactedEventlog(

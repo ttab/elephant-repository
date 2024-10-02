@@ -252,13 +252,21 @@ func testingAPIServer(
 			AssetBucket:       env.AssetBucket,
 			DB:                dbpool,
 			MetricsRegisterer: reg,
+			Store:             store,
 		})
 		test.Must(t, err, "create archiver")
 
-		err = archiver.Run(ctx)
-		test.Must(t, err, "run archiver")
+		go func() {
+			err = archiver.Run(ctx)
+			if !errors.Is(err, context.Canceled) {
+				test.Must(t, err, "run archiver")
+			}
+		}()
 
-		t.Cleanup(archiver.Stop)
+		t.Cleanup(func() {
+			err := archiver.Stop(context.Background())
+			test.Must(t, err, "stop archiver")
+		})
 	}
 
 	if opts.RunEventlogBuilder {
