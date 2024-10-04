@@ -58,6 +58,9 @@ type DocStore interface {
 	BulkCheckPermissions(
 		ctx context.Context, req BulkCheckPermissionRequest,
 	) ([]uuid.UUID, error)
+	GetTypeOfDocument(
+		ctx context.Context, uuid uuid.UUID,
+	) (string, error)
 	GetMetaTypeForDocument(
 		ctx context.Context, uuid uuid.UUID,
 	) (DocumentMetaType, error)
@@ -146,7 +149,7 @@ type WorkflowStore interface {
 		ctx context.Context, rule StatusRule,
 	) error
 	DeleteStatusRule(
-		ctx context.Context, name string,
+		ctx context.Context, docType string, name string,
 	) error
 	GetStatusRules(ctx context.Context) ([]StatusRule, error)
 }
@@ -188,20 +191,22 @@ type MetricStore interface {
 }
 
 type DocumentStatus struct {
+	Type     string
 	Name     string
 	Disabled bool
 }
 
 type StatusRule struct {
+	Type        string
 	Name        string
 	Description string
 	AccessRule  bool
 	AppliesTo   []string
-	ForTypes    []string
 	Expression  string
 }
 
 type UpdateStatusRequest struct {
+	Type     string
 	Name     string
 	Disabled bool
 }

@@ -413,11 +413,16 @@ func (q *Queries) DeleteReport(ctx context.Context, name string) error {
 }
 
 const deleteStatusRule = `-- name: DeleteStatusRule :exec
-DELETE FROM status_rule WHERE name = $1
+DELETE FROM status_rule WHERE type = $1 AND name = $2
 `
 
-func (q *Queries) DeleteStatusRule(ctx context.Context, name string) error {
-	_, err := q.db.Exec(ctx, deleteStatusRule, name)
+type DeleteStatusRuleParams struct {
+	Type string
+	Name string
+}
+
+func (q *Queries) DeleteStatusRule(ctx context.Context, arg DeleteStatusRuleParams) error {
+	_, err := q.db.Exec(ctx, deleteStatusRule, arg.Type, arg.Name)
 	return err
 }
 
@@ -579,24 +584,29 @@ func (q *Queries) GetActiveSchemas(ctx context.Context) ([]DocumentSchema, error
 }
 
 const getActiveStatuses = `-- name: GetActiveStatuses :many
-SELECT name
+SELECT type, name
 FROM status
 WHERE disabled = false
 `
 
-func (q *Queries) GetActiveStatuses(ctx context.Context) ([]string, error) {
+type GetActiveStatusesRow struct {
+	Type string
+	Name string
+}
+
+func (q *Queries) GetActiveStatuses(ctx context.Context) ([]GetActiveStatusesRow, error) {
 	rows, err := q.db.Query(ctx, getActiveStatuses)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []GetActiveStatusesRow
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var i GetActiveStatusesRow
+		if err := rows.Scan(&i.Type, &i.Name); err != nil {
 			return nil, err
 		}
-		items = append(items, name)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1899,7 +1909,7 @@ func (q *Queries) GetSigningKeys(ctx context.Context) ([]SigningKey, error) {
 }
 
 const getStatusRules = `-- name: GetStatusRules :many
-SELECT name, description, access_rule, applies_to, for_types, expression
+SELECT type, name, description, access_rule, applies_to, expression
 FROM status_rule
 `
 
@@ -1913,11 +1923,11 @@ func (q *Queries) GetStatusRules(ctx context.Context) ([]StatusRule, error) {
 	for rows.Next() {
 		var i StatusRule
 		if err := rows.Scan(
+			&i.Type,
 			&i.Name,
 			&i.Description,
 			&i.AccessRule,
 			&i.AppliesTo,
-			&i.ForTypes,
 			&i.Expression,
 		); err != nil {
 			return nil, err
@@ -2041,6 +2051,19 @@ func (q *Queries) GetStatuses(ctx context.Context, arg GetStatusesParams) ([]Get
 		return nil, err
 	}
 	return items, nil
+}
+
+const getTypeOfDocument = `-- name: GetTypeOfDocument :one
+SELECT type
+FROM document
+WHERE uuid = $1
+`
+
+func (q *Queries) GetTypeOfDocument(ctx context.Context, argUuid uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getTypeOfDocument, argUuid)
+	var type_ string
+	err := row.Scan(&type_)
+	return type_, err
 }
 
 const getVersion = `-- name: GetVersion :one
@@ -3118,49 +3141,50 @@ func (q *Queries) UpdateReport(ctx context.Context, arg UpdateReportParams) erro
 }
 
 const updateStatus = `-- name: UpdateStatus :exec
-INSERT INTO status(name, disabled)
-VALUES($1, $2)
-ON CONFLICT(name) DO UPDATE SET
-   disabled = $2
+INSERT INTO status(type, name, disabled)
+VALUES($1, $2, $3)
+ON CONFLICT(type, name) DO UPDATE SET
+   disabled = $3
 `
 
 type UpdateStatusParams struct {
+	Type     string
 	Name     string
 	Disabled bool
 }
 
 func (q *Queries) UpdateStatus(ctx context.Context, arg UpdateStatusParams) error {
-	_, err := q.db.Exec(ctx, updateStatus, arg.Name, arg.Disabled)
+	_, err := q.db.Exec(ctx, updateStatus, arg.Type, arg.Name, arg.Disabled)
 	return err
 }
 
 const updateStatusRule = `-- name: UpdateStatusRule :exec
 INSERT INTO status_rule(
-       name, description, access_rule, applies_to, for_types, expression
+       type, name, description, access_rule, applies_to, expression
 ) VALUES(
        $1, $2, $3, $4, $5, $6
-) ON CONFLICT(name)
+) ON CONFLICT(type, name)
   DO UPDATE SET
-     description = $2, access_rule = $3,
-     applies_to = $4, for_types = $5, expression = $6
+     description = $3, access_rule = $4,
+     applies_to = $5, expression = $6
 `
 
 type UpdateStatusRuleParams struct {
+	Type        string
 	Name        string
 	Description string
 	AccessRule  bool
 	AppliesTo   []string
-	ForTypes    []string
 	Expression  string
 }
 
 func (q *Queries) UpdateStatusRule(ctx context.Context, arg UpdateStatusRuleParams) error {
 	_, err := q.db.Exec(ctx, updateStatusRule,
+		arg.Type,
 		arg.Name,
 		arg.Description,
 		arg.AccessRule,
 		arg.AppliesTo,
-		arg.ForTypes,
 		arg.Expression,
 	)
 	return err

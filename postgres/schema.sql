@@ -506,34 +506,6 @@ CREATE TABLE public.report (
 
 
 --
--- Name: restore; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.restore (
-    id bigint NOT NULL,
-    uuid uuid NOT NULL,
-    delete_id bigint NOT NULL,
-    created timestamp with time zone NOT NULL,
-    creator_uri text NOT NULL,
-    acls jsonb
-);
-
-
---
--- Name: restore_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-ALTER TABLE public.restore ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.restore_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
-
---
 -- Name: restore_request; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -586,6 +558,7 @@ CREATE TABLE public.signing_keys (
 --
 
 CREATE TABLE public.status (
+    type text NOT NULL,
     name text NOT NULL,
     disabled boolean DEFAULT false NOT NULL
 );
@@ -615,11 +588,11 @@ ALTER TABLE ONLY public.status_heads REPLICA IDENTITY FULL;
 --
 
 CREATE TABLE public.status_rule (
+    type text NOT NULL,
     name text NOT NULL,
     description text NOT NULL,
     access_rule boolean NOT NULL,
     applies_to text[] NOT NULL,
-    for_types text[] NOT NULL,
     expression text NOT NULL
 );
 
@@ -825,14 +798,6 @@ ALTER TABLE ONLY public.report
 
 
 --
--- Name: restore restore_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.restore
-    ADD CONSTRAINT restore_pkey PRIMARY KEY (id);
-
-
---
 -- Name: restore_request restore_request_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -861,7 +826,7 @@ ALTER TABLE ONLY public.status_heads
 --
 
 ALTER TABLE ONLY public.status
-    ADD CONSTRAINT status_pkey PRIMARY KEY (name);
+    ADD CONSTRAINT status_pkey PRIMARY KEY (type, name);
 
 
 --
@@ -869,7 +834,7 @@ ALTER TABLE ONLY public.status
 --
 
 ALTER TABLE ONLY public.status_rule
-    ADD CONSTRAINT status_rule_pkey PRIMARY KEY (name);
+    ADD CONSTRAINT status_rule_pkey PRIMARY KEY (type, name);
 
 
 --

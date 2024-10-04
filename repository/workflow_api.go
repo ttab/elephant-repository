@@ -35,6 +35,10 @@ func (s *WorkflowsService) CreateStatusRule(
 		return nil, twirp.RequiredArgumentError("rule")
 	}
 
+	if req.Rule.Type == "" {
+		return nil, twirp.RequiredArgumentError("rule.type")
+	}
+
 	if req.Rule.Name == "" {
 		return nil, twirp.RequiredArgumentError("rule.name")
 	}
@@ -51,10 +55,6 @@ func (s *WorkflowsService) CreateStatusRule(
 		return nil, twirp.RequiredArgumentError("rule.applies_to")
 	}
 
-	if len(req.Rule.ForTypes) == 0 {
-		return nil, twirp.RequiredArgumentError("rule.for_types")
-	}
-
 	_, err = expr.Compile(req.Rule.Expression,
 		expr.Env(StatusRuleInput{}),
 		expr.AsBool(),
@@ -65,11 +65,11 @@ func (s *WorkflowsService) CreateStatusRule(
 	}
 
 	err = s.store.UpdateStatusRule(ctx, StatusRule{
+		Type:        req.Rule.Type,
 		Name:        req.Rule.Name,
 		Description: req.Rule.Description,
 		AccessRule:  req.Rule.AccessRule,
 		AppliesTo:   req.Rule.AppliesTo,
-		ForTypes:    req.Rule.ForTypes,
 		Expression:  req.Rule.Expression,
 	})
 	if err != nil {
@@ -88,11 +88,15 @@ func (s *WorkflowsService) DeleteStatusRule(
 		return nil, err
 	}
 
+	if req.Type == "" {
+		return nil, twirp.RequiredArgumentError("type")
+	}
+
 	if req.Name == "" {
 		return nil, twirp.RequiredArgumentError("name")
 	}
 
-	err = s.store.DeleteStatusRule(ctx, req.Name)
+	err = s.store.DeleteStatusRule(ctx, req.Type, req.Name)
 	if err != nil {
 		return nil, twirp.InternalErrorf("failed to delete rule: %v", err)
 	}
@@ -109,11 +113,16 @@ func (s *WorkflowsService) UpdateStatus(
 		return nil, err
 	}
 
+	if req.Type == "" {
+		return nil, twirp.RequiredArgumentError("type")
+	}
+
 	if req.Name == "" {
 		return nil, twirp.RequiredArgumentError("name")
 	}
 
 	err = s.store.UpdateStatus(ctx, UpdateStatusRequest{
+		Type:     req.Type,
 		Name:     req.Name,
 		Disabled: req.Disabled,
 	})
@@ -144,11 +153,11 @@ func (s *WorkflowsService) GetStatusRules(
 
 	for i := range res {
 		list[i] = &repository.StatusRule{
+			Type:        res[i].Type,
 			Name:        res[i].Name,
 			Description: res[i].Description,
 			AccessRule:  res[i].AccessRule,
 			AppliesTo:   res[i].AppliesTo,
-			ForTypes:    res[i].ForTypes,
 			Expression:  res[i].Expression,
 		}
 	}
@@ -178,6 +187,7 @@ func (s *WorkflowsService) GetStatuses(
 	for i := range res {
 		list[i] = &repository.WorkflowStatus{
 			Name: res[i].Name,
+			Type: res[i].Type,
 		}
 	}
 

@@ -1868,6 +1868,7 @@ func (s *PGDocStore) UpdateStatus(
 		q := postgres.New(tx)
 
 		err := q.UpdateStatus(ctx, postgres.UpdateStatusParams{
+			Type:     req.Type,
 			Name:     req.Name,
 			Disabled: req.Disabled,
 		})
@@ -1897,7 +1898,8 @@ func (s *PGDocStore) GetStatuses(ctx context.Context) ([]DocumentStatus, error) 
 
 	for i := range res {
 		list = append(list, DocumentStatus{
-			Name: res[i],
+			Type: res[i].Type,
+			Name: res[i].Name,
 		})
 	}
 
@@ -1912,20 +1914,15 @@ func (s *PGDocStore) UpdateStatusRule(
 			"applies_to cannot be empty")
 	}
 
-	if len(rule.ForTypes) == 0 {
-		return DocStoreErrorf(ErrCodeBadRequest,
-			"for_types cannot be empty")
-	}
-
 	return s.withTX(ctx, "update status rule", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.UpdateStatusRule(ctx, postgres.UpdateStatusRuleParams{
+			Type:        rule.Type,
 			Name:        rule.Name,
 			Description: rule.Description,
 			AccessRule:  rule.AccessRule,
 			AppliesTo:   rule.AppliesTo,
-			ForTypes:    rule.ForTypes,
 			Expression:  rule.Expression,
 		})
 		if err != nil {
@@ -1933,8 +1930,9 @@ func (s *PGDocStore) UpdateStatusRule(
 		}
 
 		err = notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
-			Type: WorkflowEventTypeStatusRuleChange,
-			Name: rule.Name,
+			Type:    WorkflowEventTypeStatusRuleChange,
+			DocType: rule.Type,
+			Name:    rule.Name,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to send workflow update notification: %w", err)
@@ -1945,14 +1943,26 @@ func (s *PGDocStore) UpdateStatusRule(
 }
 
 func (s *PGDocStore) DeleteStatusRule(
-	ctx context.Context, name string,
+	ctx context.Context, docType string, name string,
 ) error {
 	return s.withTX(ctx, "delete status rule", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
-		err := q.DeleteStatusRule(ctx, name)
+		err := q.DeleteStatusRule(ctx, postgres.DeleteStatusRuleParams{
+			Type: docType,
+			Name: name,
+		})
 		if err != nil {
 			return fmt.Errorf("failed to delete status rule: %w", err)
+		}
+
+		err = notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+			Type:    WorkflowEventTypeStatusRuleChange,
+			DocType: docType,
+			Name:    name,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send workflow update notification: %w", err)
 		}
 
 		return nil
@@ -1969,11 +1979,11 @@ func (s *PGDocStore) GetStatusRules(ctx context.Context) ([]StatusRule, error) {
 
 	for _, row := range res {
 		list = append(list, StatusRule{
+			Type:        row.Type,
 			Name:        row.Name,
 			Description: row.Description,
 			AccessRule:  row.AccessRule,
 			AppliesTo:   row.AppliesTo,
-			ForTypes:    row.ForTypes,
 			Expression:  row.Expression,
 		})
 	}
@@ -1994,6 +2004,18 @@ func (err StatusRuleError) Error() string {
 
 	return fmt.Sprintf("violates the following status rules: %s",
 		strings.Join(rules, ", "))
+}
+
+// GetTypeOfDocument implements DocStore.
+func (s *PGDocStore) GetTypeOfDocument(ctx context.Context, uuid uuid.UUID) (string, error) {
+	t, err := s.reader.GetTypeOfDocument(ctx, uuid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", DocStoreErrorf(ErrCodeNotFound, "no such document")
+	} else if err != nil {
+		return "", fmt.Errorf("query failed: %w", err)
+	}
+
+	return t, nil
 }
 
 type DocumentMetaType struct {

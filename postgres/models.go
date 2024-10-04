@@ -229,15 +229,6 @@ type Report struct {
 	Spec          []byte
 }
 
-type Restore struct {
-	ID         int64
-	UUID       uuid.UUID
-	DeleteID   int64
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Acls       []byte
-}
-
 type RestoreRequest struct {
 	ID             int64
 	UUID           uuid.UUID
@@ -258,6 +249,7 @@ type SigningKey struct {
 }
 
 type Status struct {
+	Type     string
 	Name     string
 	Disabled bool
 }
@@ -275,10 +267,10 @@ type StatusHead struct {
 }
 
 type StatusRule struct {
+	Type        string
 	Name        string
 	Description string
 	AccessRule  bool
 	AppliesTo   []string
-	ForTypes    []string
 	Expression  string
 }

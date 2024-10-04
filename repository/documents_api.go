@@ -26,7 +26,7 @@ type DocumentValidator interface {
 }
 
 type WorkflowProvider interface {
-	HasStatus(name string) bool
+	HasStatus(docType string, name string) bool
 	EvaluateRules(input StatusRuleInput) []StatusRuleViolation
 }
 
@@ -1601,8 +1601,12 @@ func (a *DocumentsService) verifyUpdateRequest(
 			"cannot be less than -1")
 	}
 
+	var docType string
+
+	//nolint: nestif
 	if req.Document != nil {
 		req.Document.Uuid = strings.ToLower(req.Document.Uuid)
+		docType = req.Document.Type
 
 		if req.Document.Uuid == "" {
 			req.Document.Uuid = docUUID.String()
@@ -1624,6 +1628,16 @@ func (a *DocumentsService) verifyUpdateRequest(
 			return twirp.InvalidArgumentError("document.language",
 				err.Error())
 		}
+	} else if len(req.Status) > 0 {
+		// We need to know the document type if we're to set statuses.
+		t, err := a.store.GetTypeOfDocument(ctx, docUUID)
+		if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+			return twirp.NotFoundError("cannot set the status of a document that doesn't exist")
+		} else if err != nil {
+			return twirp.InternalErrorf("check type of document: %w", err)
+		}
+
+		docType = t
 	}
 
 	for i, s := range req.Status {
@@ -1652,10 +1666,11 @@ func (a *DocumentsService) verifyUpdateRequest(
 				"required when no document is included")
 		}
 
-		if !a.workflows.HasStatus(s.Name) {
+		if !a.workflows.HasStatus(docType, s.Name) {
 			return twirp.InvalidArgumentError(
 				fmt.Sprintf("status.%d.name", i),
-				fmt.Sprintf("unknown status %q", s.Name))
+				fmt.Sprintf("unknown status %q for %q",
+					s.Name, docType))
 		}
 	}
 
