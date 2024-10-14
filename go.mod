@@ -1,7 +1,6 @@
 module github.com/ttab/elephant-repository
 
 go 1.23.1
-
 require (
 	github.com/Masterminds/semver/v3 v3.3.0
 	github.com/adhocore/gronx v1.19.1
@@ -30,9 +29,9 @@ require (
 	github.com/ttab/elephantine v0.13.4
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.6.2
-	github.com/ttab/newsdoc v0.5.0
+	github.com/ttab/newsdoc v0.6.0
 	github.com/ttab/revisor v0.9.0
-	github.com/ttab/revisorschemas v0.4.5
+	github.com/ttab/revisorschemas v0.4.10
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.4
 	github.com/xuri/excelize/v2 v2.8.1
