@@ -81,15 +81,6 @@ func main() {
 				EnvVars: []string{"CONN_STRING_PARAMETER"},
 			},
 			&cli.StringFlag{
-				Name:    "reporting-db",
-				Value:   "postgres://repository-reportuser:pass@localhost/elephant-repository",
-				EnvVars: []string{"REPORTING_CONN_STRING"},
-			},
-			&cli.StringFlag{
-				Name:    "reporting-db-parameter",
-				EnvVars: []string{"REPORTING_CONN_STRING_PARAMETER"},
-			},
-			&cli.StringFlag{
 				Name:    "eventsink",
 				Value:   "aws-eventbridge",
 				EnvVars: []string{"EVENTSINK"},
@@ -98,11 +89,6 @@ func main() {
 				Name:    "archive-bucket",
 				Value:   "elephant-archive",
 				EnvVars: []string{"ARCHIVE_BUCKET"},
-			},
-			&cli.StringFlag{
-				Name:    "report-bucket",
-				Value:   "elephant-reports",
-				EnvVars: []string{"REPORT_BUCKET"},
 			},
 			&cli.StringFlag{
 				Name:    "s3-endpoint",
@@ -136,14 +122,10 @@ func main() {
 				Usage: "Disable the eventsink",
 			},
 			&cli.BoolFlag{
-				Name:  "no-reporter",
-				Usage: "Disable the reporter",
-			},
-			&cli.BoolFlag{
 				Name:  "no-replicator",
 				Usage: "Disable the replicator",
 			},
-		}, elephantine.OpenIDConnectParameters()...),
+		}, elephantine.AuthenticationCLIFlags()...),
 	}
 
 	app := cli.App{
@@ -248,23 +230,6 @@ func runServer(c *cli.Context) error {
 	go store.RunListener(c.Context)
 	go store.RunCleaner(c.Context, 5*time.Minute)
 
-	reportDB, err := pgxpool.New(c.Context, conf.ReportingDB)
-	if err != nil {
-		return fmt.Errorf(
-			"unable to create reporting connection pool: %w", err)
-	}
-
-	defer func() {
-		// Don't block for close
-		go reportDB.Close()
-	}()
-
-	err = reportDB.Ping(c.Context)
-	if err != nil {
-		return fmt.Errorf(
-			"failed to connect to reporting database: %w", err)
-	}
-
 	if !conf.NoCoreSchema {
 		err = repository.EnsureCoreSchema(c.Context, store)
 		if err != nil {
@@ -367,32 +332,6 @@ func runServer(c *cli.Context) error {
 		})
 	}
 
-	if !conf.NoReporter {
-		group.Go(func() error {
-			reporter, err := repository.NewReportRunner(repository.ReportRunnerOptions{
-				Logger:            logger,
-				S3:                s3Client,
-				Bucket:            conf.ReportBucket,
-				ReportQueryer:     reportDB,
-				DB:                dbpool,
-				MetricsRegisterer: prometheus.DefaultRegisterer,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to create report runner: %w", err)
-			}
-
-			go reporter.Run(c.Context)
-
-			go func() {
-				<-grace.ShouldStop()
-				reporter.Stop()
-				logger.Info("stopped reporter")
-			}()
-
-			return nil
-		})
-	}
-
 	if !conf.NoArchiver {
 		log := logger.With(elephantine.LogKeyComponent, "archiver")
 
@@ -473,7 +412,6 @@ func runServer(c *cli.Context) error {
 
 	schemaService := repository.NewSchemasService(logger, store)
 	workflowService := repository.NewWorkflowsService(store)
-	reportsService := repository.NewReportsService(logger, store, reportDB)
 	metricsService := repository.NewMetricsService(store)
 
 	router := httprouter.New()
@@ -510,7 +448,6 @@ func runServer(c *cli.Context) error {
 		repository.WithDocumentsAPI(docService, opts),
 		repository.WithSchemasAPI(schemaService, opts),
 		repository.WithWorkflowsAPI(workflowService, opts),
-		repository.WithReportsAPI(reportsService, opts),
 		repository.WithMetricsAPI(metricsService, opts),
 		repository.WithSSE(sse.HTTPHandler(), opts),
 	)

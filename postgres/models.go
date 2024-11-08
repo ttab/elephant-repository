@@ -222,13 +222,6 @@ type PurgeRequest struct {
 	Finished       pgtype.Timestamptz
 }
 
-type Report struct {
-	Name          string
-	Enabled       bool
-	NextExecution pgtype.Timestamptz
-	Spec          []byte
-}
-
 type RestoreRequest struct {
 	ID             int64
 	UUID           uuid.UUID

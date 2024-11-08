@@ -303,7 +303,6 @@ func testingAPIServer(
 	)
 	schemaService := repository.NewSchemasService(logger, store)
 	workflowService := repository.NewWorkflowsService(store)
-	reportsService := repository.NewReportsService(logger, store, reportingPool)
 	metricsService := repository.NewMetricsService(store)
 
 	router := httprouter.New()
@@ -330,7 +329,6 @@ func testingAPIServer(
 		repository.WithDocumentsAPI(docService, srvOpts),
 		repository.WithSchemasAPI(schemaService, srvOpts),
 		repository.WithWorkflowsAPI(workflowService, srvOpts),
-		repository.WithReportsAPI(reportsService, srvOpts),
 		repository.WithMetricsAPI(metricsService, srvOpts),
 		repository.WithSSE(sse.HTTPHandler(), srvOpts),
 	)
