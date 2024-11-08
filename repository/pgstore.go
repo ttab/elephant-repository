@@ -285,7 +285,9 @@ func (s *PGDocStore) runListener(ctx context.Context) error {
 }
 
 // Delete implements DocStore.
-func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
+func (s *PGDocStore) Delete(
+	ctx context.Context, req DeleteRequest,
+) (outErr error) {
 	var metaJSON []byte
 
 	if len(req.Meta) > 0 {
@@ -305,7 +307,7 @@ func (s *PGDocStore) Delete(ctx context.Context, req DeleteRequest) error {
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer pg.SafeRollback(ctx, s.logger, tx, "document delete")
+	defer pg.Rollback(tx, &outErr)
 
 	q := postgres.New(tx)
 
@@ -494,7 +496,7 @@ func (s *PGDocStore) insertDeleteRecord(
 func (s *PGDocStore) RestoreDocument(
 	ctx context.Context, docUUID uuid.UUID, deleteRecordID int64,
 	creator string, acl []ACLEntry,
-) error {
+) (outErr error) {
 	specData, err := json.Marshal(RestoreSpec{
 		ACL: acl,
 	})
@@ -509,7 +511,7 @@ func (s *PGDocStore) RestoreDocument(
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer pg.SafeRollback(ctx, s.logger, tx, "document restore")
+	defer pg.Rollback(tx, &outErr)
 
 	q := postgres.New(tx)
 
@@ -597,7 +599,7 @@ func (s *PGDocStore) RestoreDocument(
 func (s *PGDocStore) PurgeDocument(
 	ctx context.Context, docUUID uuid.UUID, deleteRecordID int64,
 	creator string,
-) error {
+) (outErr error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -605,7 +607,7 @@ func (s *PGDocStore) PurgeDocument(
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer pg.SafeRollback(ctx, s.logger, tx, "document restore")
+	defer pg.Rollback(tx, &outErr)
 
 	q := postgres.New(tx)
 
@@ -1378,7 +1380,7 @@ const (
 func (s *PGDocStore) Update(
 	ctx context.Context, workflows WorkflowProvider,
 	requests []*UpdateRequest,
-) ([]DocumentUpdate, error) {
+) (_ []DocumentUpdate, outErr error) {
 	var updates []*docUpdateState
 
 	// Do serialisation work before we start a transaction. That way we
@@ -1401,7 +1403,7 @@ func (s *PGDocStore) Update(
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer pg.SafeRollback(ctx, s.logger, tx, "document update")
+	defer pg.Rollback(tx, &outErr)
 
 	q := postgres.New(tx)
 
@@ -1864,7 +1866,7 @@ func (s *PGDocStore) loadDocument(
 func (s *PGDocStore) UpdateStatus(
 	ctx context.Context, req UpdateStatusRequest,
 ) error {
-	return s.withTX(ctx, "status update", func(tx pgx.Tx) error {
+	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.UpdateStatus(ctx, postgres.UpdateStatusParams{
@@ -1914,7 +1916,7 @@ func (s *PGDocStore) UpdateStatusRule(
 			"applies_to cannot be empty")
 	}
 
-	return s.withTX(ctx, "update status rule", func(tx pgx.Tx) error {
+	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.UpdateStatusRule(ctx, postgres.UpdateStatusRuleParams{
@@ -1945,7 +1947,7 @@ func (s *PGDocStore) UpdateStatusRule(
 func (s *PGDocStore) DeleteStatusRule(
 	ctx context.Context, docType string, name string,
 ) error {
-	return s.withTX(ctx, "delete status rule", func(tx pgx.Tx) error {
+	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.DeleteStatusRule(ctx, postgres.DeleteStatusRuleParams{
@@ -2109,7 +2111,7 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 		Token:   uuid.NewString(),
 	}
 
-	err := s.withTX(ctx, "document lock create", func(tx pgx.Tx) error {
+	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		info, err := s.UpdatePreflight(ctx, q, req.UUID, 0)
@@ -2169,7 +2171,7 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 		Token:   req.Token,
 	}
 
-	err := s.withTX(ctx, "document lock update", func(tx pgx.Tx) error {
+	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		info, err := s.UpdatePreflight(ctx, q, req.UUID, 0)
@@ -2208,7 +2210,7 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 }
 
 func (s *PGDocStore) Unlock(ctx context.Context, uuid uuid.UUID, token string) error {
-	err := s.withTX(ctx, "document lock delete", func(tx pgx.Tx) error {
+	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		info, err := s.UpdatePreflight(ctx, q, uuid, 0)
@@ -2255,7 +2257,7 @@ func (s *PGDocStore) RegisterSchema(
 			"failed to marshal specification for storage: %w", err)
 	}
 
-	err = s.withTX(ctx, "schema registration", func(tx pgx.Tx) error {
+	err = pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err = q.RegisterSchema(ctx, postgres.RegisterSchemaParams{
@@ -2291,7 +2293,7 @@ func (s *PGDocStore) RegisterSchema(
 func (s *PGDocStore) ActivateSchema(
 	ctx context.Context, name, version string,
 ) error {
-	return s.withTX(ctx, "schema registration", func(tx pgx.Tx) error {
+	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		return s.activateSchema(ctx, postgres.New(tx), name, version)
 	})
 }
@@ -2320,34 +2322,10 @@ func (s *PGDocStore) activateSchema(
 	return nil
 }
 
-func (s *PGDocStore) withTX(
-	ctx context.Context, name string,
-	fn func(tx pgx.Tx) error,
-) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-
-	// We defer a rollback, rollback after commit won't be treated as an
-	// error.
-	defer pg.SafeRollback(ctx, s.logger, tx, name)
-
-	err = fn(tx)
-	if err != nil {
-		return err
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to commit: %w", err)
-	}
-
-	return nil
-}
-
 // DeactivateSchema implements DocStore.
-func (s *PGDocStore) DeactivateSchema(ctx context.Context, name string) error {
+func (s *PGDocStore) DeactivateSchema(
+	ctx context.Context, name string,
+) (outErr error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -2355,7 +2333,7 @@ func (s *PGDocStore) DeactivateSchema(ctx context.Context, name string) error {
 
 	// We defer a rollback, rollback after commit won't be treated as an
 	// error.
-	defer pg.SafeRollback(ctx, s.logger, tx, "schema deactivation")
+	defer pg.Rollback(tx, &outErr)
 
 	q := postgres.New(tx)
 
@@ -2498,7 +2476,7 @@ func (s *PGDocStore) GetDeprecations(
 func (s *PGDocStore) UpdateDeprecation(
 	ctx context.Context, deprecation Deprecation,
 ) error {
-	err := s.withTX(ctx, "update deprecation", func(tx pgx.Tx) error {
+	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.UpdateDeprecation(ctx, postgres.UpdateDeprecationParams{
@@ -2527,7 +2505,7 @@ func (s *PGDocStore) UpdateDeprecation(
 func (s *PGDocStore) RegisterMetricKind(
 	ctx context.Context, name string, aggregation Aggregation,
 ) error {
-	return s.withTX(ctx, "register metric kind", func(tx pgx.Tx) error {
+	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.RegisterMetricKind(ctx, postgres.RegisterMetricKindParams{
@@ -2595,7 +2573,7 @@ func (s *PGDocStore) GetMetricKinds(
 
 // RegisterMetric implements MetricStore.
 func (s *PGDocStore) RegisterOrReplaceMetric(ctx context.Context, metric Metric) error {
-	return s.withTX(ctx, "register metric", func(tx pgx.Tx) error {
+	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.RegisterOrReplaceMetric(ctx, postgres.RegisterOrReplaceMetricParams{
@@ -2624,7 +2602,7 @@ func (s *PGDocStore) RegisterOrReplaceMetric(ctx context.Context, metric Metric)
 
 // RegisterMetric implements MetricStore.
 func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metric) error {
-	return s.withTX(ctx, "register metric", func(tx pgx.Tx) error {
+	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		err := q.RegisterOrIncrementMetric(ctx, postgres.RegisterOrIncrementMetricParams{

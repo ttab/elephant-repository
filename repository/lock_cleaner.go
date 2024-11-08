@@ -48,7 +48,7 @@ func (s *PGDocStore) removeExpiredLocks(ctx context.Context) error {
 
 	cutoff := pg.Time(time.Now().Add(5 * time.Minute))
 
-	err := s.withTX(ctx, "lock cleaner", func(tx pgx.Tx) error {
+	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		expired, err := q.GetExpiredDocumentLocks(ctx, cutoff)

@@ -401,8 +401,7 @@ func (a *Archiver) processDeletes(
 		return false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer pg.SafeRollback(ctx, a.logger, tx,
-		"document delete processing")
+	defer pg.Rollback(tx, &outErr)
 
 	q := postgres.New(tx)
 
@@ -592,14 +591,13 @@ func (a *Archiver) storeArchiveObject(
 
 func (a *Archiver) processRestores(
 	ctx context.Context,
-) (bool, error) {
+) (_ bool, outErr error) {
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("begin transaction: %w", err)
 	}
 
-	defer pg.SafeRollback(ctx, a.logger, tx,
-		"document restores")
+	defer pg.Rollback(tx, &outErr)
 
 	q := postgres.New(tx)
 
@@ -955,14 +953,13 @@ func (a *Archiver) restoreDocumentStatus(
 
 func (a *Archiver) processPurges(
 	ctx context.Context,
-) (bool, error) {
+) (_ bool, outErr error) {
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("begin transaction: %w", err)
 	}
 
-	defer pg.SafeRollback(ctx, a.logger, tx,
-		"document purges")
+	defer pg.Rollback(tx, &outErr)
 
 	q := postgres.New(tx)
 
@@ -1114,8 +1111,7 @@ func (a *Archiver) archiveDocumentVersions(
 		return false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer pg.SafeRollback(ctx, a.logger, tx,
-		"document version archiving")
+	defer pg.Rollback(tx, &outErr)
 
 	q := postgres.New(tx)
 
@@ -1218,8 +1214,7 @@ func (a *Archiver) archiveDocumentStatuses(
 		return false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer pg.SafeRollback(ctx, a.logger, tx,
-		"document version archiving")
+	defer pg.Rollback(tx, &outErr)
 
 	q := postgres.New(tx)
 
@@ -1294,13 +1289,13 @@ func (a *Archiver) archiveDocumentStatuses(
 	return true, nil
 }
 
-func (a *Archiver) ensureSigningKeys(ctx context.Context) error {
+func (a *Archiver) ensureSigningKeys(ctx context.Context) (outErr error) {
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer pg.SafeRollback(ctx, a.logger, tx, "signing keys")
+	defer pg.Rollback(tx, &outErr)
 
 	q := postgres.New(tx)
 
