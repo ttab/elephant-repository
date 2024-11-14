@@ -154,21 +154,6 @@ type WorkflowStore interface {
 	GetStatusRules(ctx context.Context) ([]StatusRule, error)
 }
 
-type ReportStore interface {
-	ListReports(
-		ctx context.Context,
-	) ([]ReportListItem, error)
-	UpdateReport(
-		ctx context.Context, report Report, enabled bool,
-	) (time.Time, error)
-	GetReport(
-		ctx context.Context, name string,
-	) (*StoredReport, error)
-	DeleteReport(
-		ctx context.Context, name string,
-	) error
-}
-
 type MetricStore interface {
 	RegisterMetricKind(
 		ctx context.Context, name string, aggregation Aggregation,

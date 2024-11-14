@@ -49,6 +49,18 @@ linters:
   - wrapcheck
   - wsl
 linters-settings:
+  wrapcheck:
+    ignoreSigs:
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - errors.Join(
+      - .Wrap(
+      - .Wrapf(
+      - .WithMessage(
+      - .WithMessagef(
+      - .WithStack(
+      - .WithTX(
   gomoddirectives:
     replace-allow-list:
       - github.com/tmaxmax/go-sse

@@ -494,18 +494,6 @@ ALTER TABLE public.purge_request ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTIT
 
 
 --
--- Name: report; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.report (
-    name text NOT NULL,
-    enabled boolean NOT NULL,
-    next_execution timestamp with time zone NOT NULL,
-    spec jsonb NOT NULL
-);
-
-
---
 -- Name: restore_request; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -787,14 +775,6 @@ ALTER TABLE ONLY public.planning_item
 
 ALTER TABLE ONLY public.purge_request
     ADD CONSTRAINT purge_request_pkey PRIMARY KEY (id);
-
-
---
--- Name: report report_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.report
-    ADD CONSTRAINT report_pkey PRIMARY KEY (name);
 
 
 --

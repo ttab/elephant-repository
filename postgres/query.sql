@@ -579,47 +579,6 @@ DELETE FROM document_lock
 WHERE uuid = @uuid
   AND token = @token;  
 
--- name: UpdateReport :exec
-INSERT INTO report(
-       name, enabled, next_execution, spec
-) VALUES (
-       @name, @enabled, @next_execution, @spec
-) ON CONFLICT (name) DO UPDATE SET
-  enabled = @enabled,
-  next_execution = @next_execution,
-  spec = @spec;
-
--- name: ListReports :many
-SELECT name, spec
-FROM report
-ORDER BY name;
-
--- name: GetReport :one
-SELECT name, enabled, next_execution, spec
-FROM report
-WHERE name = $1;
-
--- name: GetDueReport :one
-SELECT name, enabled, next_execution, spec
-FROM report
-WHERE enabled AND next_execution < now()
-FOR UPDATE SKIP LOCKED
-LIMIT 1;
-
--- name: DeleteReport :exec
-DELETE FROM report
-WHERE name = @name;
-
--- name: SetNextReportExecution :exec
-UPDATE report
-SET next_execution = @next_execution
-WHERE name = @name;
-
--- name: GetNextReportDueTime :one
-SELECT MIN(next_execution)::timestamptz
-FROM report
-WHERE enabled;
-
 -- name: InsertIntoEventLog :one
 INSERT INTO eventlog(
        event, uuid, type, timestamp, updater, version, status, status_id, acl,

@@ -402,16 +402,6 @@ func (q *Queries) DeletePlanningItem(ctx context.Context, argUuid uuid.UUID) err
 	return err
 }
 
-const deleteReport = `-- name: DeleteReport :exec
-DELETE FROM report
-WHERE name = $1
-`
-
-func (q *Queries) DeleteReport(ctx context.Context, name string) error {
-	_, err := q.db.Exec(ctx, deleteReport, name)
-	return err
-}
-
 const deleteStatusRule = `-- name: DeleteStatusRule :exec
 DELETE FROM status_rule WHERE type = $1 AND name = $2
 `
@@ -1201,26 +1191,6 @@ func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context) (GetDocume
 	return i, err
 }
 
-const getDueReport = `-- name: GetDueReport :one
-SELECT name, enabled, next_execution, spec
-FROM report
-WHERE enabled AND next_execution < now()
-FOR UPDATE SKIP LOCKED
-LIMIT 1
-`
-
-func (q *Queries) GetDueReport(ctx context.Context) (Report, error) {
-	row := q.db.QueryRow(ctx, getDueReport)
-	var i Report
-	err := row.Scan(
-		&i.Name,
-		&i.Enabled,
-		&i.NextExecution,
-		&i.Spec,
-	)
-	return i, err
-}
-
 const getEnforcedDeprecations = `-- name: GetEnforcedDeprecations :many
 SELECT label
 FROM deprecation
@@ -1679,19 +1649,6 @@ func (q *Queries) GetNextPurgeRequest(ctx context.Context) (GetNextPurgeRequestR
 	return i, err
 }
 
-const getNextReportDueTime = `-- name: GetNextReportDueTime :one
-SELECT MIN(next_execution)::timestamptz
-FROM report
-WHERE enabled
-`
-
-func (q *Queries) GetNextReportDueTime(ctx context.Context) (pgtype.Timestamptz, error) {
-	row := q.db.QueryRow(ctx, getNextReportDueTime)
-	var column_1 pgtype.Timestamptz
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const getNextRestoreRequest = `-- name: GetNextRestoreRequest :one
 SELECT r.id, r.uuid, r.delete_record_id, r.created, r.creator, r.spec
 FROM restore_request AS r
@@ -1819,24 +1776,6 @@ func (q *Queries) GetPlanningItem(ctx context.Context, argUuid uuid.UUID) (Plann
 		&i.EndDate,
 		&i.Priority,
 		&i.Event,
-	)
-	return i, err
-}
-
-const getReport = `-- name: GetReport :one
-SELECT name, enabled, next_execution, spec
-FROM report
-WHERE name = $1
-`
-
-func (q *Queries) GetReport(ctx context.Context, name string) (Report, error) {
-	row := q.db.QueryRow(ctx, getReport, name)
-	var i Report
-	err := row.Scan(
-		&i.Name,
-		&i.Enabled,
-		&i.NextExecution,
-		&i.Spec,
 	)
 	return i, err
 }
@@ -2598,37 +2537,6 @@ func (q *Queries) ListDeleteRecords(ctx context.Context, arg ListDeleteRecordsPa
 	return items, nil
 }
 
-const listReports = `-- name: ListReports :many
-SELECT name, spec
-FROM report
-ORDER BY name
-`
-
-type ListReportsRow struct {
-	Name string
-	Spec []byte
-}
-
-func (q *Queries) ListReports(ctx context.Context) ([]ListReportsRow, error) {
-	rows, err := q.db.Query(ctx, listReports)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListReportsRow
-	for rows.Next() {
-		var i ListReportsRow
-		if err := rows.Scan(&i.Name, &i.Spec); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const notify = `-- name: Notify :exec
 SELECT pg_notify($1::text, $2::text)
 `
@@ -2871,22 +2779,6 @@ func (q *Queries) SetDocumentVersionAsArchived(ctx context.Context, arg SetDocum
 	return err
 }
 
-const setNextReportExecution = `-- name: SetNextReportExecution :exec
-UPDATE report
-SET next_execution = $1
-WHERE name = $2
-`
-
-type SetNextReportExecutionParams struct {
-	NextExecution pgtype.Timestamptz
-	Name          string
-}
-
-func (q *Queries) SetNextReportExecution(ctx context.Context, arg SetNextReportExecutionParams) error {
-	_, err := q.db.Exec(ctx, setNextReportExecution, arg.NextExecution, arg.Name)
-	return err
-}
-
 const setPlanningAssignee = `-- name: SetPlanningAssignee :exec
 INSERT INTO planning_assignee(
        assignment, assignee, version, role
@@ -3109,34 +3001,6 @@ type UpdateEventsinkPositionParams struct {
 
 func (q *Queries) UpdateEventsinkPosition(ctx context.Context, arg UpdateEventsinkPositionParams) error {
 	_, err := q.db.Exec(ctx, updateEventsinkPosition, arg.Position, arg.Name)
-	return err
-}
-
-const updateReport = `-- name: UpdateReport :exec
-INSERT INTO report(
-       name, enabled, next_execution, spec
-) VALUES (
-       $1, $2, $3, $4
-) ON CONFLICT (name) DO UPDATE SET
-  enabled = $2,
-  next_execution = $3,
-  spec = $4
-`
-
-type UpdateReportParams struct {
-	Name          string
-	Enabled       bool
-	NextExecution pgtype.Timestamptz
-	Spec          []byte
-}
-
-func (q *Queries) UpdateReport(ctx context.Context, arg UpdateReportParams) error {
-	_, err := q.db.Exec(ctx, updateReport,
-		arg.Name,
-		arg.Enabled,
-		arg.NextExecution,
-		arg.Spec,
-	)
 	return err
 }
 

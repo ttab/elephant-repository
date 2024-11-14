@@ -874,7 +874,7 @@ func parseDocumentMessage(log *slog.Logger, msg replMessage) (Event, error) {
 	return evt, nil
 }
 
-func (pr *PGReplication) recordEvent(evt Event) error {
+func (pr *PGReplication) recordEvent(evt Event) (outErr error) {
 	ctx := context.Background()
 
 	tx, err := pr.pool.Begin(ctx)
@@ -882,7 +882,7 @@ func (pr *PGReplication) recordEvent(evt Event) error {
 		return fmt.Errorf("failed to start transaction: %w", err)
 	}
 
-	defer pg.SafeRollback(ctx, pr.logger, tx, "eventlog insert")
+	defer pg.Rollback(tx, &outErr)
 
 	var mainDocUUID pgtype.UUID
 
