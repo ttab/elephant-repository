@@ -281,8 +281,8 @@ github.com/ttab/elephantine v0.15.2 h1:8sprPCzupMcoMp+F3zV2y9Q9mSspQB4e0f3a8RJs/
 github.com/ttab/elephantine v0.15.2/go.mod h1:cX8R+UvHHeuqEDCE+EL/NIUDj6boOE5Z/YoL2LXK6K4=
 github.com/ttab/langos v0.1.1 h1:87AksvnO5AWdXEKnb5Ga5H+dXvigDX8I1y46pTc8vDE=
 github.com/ttab/langos v0.1.1/go.mod h1:+E1sOSvBJIbE5VM0m2rfr83aqw0kZbfe/clqNtwSP8w=
-github.com/ttab/mage v0.7.0 h1:Bvd/3jsrYOmL+79nqFdacE4oTR/pKZQFXk5v8yjzlZ8=
-github.com/ttab/mage v0.7.0/go.mod h1:TrsadmQ9OK/Yg0FbX+ntShyp1X3tGe8zxdWNgDOmBmw=
+github.com/ttab/mage v0.7.1 h1:40etoCHYQ4MHofkuQ1A0aIXnH/tDI2PvkeGlPtf2/FA=
+github.com/ttab/mage v0.7.1/go.mod h1:TrsadmQ9OK/Yg0FbX+ntShyp1X3tGe8zxdWNgDOmBmw=
 github.com/ttab/newsdoc v0.6.0 h1:xe6RYGBTXOJqXeIv7k/SeAMtocZlK+q4eRElw6jjVGQ=
 github.com/ttab/newsdoc v0.6.0/go.mod h1:9hqqHiu77aEp90HBNrHLWECjsfU5QI9hATpR0ZSGMgA=
 github.com/ttab/revisor v0.9.1 h1:2Urwfm90qv2sXsGdYGBeXLBJt3NRrp/1mGzcFAMHnNQ=
