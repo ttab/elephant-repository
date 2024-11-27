@@ -205,7 +205,7 @@ type PlanningItem struct {
 	Version     int64
 	Title       string
 	Description string
-	Public      bool
+	Public      pgtype.Bool
 	Tentative   bool
 	StartDate   pgtype.Date
 	EndDate     pgtype.Date

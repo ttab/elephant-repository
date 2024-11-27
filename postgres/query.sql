@@ -720,10 +720,10 @@ WHERE uuid = @uuid;
 
 -- name: SetPlanningItem :exec
 INSERT INTO planning_item(
-        uuid, version, title, description, public, tentative,
+        uuid, version, title, description, tentative,
         start_date, end_date, priority, event
 ) VALUES (
-        @uuid, @version, @title, @description, @public, @tentative,
+        @uuid, @version, @title, @description, @tentative,
         @start_date, @end_date, @priority, @event
 )
 ON CONFLICT ON CONSTRAINT planning_item_pkey DO UPDATE

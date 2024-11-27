@@ -456,7 +456,7 @@ CREATE TABLE public.planning_item (
     version bigint NOT NULL,
     title text NOT NULL,
     description text NOT NULL,
-    public boolean NOT NULL,
+    public boolean,
     tentative boolean NOT NULL,
     start_date date NOT NULL,
     end_date date NOT NULL,
