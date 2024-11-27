@@ -2863,17 +2863,17 @@ func (q *Queries) SetPlanningAssignment(ctx context.Context, arg SetPlanningAssi
 
 const setPlanningItem = `-- name: SetPlanningItem :exec
 INSERT INTO planning_item(
-        uuid, version, title, description, public, tentative,
+        uuid, version, title, description, tentative,
         start_date, end_date, priority, event
 ) VALUES (
-        $1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9
 )
 ON CONFLICT ON CONSTRAINT planning_item_pkey DO UPDATE
 SET
    version = $2, title = $3, description = $4,
-   public = $5, tentative = $6, start_date = $7,
-   end_date = $8, priority = $9, event = $10
+   public = $10, tentative = $5, start_date = $6,
+   end_date = $7, priority = $8, event = $9
 `
 
 type SetPlanningItemParams struct {
@@ -2881,12 +2881,12 @@ type SetPlanningItemParams struct {
 	Version     int64
 	Title       string
 	Description string
-	Public      bool
 	Tentative   bool
 	StartDate   pgtype.Date
 	EndDate     pgtype.Date
 	Priority    pgtype.Int2
 	Event       pgtype.UUID
+	Public      pgtype.Bool
 }
 
 func (q *Queries) SetPlanningItem(ctx context.Context, arg SetPlanningItemParams) error {
@@ -2895,12 +2895,12 @@ func (q *Queries) SetPlanningItem(ctx context.Context, arg SetPlanningItemParams
 		arg.Version,
 		arg.Title,
 		arg.Description,
-		arg.Public,
 		arg.Tentative,
 		arg.StartDate,
 		arg.EndDate,
 		arg.Priority,
 		arg.Event,
+		arg.Public,
 	)
 	return err
 }

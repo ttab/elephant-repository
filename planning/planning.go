@@ -30,7 +30,6 @@ type DescriptionBlock struct {
 type ItemMeta struct {
 	StartDate time.Time `newsdoc:"data.start_date,format=2006-01-02"`
 	EndDate   time.Time `newsdoc:"data.end_date,format=2006-01-02"`
-	Public    bool      `newsdoc:"data.public"`
 	Tentative bool      `newsdoc:"data.tentative"`
 	Priority  *int16    `newsdoc:"data.priority"`
 }
@@ -94,7 +93,6 @@ func (p *Item) ToRows(version int64) (*Rows, error) {
 			UUID:      p.UUID,
 			Version:   version,
 			Title:     p.Title,
-			Public:    p.Meta.Public,
 			Tentative: p.Meta.Tentative,
 			StartDate: pg.Date(p.Meta.StartDate),
 			EndDate:   pg.Date(p.Meta.EndDate),
