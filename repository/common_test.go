@@ -312,16 +312,9 @@ func testingAPIServer(
 
 	var srvOpts repository.ServerOptions
 
-	srvOpts.Hooks = elephantine.LoggingHooks(logger, func(ctx context.Context) string {
-		auth, ok := elephantine.GetAuthInfo(ctx)
-		if !ok {
-			return ""
-		}
+	srvOpts.Hooks = elephantine.LoggingHooks(logger)
 
-		return auth.Claims.Scope
-	})
-
-	srvOpts.SetJWTValidation(elephantine.NewStaticAuthInfoParser(jwtKey.PublicKey, elephantine.AuthInfoParserOptions{
+	srvOpts.SetJWTValidation(elephantine.NewStaticAuthInfoParser(jwtKey.PublicKey, elephantine.JWTAuthInfoParserOptions{
 		Issuer: "test",
 	}))
 
