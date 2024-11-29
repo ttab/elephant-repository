@@ -1847,6 +1847,42 @@ func (q *Queries) GetSigningKeys(ctx context.Context) ([]SigningKey, error) {
 	return items, nil
 }
 
+const getStatus = `-- name: GetStatus :one
+SELECT id, version, created, creator_uri, meta
+FROM document_status
+WHERE uuid = $1 AND name = $2
+      AND ($3::bigint = 0 OR id = $3::bigint)
+ORDER BY id DESC
+LIMIT 1
+`
+
+type GetStatusParams struct {
+	UUID uuid.UUID
+	Name string
+	ID   int64
+}
+
+type GetStatusRow struct {
+	ID         int64
+	Version    int64
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Meta       []byte
+}
+
+func (q *Queries) GetStatus(ctx context.Context, arg GetStatusParams) (GetStatusRow, error) {
+	row := q.db.QueryRow(ctx, getStatus, arg.UUID, arg.Name, arg.ID)
+	var i GetStatusRow
+	err := row.Scan(
+		&i.ID,
+		&i.Version,
+		&i.Created,
+		&i.CreatorUri,
+		&i.Meta,
+	)
+	return i, err
+}
+
 const getStatusRules = `-- name: GetStatusRules :many
 SELECT type, name, description, access_rule, applies_to, expression
 FROM status_rule

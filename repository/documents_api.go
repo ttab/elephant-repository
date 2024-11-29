@@ -54,6 +54,54 @@ func NewDocumentsService(
 // Interface guard.
 var _ repository.Documents = &DocumentsService{}
 
+// GetStatus implements repository.Documents.
+func (a *DocumentsService) GetStatus(
+	ctx context.Context, req *repository.GetStatusRequest,
+) (*repository.GetStatusResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.accessCheck(ctx, auth, docUUID, ReadPermission)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Name == "" {
+		return nil, twirp.RequiredArgumentError("name")
+	}
+
+	status, err := a.store.GetStatus(ctx, docUUID, req.Name, req.Id)
+	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+		return nil, twirp.NotFoundError(err.Error())
+	} else if err != nil {
+		return nil, twirp.InternalErrorf("load status information: %v", err)
+	}
+
+	return &repository.GetStatusResponse{
+		Status: &repository.Status{
+			Id:             status.ID,
+			Version:        status.Version,
+			Creator:        status.Creator,
+			Created:        status.Created.Format(time.RFC3339),
+			Meta:           status.Meta,
+			MetaDocVersion: status.MetaDocVersion,
+		},
+	}, nil
+}
+
 // GetStatusOverview implements repository.Documents.
 func (a *DocumentsService) GetStatusOverview(
 	ctx context.Context, req *repository.GetStatusOverviewRequest,
@@ -126,11 +174,12 @@ func (a *DocumentsService) GetStatusOverview(
 
 		for name, status := range di.Heads {
 			ri.Heads[name] = &repository.Status{
-				Id:      status.ID,
-				Version: status.Version,
-				Creator: status.Creator,
-				Created: status.Created.Format(time.RFC3339),
-				Meta:    status.Meta,
+				Id:             status.ID,
+				Version:        status.Version,
+				Creator:        status.Creator,
+				Created:        status.Created.Format(time.RFC3339),
+				Meta:           status.Meta,
+				MetaDocVersion: status.MetaDocVersion,
 			}
 		}
 
@@ -188,11 +237,12 @@ func (a *DocumentsService) GetStatusHistory(
 
 	for i := range history {
 		res.Statuses[i] = &repository.Status{
-			Id:      history[i].ID,
-			Version: history[i].Version,
-			Creator: history[i].Creator,
-			Created: history[i].Created.Format(time.RFC3339),
-			Meta:    history[i].Meta,
+			Id:             history[i].ID,
+			Version:        history[i].Version,
+			Creator:        history[i].Creator,
+			Created:        history[i].Created.Format(time.RFC3339),
+			Meta:           history[i].Meta,
+			MetaDocVersion: history[i].MetaDocVersion,
 		}
 	}
 

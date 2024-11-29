@@ -1063,6 +1063,41 @@ func (s *PGDocStore) GetVersionHistory(
 	return updates, nil
 }
 
+func (s *PGDocStore) GetStatus(
+	ctx context.Context, uuid uuid.UUID,
+	name string, id int64,
+) (Status, error) {
+	row, err := s.reader.GetStatus(ctx, postgres.GetStatusParams{
+		UUID: uuid,
+		Name: name,
+		ID:   id,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Status{}, DocStoreErrorf(ErrCodeNotFound, "no status found")
+	} else if err != nil {
+		return Status{}, fmt.Errorf("database error: %w", err)
+	}
+
+	var meta newsdoc.DataMap
+
+	if row.Meta != nil {
+		err := json.Unmarshal(row.Meta, &meta)
+		if err != nil {
+			return Status{}, fmt.Errorf(
+				"failed to unmarshal metadata for status %d: %w",
+				row.ID, err)
+		}
+	}
+
+	return Status{
+		ID:      row.ID,
+		Version: row.Version,
+		Creator: row.CreatorUri,
+		Created: row.Created.Time,
+		Meta:    meta,
+	}, nil
+}
+
 func (s *PGDocStore) GetStatusHistory(
 	ctx context.Context, uuid uuid.UUID,
 	name string, before int64, count int,
