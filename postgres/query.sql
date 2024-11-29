@@ -681,6 +681,15 @@ WHERE uuid = @uuid AND name = @name
 ORDER BY id DESC
 LIMIT @count;
 
+-- name: GetStatus :one
+SELECT id, version, created, creator_uri, meta
+FROM document_status
+WHERE uuid = @uuid AND name = @name
+      AND (@id::bigint = 0 OR id = @id::bigint)
+ORDER BY id DESC
+LIMIT 1;
+
+
 -- name: RegisterMetricKind :exec
 INSERT INTO metric_kind(name, aggregation)
 VALUES (@name, @aggregation);

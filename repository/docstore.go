@@ -85,6 +85,10 @@ type DocStore interface {
 	OnEventlog(
 		ctx context.Context, ch chan int64,
 	)
+	GetStatus(
+		ctx context.Context, uuid uuid.UUID,
+		name string, id int64,
+	) (Status, error)
 	// GetStatusHistory of a document. Count cannot be greater than
 	// StatusHistoryMaxCount.
 	GetStatusHistory(
