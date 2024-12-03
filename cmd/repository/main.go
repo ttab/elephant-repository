@@ -106,10 +106,6 @@ func main() {
 				EnvVars: []string{"S3_ACCESS_KEY_SECRET"},
 			},
 			&cli.BoolFlag{
-				Name:  "s3-insecure",
-				Usage: "Disable https for S3 access when using minio",
-			},
-			&cli.BoolFlag{
 				Name:  "no-core-schema",
 				Usage: "Don't register the built in core schema",
 			},

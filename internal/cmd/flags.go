@@ -42,7 +42,6 @@ func BackendConfigFromContext(c *cli.Context, src elephantine.ParameterSource) (
 			Endpoint:        c.String("s3-endpoint"),
 			AccessKeyID:     c.String("s3-key-id"),
 			AccessKeySecret: c.String("s3-key-secret"),
-			DisableHTTPS:    c.Bool("s3-insecure"),
 		},
 	}
 

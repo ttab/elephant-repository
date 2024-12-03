@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	mrand "math/rand"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -39,7 +40,6 @@ type S3Options struct {
 	Endpoint        string
 	AccessKeyID     string
 	AccessKeySecret string
-	DisableHTTPS    bool
 	HTTPClient      *http.Client
 }
 
@@ -52,29 +52,20 @@ func S3Client(
 	)
 
 	if opts.Endpoint != "" {
-		//nolint: staticcheck
-		customResolver := aws.EndpointResolverWithOptionsFunc(func(
-			service, region string, _ ...interface{},
-		) (aws.Endpoint, error) {
-			if service == s3.ServiceID {
-				return aws.Endpoint{
-					PartitionID:   "aws",
-					URL:           opts.Endpoint,
-					SigningRegion: region,
-				}, nil
-			}
+		endpointURL, err := url.Parse(opts.Endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("invalid S3 endpoint URL: %w", err)
+		}
 
-			return aws.Endpoint{}, &aws.EndpointNotFoundError{}
-		})
+		insecure := endpointURL.Scheme == "http"
 
-		//nolint: staticcheck
 		options = append(options,
-			config.WithEndpointResolverWithOptions(customResolver),
 			config.WithRegion("auto"),
 		)
 
 		s3Options = append(s3Options, func(o *s3.Options) {
-			o.EndpointOptions.DisableHTTPS = opts.DisableHTTPS
+			o.EndpointOptions.DisableHTTPS = insecure
+			o.BaseEndpoint = &opts.Endpoint
 			o.UsePathStyle = true
 		})
 	}
