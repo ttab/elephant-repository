@@ -1848,7 +1848,7 @@ func (q *Queries) GetSigningKeys(ctx context.Context) ([]SigningKey, error) {
 }
 
 const getStatus = `-- name: GetStatus :one
-SELECT id, version, created, creator_uri, meta
+SELECT id, version, created, creator_uri, meta, meta_doc_version
 FROM document_status
 WHERE uuid = $1 AND name = $2
       AND ($3::bigint = 0 OR id = $3::bigint)
@@ -1863,11 +1863,12 @@ type GetStatusParams struct {
 }
 
 type GetStatusRow struct {
-	ID         int64
-	Version    int64
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Meta       []byte
+	ID             int64
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           []byte
+	MetaDocVersion pgtype.Int8
 }
 
 func (q *Queries) GetStatus(ctx context.Context, arg GetStatusParams) (GetStatusRow, error) {
@@ -1879,6 +1880,7 @@ func (q *Queries) GetStatus(ctx context.Context, arg GetStatusParams) (GetStatus
 		&i.Created,
 		&i.CreatorUri,
 		&i.Meta,
+		&i.MetaDocVersion,
 	)
 	return i, err
 }
@@ -1916,7 +1918,7 @@ func (q *Queries) GetStatusRules(ctx context.Context) ([]StatusRule, error) {
 }
 
 const getStatusVersions = `-- name: GetStatusVersions :many
-SELECT id, version, created, creator_uri, meta
+SELECT id, version, created, creator_uri, meta, meta_doc_version
 FROM document_status
 WHERE uuid = $1 AND name = $2
       AND ($3::bigint = 0 OR id < $3::bigint)
@@ -1932,11 +1934,12 @@ type GetStatusVersionsParams struct {
 }
 
 type GetStatusVersionsRow struct {
-	ID         int64
-	Version    int64
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Meta       []byte
+	ID             int64
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           []byte
+	MetaDocVersion pgtype.Int8
 }
 
 func (q *Queries) GetStatusVersions(ctx context.Context, arg GetStatusVersionsParams) ([]GetStatusVersionsRow, error) {
@@ -1959,6 +1962,7 @@ func (q *Queries) GetStatusVersions(ctx context.Context, arg GetStatusVersionsPa
 			&i.Created,
 			&i.CreatorUri,
 			&i.Meta,
+			&i.MetaDocVersion,
 		); err != nil {
 			return nil, err
 		}

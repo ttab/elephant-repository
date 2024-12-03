@@ -1090,11 +1090,12 @@ func (s *PGDocStore) GetStatus(
 	}
 
 	return Status{
-		ID:      row.ID,
-		Version: row.Version,
-		Creator: row.CreatorUri,
-		Created: row.Created.Time,
-		Meta:    meta,
+		ID:             row.ID,
+		Version:        row.Version,
+		Creator:        row.CreatorUri,
+		Created:        row.Created.Time,
+		Meta:           meta,
+		MetaDocVersion: row.MetaDocVersion.Int64,
 	}, nil
 }
 
@@ -1121,10 +1122,11 @@ func (s *PGDocStore) GetStatusHistory(
 
 	for i := range history {
 		s := Status{
-			ID:      history[i].ID,
-			Version: history[i].Version,
-			Creator: history[i].CreatorUri,
-			Created: history[i].Created.Time,
+			ID:             history[i].ID,
+			Version:        history[i].Version,
+			Creator:        history[i].CreatorUri,
+			Created:        history[i].Created.Time,
+			MetaDocVersion: history[i].MetaDocVersion.Int64,
 		}
 
 		if history[i].Meta != nil {
