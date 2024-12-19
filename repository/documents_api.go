@@ -121,6 +121,11 @@ func (a *DocumentsService) GetStatusOverview(
 		return nil, twirp.RequiredArgumentError("statuses")
 	}
 
+	if len(req.Uuids) > 200 {
+		return nil, twirp.InvalidArgumentError("uuids",
+			"limited to 200 documents")
+	}
+
 	uuids := make([]uuid.UUID, len(req.Uuids))
 
 	for i := range req.Uuids {
