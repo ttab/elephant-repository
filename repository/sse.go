@@ -27,13 +27,13 @@ type SSE struct {
 const replayLimit = 200
 
 func NewSSE(ctx context.Context, logger *slog.Logger, store DocStore) (*SSE, error) {
-	fin, err := sse.NewFiniteReplayProvider(replayLimit, false)
+	fin, err := sse.NewFiniteReplayer(replayLimit, false)
 	if err != nil {
 		return nil, fmt.Errorf("create SSE replay provider: %w", err)
 	}
 
 	sseProvider := &sse.Joe{
-		ReplayProvider: fin,
+		Replayer: fin,
 	}
 
 	lastID, err := store.GetLastEventID(ctx)
@@ -56,7 +56,8 @@ func NewSSE(ctx context.Context, logger *slog.Logger, store DocStore) (*SSE, err
 			continue
 		}
 
-		sseProvider.ReplayProvider.Put(msg, topics)
+		// Parameters are valid, can ignore the errors.
+		_, _ = sseProvider.Replayer.Put(msg, topics)
 	}
 
 	sseServer := &sse.Server{
@@ -216,7 +217,7 @@ func (s *SSE) sendUntil(ctx context.Context, id int64) bool {
 		if err != nil {
 			// Basically ignore the error here as the only possible
 			// source of errors is that the SSE server has been
-			// closed.
+			// closed or that the message doesn't have an ID.
 			s.logger.Error("failed to publish event",
 				elephantine.LogKeyEventID, evt.ID)
 		}
