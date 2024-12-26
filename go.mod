@@ -22,7 +22,7 @@ require (
 	github.com/ory/dockertest/v3 v3.11.0
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rakutentech/jwk-go v1.1.3
-	github.com/tmaxmax/go-sse v0.9.0-pre.2
+	github.com/tmaxmax/go-sse v0.9.0
 	github.com/ttab/darknut v0.1.0
 	github.com/ttab/elephant-api v0.17.4
 	github.com/ttab/elephantine v0.16.1
