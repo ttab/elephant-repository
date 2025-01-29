@@ -154,7 +154,7 @@ func collectEventlog(
 		events, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
 			// Overfetch by one so that we have a chance of getting
 			// any extraneous events.
-			BatchSize:   internal.MustInt32(minCount - len(collected) + 1), //nolint: gosec
+			BatchSize:   internal.MustInt32(minCount - len(collected) + 1),
 			BatchWaitMs: 200,
 			After:       lastID,
 		})
