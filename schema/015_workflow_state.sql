@@ -30,5 +30,11 @@ ALTER TABLE eventlog
 
 ---- create above / drop below ----
 
+ALTER PUBLICATION eventlog DROP TABLE ONLY workflow_state;
+
 DROP TABLE IF EXISTS workflow_state;
 DROP TABLE IF EXISTS workflow;
+
+ALTER TABLE eventlog
+      DROP COLUMN workflow_state,
+      DROP COLUMN workflow_checkpoint;
