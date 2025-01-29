@@ -87,12 +87,14 @@ WHERE uuid = @uuid;
 
 -- name: GetDocumentInfo :one
 SELECT
-        d.uuid, d.uri, d.created, creator_uri, updated, updater_uri, current_version,
-        system_state, main_doc, l.uuid as lock_uuid, l.uri as lock_uri,
+        d.uuid, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
+        d.system_state, d.main_doc, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
-        l.comment as lock_comment, l.token as lock_token
+        l.comment as lock_comment, l.token as lock_token,
+        ws.step as workflow_state, ws.checkpoint as workflow_checkpoint
 FROM document as d 
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
+LEFT JOIN workflow_state AS ws ON ws.uuid = d.uuid
 WHERE d.uuid = @uuid;
 
 -- name: GetDocumentData :one
@@ -281,6 +283,52 @@ INSERT INTO document_status(
        @uuid, @name, @id, @version, @created,
        @creator_uri, @meta, @meta_doc_version::bigint
 );
+
+-- name: DeleteDocumentWorkflow :execrows
+DELETE FROM workflow WHERE type = @type;
+
+-- name: SetDocumentWorkflow :exec
+INSERT INTO workflow(
+       type, updated, updater_uri, configuration
+) VALUES (
+       @type, @updated, @updater_uri, @configuration
+) ON CONFLICT(type) DO UPDATE SET
+  updated = excluded.updated,
+  updater_uri = excluded.updater_uri,
+  configuration = excluded.configuration;
+
+-- name: GetDocumentWorkflows :many
+SELECT type, updated, updater_uri, configuration
+FROM workflow;
+
+-- name: GetDocumentWorkflow :one
+SELECT type, updated, updater_uri, configuration
+FROM workflow
+WHERE type = @type;
+
+-- name: ChangeWorkflowState :exec
+INSERT INTO workflow_state(
+       uuid, type, language, updated, updater_uri, step, checkpoint,
+       status_name, status_id, document_version
+) VALUES (
+       @uuid, @type, @language, @updated, @updater_uri, @step,
+       @checkpoint, @status_name, @status_id, @document_version
+) ON CONFLICT(uuid) DO UPDATE SET
+  type = excluded.type,
+  language = excluded.language,
+  updated = excluded.updated,
+  updater_uri = excluded.updater_uri,
+  step = excluded.step,
+  checkpoint = excluded.checkpoint,
+  status_name = excluded.status_name,
+  status_id = excluded.status_id,
+  document_version = excluded.document_version;
+
+-- name: GetWorkflowState :one
+SELECT uuid, type, language, updated, updater_uri, step, checkpoint,
+       status_name, status_id, document_version
+FROM workflow_state
+WHERE uuid = @uuid;
 
 -- name: RegisterMetaType :exec
 INSERT INTO meta_type(
@@ -582,15 +630,16 @@ WHERE uuid = @uuid
 -- name: InsertIntoEventLog :one
 INSERT INTO eventlog(
        event, uuid, type, timestamp, updater, version, status, status_id, acl,
-       language, old_language, main_doc, system_state
+       language, old_language, main_doc, system_state, workflow_state, workflow_checkpoint
 ) VALUES (
        @event, @uuid, @type, @timestamp, @updater, @version, @status, @status_id, @acl,
-       @language, @old_language, @main_doc, @system_state
+       @language, @old_language, @main_doc, @system_state, @workflow_state, @workflow_checkpoint
 ) RETURNING id;
 
 -- name: GetEventlog :many
 SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater,
-       language, old_language, main_doc, system_state
+       language, old_language, main_doc, system_state,
+       workflow_state, workflow_checkpoint
 FROM eventlog
 WHERE id > @after
 ORDER BY id ASC
@@ -598,7 +647,7 @@ LIMIT sqlc.arg(row_limit);
 
 -- name: GetLastEvent :one
 SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl,
-       language, old_language, main_doc
+       language, old_language, main_doc, workflow_state, workflow_checkpoint
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1;
@@ -611,7 +660,7 @@ ORDER BY id DESC LIMIT 1;
 SELECT
         w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
         w.status_id, w.acl, w.updater, w.language, w.old_language, w.main_doc,
-        w.system_state
+        w.system_state, workflow_state, workflow_checkpoint
 FROM (
      SELECT DISTINCT ON (
             e.uuid,

@@ -319,7 +319,9 @@ CREATE TABLE public.eventlog (
     main_doc uuid,
     language text,
     old_language text,
-    system_state text
+    system_state text,
+    workflow_state text,
+    workflow_checkpoint text
 );
 
 
@@ -586,6 +588,38 @@ CREATE TABLE public.status_rule (
 
 
 --
+-- Name: workflow; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.workflow (
+    type text NOT NULL,
+    updated timestamp with time zone NOT NULL,
+    updater_uri text NOT NULL,
+    configuration jsonb NOT NULL
+);
+
+
+--
+-- Name: workflow_state; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.workflow_state (
+    uuid uuid NOT NULL,
+    type text NOT NULL,
+    language text NOT NULL,
+    updated timestamp with time zone NOT NULL,
+    updater_uri text NOT NULL,
+    step text NOT NULL,
+    checkpoint text NOT NULL,
+    document_version bigint NOT NULL,
+    status_name text,
+    status_id bigint
+);
+
+ALTER TABLE ONLY public.workflow_state REPLICA IDENTITY FULL;
+
+
+--
 -- Name: acl_audit acl_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -815,6 +849,22 @@ ALTER TABLE ONLY public.status
 
 ALTER TABLE ONLY public.status_rule
     ADD CONSTRAINT status_rule_pkey PRIMARY KEY (type, name);
+
+
+--
+-- Name: workflow workflow_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.workflow
+    ADD CONSTRAINT workflow_pkey PRIMARY KEY (type);
+
+
+--
+-- Name: workflow_state workflow_state_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.workflow_state
+    ADD CONSTRAINT workflow_state_pkey PRIMARY KEY (uuid);
 
 
 --
@@ -1068,6 +1118,14 @@ ALTER TABLE ONLY public.status_heads
 
 
 --
+-- Name: workflow_state workflow_state_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.workflow_state
+    ADD CONSTRAINT workflow_state_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
 -- Name: eventlog; Type: PUBLICATION; Schema: -; Owner: -
 --
 
@@ -1100,6 +1158,13 @@ ALTER PUBLICATION eventlog ADD TABLE ONLY public.document;
 --
 
 ALTER PUBLICATION eventlog ADD TABLE ONLY public.status_heads;
+
+
+--
+-- Name: eventlog workflow_state; Type: PUBLICATION TABLE; Schema: public; Owner: -
+--
+
+ALTER PUBLICATION eventlog ADD TABLE ONLY public.workflow_state;
 
 
 --

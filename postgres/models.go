@@ -119,20 +119,22 @@ type DocumentVersion struct {
 }
 
 type Eventlog struct {
-	ID          int64
-	Event       string
-	UUID        uuid.UUID
-	Timestamp   pgtype.Timestamptz
-	Type        pgtype.Text
-	Version     pgtype.Int8
-	Status      pgtype.Text
-	StatusID    pgtype.Int8
-	Acl         []byte
-	Updater     pgtype.Text
-	MainDoc     pgtype.UUID
-	Language    pgtype.Text
-	OldLanguage pgtype.Text
-	SystemState pgtype.Text
+	ID                 int64
+	Event              string
+	UUID               uuid.UUID
+	Timestamp          pgtype.Timestamptz
+	Type               pgtype.Text
+	Version            pgtype.Int8
+	Status             pgtype.Text
+	StatusID           pgtype.Int8
+	Acl                []byte
+	Updater            pgtype.Text
+	MainDoc            pgtype.UUID
+	Language           pgtype.Text
+	OldLanguage        pgtype.Text
+	SystemState        pgtype.Text
+	WorkflowState      pgtype.Text
+	WorkflowCheckpoint pgtype.Text
 }
 
 type Eventsink struct {
@@ -266,4 +268,24 @@ type StatusRule struct {
 	AccessRule  bool
 	AppliesTo   []string
 	Expression  string
+}
+
+type Workflow struct {
+	Type          string
+	Updated       pgtype.Timestamptz
+	UpdaterUri    string
+	Configuration []byte
+}
+
+type WorkflowState struct {
+	UUID            uuid.UUID
+	Type            string
+	Language        string
+	Updated         pgtype.Timestamptz
+	UpdaterUri      string
+	Step            string
+	Checkpoint      string
+	DocumentVersion int64
+	StatusName      pgtype.Text
+	StatusID        pgtype.Int8
 }

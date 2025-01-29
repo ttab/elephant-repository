@@ -56,6 +56,7 @@ type WorkflowEventType int
 const (
 	WorkflowEventTypeStatusChange WorkflowEventType = iota
 	WorkflowEventTypeStatusRuleChange
+	WorkflowEventTypeWorkflowChange
 )
 
 type WorkflowEvent struct {

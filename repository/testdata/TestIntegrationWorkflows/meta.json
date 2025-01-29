@@ -1,0 +1,38 @@
+{
+  "meta":  {
+    "created":  "2025-01-29T09:26:06+01:00",
+    "modified":  "2025-01-29T09:26:06+01:00",
+    "currentVersion":  "3",
+    "heads":  {
+      "approved":  {
+        "id":  "1",
+        "version":  "1",
+        "creator":  "user://test/testintegrationworkflows",
+        "created":  "2025-01-29T09:26:06+01:00"
+      },
+      "done":  {
+        "id":  "1",
+        "version":  "1",
+        "creator":  "user://test/testintegrationworkflows",
+        "created":  "2025-01-29T09:26:06+01:00"
+      },
+      "usable":  {
+        "id":  "1",
+        "version":  "1",
+        "creator":  "user://test/testintegrationworkflows",
+        "created":  "2025-01-29T09:26:06+01:00"
+      }
+    },
+    "acl":  [
+      {
+        "uri":  "user://test/testintegrationworkflows",
+        "permissions":  [
+          "r",
+          "w"
+        ]
+      }
+    ],
+    "workflowState":  "draft",
+    "workflowCheckpoint":  "usable"
+  }
+}

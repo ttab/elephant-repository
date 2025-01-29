@@ -217,7 +217,7 @@ type BackingServices struct {
 func (bs *BackingServices) bootstrapMinio() error {
 	res, err := bs.pool.RunWithOptions(&dockertest.RunOptions{
 		Repository: "minio/minio",
-		Tag:        "RELEASE.2023-02-22T18-23-45Z",
+		Tag:        "RELEASE.2025-01-20T14-49-07Z",
 		Cmd:        []string{"server", "/data"},
 	}, func(hc *docker.HostConfig) {
 		hc.AutoRemove = true

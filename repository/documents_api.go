@@ -28,6 +28,7 @@ type DocumentValidator interface {
 type WorkflowProvider interface {
 	HasStatus(docType string, name string) bool
 	EvaluateRules(input StatusRuleInput) []StatusRuleViolation
+	GetDocumentWorkflow(docType string) (DocumentWorkflow, bool)
 }
 
 type DocumentsService struct {
@@ -633,20 +634,22 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 	}
 
 	return &repository.EventlogItem{
-		Id:           evt.ID,
-		Event:        string(evt.Event),
-		Uuid:         evt.UUID.String(),
-		Type:         evt.Type,
-		Timestamp:    evt.Timestamp.Format(time.RFC3339),
-		UpdaterUri:   evt.Updater,
-		Version:      evt.Version,
-		Status:       evt.Status,
-		StatusId:     evt.StatusID,
-		Acl:          acl,
-		MainDocument: mainDoc,
-		Language:     evt.Language,
-		OldLanguage:  evt.OldLanguage,
-		SystemState:  evt.SystemState,
+		Id:                 evt.ID,
+		Event:              string(evt.Event),
+		Uuid:               evt.UUID.String(),
+		Type:               evt.Type,
+		Timestamp:          evt.Timestamp.Format(time.RFC3339),
+		UpdaterUri:         evt.Updater,
+		Version:            evt.Version,
+		Status:             evt.Status,
+		StatusId:           evt.StatusID,
+		Acl:                acl,
+		MainDocument:       mainDoc,
+		Language:           evt.Language,
+		OldLanguage:        evt.OldLanguage,
+		SystemState:        evt.SystemState,
+		WorkflowState:      evt.WorkflowStep,
+		WorkflowCheckpoint: evt.WorkflowCheckpoint,
 	}
 }
 
@@ -1291,11 +1294,13 @@ func (a *DocumentsService) GetMeta(
 	}
 
 	resp := repository.DocumentMeta{
-		Created:        meta.Created.Format(time.RFC3339),
-		Modified:       meta.Modified.Format(time.RFC3339),
-		CurrentVersion: meta.CurrentVersion,
-		IsMetaDocument: meta.MainDocument != "",
-		MainDocument:   meta.MainDocument,
+		Created:            meta.Created.Format(time.RFC3339),
+		Modified:           meta.Modified.Format(time.RFC3339),
+		CurrentVersion:     meta.CurrentVersion,
+		IsMetaDocument:     meta.MainDocument != "",
+		MainDocument:       meta.MainDocument,
+		WorkflowState:      meta.WorkflowState,
+		WorkflowCheckpoint: meta.WorkflowCheckpoint,
 	}
 
 	for name, head := range meta.Statuses {
