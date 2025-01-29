@@ -24,7 +24,7 @@ require (
 	github.com/rakutentech/jwk-go v1.1.3
 	github.com/tmaxmax/go-sse v0.9.0-pre.2
 	github.com/ttab/darknut v0.1.0
-	github.com/ttab/elephant-api v0.17.7-pre1
+	github.com/ttab/elephant-api v0.17.7-pre2
 	github.com/ttab/elephantine v0.17.3
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.7.5

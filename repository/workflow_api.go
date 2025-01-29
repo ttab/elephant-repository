@@ -250,8 +250,9 @@ func (s *WorkflowsService) GetWorkflow(
 	}
 
 	return &repository.GetWorkflowResponse{
-		Workflow: &flow,
-		// TODO: updater and updated
+		Workflow:   &flow,
+		Updated:    wf.Updated.Format(time.RFC3339),
+		UpdaterUri: wf.UpdaterURI,
 	}, nil
 }
 
