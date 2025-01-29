@@ -85,7 +85,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	})
 	test.Must(t, err, "set done status")
 
-	_, err = client.Update(ctx, &repository.UpdateRequest{
+	updateRes, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 	})
@@ -94,7 +94,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
 		Status: []*repository.StatusUpdate{
-			{Name: "approved", Version: docRes.Version},
+			{Name: "approved", Version: updateRes.Version},
 		},
 	})
 	test.Must(t, err, "set approved status")
@@ -102,7 +102,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
 		Status: []*repository.StatusUpdate{
-			{Name: "usable", Version: docRes.Version},
+			{Name: "usable", Version: updateRes.Version},
 		},
 	})
 	test.Must(t, err, "set usable status")
