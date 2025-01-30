@@ -14,15 +14,20 @@ import (
 )
 
 type Workflows struct {
-	m        sync.RWMutex
-	vm       vm.VM
-	statuses map[string]DocumentStatus
-	rules    map[string][]compiledRule
+	m         sync.RWMutex
+	vm        vm.VM
+	statuses  map[string]DocumentStatus
+	rules     map[string][]compiledRule
+	workflows map[string]DocumentWorkflow
 }
 
 type WorkflowLoader interface {
 	GetStatuses(ctx context.Context) ([]DocumentStatus, error)
 	GetStatusRules(ctx context.Context) ([]StatusRule, error)
+	SetDocumentWorkflow(ctx context.Context, workflow DocumentWorkflow) error
+	GetDocumentWorkflows(ctx context.Context) ([]DocumentWorkflow, error)
+	GetDocumentWorkflow(ctx context.Context, docType string) (DocumentWorkflow, error)
+	DeleteDocumentWorkflow(ctx context.Context, docType string) error
 	OnWorkflowUpdate(ctx context.Context, ch chan WorkflowEvent)
 }
 
@@ -73,7 +78,7 @@ func (w *Workflows) loadWorkflows(
 ) error {
 	statuses, err := loader.GetStatuses(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get statuses from loader: %w", err)
+		return fmt.Errorf("get statuses: %w", err)
 	}
 
 	statusMap := make(map[string]DocumentStatus)
@@ -86,7 +91,7 @@ func (w *Workflows) loadWorkflows(
 	rules, err := loader.GetStatusRules(ctx)
 	if err != nil {
 		return fmt.Errorf(
-			"failed to get status rules from loader: %w", err)
+			"get status rules from loader: %w", err)
 	}
 
 	ruleMap := make(map[string][]compiledRule)
@@ -98,7 +103,7 @@ func (w *Workflows) loadWorkflows(
 		)
 		if err != nil {
 			return fmt.Errorf(
-				"failed to compile the rule %q expression %q: %w",
+				"compile the rule %q expression %q: %w",
 				rules[i].Name, rules[i].Expression, err)
 		}
 
@@ -112,12 +117,32 @@ func (w *Workflows) loadWorkflows(
 		}
 	}
 
+	workflows, err := loader.GetDocumentWorkflows(ctx)
+	if err != nil {
+		return fmt.Errorf("get document workflows: %w", err)
+	}
+
+	workflowMap := make(map[string]DocumentWorkflow, len(workflows))
+
+	for _, wf := range workflows {
+		workflowMap[wf.Type] = wf
+	}
+
 	w.m.Lock()
 	w.statuses = statusMap
 	w.rules = ruleMap
+	w.workflows = workflowMap
 	w.m.Unlock()
 
 	return nil
+}
+
+func (w *Workflows) GetDocumentWorkflow(docType string) (DocumentWorkflow, bool) {
+	w.m.RLock()
+	wf, ok := w.workflows[docType]
+	w.m.RUnlock()
+
+	return wf, ok
 }
 
 func (w *Workflows) HasStatus(docType string, name string) bool {

@@ -880,19 +880,21 @@ func (s *PGDocStore) GetEventlog(
 	//nolint: dupl
 	for i := range res {
 		e := Event{
-			ID:           res[i].ID,
-			Event:        EventType(res[i].Event),
-			UUID:         res[i].UUID,
-			Timestamp:    res[i].Timestamp.Time,
-			Updater:      res[i].Updater.String,
-			Type:         res[i].Type.String,
-			Version:      res[i].Version.Int64,
-			Status:       res[i].Status.String,
-			StatusID:     res[i].StatusID.Int64,
-			MainDocument: pg.ToUUIDPointer(res[i].MainDoc),
-			Language:     res[i].Language.String,
-			OldLanguage:  res[i].OldLanguage.String,
-			SystemState:  res[i].SystemState.String,
+			ID:                 res[i].ID,
+			Event:              EventType(res[i].Event),
+			UUID:               res[i].UUID,
+			Timestamp:          res[i].Timestamp.Time,
+			Updater:            res[i].Updater.String,
+			Type:               res[i].Type.String,
+			Version:            res[i].Version.Int64,
+			Status:             res[i].Status.String,
+			StatusID:           res[i].StatusID.Int64,
+			MainDocument:       pg.ToUUIDPointer(res[i].MainDoc),
+			Language:           res[i].Language.String,
+			OldLanguage:        res[i].OldLanguage.String,
+			SystemState:        res[i].SystemState.String,
+			WorkflowStep:       res[i].WorkflowState.String,
+			WorkflowCheckpoint: res[i].WorkflowCheckpoint.String,
 		}
 
 		if res[i].Acl != nil {
@@ -936,19 +938,21 @@ func (s *PGDocStore) GetCompactedEventlog(
 	//nolint: dupl
 	for i := range res {
 		e := Event{
-			ID:           res[i].ID,
-			Event:        EventType(res[i].Event),
-			UUID:         res[i].UUID,
-			Timestamp:    res[i].Timestamp.Time,
-			Updater:      res[i].Updater.String,
-			Type:         res[i].Type.String,
-			Version:      res[i].Version.Int64,
-			Status:       res[i].Status.String,
-			StatusID:     res[i].StatusID.Int64,
-			MainDocument: pg.ToUUIDPointer(res[i].MainDoc),
-			Language:     res[i].Language.String,
-			OldLanguage:  res[i].OldLanguage.String,
-			SystemState:  res[i].SystemState.String,
+			ID:                 res[i].ID,
+			Event:              EventType(res[i].Event),
+			UUID:               res[i].UUID,
+			Timestamp:          res[i].Timestamp.Time,
+			Updater:            res[i].Updater.String,
+			Type:               res[i].Type.String,
+			Version:            res[i].Version.Int64,
+			Status:             res[i].Status.String,
+			StatusID:           res[i].StatusID.Int64,
+			MainDocument:       pg.ToUUIDPointer(res[i].MainDoc),
+			Language:           res[i].Language.String,
+			OldLanguage:        res[i].OldLanguage.String,
+			SystemState:        res[i].SystemState.String,
+			WorkflowStep:       res[i].WorkflowState.String,
+			WorkflowCheckpoint: res[i].WorkflowCheckpoint.String,
 		}
 
 		if res[i].Acl != nil {
@@ -1274,11 +1278,13 @@ func (s *PGDocStore) GetDocumentMeta(
 	}
 
 	meta := DocumentMeta{
-		Created:        info.Created.Time,
-		Modified:       info.Updated.Time,
-		CurrentVersion: info.CurrentVersion,
-		Statuses:       make(map[string]Status),
-		MainDocument:   mainDoc,
+		Created:            info.Created.Time,
+		Modified:           info.Updated.Time,
+		CurrentVersion:     info.CurrentVersion,
+		Statuses:           make(map[string]Status),
+		MainDocument:       mainDoc,
+		WorkflowState:      info.WorkflowState.String,
+		WorkflowCheckpoint: info.WorkflowCheckpoint.String,
 		Lock: Lock{
 			Token:   info.LockToken.String,
 			URI:     info.LockUri.String,
@@ -1454,6 +1460,8 @@ func (s *PGDocStore) Update(
 		state.Version = info.Info.CurrentVersion
 		state.Exists = info.Exists
 		state.Language = info.Language
+		state.IsMetaDoc = info.MainDoc != nil ||
+			(state.Doc != nil && isMetaURI(state.Doc.URI))
 
 		if state.Exists {
 			state.Type = info.Info.Type
@@ -1498,10 +1506,30 @@ func (s *PGDocStore) Update(
 	}
 
 	for _, state := range updates {
+		var (
+			initialCreate bool
+			startWState   WorkflowState
+			wState        WorkflowState
+		)
+
+		workflow, hasWorkflow := workflows.GetDocumentWorkflow(state.Type)
+
+		if hasWorkflow {
+			s, err := loadWorkflowState(ctx, q, workflow, state.UUID)
+			if err != nil {
+				return nil, fmt.Errorf("load workflow state: %w", err)
+			}
+
+			wState = s
+			startWState = s
+		}
+
 		if state.Doc != nil {
 			state.Language = state.Doc.Language
 
 			version := state.Version + 1
+
+			initialCreate = version == 1
 
 			props := documentVersionProps{
 				UUID:         state.UUID,
@@ -1523,6 +1551,11 @@ func (s *PGDocStore) Update(
 			}
 
 			state.Version = version
+
+			// Progress workflow state.
+			wState = workflow.Step(wState, WorkflowStep{
+				Version: version,
+			})
 		}
 
 		var metaDocVersion int64
@@ -1539,13 +1572,18 @@ func (s *PGDocStore) Update(
 			mv, err := q.GetMetaDocVersion(ctx, pg.UUID(state.UUID))
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return nil, fmt.Errorf(
-					"failed to read meta document version: %w", err)
+					"read meta document version: %w", err)
 			}
 
 			metaDocVersion = mv
 
 			statusHeads = heads
 		}
+
+		var (
+			lastStatusName *string
+			lastStatusID   *int64
+		)
 
 		for i, stat := range state.Request.Status {
 			statusID := statusHeads[stat.Name].ID + 1
@@ -1623,7 +1661,7 @@ func (s *PGDocStore) Update(
 				Language:   lang,
 			})
 			if err != nil {
-				return nil, fmt.Errorf("failed to create status head: %w", err)
+				return nil, fmt.Errorf("create status head: %w", err)
 			}
 
 			err = q.InsertDocumentStatus(ctx, postgres.InsertDocumentStatusParams{
@@ -1637,7 +1675,20 @@ func (s *PGDocStore) Update(
 				MetaDocVersion: metaDocVersion,
 			})
 			if err != nil {
-				return nil, fmt.Errorf("failed to insert document status: %w", err)
+				return nil, fmt.Errorf("insert document status: %w", err)
+			}
+
+			// Progress workflow state
+			oldState := wState
+			wState = workflow.Step(wState, WorkflowStep{
+				Status: &stat,
+			})
+
+			// We want a reference to the last status that affected
+			// the workflow state.
+			if !wState.Equal(oldState) {
+				lastStatusName = pointer(stat.Name)
+				lastStatusID = pointer(status.ID)
 			}
 		}
 
@@ -1651,7 +1702,26 @@ func (s *PGDocStore) Update(
 		err = updateACL(ctx, q, state.Request.Updater,
 			state.Request.UUID, state.Type, state.Language, aclUpdate)
 		if err != nil {
-			return nil, fmt.Errorf("failed to update ACL: %w", err)
+			return nil, fmt.Errorf("update ACL: %w", err)
+		}
+
+		if !state.IsMetaDoc && hasWorkflow && (initialCreate || !wState.Equal(startWState)) {
+			err := q.ChangeWorkflowState(ctx,
+				postgres.ChangeWorkflowStateParams{
+					UUID:            state.UUID,
+					Type:            state.Type,
+					Language:        state.Language,
+					Updated:         pg.Time(state.Created),
+					UpdaterUri:      state.Creator,
+					Step:            wState.Step,
+					Checkpoint:      wState.LastCheckpoint,
+					StatusName:      pg.PText(lastStatusName),
+					StatusID:        pg.PInt64(lastStatusID),
+					DocumentVersion: state.Version,
+				})
+			if err != nil {
+				return nil, fmt.Errorf("update workflow state: %w", err)
+			}
 		}
 	}
 
@@ -1661,7 +1731,7 @@ func (s *PGDocStore) Update(
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to commit: %w", err)
+		return nil, fmt.Errorf("commit: %w", err)
 	}
 
 	var res []DocumentUpdate
@@ -1671,6 +1741,27 @@ func (s *PGDocStore) Update(
 	}
 
 	return res, nil
+}
+
+func pointer[T any](v T) *T {
+	return &v
+}
+
+func loadWorkflowState(
+	ctx context.Context, q *postgres.Queries,
+	workflow DocumentWorkflow, id uuid.UUID,
+) (WorkflowState, error) {
+	row, err := q.GetWorkflowState(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return workflow.Start(), nil
+	} else if err != nil {
+		return WorkflowState{}, fmt.Errorf("read from database: %w", err)
+	}
+
+	return WorkflowState{
+		Step:           row.Step,
+		LastCheckpoint: row.Checkpoint,
+	}, nil
 }
 
 type documentVersionProps struct {
@@ -1760,9 +1851,10 @@ type docUpdateState struct {
 	MetaJSON   []byte
 	StatusMeta [][]byte
 
-	Type     string
-	Exists   bool
-	Language string
+	Type      string
+	Exists    bool
+	Language  string
+	IsMetaDoc bool
 }
 
 func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
@@ -1999,6 +2091,122 @@ func (s *PGDocStore) DeleteStatusRule(
 			Type:    WorkflowEventTypeStatusRuleChange,
 			DocType: docType,
 			Name:    name,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send workflow update notification: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (s *PGDocStore) GetDocumentWorkflows(
+	ctx context.Context,
+) ([]DocumentWorkflow, error) {
+	res, err := s.reader.GetDocumentWorkflows(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch workflows: %w", err)
+	}
+
+	var list []DocumentWorkflow
+
+	for _, row := range res {
+		wf := DocumentWorkflow{
+			Type:       row.Type,
+			Updated:    row.Updated.Time,
+			UpdaterURI: row.UpdaterUri,
+		}
+
+		err := json.Unmarshal(row.Configuration, &wf.Configuration)
+		if err != nil {
+			s.logger.Error("invalid document workflow for %q: %w", row.Type, err)
+
+			continue
+		}
+
+		list = append(list, wf)
+	}
+
+	return list, nil
+}
+
+func (s *PGDocStore) GetDocumentWorkflow(
+	ctx context.Context, docType string,
+) (DocumentWorkflow, error) {
+	var _z DocumentWorkflow
+
+	row, err := s.reader.GetDocumentWorkflow(ctx, docType)
+	if err != nil {
+		return _z, fmt.Errorf("failed to fetch workflows: %w", err)
+	}
+
+	wf := DocumentWorkflow{
+		Type:       row.Type,
+		Updated:    row.Updated.Time,
+		UpdaterURI: row.UpdaterUri,
+	}
+
+	err = json.Unmarshal(row.Configuration, &wf.Configuration)
+	if err != nil {
+		return _z, fmt.Errorf("invalid document workflow for %q: %w", row.Type, err)
+	}
+
+	return wf, nil
+}
+
+func (s *PGDocStore) SetDocumentWorkflow(
+	ctx context.Context, workflow DocumentWorkflow,
+) error {
+	config, err := json.Marshal(workflow.Configuration)
+	if err != nil {
+		return fmt.Errorf("marshal configuration for storage: %w", err)
+	}
+
+	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.SetDocumentWorkflow(ctx,
+			postgres.SetDocumentWorkflowParams{
+				Type:          workflow.Type,
+				Updated:       pg.Time(workflow.Updated),
+				UpdaterUri:    workflow.UpdaterURI,
+				Configuration: config,
+			})
+		if err != nil {
+			return fmt.Errorf("failed to update workflow: %w", err)
+		}
+
+		err = notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+			Type:    WorkflowEventTypeWorkflowChange,
+			DocType: workflow.Type,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send workflow update notification: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (s *PGDocStore) DeleteDocumentWorkflow(
+	ctx context.Context, docType string,
+) error {
+	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		affected, err := q.DeleteDocumentWorkflow(ctx, docType)
+		if err != nil {
+			return fmt.Errorf("failed to delete workflow: %w", err)
+		}
+
+		// Don't notify if nothing was deleted.
+		if affected == 0 {
+			return nil
+		}
+
+		err = notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+			Type:    WorkflowEventTypeWorkflowChange,
+			DocType: docType,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to send workflow update notification: %w", err)

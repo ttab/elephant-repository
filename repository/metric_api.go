@@ -62,6 +62,15 @@ func NewMetricsService(store MetricStore) *MetricsService {
 	}
 }
 
+var _ repository.Metrics = &MetricsService{}
+
+// GetMetrics implements repository.Metrics.
+func (m *MetricsService) GetMetrics(
+	_ context.Context, _ *repository.GetMetricsRequest,
+) (*repository.GetMetricsResponse, error) {
+	panic("unimplemented")
+}
+
 // GetKinds implements repository.Metrics.
 func (m *MetricsService) GetKinds(
 	ctx context.Context,

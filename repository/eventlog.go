@@ -31,30 +31,34 @@ const (
 	TypeACLUpdate       EventType = "acl"
 	TypeDeleteDocument  EventType = "delete_document"
 	TypeRestoreFinished EventType = "restore_finished"
+	TypeWorkflow        EventType = "workflow"
 )
 
 const (
-	tableDocument     = "document"
-	tableStatusHeads  = "status_heads"
-	tableDeleteRecord = "delete_record"
-	tableACLAudit     = "acl_audit"
+	tableDocument      = "document"
+	tableStatusHeads   = "status_heads"
+	tableDeleteRecord  = "delete_record"
+	tableACLAudit      = "acl_audit"
+	tableWorkflowState = "workflow_state"
 )
 
 type Event struct {
-	ID           int64      `json:"id"`
-	Event        EventType  `json:"event"`
-	UUID         uuid.UUID  `json:"uuid"`
-	Timestamp    time.Time  `json:"timestamp"`
-	Updater      string     `json:"updater"`
-	Type         string     `json:"type"`
-	Language     string     `json:"language"`
-	OldLanguage  string     `json:"old_language,omitempty"`
-	MainDocument *uuid.UUID `json:"main_document,omitempty"`
-	Version      int64      `json:"version,omitempty"`
-	StatusID     int64      `json:"status_id,omitempty"`
-	Status       string     `json:"status,omitempty"`
-	ACL          []ACLEntry `json:"acl,omitempty"`
-	SystemState  string     `json:"system_state,omitempty"`
+	ID                 int64      `json:"id"`
+	Event              EventType  `json:"event"`
+	UUID               uuid.UUID  `json:"uuid"`
+	Timestamp          time.Time  `json:"timestamp"`
+	Updater            string     `json:"updater"`
+	Type               string     `json:"type"`
+	Language           string     `json:"language"`
+	OldLanguage        string     `json:"old_language,omitempty"`
+	MainDocument       *uuid.UUID `json:"main_document,omitempty"`
+	Version            int64      `json:"version,omitempty"`
+	StatusID           int64      `json:"status_id,omitempty"`
+	Status             string     `json:"status,omitempty"`
+	ACL                []ACLEntry `json:"acl,omitempty"`
+	SystemState        string     `json:"system_state,omitempty"`
+	WorkflowStep       string     `json:"workflow_step,omitempty"`
+	WorkflowCheckpoint string     `json:"workflow_checkpoint,omitempty"`
 }
 
 type replicationErrorCode string
@@ -459,6 +463,7 @@ func (pr *PGReplication) handleReplicationMessage(
 		switch rel.RelationName {
 		case tableDocument:
 		case tableStatusHeads:
+		case tableWorkflowState:
 		default:
 			// Ignore updates for everything else.
 			return nil
@@ -548,6 +553,14 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 		}
 
 		evt = e
+	case tableWorkflowState:
+		e, err := parseWorkflowMessage(msg)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to parse workflow_state table message: %w", err)
+		}
+
+		evt = e
 	default:
 		return nil
 	}
@@ -557,6 +570,54 @@ func (pr *PGReplication) handleMessage(msg replMessage) error {
 	}
 
 	return pr.recordEvent(evt)
+}
+
+func parseWorkflowMessage(msg replMessage) (Event, error) {
+	evt := Event{
+		Event: TypeWorkflow,
+	}
+
+	err := readMessageColumns(msg, &evt)
+	if err != nil {
+		return Event{}, err
+	}
+
+	updated, ok := msg.NewValues["updated"].(time.Time)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract updated time")
+	}
+
+	evt.Timestamp = updated
+
+	updater, ok := msg.NewValues["updater_uri"].(string)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract updater_uri")
+	}
+
+	evt.Updater = updater
+
+	version, ok := msg.NewValues["document_version"].(int64)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract document version")
+	}
+
+	evt.Version = version
+
+	step, ok := msg.NewValues["step"].(string)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract step name")
+	}
+
+	evt.WorkflowStep = step
+
+	checkpoint, ok := msg.NewValues["checkpoint"].(string)
+	if !ok {
+		return Event{}, fmt.Errorf("failed to extract checkpoint name")
+	}
+
+	evt.WorkflowCheckpoint = checkpoint
+
+	return evt, nil
 }
 
 func parseDeleteMessage(msg replMessage) (Event, error) {
@@ -892,18 +953,20 @@ func (pr *PGReplication) recordEvent(evt Event) (outErr error) {
 	}
 
 	row := postgres.InsertIntoEventLogParams{
-		Event:       string(evt.Event),
-		UUID:        evt.UUID,
-		Timestamp:   pg.Time(evt.Timestamp),
-		Updater:     pg.TextOrNull(evt.Updater),
-		Type:        pg.TextOrNull(evt.Type),
-		Version:     pg.BigintOrNull(evt.Version),
-		Status:      pg.TextOrNull(evt.Status),
-		StatusID:    pg.BigintOrNull(evt.StatusID),
-		MainDoc:     mainDocUUID,
-		Language:    pg.TextOrNull(evt.Language),
-		OldLanguage: pg.TextOrNull(evt.OldLanguage),
-		SystemState: pg.TextOrNull(evt.SystemState),
+		Event:              string(evt.Event),
+		UUID:               evt.UUID,
+		Timestamp:          pg.Time(evt.Timestamp),
+		Updater:            pg.TextOrNull(evt.Updater),
+		Type:               pg.TextOrNull(evt.Type),
+		Version:            pg.BigintOrNull(evt.Version),
+		Status:             pg.TextOrNull(evt.Status),
+		StatusID:           pg.BigintOrNull(evt.StatusID),
+		MainDoc:            mainDocUUID,
+		Language:           pg.TextOrNull(evt.Language),
+		OldLanguage:        pg.TextOrNull(evt.OldLanguage),
+		SystemState:        pg.TextOrNull(evt.SystemState),
+		WorkflowState:      pg.TextOrNull(evt.WorkflowStep),
+		WorkflowCheckpoint: pg.TextOrNull(evt.WorkflowCheckpoint),
 	}
 
 	if evt.ACL != nil {

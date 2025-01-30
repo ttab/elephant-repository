@@ -48,6 +48,8 @@ func baseDocument(uuid, uri string) *newsdoc.Document {
 const (
 	idField        = "id"
 	timestampField = "timestamp"
+	modifiedField  = "modified"
+	createdField   = "created"
 )
 
 func TestIntegrationBasicCrud(t *testing.T) {
@@ -1091,12 +1093,8 @@ func TestIntegrationStatus(t *testing.T) {
 		&golden)
 	test.Must(t, err, "read golden file for expected eventlog items")
 
-	events, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
-		// One more event than we expect, so that we catch the
-		// unexpected.
-		BatchSize:   internal.MustInt32(len(golden.Items)) + 1,
-		BatchWaitMs: 200,
-	})
+	events := collectEventlog(t, client, len(golden.Items), 5*time.Second)
+
 	test.Must(t, err, "get eventlog")
 
 	diff := cmp.Diff(&golden, events,

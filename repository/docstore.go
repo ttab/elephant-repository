@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -156,6 +157,10 @@ type WorkflowStore interface {
 		ctx context.Context, docType string, name string,
 	) error
 	GetStatusRules(ctx context.Context) ([]StatusRule, error)
+	SetDocumentWorkflow(ctx context.Context, workflow DocumentWorkflow) error
+	GetDocumentWorkflows(ctx context.Context) ([]DocumentWorkflow, error)
+	GetDocumentWorkflow(ctx context.Context, docType string) (DocumentWorkflow, error)
+	DeleteDocumentWorkflow(ctx context.Context, docType string) error
 }
 
 type MetricStore interface {
@@ -183,6 +188,73 @@ type DocumentStatus struct {
 	Type     string
 	Name     string
 	Disabled bool
+}
+
+type DocumentWorkflow struct {
+	Type          string
+	Updated       time.Time
+	UpdaterURI    string
+	Configuration DocumentWorkflowConfiguration
+}
+
+type WorkflowState struct {
+	Step           string
+	LastCheckpoint string
+}
+
+func (ws WorkflowState) Equal(b WorkflowState) bool {
+	return ws.Step == b.Step && ws.LastCheckpoint == b.LastCheckpoint
+}
+
+type WorkflowStep struct {
+	// Version should be set if this is a document version bump.
+	Version int64
+	// Status should be set if this is a status update.
+	Status *StatusUpdate
+}
+
+func (wf DocumentWorkflow) Start() WorkflowState {
+	return WorkflowState{
+		Step: wf.Configuration.StepZero,
+	}
+}
+
+func (wf DocumentWorkflow) Step(state WorkflowState, step WorkflowStep) WorkflowState {
+	if wf.Type == "" {
+		return state
+	}
+
+	checkpoint := wf.Configuration.Checkpoint
+	negCheckpoint := wf.Configuration.NegativeCheckpoint
+
+	isCheckpoint := step.Status != nil && step.Status.Name == checkpoint
+	isStep := step.Status != nil && slices.Contains(wf.Configuration.Steps, step.Status.Name)
+	atCheckpoint := state.Step == checkpoint || state.Step == negCheckpoint
+
+	// Creating a new version when at a checkpoint resets the step to zero.
+	if step.Version > 0 && atCheckpoint {
+		state.Step = wf.Configuration.StepZero
+	}
+
+	switch {
+	case isCheckpoint && step.Status.Version > 0:
+		state.Step = checkpoint
+		state.LastCheckpoint = checkpoint
+	case isCheckpoint && step.Status.Version == -1:
+		state.Step = negCheckpoint
+		state.LastCheckpoint = negCheckpoint
+	case isStep && step.Status.Version > 0:
+		state.Step = step.Status.Name
+	}
+
+	return state
+}
+
+type DocumentWorkflowConfiguration struct {
+	StepZero           string   `json:"step_zero"`
+	Checkpoint         string   `json:"checkpoint"`
+	NegativeCheckpoint string   `json:"negative_checkpoint"`
+	Steps              []string `json:"steps"`
 }
 
 type StatusRule struct {
@@ -285,14 +357,16 @@ type DeleteRecord struct {
 }
 
 type DocumentMeta struct {
-	Created        time.Time
-	Modified       time.Time
-	CurrentVersion int64
-	ACL            []ACLEntry
-	Statuses       map[string]Status
-	SystemLock     SystemState
-	Lock           Lock
-	MainDocument   string
+	Created            time.Time
+	Modified           time.Time
+	CurrentVersion     int64
+	ACL                []ACLEntry
+	Statuses           map[string]Status
+	SystemLock         SystemState
+	Lock               Lock
+	MainDocument       string
+	WorkflowState      string
+	WorkflowCheckpoint string
 }
 
 type ACLEntry struct {

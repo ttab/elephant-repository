@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"log/slog"
+	"time"
 
 	"github.com/expr-lang/expr"
 	"github.com/ttab/elephant-api/repository"
@@ -194,4 +196,114 @@ func (s *WorkflowsService) GetStatuses(
 	return &repository.GetStatusesResponse{
 		Statuses: list,
 	}, nil
+}
+
+// DeleteWorkflow implements repository.Workflows.
+func (s *WorkflowsService) DeleteWorkflow(
+	ctx context.Context, req *repository.DeleteWorkflowRequest,
+) (*repository.DeleteWorkflowResponse, error) {
+	auth, err := RequireAnyScope(ctx, ScopeWorkflowAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Type == "" {
+		return nil, twirp.RequiredArgumentError("type")
+	}
+
+	err = s.store.DeleteDocumentWorkflow(ctx, req.Type)
+	if err != nil {
+		return nil, twirp.InternalErrorf("delete workflow: %v", err)
+	}
+
+	slog.Warn("document workflow deleted",
+		"user", auth.Claims.Subject,
+		"doc_type", req.Type,
+	)
+
+	return &repository.DeleteWorkflowResponse{}, nil
+}
+
+// GetWorkflow implements repository.Workflows.
+func (s *WorkflowsService) GetWorkflow(
+	ctx context.Context, req *repository.GetWorkflowRequest,
+) (*repository.GetWorkflowResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeWorkflowAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Type == "" {
+		return nil, twirp.RequiredArgumentError("type")
+	}
+
+	wf, err := s.store.GetDocumentWorkflow(ctx, req.Type)
+	if err != nil {
+		return nil, twirp.InternalErrorf("load workflow: %v", err)
+	}
+
+	flow := repository.DocumentWorkflow{
+		StepZero:           wf.Configuration.StepZero,
+		Checkpoint:         wf.Configuration.Checkpoint,
+		NegativeCheckpoint: wf.Configuration.NegativeCheckpoint,
+		Steps:              wf.Configuration.Steps,
+	}
+
+	return &repository.GetWorkflowResponse{
+		Workflow:   &flow,
+		Updated:    wf.Updated.Format(time.RFC3339),
+		UpdaterUri: wf.UpdaterURI,
+	}, nil
+}
+
+// SetWorkflow implements repository.Workflows.
+func (s *WorkflowsService) SetWorkflow(
+	ctx context.Context, req *repository.SetWorkflowRequest,
+) (*repository.SetWorkflowResponse, error) {
+	auth, err := RequireAnyScope(ctx, ScopeWorkflowAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Type == "" {
+		return nil, twirp.RequiredArgumentError("type")
+	}
+
+	if req.Workflow == nil {
+		return nil, twirp.RequiredArgumentError("workflow")
+	}
+
+	if req.Workflow.StepZero == "" {
+		return nil, twirp.RequiredArgumentError("workflow.step_zero")
+	}
+
+	if req.Workflow.Checkpoint == "" {
+		return nil, twirp.RequiredArgumentError("workflow.checkpoint")
+	}
+
+	if req.Workflow.NegativeCheckpoint == "" {
+		return nil, twirp.RequiredArgumentError("workflow.negative_checkpoint")
+	}
+
+	err = s.store.SetDocumentWorkflow(ctx, DocumentWorkflow{
+		Type: req.Type,
+		Configuration: DocumentWorkflowConfiguration{
+			StepZero:           req.Workflow.StepZero,
+			Checkpoint:         req.Workflow.Checkpoint,
+			NegativeCheckpoint: req.Workflow.NegativeCheckpoint,
+			Steps:              req.Workflow.Steps,
+		},
+		Updated:    time.Now(),
+		UpdaterURI: auth.Claims.Subject,
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf("store workflow: %v", err)
+	}
+
+	slog.Warn("document workflow updated",
+		"user", auth.Claims.Subject,
+		"doc_type", req.Type,
+	)
+
+	return &repository.SetWorkflowResponse{}, nil
 }
