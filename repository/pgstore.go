@@ -1588,6 +1588,10 @@ func (s *PGDocStore) Update(
 		for i, stat := range state.Request.Status {
 			statusID := statusHeads[stat.Name].ID + 1
 
+			if stat.Version == 0 {
+				stat.Version = state.Version
+			}
+
 			status := Status{
 				ID:             statusID,
 				Creator:        state.Creator,
@@ -1595,10 +1599,6 @@ func (s *PGDocStore) Update(
 				Meta:           stat.Meta,
 				Created:        state.Created,
 				MetaDocVersion: metaDocVersion,
-			}
-
-			if status.Version == 0 {
-				status.Version = state.Version
 			}
 
 			input, err := s.buildStatusRuleInput(

@@ -1,145 +1,155 @@
 {
-  "items":  [
+  "items": [
     {
-      "id":  "1",
-      "event":  "document",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "version":  "1",
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en"
+      "id": "1",
+      "event": "document",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "1",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en"
     },
     {
-      "id":  "2",
-      "event":  "acl",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "acl":  [
+      "id": "2",
+      "event": "acl",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "acl": [
         {
-          "uri":  "user://test/testintegrationworkflows",
-          "permissions":  [
+          "uri": "user://test/testintegrationworkflows",
+          "permissions": [
             "r",
             "w"
           ]
         }
       ],
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en"
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en"
     },
     {
-      "id":  "3",
-      "event":  "workflow",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "version":  "1",
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en",
-      "workflowState":  "draft"
+      "id": "3",
+      "event": "workflow",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "1",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en",
+      "workflowState": "draft"
     },
     {
-      "id":  "4",
-      "event":  "status",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "version":  "1",
-      "status":  "done",
-      "statusId":  "1",
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en"
+      "id": "4",
+      "event": "status",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "1",
+      "status": "done",
+      "statusId": "1",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en"
     },
     {
-      "id":  "5",
-      "event":  "workflow",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "version":  "1",
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en",
-      "workflowState":  "done"
+      "id": "5",
+      "event": "workflow",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "1",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en",
+      "workflowState": "done"
     },
     {
-      "id":  "6",
-      "event":  "document",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "version":  "2",
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en"
+      "id": "6",
+      "event": "document",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "2",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en"
     },
     {
-      "id":  "7",
-      "event":  "status",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "version":  "2",
-      "status":  "approved",
-      "statusId":  "1",
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en"
+      "id": "7",
+      "event": "status",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "2",
+      "status": "approved",
+      "statusId": "1",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en"
     },
     {
-      "id":  "8",
-      "event":  "workflow",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "version":  "2",
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en",
-      "workflowState":  "approved"
+      "id": "8",
+      "event": "workflow",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "2",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en",
+      "workflowState": "approved"
     },
     {
-      "id":  "9",
-      "event":  "status",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "version":  "2",
-      "status":  "usable",
-      "statusId":  "1",
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en"
+      "id": "9",
+      "event": "document",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "3",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en"
     },
     {
-      "id":  "10",
-      "event":  "workflow",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "version":  "2",
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en",
-      "workflowState":  "usable",
-      "workflowCheckpoint":  "usable"
+      "id": "10",
+      "event": "status",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "3",
+      "status": "usable",
+      "statusId": "1",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en"
     },
     {
-      "id":  "11",
-      "event":  "document",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "version":  "3",
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en"
+      "id": "11",
+      "event": "workflow",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "3",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en",
+      "workflowState": "usable",
+      "workflowCheckpoint": "usable"
     },
     {
-      "id":  "12",
-      "event":  "workflow",
-      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp":  "2025-01-29T09:26:06+01:00",
-      "version":  "3",
-      "updaterUri":  "user://test/testintegrationworkflows",
-      "type":  "core/article",
-      "language":  "en",
-      "workflowState":  "draft",
-      "workflowCheckpoint":  "usable"
+      "id": "12",
+      "event": "document",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "4",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en"
+    },
+    {
+      "id": "13",
+      "event": "workflow",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2025-02-13T10:31:45+01:00",
+      "version": "4",
+      "updaterUri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en",
+      "workflowState": "draft",
+      "workflowCheckpoint": "usable"
     }
   ]
 }

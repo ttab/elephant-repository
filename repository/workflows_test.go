@@ -100,9 +100,10 @@ func TestIntegrationWorkflows(t *testing.T) {
 	test.Must(t, err, "set approved status")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
-		Uuid: docUUID,
+		Uuid:     docUUID,
+		Document: doc,
 		Status: []*repository.StatusUpdate{
-			{Name: "usable", Version: updateRes.Version},
+			{Name: "usable"},
 		},
 	})
 	test.Must(t, err, "set usable status")
@@ -113,7 +114,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	})
 	test.Must(t, err, "update article after usable")
 
-	events := collectEventlog(t, client, 12, 5*time.Second)
+	events := collectEventlog(t, client, 13, 5*time.Second)
 	eventsGolden := filepath.Join("testdata", t.Name(), "events.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, events, eventsGolden,
