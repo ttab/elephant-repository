@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	mrand "math/rand"
 	"net/http"
 	"net/url"
@@ -34,7 +35,6 @@ import (
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/newsdoc"
 	"golang.org/x/sync/errgroup"
-	"maps"
 )
 
 type S3Options struct {

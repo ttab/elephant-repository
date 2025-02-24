@@ -311,7 +311,7 @@ func (s *PGDocStore) Delete(
 
 	q := postgres.New(tx)
 
-	mainInfo, err := s.UpdatePreflight(ctx, q, req.UUID, req.IfMatch)
+	mainInfo, err := s.UpdatePreflight(ctx, q, req.UUID, req.IfMatch, nil)
 	if err != nil {
 		return err
 	}
@@ -336,7 +336,7 @@ func (s *PGDocStore) Delete(
 		metaUUID, _ = metaIdentity(req.UUID)
 
 		// Make a preflight request for the meta document.
-		mInfo, err := s.UpdatePreflight(ctx, q, metaUUID, 0)
+		mInfo, err := s.UpdatePreflight(ctx, q, metaUUID, 0, mainInfo.MainDoc)
 		if err != nil {
 			return fmt.Errorf("meta document: %w", err)
 		}
@@ -464,6 +464,7 @@ func (s *PGDocStore) insertDeleteRecord(
 			CreatorUri:    updater,
 			Meta:          metaJSON,
 			MainDoc:       pg.PUUID(pf.MainDoc),
+			MainDocType:   pg.TextOrNull(pf.MainDocType),
 			MetaDocRecord: pg.BigintOrNull(metaDocRecord),
 			Language:      pg.Text(pf.Language),
 			Heads:         headsData,
@@ -837,18 +838,19 @@ func (s *PGDocStore) GetLastEvent(
 	}
 
 	return &Event{
-		ID:           res.ID,
-		Event:        EventType(res.Event),
-		UUID:         res.UUID,
-		Timestamp:    res.Timestamp.Time,
-		Updater:      res.Updater.String,
-		Type:         res.Type.String,
-		Version:      res.Version.Int64,
-		Status:       res.Status.String,
-		StatusID:     res.StatusID.Int64,
-		MainDocument: pg.ToUUIDPointer(res.MainDoc),
-		Language:     res.Language.String,
-		OldLanguage:  res.OldLanguage.String,
+		ID:               res.ID,
+		Event:            EventType(res.Event),
+		UUID:             res.UUID,
+		Timestamp:        res.Timestamp.Time,
+		Updater:          res.Updater.String,
+		Type:             res.Type.String,
+		Version:          res.Version.Int64,
+		Status:           res.Status.String,
+		StatusID:         res.StatusID.Int64,
+		MainDocument:     pg.ToUUIDPointer(res.MainDoc),
+		MainDocumentType: res.MainDocType.String,
+		Language:         res.Language.String,
+		OldLanguage:      res.OldLanguage.String,
 	}, nil
 }
 
@@ -890,6 +892,7 @@ func (s *PGDocStore) GetEventlog(
 			Status:             res[i].Status.String,
 			StatusID:           res[i].StatusID.Int64,
 			MainDocument:       pg.ToUUIDPointer(res[i].MainDoc),
+			MainDocumentType:   res[i].MainDocType.String,
 			Language:           res[i].Language.String,
 			OldLanguage:        res[i].OldLanguage.String,
 			SystemState:        res[i].SystemState.String,
@@ -948,6 +951,7 @@ func (s *PGDocStore) GetCompactedEventlog(
 			Status:             res[i].Status.String,
 			StatusID:           res[i].StatusID.Int64,
 			MainDocument:       pg.ToUUIDPointer(res[i].MainDoc),
+			MainDocumentType:   res[i].MainDocType.String,
 			Language:           res[i].Language.String,
 			OldLanguage:        res[i].OldLanguage.String,
 			SystemState:        res[i].SystemState.String,
@@ -1452,7 +1456,7 @@ func (s *PGDocStore) Update(
 
 	for _, state := range updates {
 		info, err := s.UpdatePreflight(ctx, q,
-			state.Request.UUID, state.Request.IfMatch)
+			state.Request.UUID, state.Request.IfMatch, state.MainDocID)
 		if err != nil {
 			return nil, err
 		}
@@ -1460,8 +1464,8 @@ func (s *PGDocStore) Update(
 		state.Version = info.Info.CurrentVersion
 		state.Exists = info.Exists
 		state.Language = info.Language
-		state.IsMetaDoc = info.MainDoc != nil ||
-			(state.Doc != nil && isMetaURI(state.Doc.URI))
+		state.IsMetaDoc = info.MainDoc != nil
+		state.MainDocType = info.MainDocType
 
 		if state.Exists {
 			state.Type = info.Info.Type
@@ -1532,17 +1536,18 @@ func (s *PGDocStore) Update(
 			initialCreate = version == 1
 
 			props := documentVersionProps{
-				UUID:         state.UUID,
-				Version:      version,
-				Type:         state.Type,
-				URI:          state.Doc.URI,
-				Language:     state.Language,
-				Created:      state.Created,
-				Creator:      state.Creator,
-				MainDocument: state.Request.MainDocument,
-				MetaJSON:     state.MetaJSON,
-				DocJSON:      state.DocJSON,
-				Document:     state.Doc,
+				UUID:             state.UUID,
+				Version:          version,
+				Type:             state.Type,
+				URI:              state.Doc.URI,
+				Language:         state.Language,
+				Created:          state.Created,
+				Creator:          state.Creator,
+				MainDocument:     state.Request.MainDocument,
+				MainDocumentType: state.MainDocType,
+				MetaJSON:         state.MetaJSON,
+				DocJSON:          state.DocJSON,
+				Document:         state.Doc,
 			}
 
 			err := createNewDocumentVersion(ctx, tx, q, props)
@@ -1765,17 +1770,18 @@ func loadWorkflowState(
 }
 
 type documentVersionProps struct {
-	UUID         uuid.UUID
-	Version      int64
-	Type         string
-	URI          string
-	Language     string
-	Created      time.Time
-	Creator      string
-	MainDocument *uuid.UUID
-	MetaJSON     []byte
-	DocJSON      []byte
-	Document     *newsdoc.Document
+	UUID             uuid.UUID
+	Version          int64
+	Type             string
+	URI              string
+	Language         string
+	Created          time.Time
+	Creator          string
+	MainDocument     *uuid.UUID
+	MainDocumentType string
+	MetaJSON         []byte
+	DocJSON          []byte
+	Document         *newsdoc.Document
 }
 
 func createNewDocumentVersion(
@@ -1785,14 +1791,15 @@ func createNewDocumentVersion(
 	props documentVersionProps,
 ) error {
 	err := q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
-		UUID:       props.UUID,
-		URI:        props.URI,
-		Type:       props.Type,
-		Version:    props.Version,
-		Created:    pg.Time(props.Created),
-		CreatorUri: props.Creator,
-		Language:   pg.TextOrNull(props.Language),
-		MainDoc:    pg.PUUID(props.MainDocument),
+		UUID:        props.UUID,
+		URI:         props.URI,
+		Type:        props.Type,
+		Version:     props.Version,
+		Created:     pg.Time(props.Created),
+		CreatorUri:  props.Creator,
+		Language:    pg.TextOrNull(props.Language),
+		MainDoc:     pg.PUUID(props.MainDocument),
+		MainDocType: pg.TextOrNull(props.MainDocumentType),
 	})
 	if pg.IsConstraintError(err, "document_uri_key") {
 		return DocStoreErrorf(ErrCodeDuplicateURI,
@@ -1851,10 +1858,12 @@ type docUpdateState struct {
 	MetaJSON   []byte
 	StatusMeta [][]byte
 
-	Type      string
-	Exists    bool
-	Language  string
-	IsMetaDoc bool
+	Type        string
+	Exists      bool
+	Language    string
+	IsMetaDoc   bool
+	MainDocID   *uuid.UUID
+	MainDocType string
 }
 
 func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
@@ -1868,6 +1877,7 @@ func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
 		Request:    req,
 		Doc:        req.Document,
 		StatusMeta: make([][]byte, len(req.Status)),
+		MainDocID:  req.MainDocument,
 	}
 
 	if state.Doc != nil {
@@ -2359,7 +2369,7 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
-		info, err := s.UpdatePreflight(ctx, q, req.UUID, 0)
+		info, err := s.UpdatePreflight(ctx, q, req.UUID, 0, nil)
 		if err != nil {
 			return err
 		}
@@ -2419,7 +2429,7 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
-		info, err := s.UpdatePreflight(ctx, q, req.UUID, 0)
+		info, err := s.UpdatePreflight(ctx, q, req.UUID, 0, nil)
 		if err != nil {
 			return err
 		}
@@ -2458,7 +2468,7 @@ func (s *PGDocStore) Unlock(ctx context.Context, uuid uuid.UUID, token string) e
 	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
-		info, err := s.UpdatePreflight(ctx, q, uuid, 0)
+		info, err := s.UpdatePreflight(ctx, q, uuid, 0, nil)
 		if err != nil {
 			return err
 		}
@@ -2938,16 +2948,20 @@ func updateACL(
 }
 
 type UpdatePrefligthInfo struct {
-	Info     postgres.GetDocumentForUpdateRow
-	Exists   bool
-	Lock     Lock
-	MainDoc  *uuid.UUID
-	Language string
+	Info        postgres.GetDocumentForUpdateRow
+	Exists      bool
+	Lock        Lock
+	MainDoc     *uuid.UUID
+	MainDocType string
+	Language    string
 }
 
+// UpdatePreflight must always be called before any information related to a
+// document is updated. mainDocUUID must be supplied if the update might be the
+// creation of the first version of a meta document.
 func (s *PGDocStore) UpdatePreflight(
 	ctx context.Context, q *postgres.Queries,
-	docUUID uuid.UUID, ifMatch int64,
+	docUUID uuid.UUID, ifMatch int64, mainDocUUID *uuid.UUID,
 ) (*UpdatePrefligthInfo, error) {
 	info, err := q.GetDocumentForUpdate(ctx, postgres.GetDocumentForUpdateParams{
 		UUID: docUUID,
@@ -2983,11 +2997,27 @@ func (s *PGDocStore) UpdatePreflight(
 		}
 	}
 
+	var mainDocType string
+
+	if info.MainDoc.Valid {
+		mainDocUUID = pg.ToUUIDPointer(info.MainDoc)
+	}
+
+	if mainDocUUID != nil {
+		mainInfo, err := q.GetDocumentRow(ctx, *mainDocUUID)
+		if err != nil {
+			return nil, fmt.Errorf("get main document information: %w", err)
+		}
+
+		mainDocType = mainInfo.Type
+	}
+
 	return &UpdatePrefligthInfo{
-		Info:     info,
-		Exists:   exists,
-		MainDoc:  pg.ToUUIDPointer(info.MainDoc),
-		Language: info.Language.String,
+		Info:        info,
+		Exists:      exists,
+		MainDoc:     pg.ToUUIDPointer(info.MainDoc),
+		MainDocType: mainDocType,
+		Language:    info.Language.String,
 		Lock: Lock{
 			URI:     info.LockUri.String,
 			Token:   info.LockToken.String,

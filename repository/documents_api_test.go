@@ -484,6 +484,13 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 
 	t.Parallel()
 
+	regenerate := regenerateTestFixtures()
+
+	testData := filepath.Join("testdata", t.Name())
+
+	err := os.MkdirAll(testData, 0o700)
+	test.Must(t, err, "ensure testdata dir")
+
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
@@ -812,6 +819,19 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Uuid: mDocV1.Document.Uuid,
 	})
 	isTwirpError(t, err, "get meta doc", twirp.NotFound, twirp.FailedPrecondition)
+
+	events, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
+		// One more event than we expect, so that we catch the
+		// unexpected.
+		BatchSize:   11,
+		BatchWaitMs: 200,
+	})
+	test.Must(t, err, "get eventlog")
+
+	test.TestMessageAgainstGolden(t, regenerate, events,
+		filepath.Join(testData, "eventlog.json"),
+		ignoreCommonTimestamps(),
+	)
 }
 
 func isTwirpError(

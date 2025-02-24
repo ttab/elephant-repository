@@ -3,11 +3,11 @@ package internal
 import (
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/ttab/elephantine"
-	"maps"
 )
 
 func RHandleFunc(

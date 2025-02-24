@@ -59,6 +59,7 @@ type Event struct {
 	SystemState        string     `json:"system_state,omitempty"`
 	WorkflowStep       string     `json:"workflow_step,omitempty"`
 	WorkflowCheckpoint string     `json:"workflow_checkpoint,omitempty"`
+	MainDocumentType   string     `json:"main_document_type,omitempty"`
 }
 
 type replicationErrorCode string
@@ -822,6 +823,11 @@ func readMessageColumns(msg replMessage, evt *Event) error {
 		evt.MainDocument = &mu
 	}
 
+	mainDocType, ok := msg.NewValues["main_doc_type"].(string)
+	if ok {
+		evt.MainDocumentType = mainDocType
+	}
+
 	systemState, ok := msg.NewValues["system_state"].(string)
 	if ok {
 		evt.SystemState = systemState
@@ -962,6 +968,7 @@ func (pr *PGReplication) recordEvent(evt Event) (outErr error) {
 		Status:             pg.TextOrNull(evt.Status),
 		StatusID:           pg.BigintOrNull(evt.StatusID),
 		MainDoc:            mainDocUUID,
+		MainDocType:        pg.TextOrNull(evt.MainDocumentType),
 		Language:           pg.TextOrNull(evt.Language),
 		OldLanguage:        pg.TextOrNull(evt.OldLanguage),
 		SystemState:        pg.TextOrNull(evt.SystemState),

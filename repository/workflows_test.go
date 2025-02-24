@@ -3,7 +3,6 @@ package repository_test
 import (
 	"context"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -23,7 +22,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 
 	t.Parallel()
 
-	regenerate := os.Getenv("REGENERATE") == "true"
+	regenerate := regenerateTestFixtures()
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 

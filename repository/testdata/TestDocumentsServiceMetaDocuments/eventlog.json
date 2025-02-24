@@ -1,0 +1,130 @@
+{
+  "items": [
+    {
+      "id": "1",
+      "event": "document",
+      "uuid": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
+      "timestamp": "2025-02-24T12:56:42+01:00",
+      "version": "1",
+      "updaterUri": "user://test/testdocumentsservicemetadocuments",
+      "type": "core/article",
+      "language": "en"
+    },
+    {
+      "id": "2",
+      "event": "acl",
+      "uuid": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
+      "timestamp": "2025-02-24T12:56:42+01:00",
+      "acl": [
+        {
+          "uri": "user://test/testdocumentsservicemetadocuments",
+          "permissions": [
+            "r",
+            "w"
+          ]
+        }
+      ],
+      "updaterUri": "user://test/testdocumentsservicemetadocuments",
+      "type": "core/article",
+      "language": "en"
+    },
+    {
+      "id": "3",
+      "event": "document",
+      "uuid": "92ebfc38-5a1e-40c3-b316-3d06f488526e",
+      "timestamp": "2025-02-24T12:56:42+01:00",
+      "version": "1",
+      "updaterUri": "user://test/testdocumentsservicemetadocuments",
+      "type": "core/article",
+      "language": "en"
+    },
+    {
+      "id": "4",
+      "event": "acl",
+      "uuid": "92ebfc38-5a1e-40c3-b316-3d06f488526e",
+      "timestamp": "2025-02-24T12:56:42+01:00",
+      "acl": [
+        {
+          "uri": "user://test/testdocumentsservicemetadocuments",
+          "permissions": [
+            "r",
+            "w"
+          ]
+        }
+      ],
+      "updaterUri": "user://test/testdocumentsservicemetadocuments",
+      "type": "core/article",
+      "language": "en"
+    },
+    {
+      "id": "5",
+      "event": "document",
+      "uuid": "a46aefe1-5379-5452-b9a2-29fbaaaec08a",
+      "timestamp": "2025-02-24T12:56:42+01:00",
+      "version": "1",
+      "updaterUri": "user://test/testdocumentsservicemetadocuments",
+      "type": "test/metadata",
+      "language": "sv-se",
+      "mainDocument": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
+      "mainDocumentType": "core/article"
+    },
+    {
+      "id": "6",
+      "event": "status",
+      "uuid": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
+      "timestamp": "2025-02-24T12:56:42+01:00",
+      "version": "1",
+      "status": "usable",
+      "statusId": "1",
+      "updaterUri": "user://test/testdocumentsservicemetadocuments",
+      "type": "core/article",
+      "language": "en"
+    },
+    {
+      "id": "7",
+      "event": "document",
+      "uuid": "a46aefe1-5379-5452-b9a2-29fbaaaec08a",
+      "timestamp": "2025-02-24T12:56:42+01:00",
+      "version": "2",
+      "updaterUri": "user://test/wmc",
+      "type": "test/metadata",
+      "language": "sv-se",
+      "mainDocument": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
+      "mainDocumentType": "core/article"
+    },
+    {
+      "id": "8",
+      "event": "status",
+      "uuid": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
+      "timestamp": "2025-02-24T12:56:42+01:00",
+      "version": "1",
+      "status": "usable",
+      "statusId": "2",
+      "updaterUri": "user://test/testdocumentsservicemetadocuments",
+      "type": "core/article",
+      "language": "en"
+    },
+    {
+      "id": "9",
+      "event": "delete_document",
+      "uuid": "a46aefe1-5379-5452-b9a2-29fbaaaec08a",
+      "timestamp": "2025-02-24T12:56:42+01:00",
+      "version": "2",
+      "updaterUri": "user://test/testdocumentsservicemetadocuments",
+      "type": "test/metadata",
+      "language": "sv-se",
+      "mainDocument": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
+      "mainDocumentType": "core/article"
+    },
+    {
+      "id": "10",
+      "event": "delete_document",
+      "uuid": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
+      "timestamp": "2025-02-24T12:56:42+01:00",
+      "version": "1",
+      "updaterUri": "user://test/testdocumentsservicemetadocuments",
+      "type": "core/article",
+      "language": "en"
+    }
+  ]
+}

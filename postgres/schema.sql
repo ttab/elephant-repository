@@ -103,6 +103,27 @@ CREATE FUNCTION public.create_version(uuid uuid, version bigint, created timesta
 $$;
 
 
+--
+-- Name: sequential_eventlog(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sequential_eventlog() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+last_id bigint;
+BEGIN
+    SELECT COALESCE(MAX(id), 0) INTO last_id FROM eventlog;
+
+    if NEW.id != last_id+1 then
+        raise exception 'the eventlog id must be sequential';
+    end if;
+
+    return NEW;
+END;
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -178,7 +199,8 @@ CREATE TABLE public.delete_record (
     finalised timestamp with time zone,
     acl jsonb,
     heads jsonb,
-    purged timestamp with time zone
+    purged timestamp with time zone,
+    main_doc_type text
 );
 
 
@@ -221,7 +243,8 @@ CREATE TABLE public.document (
     current_version bigint NOT NULL,
     main_doc uuid,
     language text,
-    system_state text
+    system_state text,
+    main_doc_type text
 );
 
 ALTER TABLE ONLY public.document REPLICA IDENTITY FULL;
@@ -321,7 +344,8 @@ CREATE TABLE public.eventlog (
     old_language text,
     system_state text,
     workflow_state text,
-    workflow_checkpoint text
+    workflow_checkpoint text,
+    main_doc_type text
 );
 
 
@@ -963,6 +987,13 @@ CREATE INDEX purges_to_perform ON public.purge_request USING btree (id) WHERE (f
 --
 
 CREATE INDEX restores_to_perform ON public.restore_request USING btree (id) WHERE (finished IS NULL);
+
+
+--
+-- Name: eventlog sequential_eventlog; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER sequential_eventlog BEFORE INSERT ON public.eventlog FOR EACH ROW EXECUTE FUNCTION public.sequential_eventlog();
 
 
 --

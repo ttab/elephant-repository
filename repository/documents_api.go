@@ -601,19 +601,20 @@ func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
 	}
 
 	return Event{
-		ID:           evt.Id,
-		Event:        EventType(evt.Event),
-		UUID:         docUUID,
-		Type:         evt.Type,
-		Timestamp:    timestamp,
-		Updater:      evt.UpdaterUri,
-		Version:      evt.Version,
-		Status:       evt.Status,
-		StatusID:     evt.StatusId,
-		ACL:          acl,
-		MainDocument: mainDoc,
-		Language:     evt.Language,
-		OldLanguage:  evt.OldLanguage,
+		ID:               evt.Id,
+		Event:            EventType(evt.Event),
+		UUID:             docUUID,
+		Type:             evt.Type,
+		Timestamp:        timestamp,
+		Updater:          evt.UpdaterUri,
+		Version:          evt.Version,
+		Status:           evt.Status,
+		StatusID:         evt.StatusId,
+		ACL:              acl,
+		MainDocument:     mainDoc,
+		MainDocumentType: evt.MainDocumentType,
+		Language:         evt.Language,
+		OldLanguage:      evt.OldLanguage,
 	}, nil
 }
 
@@ -645,6 +646,7 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		StatusId:           evt.StatusID,
 		Acl:                acl,
 		MainDocument:       mainDoc,
+		MainDocumentType:   evt.MainDocumentType,
 		Language:           evt.Language,
 		OldLanguage:        evt.OldLanguage,
 		SystemState:        evt.SystemState,
@@ -1546,8 +1548,7 @@ func (a *DocumentsService) buildUpdateRequest(
 		up.MainDocument = &docUUID
 	}
 
-	isMeta := req.UpdateMetaDocument ||
-		(req.Document != nil && isMetaURI(req.Document.Uri))
+	isMeta := up.MainDocument != nil
 
 	if !isMeta {
 		up.ACL = aclListFromRPC(req.Acl, auth.Claims.Subject)

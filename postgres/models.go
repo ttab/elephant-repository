@@ -48,6 +48,7 @@ type DeleteRecord struct {
 	Acl           []byte
 	Heads         []byte
 	Purged        pgtype.Timestamptz
+	MainDocType   pgtype.Text
 }
 
 type Deprecation struct {
@@ -67,6 +68,7 @@ type Document struct {
 	MainDoc        pgtype.UUID
 	Language       pgtype.Text
 	SystemState    pgtype.Text
+	MainDocType    pgtype.Text
 }
 
 type DocumentLink struct {
@@ -135,6 +137,7 @@ type Eventlog struct {
 	SystemState        pgtype.Text
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
+	MainDocType        pgtype.Text
 }
 
 type Eventsink struct {

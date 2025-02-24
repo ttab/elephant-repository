@@ -668,13 +668,13 @@ const getCompactedEventlog = `-- name: GetCompactedEventlog :many
 SELECT
         w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
         w.status_id, w.acl, w.updater, w.language, w.old_language, w.main_doc,
-        w.system_state, workflow_state, workflow_checkpoint
+        w.system_state, workflow_state, workflow_checkpoint, main_doc_type
 FROM (
      SELECT DISTINCT ON (
             e.uuid,
             CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END,
             CASE WHEN NOT e.old_language IS NULL THEN null ELSE 0 END
-       ) id, event, uuid, timestamp, type, version, status, status_id, acl, updater, main_doc, language, old_language, system_state, workflow_state, workflow_checkpoint FROM eventlog AS e
+       ) id, event, uuid, timestamp, type, version, status, status_id, acl, updater, main_doc, language, old_language, system_state, workflow_state, workflow_checkpoint, main_doc_type FROM eventlog AS e
      WHERE e.id > $1 AND e.id <= $2
      AND ($3::text IS NULL OR e.type = $3)
      ORDER BY
@@ -712,6 +712,7 @@ type GetCompactedEventlogRow struct {
 	SystemState        pgtype.Text
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
+	MainDocType        pgtype.Text
 }
 
 func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEventlogParams) ([]GetCompactedEventlogRow, error) {
@@ -746,6 +747,7 @@ func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEven
 			&i.SystemState,
 			&i.WorkflowState,
 			&i.WorkflowCheckpoint,
+			&i.MainDocType,
 		); err != nil {
 			return nil, err
 		}
@@ -1097,9 +1099,23 @@ FROM document
 WHERE uuid = $1
 `
 
-func (q *Queries) GetDocumentRow(ctx context.Context, argUuid uuid.UUID) (Document, error) {
+type GetDocumentRowRow struct {
+	UUID           uuid.UUID
+	URI            string
+	Type           string
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Updated        pgtype.Timestamptz
+	UpdaterUri     string
+	CurrentVersion int64
+	MainDoc        pgtype.UUID
+	Language       pgtype.Text
+	SystemState    pgtype.Text
+}
+
+func (q *Queries) GetDocumentRow(ctx context.Context, argUuid uuid.UUID) (GetDocumentRowRow, error) {
 	row := q.db.QueryRow(ctx, getDocumentRow, argUuid)
-	var i Document
+	var i GetDocumentRowRow
 	err := row.Scan(
 		&i.UUID,
 		&i.URI,
@@ -1338,7 +1354,7 @@ func (q *Queries) GetEnforcedDeprecations(ctx context.Context) ([]string, error)
 const getEventlog = `-- name: GetEventlog :many
 SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater,
        language, old_language, main_doc, system_state,
-       workflow_state, workflow_checkpoint
+       workflow_state, workflow_checkpoint, main_doc_type
 FROM eventlog
 WHERE id > $1
 ORDER BY id ASC
@@ -1367,6 +1383,7 @@ type GetEventlogRow struct {
 	SystemState        pgtype.Text
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
+	MainDocType        pgtype.Text
 }
 
 func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]GetEventlogRow, error) {
@@ -1395,6 +1412,7 @@ func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]Get
 			&i.SystemState,
 			&i.WorkflowState,
 			&i.WorkflowCheckpoint,
+			&i.MainDocType,
 		); err != nil {
 			return nil, err
 		}
@@ -1577,7 +1595,7 @@ func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, e
 
 const getLastEvent = `-- name: GetLastEvent :one
 SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl,
-       language, old_language, main_doc, workflow_state, workflow_checkpoint
+       language, old_language, main_doc, workflow_state, workflow_checkpoint, main_doc_type
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1
@@ -1599,6 +1617,7 @@ type GetLastEventRow struct {
 	MainDoc            pgtype.UUID
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
+	MainDocType        pgtype.Text
 }
 
 func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
@@ -1620,6 +1639,7 @@ func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
 		&i.MainDoc,
 		&i.WorkflowState,
 		&i.WorkflowCheckpoint,
+		&i.MainDocType,
 	)
 	return i, err
 }
@@ -2378,10 +2398,10 @@ func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEnt
 const insertDeleteRecord = `-- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads, acl
+       main_doc, language, meta_doc_record, heads, acl, main_doc_type
 ) VALUES(
        $1, $2, $3, $4, $5, $6, $7,
-       $8, $9, $10, $11, $12
+       $8, $9, $10, $11, $12, $13
 ) RETURNING id
 `
 
@@ -2398,6 +2418,7 @@ type InsertDeleteRecordParams struct {
 	MetaDocRecord pgtype.Int8
 	Heads         []byte
 	Acl           []byte
+	MainDocType   pgtype.Text
 }
 
 func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecordParams) (int64, error) {
@@ -2414,6 +2435,7 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 		arg.MetaDocRecord,
 		arg.Heads,
 		arg.Acl,
+		arg.MainDocType,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -2548,10 +2570,12 @@ func (q *Queries) InsertDocumentStatus(ctx context.Context, arg InsertDocumentSt
 const insertIntoEventLog = `-- name: InsertIntoEventLog :one
 INSERT INTO eventlog(
        event, uuid, type, timestamp, updater, version, status, status_id, acl,
-       language, old_language, main_doc, system_state, workflow_state, workflow_checkpoint
+       language, old_language, main_doc, system_state, workflow_state, workflow_checkpoint,
+       main_doc_type
 ) VALUES (
        $1, $2, $3, $4, $5, $6, $7, $8, $9,
-       $10, $11, $12, $13, $14, $15
+       $10, $11, $12, $13, $14, $15,
+       $16
 ) RETURNING id
 `
 
@@ -2571,6 +2595,7 @@ type InsertIntoEventLogParams struct {
 	SystemState        pgtype.Text
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
+	MainDocType        pgtype.Text
 }
 
 func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLogParams) (int64, error) {
@@ -2590,6 +2615,7 @@ func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLog
 		arg.SystemState,
 		arg.WorkflowState,
 		arg.WorkflowCheckpoint,
+		arg.MainDocType,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -3295,11 +3321,11 @@ const upsertDocument = `-- name: UpsertDocument :exec
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language
+       main_doc, language, main_doc_type
 ) VALUES (
        $1, $2, $3,
        $4, $5, $4, $5, $6,
-       $7, $8
+       $7, $8, $9
 ) ON CONFLICT (uuid) DO UPDATE
      SET uri = $2,
          updated = $4,
@@ -3309,14 +3335,15 @@ INSERT INTO document(
 `
 
 type UpsertDocumentParams struct {
-	UUID       uuid.UUID
-	URI        string
-	Type       string
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Version    int64
-	MainDoc    pgtype.UUID
-	Language   pgtype.Text
+	UUID        uuid.UUID
+	URI         string
+	Type        string
+	Created     pgtype.Timestamptz
+	CreatorUri  string
+	Version     int64
+	MainDoc     pgtype.UUID
+	Language    pgtype.Text
+	MainDocType pgtype.Text
 }
 
 func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) error {
@@ -3329,6 +3356,7 @@ func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) 
 		arg.Version,
 		arg.MainDoc,
 		arg.Language,
+		arg.MainDocType,
 	)
 	return err
 }

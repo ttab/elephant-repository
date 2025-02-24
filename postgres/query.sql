@@ -239,11 +239,11 @@ WHERE id = @id;
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language
+       main_doc, language, main_doc_type
 ) VALUES (
        @uuid, @uri, @type,
        @created, @creator_uri, @created, @creator_uri, @version,
-       @main_doc, @language
+       @main_doc, @language, @main_doc_type
 ) ON CONFLICT (uuid) DO UPDATE
      SET uri = @uri,
          updated = @created,
@@ -373,10 +373,10 @@ insert into document(
 -- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads, acl
+       main_doc, language, meta_doc_record, heads, acl, main_doc_type
 ) VALUES(
        @uuid, @uri, @type, @version, @created, @creator_uri, @meta,
-       @main_doc, @language, @meta_doc_record, @heads, @acl
+       @main_doc, @language, @meta_doc_record, @heads, @acl, @main_doc_type
 ) RETURNING id;
 
 -- name: ListDeleteRecords :many
@@ -630,16 +630,18 @@ WHERE uuid = @uuid
 -- name: InsertIntoEventLog :one
 INSERT INTO eventlog(
        event, uuid, type, timestamp, updater, version, status, status_id, acl,
-       language, old_language, main_doc, system_state, workflow_state, workflow_checkpoint
+       language, old_language, main_doc, system_state, workflow_state, workflow_checkpoint,
+       main_doc_type
 ) VALUES (
        @event, @uuid, @type, @timestamp, @updater, @version, @status, @status_id, @acl,
-       @language, @old_language, @main_doc, @system_state, @workflow_state, @workflow_checkpoint
+       @language, @old_language, @main_doc, @system_state, @workflow_state, @workflow_checkpoint,
+       @main_doc_type
 ) RETURNING id;
 
 -- name: GetEventlog :many
 SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater,
        language, old_language, main_doc, system_state,
-       workflow_state, workflow_checkpoint
+       workflow_state, workflow_checkpoint, main_doc_type
 FROM eventlog
 WHERE id > @after
 ORDER BY id ASC
@@ -647,7 +649,7 @@ LIMIT sqlc.arg(row_limit);
 
 -- name: GetLastEvent :one
 SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl,
-       language, old_language, main_doc, workflow_state, workflow_checkpoint
+       language, old_language, main_doc, workflow_state, workflow_checkpoint, main_doc_type
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1;
@@ -660,7 +662,7 @@ ORDER BY id DESC LIMIT 1;
 SELECT
         w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
         w.status_id, w.acl, w.updater, w.language, w.old_language, w.main_doc,
-        w.system_state, workflow_state, workflow_checkpoint
+        w.system_state, workflow_state, workflow_checkpoint, main_doc_type
 FROM (
      SELECT DISTINCT ON (
             e.uuid,
