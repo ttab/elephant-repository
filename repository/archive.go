@@ -34,6 +34,7 @@ import (
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/newsdoc"
 	"golang.org/x/sync/errgroup"
+	"maps"
 )
 
 type S3Options struct {
@@ -417,7 +418,7 @@ func (a *Archiver) processDeletes(
 	group, gCtx := errgroup.WithContext(ctx)
 	moves := make(chan string, workerCount)
 
-	for i := 0; i < workerCount; i++ {
+	for range workerCount {
 		group.Go(func() error {
 			for key := range moves {
 				baseKey := strings.TrimPrefix(key, prefix)
@@ -889,9 +890,7 @@ func annotateMeta(originalMeta []byte, add newsdoc.DataMap) ([]byte, error) {
 		meta = make(newsdoc.DataMap, len(add))
 	}
 
-	for k, v := range add {
-		meta[k] = v
-	}
+	maps.Copy(meta, add)
 
 	updatedMetaData, err := json.Marshal(meta)
 	if err != nil {

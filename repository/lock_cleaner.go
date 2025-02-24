@@ -57,7 +57,7 @@ func (s *PGDocStore) removeExpiredLocks(ctx context.Context) error {
 		}
 
 		uuids := make([]uuid.UUID, len(expired))
-		for i := 0; i < len(expired); i++ {
+		for i := range expired {
 			uuids[i] = expired[i].UUID
 		}
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/ttab/elephantine"
+	"maps"
 )
 
 func RHandleFunc(
@@ -30,9 +31,7 @@ func writeHTTPError(w http.ResponseWriter, err error) {
 	}
 
 	if httpErr.Header != nil {
-		for k, v := range httpErr.Header {
-			w.Header()[k] = v
-		}
+		maps.Copy(w.Header(), httpErr.Header)
 	}
 
 	statusCode := httpErr.StatusCode

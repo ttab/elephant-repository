@@ -410,8 +410,8 @@ const replicaIdentityFull = 'O'
 
 type replMessage struct {
 	Table     string
-	NewValues map[string]interface{}
-	OldValues map[string]interface{}
+	NewValues map[string]any
+	OldValues map[string]any
 }
 
 func (pr *PGReplication) handleReplicationMessage(
@@ -686,13 +686,13 @@ func parseACLMessage(msg replMessage) (Event, error) {
 
 	evt.Updater = updater
 
-	stateSlice, ok := msg.NewValues["state"].([]interface{})
+	stateSlice, ok := msg.NewValues["state"].([]any)
 	if !ok {
 		return Event{}, fmt.Errorf("failed to extract state slice")
 	}
 
 	for i := range stateSlice {
-		aclMap, ok := stateSlice[i].(map[string]interface{})
+		aclMap, ok := stateSlice[i].(map[string]any)
 		if !ok {
 			return Event{}, fmt.Errorf("failed to extract ACL entry map")
 		}
@@ -702,7 +702,7 @@ func parseACLMessage(msg replMessage) (Event, error) {
 			return Event{}, fmt.Errorf("failed to extract ACL uri")
 		}
 
-		permSlice, ok := aclMap["permissions"].([]interface{})
+		permSlice, ok := aclMap["permissions"].([]any)
 		if !ok {
 			return Event{}, fmt.Errorf(
 				"failed to extract ACL permission slice")
@@ -1022,14 +1022,14 @@ func (td *TupleDecoder) GetRelation(id uint32) (*pglogrepl.RelationMessage, bool
 
 func (td *TupleDecoder) DecodeValues(
 	relation uint32, tuple *pglogrepl.TupleData,
-) (*pglogrepl.RelationMessage, map[string]interface{}, error) {
+) (*pglogrepl.RelationMessage, map[string]any, error) {
 	rel, ok := td.relations[relation]
 	if !ok {
 		return nil, nil, fmt.Errorf(
 			"unknown relation ID %d", relation)
 	}
 
-	values := make(map[string]interface{})
+	values := make(map[string]any)
 
 	for idx, col := range tuple.Columns {
 		colName := rel.Columns[idx].Name
@@ -1056,7 +1056,7 @@ func (td *TupleDecoder) DecodeValues(
 
 func decodeTextColumnData(
 	mi *pgtype.Map, data []byte, dataType uint32,
-) (interface{}, error) {
+) (any, error) {
 	if dt, ok := mi.TypeForOID(dataType); ok {
 		v, err := dt.Codec.DecodeValue(
 			mi, dataType, pgtype.TextFormatCode, data)

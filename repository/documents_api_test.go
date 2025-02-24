@@ -208,7 +208,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	diff := cmp.Diff(&golden, events,
 		protocmp.Transform(),
-		cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
+		cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
 			return k == timestampField
 		}),
 	)
@@ -466,7 +466,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 		diff := cmp.Diff(&golden, log,
 			protocmp.Transform(),
-			cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
+			cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
 				return k == timestampField ||
 					k == idField
 			}),
@@ -642,7 +642,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	}
 
 	ignoreTimeVariantValues := cmpopts.IgnoreMapEntries(
-		func(k string, _ interface{}) bool {
+		func(k string, _ any) bool {
 			switch k {
 			case "created", "modified":
 				return true
@@ -920,7 +920,7 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	)
 
 	ignoreTimeVariantValues := cmpopts.IgnoreMapEntries(
-		func(k string, _ interface{}) bool {
+		func(k string, _ any) bool {
 			switch k {
 			case "created", "modified":
 				return true
@@ -1019,7 +1019,7 @@ func TestIntegrationStatus(t *testing.T) {
 		numStatuses = 12
 	)
 
-	for n := 0; n < numStatuses; n++ {
+	for n := range numStatuses {
 		meta := map[string]string{
 			"update_number": strconv.Itoa(n),
 		}
@@ -1099,7 +1099,7 @@ func TestIntegrationStatus(t *testing.T) {
 
 	diff := cmp.Diff(&golden, events,
 		protocmp.Transform(),
-		cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
+		cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
 			return k == timestampField
 		}),
 	)
@@ -1132,7 +1132,7 @@ func TestIntegrationStatus(t *testing.T) {
 
 	cmpDiff := cmp.Diff(&compactGolden, compactEvents,
 		protocmp.Transform(),
-		cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
+		cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
 			return k == timestampField
 		}),
 	)

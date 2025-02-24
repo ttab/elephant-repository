@@ -132,7 +132,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 }
 
 func ignoreCommonTimestamps() cmp.Option {
-	return cmpopts.IgnoreMapEntries(func(k string, _ interface{}) bool {
+	return cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
 		return k == createdField || k == modifiedField || k == timestampField
 	})
 }
