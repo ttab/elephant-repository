@@ -83,7 +83,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	t.Run("NegativeEventlogAfterOnEmpty", func(t *testing.T) {
 		log, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
@@ -261,7 +261,7 @@ func TestIntegrationStatusPermissions(t *testing.T) {
 	randoClient := tc.DocumentsClient(t,
 		itest.Claims(t, "random-guy", "doc_write"))
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	const (
 		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
@@ -355,7 +355,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 		doc.Language = ""
 
-		_, err := client.Update(test.Context(t), &repository.UpdateRequest{
+		_, err := client.Update(t.Context(), &repository.UpdateRequest{
 			Uuid:     doc.Uuid,
 			Document: doc,
 		})
@@ -373,7 +373,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 		doc.Language = "ad"
 
-		_, err := client.Update(test.Context(t), &repository.UpdateRequest{
+		_, err := client.Update(t.Context(), &repository.UpdateRequest{
 			Uuid:     doc.Uuid,
 			Document: doc,
 		})
@@ -388,7 +388,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 		doc.Language = "sv-"
 
-		_, err := client.Update(test.Context(t), &repository.UpdateRequest{
+		_, err := client.Update(t.Context(), &repository.UpdateRequest{
 			Uuid:     doc.Uuid,
 			Document: doc,
 		})
@@ -396,7 +396,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 	})
 
 	t.Run("LanguageAndRegion", func(t *testing.T) {
-		ctx := test.Context(t)
+		ctx := t.Context()
 
 		doc := baseDocument(
 			"00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
@@ -498,7 +498,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		RunReplicator: true,
 	})
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	schema := tc.SchemasClient(t, itest.StandardClaims(t, "schema_admin"))
 
@@ -876,7 +876,7 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	docA := baseDocument(
 		"14f4ba22-f7c0-46bc-9c18-73f845a4f801", "article://test/a",
@@ -1019,7 +1019,7 @@ func TestIntegrationStatus(t *testing.T) {
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	const (
 		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
@@ -1175,7 +1175,7 @@ func TestIntegrationDeleteTimeout(t *testing.T) {
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete"))
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	const (
 		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
@@ -1205,7 +1205,7 @@ func TestIntegrationStatuses(t *testing.T) {
 
 	t.Parallel()
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	tc := testingAPIServer(t, logger, testingServerOptions{})
 
@@ -1333,7 +1333,7 @@ func TestIntegrationStatusRules(t *testing.T) {
 
 	t.Parallel()
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	tc := testingAPIServer(t, logger, testingServerOptions{})
 
@@ -1547,7 +1547,7 @@ func TestIntegrationACL(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
-	ctx := test.Context(t)
+	ctx := t.Context()
 	tc := testingAPIServer(t, logger, testingServerOptions{})
 
 	client := tc.DocumentsClient(t,
@@ -1701,7 +1701,7 @@ func TestDocumentLocking(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
-	ctx := test.Context(t)
+	ctx := t.Context()
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunArchiver: true,
 	})
@@ -1877,7 +1877,7 @@ func TestIntegrationStatsOverview(t *testing.T) {
 			"create test data directory")
 	}
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{})
@@ -1982,7 +1982,7 @@ func TestIntegrationStatsOverview(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			ctx := test.Context(t)
+			ctx := t.Context()
 
 			res, err := c.Client.GetStatusOverview(ctx, c.Req)
 			test.Must(t, err, "fatech status overview")
@@ -2058,7 +2058,7 @@ func TestUUIDNormalisation(t *testing.T) {
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	const (
 		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"

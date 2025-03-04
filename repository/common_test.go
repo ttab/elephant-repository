@@ -68,9 +68,7 @@ func (tc *TestContext) SSEConnect(
 		HTTPClient: tc.Server.Client(),
 	}
 
-	conn := client.NewConnection(req.WithContext(
-		test.Context(t),
-	))
+	conn := client.NewConnection(req.WithContext(t.Context()))
 
 	go func() {
 		err = conn.Connect()
@@ -206,7 +204,7 @@ func testingAPIServer(
 	test.Must(t, err, "set up HTTP client instrumentation")
 
 	env := itest.SetUpBackingServices(t, instrumentation, false)
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	dbpool, err := pgxpool.New(ctx, env.PostgresURI)
 	test.Must(t, err, "create connection pool")

@@ -38,7 +38,7 @@ func TestIntegrationMetrics(t *testing.T) {
 
 	documentsClient := tc.DocumentsClient(t, itest.StandardClaims(t, "doc_write"))
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	// test kinds
 	_, err := client.RegisterKind(ctx, &repository.RegisterMetricKindRequest{

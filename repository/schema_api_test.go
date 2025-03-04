@@ -31,7 +31,7 @@ func TestDeprecations(t *testing.T) {
 
 	documentsClient := tc.DocumentsClient(t, itest.StandardClaims(t, "doc_write"))
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	doc := &newsdoc.Document{
 		Uuid: "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",

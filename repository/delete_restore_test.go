@@ -42,7 +42,7 @@ func TestDeleteRestore(t *testing.T) {
 			"doc_read doc_write doc_delete doc_restore eventlog_read",
 			"core://unit/redaktionen"))
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	const (
 		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"

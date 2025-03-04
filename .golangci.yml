@@ -38,13 +38,13 @@ linters:
   - revive
   - staticcheck
   - stylecheck
-  - tenv
   - testpackage
   - thelper
   - typecheck
   - unconvert
   - unparam
   - unused
+  - usetesting
   - whitespace
   - wrapcheck
   - wsl

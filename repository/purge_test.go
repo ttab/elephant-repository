@@ -41,7 +41,7 @@ func TestPurge(t *testing.T) {
 		itest.StandardClaims(t,
 			"doc_read doc_write doc_delete doc_restore doc_purge eventlog_read"))
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	const (
 		docUUID = "366e9e80-1b9a-4ec6-8eed-a13922dc1e93"

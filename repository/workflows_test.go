@@ -35,7 +35,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	wflowClient := tc.WorkflowsClient(t,
 		itest.StandardClaims(t, "workflow_admin"))
 
-	ctx := test.Context(t)
+	ctx := t.Context()
 
 	_, err := wflowClient.SetWorkflow(ctx, &repository.SetWorkflowRequest{
 		Type: "core/article",
@@ -142,7 +142,7 @@ func collectEventlog(
 ) *repository.GetEventlogResponse {
 	t.Helper()
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
 
 	var (

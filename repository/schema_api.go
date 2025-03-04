@@ -272,7 +272,7 @@ func (a *SchemasService) Register(
 
 func (a *SchemasService) fetchRemoteSpec(
 	ctx context.Context, schemaURL string, schemaHash string,
-) (revisor.ConstraintSet, error) {
+) (_ revisor.ConstraintSet, outErr error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, schemaURL, nil)
 	if err != nil {
 		return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
@@ -287,8 +287,7 @@ func (a *SchemasService) fetchRemoteSpec(
 			fmt.Sprintf("failed to get schema_url: %v", err))
 	}
 
-	defer elephantine.SafeClose(a.logger,
-		"schema response", res.Body)
+	defer elephantine.Close("schema response", res.Body, &outErr)
 
 	specData, err := io.ReadAll(res.Body)
 	if err != nil {
