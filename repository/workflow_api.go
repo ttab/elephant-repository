@@ -173,7 +173,7 @@ func (s *WorkflowsService) GetStatusRules(
 func (s *WorkflowsService) GetStatuses(
 	ctx context.Context, req *repository.GetStatusesRequest,
 ) (*repository.GetStatusesResponse, error) {
-	_, err := RequireAnyScope(ctx, ScopeWorkflowAdmin)
+	_, err := RequireAnyScope(ctx, ScopeDocumentRead, ScopeWorkflowAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func (s *WorkflowsService) DeleteWorkflow(
 func (s *WorkflowsService) GetWorkflow(
 	ctx context.Context, req *repository.GetWorkflowRequest,
 ) (*repository.GetWorkflowResponse, error) {
-	_, err := RequireAnyScope(ctx, ScopeWorkflowAdmin)
+	_, err := RequireAnyScope(ctx, ScopeDocumentRead, ScopeWorkflowAdmin)
 	if err != nil {
 		return nil, err
 	}
