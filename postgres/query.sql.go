@@ -637,6 +637,7 @@ const getActiveStatuses = `-- name: GetActiveStatuses :many
 SELECT type, name
 FROM status
 WHERE disabled = false
+      AND ($1::text IS NULL OR type = $1)
 `
 
 type GetActiveStatusesRow struct {
@@ -644,8 +645,8 @@ type GetActiveStatusesRow struct {
 	Name string
 }
 
-func (q *Queries) GetActiveStatuses(ctx context.Context) ([]GetActiveStatusesRow, error) {
-	rows, err := q.db.Query(ctx, getActiveStatuses)
+func (q *Queries) GetActiveStatuses(ctx context.Context, type_ pgtype.Text) ([]GetActiveStatusesRow, error) {
+	rows, err := q.db.Query(ctx, getActiveStatuses, type_)
 	if err != nil {
 		return nil, err
 	}

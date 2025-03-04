@@ -171,14 +171,14 @@ func (s *WorkflowsService) GetStatusRules(
 
 // GetStatuses lists all enabled statuses.
 func (s *WorkflowsService) GetStatuses(
-	ctx context.Context, _ *repository.GetStatusesRequest,
+	ctx context.Context, req *repository.GetStatusesRequest,
 ) (*repository.GetStatusesResponse, error) {
 	_, err := RequireAnyScope(ctx, ScopeWorkflowAdmin)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := s.store.GetStatuses(ctx)
+	res, err := s.store.GetStatuses(ctx, req.Type)
 	if err != nil {
 		return nil, twirp.InternalErrorf(
 			"failed to read from store: %v", err)

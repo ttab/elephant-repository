@@ -149,7 +149,7 @@ type WorkflowStore interface {
 	UpdateStatus(
 		ctx context.Context, req UpdateStatusRequest,
 	) error
-	GetStatuses(ctx context.Context) ([]DocumentStatus, error)
+	GetStatuses(ctx context.Context, docType string) ([]DocumentStatus, error)
 	UpdateStatusRule(
 		ctx context.Context, rule StatusRule,
 	) error

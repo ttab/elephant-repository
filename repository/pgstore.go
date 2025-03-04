@@ -2029,8 +2029,8 @@ func (s *PGDocStore) UpdateStatus(
 	})
 }
 
-func (s *PGDocStore) GetStatuses(ctx context.Context) ([]DocumentStatus, error) {
-	res, err := s.reader.GetActiveStatuses(ctx)
+func (s *PGDocStore) GetStatuses(ctx context.Context, docType string) ([]DocumentStatus, error) {
+	res, err := s.reader.GetActiveStatuses(ctx, pg.TextOrNull(docType))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get active statuses: %w", err)
 	}

@@ -573,7 +573,8 @@ ON CONFLICT(label) DO UPDATE SET
 -- name: GetActiveStatuses :many
 SELECT type, name
 FROM status
-WHERE disabled = false;
+WHERE disabled = false
+      AND (sqlc.narg(type)::text IS NULL OR type = @type);
 
 -- name: UpdateStatus :exec
 INSERT INTO status(type, name, disabled)

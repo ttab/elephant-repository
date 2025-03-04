@@ -22,7 +22,7 @@ type Workflows struct {
 }
 
 type WorkflowLoader interface {
-	GetStatuses(ctx context.Context) ([]DocumentStatus, error)
+	GetStatuses(ctx context.Context, docType string) ([]DocumentStatus, error)
 	GetStatusRules(ctx context.Context) ([]StatusRule, error)
 	SetDocumentWorkflow(ctx context.Context, workflow DocumentWorkflow) error
 	GetDocumentWorkflows(ctx context.Context) ([]DocumentWorkflow, error)
@@ -76,7 +76,7 @@ func (w *Workflows) reloadLoop(
 func (w *Workflows) loadWorkflows(
 	ctx context.Context, loader WorkflowLoader,
 ) error {
-	statuses, err := loader.GetStatuses(ctx)
+	statuses, err := loader.GetStatuses(ctx, "")
 	if err != nil {
 		return fmt.Errorf("get statuses: %w", err)
 	}
