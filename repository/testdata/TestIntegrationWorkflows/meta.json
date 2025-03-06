@@ -33,6 +33,8 @@
       }
     ],
     "workflowState": "draft",
-    "workflowCheckpoint": "usable"
+    "workflowCheckpoint": "usable",
+    "creatorUri": "user://test/testintegrationworkflows",
+    "updaterUri": "user://test/testintegrationworkflows"
   }
 }

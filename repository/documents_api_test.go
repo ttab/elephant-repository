@@ -646,6 +646,8 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		CurrentVersion: 1,
 		IsMetaDocument: true,
 		MainDocument:   docA.Uuid,
+		CreatorUri:     "user://test/testdocumentsservicemetadocuments",
+		UpdaterUri:     "user://test/testdocumentsservicemetadocuments",
 	}
 
 	ignoreTimeVariantValues := cmpopts.IgnoreMapEntries(
@@ -962,6 +964,8 @@ func TestIntegrationBulkCrud(t *testing.T) {
 			},
 		},
 		CurrentVersion: 1,
+		CreatorUri:     "user://test/testintegrationbulkcrud",
+		UpdaterUri:     "user://test/testintegrationbulkcrud",
 	}
 
 	cmpDiffA := cmp.Diff(&wantMetaA, metaA.Meta,
@@ -992,6 +996,8 @@ func TestIntegrationBulkCrud(t *testing.T) {
 				Creator: testUserURI,
 			},
 		},
+		CreatorUri: "user://test/testintegrationbulkcrud",
+		UpdaterUri: "user://test/testintegrationbulkcrud",
 	}
 
 	cmpDiffB := cmp.Diff(&wantMetaB, metaB.Meta,

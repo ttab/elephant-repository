@@ -1297,7 +1297,9 @@ func (a *DocumentsService) GetMeta(
 
 	resp := repository.DocumentMeta{
 		Created:            meta.Created.Format(time.RFC3339),
+		CreatorUri:         meta.CreatorURI,
 		Modified:           meta.Modified.Format(time.RFC3339),
+		UpdaterUri:         meta.UpdaterURI,
 		CurrentVersion:     meta.CurrentVersion,
 		IsMetaDocument:     meta.MainDocument != "",
 		MainDocument:       meta.MainDocument,

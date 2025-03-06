@@ -1283,7 +1283,9 @@ func (s *PGDocStore) GetDocumentMeta(
 
 	meta := DocumentMeta{
 		Created:            info.Created.Time,
+		CreatorURI:         info.CreatorUri,
 		Modified:           info.Updated.Time,
+		UpdaterURI:         info.UpdaterUri,
 		CurrentVersion:     info.CurrentVersion,
 		Statuses:           make(map[string]Status),
 		MainDocument:       mainDoc,

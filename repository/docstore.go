@@ -358,7 +358,9 @@ type DeleteRecord struct {
 
 type DocumentMeta struct {
 	Created            time.Time
+	CreatorURI         string
 	Modified           time.Time
+	UpdaterURI         string
 	CurrentVersion     int64
 	ACL                []ACLEntry
 	Statuses           map[string]Status
