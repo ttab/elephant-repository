@@ -61,9 +61,6 @@ linters-settings:
       - .WithMessagef(
       - .WithStack(
       - .WithTX(
-  gomoddirectives:
-    replace-allow-list:
-      - github.com/tmaxmax/go-sse
   nestif:
     min-complexity: 6
   godox:
