@@ -1098,6 +1098,7 @@ func (s *PGDocStore) GetVersionHistory(
 
 			if versionIdx > len(versions) {
 				versionIdx = -1
+
 				break
 			}
 		}
