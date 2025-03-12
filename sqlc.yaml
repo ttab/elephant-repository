@@ -14,3 +14,6 @@ sql:
       overrides:
         - db_type: "uuid"
           go_type: "github.com/google/uuid.UUID"
+        - column: "document_status.meta"
+          go_type:
+            type: "map[string]string"

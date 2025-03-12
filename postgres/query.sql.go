@@ -1161,7 +1161,7 @@ type GetDocumentStatusForArchivingRow struct {
 	Version          int64
 	Created          pgtype.Timestamptz
 	CreatorUri       string
-	Meta             []byte
+	Meta             map[string]string
 	ParentSignature  pgtype.Text
 	VersionSignature pgtype.Text
 	Type             string
@@ -1831,6 +1831,60 @@ func (q *Queries) GetNextRestoreRequest(ctx context.Context) (GetNextRestoreRequ
 	return i, err
 }
 
+const getNilStatuses = `-- name: GetNilStatuses :many
+SELECT uuid, name, id, version, created, creator_uri, meta, meta_doc_version
+FROM document_status
+WHERE uuid = $1
+      AND ($2::text[] IS NULL OR name = ANY($2))
+      AND version = -1
+ORDER BY name ASC, id DESC
+`
+
+type GetNilStatusesParams struct {
+	UUID  uuid.UUID
+	Names []string
+}
+
+type GetNilStatusesRow struct {
+	UUID           uuid.UUID
+	Name           string
+	ID             int64
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           map[string]string
+	MetaDocVersion pgtype.Int8
+}
+
+func (q *Queries) GetNilStatuses(ctx context.Context, arg GetNilStatusesParams) ([]GetNilStatusesRow, error) {
+	rows, err := q.db.Query(ctx, getNilStatuses, arg.UUID, arg.Names)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetNilStatusesRow
+	for rows.Next() {
+		var i GetNilStatusesRow
+		if err := rows.Scan(
+			&i.UUID,
+			&i.Name,
+			&i.ID,
+			&i.Version,
+			&i.Created,
+			&i.CreatorUri,
+			&i.Meta,
+			&i.MetaDocVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPlanningAssignment = `-- name: GetPlanningAssignment :one
 SELECT uuid, version, planning_item, status, publish, publish_slot,
        starts, ends, start_date, end_date, full_day, public, kind, description
@@ -2015,7 +2069,7 @@ type GetStatusRow struct {
 	Version        int64
 	Created        pgtype.Timestamptz
 	CreatorUri     string
-	Meta           []byte
+	Meta           map[string]string
 	MetaDocVersion pgtype.Int8
 }
 
@@ -2086,7 +2140,7 @@ type GetStatusVersionsRow struct {
 	Version        int64
 	Created        pgtype.Timestamptz
 	CreatorUri     string
-	Meta           []byte
+	Meta           map[string]string
 	MetaDocVersion pgtype.Int8
 }
 
@@ -2122,45 +2176,38 @@ func (q *Queries) GetStatusVersions(ctx context.Context, arg GetStatusVersionsPa
 	return items, nil
 }
 
-const getStatuses = `-- name: GetStatuses :many
-SELECT uuid, name, id, version, created, creator_uri, meta
+const getStatusesForVersions = `-- name: GetStatusesForVersions :many
+SELECT uuid, name, id, version, created, creator_uri, meta, meta_doc_version
 FROM document_status
-WHERE uuid = $1 AND name = $2 AND ($3 = 0 OR id < $3)
-ORDER BY id DESC
-LIMIT $4
+WHERE uuid = $1 AND version = ANY($2::bigint[])
+ORDER BY version DESC, name, id DESC
 `
 
-type GetStatusesParams struct {
-	UUID    uuid.UUID
-	Name    string
-	Column3 interface{}
-	Limit   int32
+type GetStatusesForVersionsParams struct {
+	UUID     uuid.UUID
+	Versions []int64
 }
 
-type GetStatusesRow struct {
-	UUID       uuid.UUID
-	Name       string
-	ID         int64
-	Version    int64
-	Created    pgtype.Timestamptz
-	CreatorUri string
-	Meta       []byte
+type GetStatusesForVersionsRow struct {
+	UUID           uuid.UUID
+	Name           string
+	ID             int64
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           map[string]string
+	MetaDocVersion pgtype.Int8
 }
 
-func (q *Queries) GetStatuses(ctx context.Context, arg GetStatusesParams) ([]GetStatusesRow, error) {
-	rows, err := q.db.Query(ctx, getStatuses,
-		arg.UUID,
-		arg.Name,
-		arg.Column3,
-		arg.Limit,
-	)
+func (q *Queries) GetStatusesForVersions(ctx context.Context, arg GetStatusesForVersionsParams) ([]GetStatusesForVersionsRow, error) {
+	rows, err := q.db.Query(ctx, getStatusesForVersions, arg.UUID, arg.Versions)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetStatusesRow
+	var items []GetStatusesForVersionsRow
 	for rows.Next() {
-		var i GetStatusesRow
+		var i GetStatusesForVersionsRow
 		if err := rows.Scan(
 			&i.UUID,
 			&i.Name,
@@ -2169,6 +2216,7 @@ func (q *Queries) GetStatuses(ctx context.Context, arg GetStatusesParams) ([]Get
 			&i.Created,
 			&i.CreatorUri,
 			&i.Meta,
+			&i.MetaDocVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -2245,13 +2293,13 @@ SELECT version, created, creator_uri, meta, archived
 FROM document_version
 WHERE uuid = $1 AND ($2::bigint = 0 OR version < $2::bigint)
 ORDER BY version DESC
-LIMIT $3
+LIMIT $3::bigint
 `
 
 type GetVersionsParams struct {
 	UUID   uuid.UUID
 	Before int64
-	Count  int32
+	Count  int64
 }
 
 type GetVersionsRow struct {
@@ -2550,7 +2598,7 @@ type InsertDocumentStatusParams struct {
 	Version        int64
 	Created        pgtype.Timestamptz
 	CreatorUri     string
-	Meta           []byte
+	Meta           map[string]string
 	MetaDocVersion int64
 }
 

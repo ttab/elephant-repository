@@ -33,8 +33,8 @@ type DocStore interface {
 	// VersionHistoryMaxCount.
 	GetVersionHistory(
 		ctx context.Context, uuid uuid.UUID,
-		before int64, count int,
-	) ([]DocumentUpdate, error)
+		before int64, count int64, loadStatuses bool,
+	) ([]DocumentHistoryItem, error)
 	Update(
 		ctx context.Context,
 		workflows WorkflowProvider,
@@ -96,6 +96,10 @@ type DocStore interface {
 		ctx context.Context, uuid uuid.UUID,
 		name string, before int64, count int,
 	) ([]Status, error)
+	GetNilStatuses(
+		ctx context.Context, uuid uuid.UUID,
+		names []string,
+	) (map[string][]Status, error)
 	GetStatusOverview(
 		ctx context.Context,
 		uuids []uuid.UUID, statuses []string,
@@ -411,6 +415,15 @@ type DocumentUpdate struct {
 	Creator string
 	Created time.Time
 	Meta    newsdoc.DataMap
+}
+
+type DocumentHistoryItem struct {
+	UUID     uuid.UUID
+	Version  int64
+	Creator  string
+	Created  time.Time
+	Meta     newsdoc.DataMap
+	Statuses map[string][]Status
 }
 
 type Status struct {

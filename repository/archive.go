@@ -921,7 +921,16 @@ func (a *Archiver) restoreDocumentStatus(
 		SystemState: pg.TextOrNull(SystemStateRestoring),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to create status head: %w", err)
+		return "", fmt.Errorf("create status head: %w", err)
+	}
+
+	var meta map[string]string
+
+	if len(stat.Meta) > 0 {
+		err := json.Unmarshal(stat.Meta, &meta)
+		if err != nil {
+			return "", fmt.Errorf("unmarshal status meta: %w", err)
+		}
 	}
 
 	err = q.InsertDocumentStatus(ctx, postgres.InsertDocumentStatusParams{
@@ -931,11 +940,11 @@ func (a *Archiver) restoreDocumentStatus(
 		Version:        stat.Version,
 		Created:        pg.Time(stat.Created),
 		CreatorUri:     stat.CreatorURI,
-		Meta:           stat.Meta,
+		Meta:           meta,
 		MetaDocVersion: stat.MetaDocVersion,
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to insert document status: %w", err)
+		return "", fmt.Errorf("insert document status: %w", err)
 	}
 
 	return sig, nil
@@ -1217,6 +1226,17 @@ func (a *Archiver) archiveDocumentStatuses(
 			err)
 	}
 
+	var metaData []byte
+
+	if unarchived.Meta != nil {
+		d, err := json.Marshal(unarchived.Meta)
+		if err != nil {
+			return false, fmt.Errorf("marshal metadata: %w", err)
+		}
+
+		metaData = d
+	}
+
 	ds := ArchivedDocumentStatus{
 		UUID:             unarchived.UUID,
 		Name:             unarchived.Name,
@@ -1225,7 +1245,7 @@ func (a *Archiver) archiveDocumentStatuses(
 		Version:          unarchived.Version,
 		Created:          unarchived.Created.Time,
 		CreatorURI:       unarchived.CreatorUri,
-		Meta:             unarchived.Meta,
+		Meta:             metaData,
 		ParentSignature:  unarchived.ParentSignature.String,
 		VersionSignature: unarchived.VersionSignature.String,
 		Archived:         time.Now(),

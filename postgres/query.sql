@@ -55,19 +55,26 @@ FROM status_heads AS h
 WHERE h.uuid = ANY(@uuids::uuid[])
 AND h.name = ANY(@statuses::text[]);
 
--- name: GetStatuses :many
-SELECT uuid, name, id, version, created, creator_uri, meta
-FROM document_status
-WHERE uuid = $1 AND name = $2 AND ($3 = 0 OR id < $3)
-ORDER BY id DESC
-LIMIT $4;
-
 -- name: GetVersions :many
 SELECT version, created, creator_uri, meta, archived
 FROM document_version
 WHERE uuid = @uuid AND (@before::bigint = 0 OR version < @before::bigint)
 ORDER BY version DESC
-LIMIT @count;
+LIMIT sqlc.arg(count)::bigint;
+
+-- name: GetStatusesForVersions :many
+SELECT uuid, name, id, version, created, creator_uri, meta, meta_doc_version
+FROM document_status
+WHERE uuid = @uuid AND version = ANY(@versions::bigint[])
+ORDER BY version DESC, name, id DESC;
+
+-- name: GetNilStatuses :many
+SELECT uuid, name, id, version, created, creator_uri, meta, meta_doc_version
+FROM document_status
+WHERE uuid = @uuid
+      AND (@names::text[] IS NULL OR name = ANY(@names))
+      AND version = -1
+ORDER BY name ASC, id DESC;
 
 -- name: GetVersion :one
 SELECT created, creator_uri, meta, archived

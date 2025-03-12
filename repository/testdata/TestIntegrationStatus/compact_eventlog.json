@@ -1,15 +1,16 @@
 {
-  "items": [
+  "items":  [
     {
-      "id": 30,
-      "event": "status",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "version": 5,
-      "status": "usable",
-      "status_id": 12,
-      "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article",
-      "language": "en"
+      "id":  "31",
+      "event":  "status",
+      "uuid":  "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp":  "2025-03-12T14:52:35+01:00",
+      "version":  "-1",
+      "status":  "usable",
+      "status_id":  "13",
+      "updater_uri":  "user://test/testintegrationstatus",
+      "type":  "core/article",
+      "language":  "en"
     }
   ]
 }
