@@ -1031,8 +1031,8 @@ func (s *PGDocStore) GetVersion(
 
 func (s *PGDocStore) GetVersionHistory(
 	ctx context.Context, uuid uuid.UUID,
-	before int64, count int,
-) ([]DocumentUpdate, error) {
+	before int64, count int64, loadStatuses bool,
+) ([]DocumentHistoryItem, error) {
 	if count > VersionHistoryMaxCount {
 		return nil, fmt.Errorf("count cannot be greater than %d",
 			VersionHistoryMaxCount)
@@ -1041,34 +1041,118 @@ func (s *PGDocStore) GetVersionHistory(
 	history, err := s.reader.GetVersions(ctx, postgres.GetVersionsParams{
 		UUID:   uuid,
 		Before: before,
-		Count:  internal.MustInt32(count),
+		Count:  count,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch version history: %w", err)
 	}
 
-	var updates []DocumentUpdate
+	versions := make([]int64, len(history))
+	updates := make([]DocumentHistoryItem, len(history))
 
-	for _, v := range history {
-		up := DocumentUpdate{
-			Version: v.Version,
-			Creator: v.CreatorUri,
-			Created: v.Created.Time,
+	for i, v := range history {
+		up := DocumentHistoryItem{
+			Version:  v.Version,
+			Creator:  v.CreatorUri,
+			Created:  v.Created.Time,
+			Statuses: make(map[string][]Status),
 		}
 
 		if v.Meta != nil {
 			err := json.Unmarshal(v.Meta, &up.Meta)
 			if err != nil {
 				return nil, fmt.Errorf(
-					"failed to unmarshal metadata for version %d: %w",
+					"unmarshal metadata for version %d: %w",
 					v.Version, err)
 			}
 		}
 
-		updates = append(updates, up)
+		updates[i] = up
+		versions[i] = v.Version
+	}
+
+	// Bail early if we aren't loading statuses or no versions were found.
+	if !loadStatuses || len(versions) == 0 {
+		return updates, nil
+	}
+
+	statuses, err := s.reader.GetStatusesForVersions(ctx,
+		postgres.GetStatusesForVersionsParams{
+			UUID:     uuid,
+			Versions: versions,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("load statuses: %w", err)
+	}
+
+	var versionIdx int
+
+	for _, status := range statuses {
+		// Find the version that the status applies to.
+		for {
+			if versions[versionIdx] == status.Version {
+				break
+			}
+
+			versionIdx++
+
+			if versionIdx > len(versions) {
+				versionIdx = -1
+
+				break
+			}
+		}
+
+		if versionIdx == -1 {
+			break
+		}
+
+		updates[versionIdx].Statuses[status.Name] = append(
+			updates[versionIdx].Statuses[status.Name],
+			Status{
+				ID:             status.ID,
+				Version:        status.Version,
+				Creator:        status.CreatorUri,
+				Created:        status.Created.Time,
+				Meta:           status.Meta,
+				MetaDocVersion: status.MetaDocVersion.Int64,
+			},
+		)
 	}
 
 	return updates, nil
+}
+
+func (s *PGDocStore) GetNilStatuses(
+	ctx context.Context, uuid uuid.UUID,
+	names []string,
+) (map[string][]Status, error) {
+	if len(names) == 0 {
+		names = nil
+	}
+
+	res, err := s.reader.GetNilStatuses(ctx, postgres.GetNilStatusesParams{
+		UUID:  uuid,
+		Names: names,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read from database: %w", err)
+	}
+
+	m := make(map[string][]Status, len(res))
+
+	for _, row := range res {
+		m[row.Name] = append(m[row.Name], Status{
+			ID:             row.ID,
+			Version:        row.Version,
+			Creator:        row.CreatorUri,
+			Created:        row.Created.Time,
+			Meta:           row.Meta,
+			MetaDocVersion: row.MetaDocVersion.Int64,
+		})
+	}
+
+	return m, nil
 }
 
 func (s *PGDocStore) GetStatus(
@@ -1086,23 +1170,12 @@ func (s *PGDocStore) GetStatus(
 		return Status{}, fmt.Errorf("database error: %w", err)
 	}
 
-	var meta newsdoc.DataMap
-
-	if row.Meta != nil {
-		err := json.Unmarshal(row.Meta, &meta)
-		if err != nil {
-			return Status{}, fmt.Errorf(
-				"failed to unmarshal metadata for status %d: %w",
-				row.ID, err)
-		}
-	}
-
 	return Status{
 		ID:             row.ID,
 		Version:        row.Version,
 		Creator:        row.CreatorUri,
 		Created:        row.Created.Time,
-		Meta:           meta,
+		Meta:           row.Meta,
 		MetaDocVersion: row.MetaDocVersion.Int64,
 	}, nil
 }
@@ -1135,15 +1208,7 @@ func (s *PGDocStore) GetStatusHistory(
 			Creator:        history[i].CreatorUri,
 			Created:        history[i].Created.Time,
 			MetaDocVersion: history[i].MetaDocVersion.Int64,
-		}
-
-		if history[i].Meta != nil {
-			err := json.Unmarshal(history[i].Meta, &s.Meta)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to unmarshal metadata for status %d: %w",
-					s.ID, err)
-			}
+			Meta:           history[i].Meta,
 		}
 
 		statuses[i] = s
@@ -1355,15 +1420,7 @@ func (s *PGDocStore) getFullDocumentHeads(
 			Creator:        head.CreatorUri,
 			Created:        head.Created.Time,
 			MetaDocVersion: head.MetaDocVersion.Int64,
-		}
-
-		if head.Meta != nil {
-			err := json.Unmarshal(head.Meta, &status.Meta)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to decode %q metadata: %w",
-					head.Name, err)
-			}
+			Meta:           head.Meta,
 		}
 
 		statuses[head.Name] = status
@@ -1858,7 +1915,7 @@ type docUpdateState struct {
 	Doc        *newsdoc.Document
 	DocJSON    []byte
 	MetaJSON   []byte
-	StatusMeta [][]byte
+	StatusMeta []map[string]string
 
 	Type        string
 	Exists      bool
@@ -1878,7 +1935,7 @@ func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
 		},
 		Request:    req,
 		Doc:        req.Document,
-		StatusMeta: make([][]byte, len(req.Status)),
+		StatusMeta: make([]map[string]string, len(req.Status)),
 		MainDocID:  req.MainDocument,
 	}
 
@@ -1905,18 +1962,7 @@ func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
 	}
 
 	for i, stat := range state.Request.Status {
-		if len(stat.Meta) == 0 {
-			continue
-		}
-
-		d, err := json.Marshal(stat.Meta)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to marshal %q status metadata for storage: %w",
-				stat.Name, err)
-		}
-
-		state.StatusMeta[i] = d
+		state.StatusMeta[i] = stat.Meta
 	}
 
 	return &state, nil

@@ -102,7 +102,7 @@ type DocumentStatus struct {
 	Version        int64
 	Created        pgtype.Timestamptz
 	CreatorUri     string
-	Meta           []byte
+	Meta           map[string]string
 	Archived       bool
 	Signature      pgtype.Text
 	MetaDocVersion pgtype.Int8

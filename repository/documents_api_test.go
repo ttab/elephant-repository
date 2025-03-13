@@ -1016,6 +1016,8 @@ func TestIntegrationStatus(t *testing.T) {
 
 	t.Parallel()
 
+	regenerate := regenerateTestFixtures()
+
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
@@ -1041,9 +1043,10 @@ func TestIntegrationStatus(t *testing.T) {
 	test.Must(t, err, "create article")
 
 	const (
-		pageSize    = 10
-		numStatuses = 12
+		pageSize = 10
 	)
+
+	numStatuses := 12
 
 	for n := range numStatuses {
 		meta := map[string]string{
@@ -1068,6 +1071,23 @@ func TestIntegrationStatus(t *testing.T) {
 		test.Must(t, err, "set done and usable status %d", n+1)
 	}
 
+	// End with an unpublish
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*repository.StatusUpdate{
+			{
+				Name:    "usable",
+				Version: -1,
+				Meta: map[string]string{
+					"update_number": strconv.Itoa(numStatuses),
+				},
+			},
+		},
+	})
+	test.Must(t, err, "unpublish document")
+
+	numStatuses++
+
 	fromHeadRes, err := client.GetStatusHistory(ctx, &repository.GetStatusHistoryRequest{
 		Uuid: docUUID,
 		Name: "usable",
@@ -1077,7 +1097,7 @@ func TestIntegrationStatus(t *testing.T) {
 	test.Equal(t, pageSize, len(fromHeadRes.Statuses),
 		"get the expected number of statuses")
 
-	var minStatus int64 = numStatuses
+	minStatus := int64(numStatuses)
 
 	for i, s := range fromHeadRes.Statuses {
 		test.Equal(t, int64(numStatuses-i), s.Id,
@@ -1112,33 +1132,35 @@ func TestIntegrationStatus(t *testing.T) {
 			"expect the %dnth status to have the correct ID", i+1)
 	}
 
-	var golden repository.GetEventlogResponse
+	nilStatuses, err := client.GetNilStatuses(ctx, &repository.GetNilStatusesRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "get nil statuses")
 
-	err = elephantine.UnmarshalFile(
-		"testdata/TestIntegrationStatus/eventlog.json",
-		&golden)
-	test.Must(t, err, "read golden file for expected eventlog items")
+	test.TestMessageAgainstGolden(
+		t, regenerate, nilStatuses,
+		filepath.Join("testdata", t.Name(), "nil-statuses.json"),
+		ignoreCommonTimestamps())
 
-	events := collectEventlog(t, client, len(golden.Items), 5*time.Second)
+	// Load and compare document history.
+	docHistory, err := client.GetHistory(ctx, &repository.GetHistoryRequest{
+		Uuid:         docUUID,
+		LoadStatuses: true,
+	})
+	test.Must(t, err, "load document history")
 
-	test.Must(t, err, "get eventlog")
+	docHistoryGolden := filepath.Join("testdata", t.Name(), "history.json")
 
-	diff := cmp.Diff(&golden, events,
-		protocmp.Transform(),
-		cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
-			return k == timestampField
-		}),
-	)
-	if diff != "" {
-		t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
-	}
+	test.TestMessageAgainstGolden(t, regenerate, docHistory, docHistoryGolden,
+		ignoreCommonTimestamps())
 
-	var compactGolden repository.GetCompactedEventlogResponse
+	// Check that we got the expected events.
+	events := collectEventlog(t, client, 31, 5*time.Second)
 
-	err = elephantine.UnmarshalFile(
-		"testdata/TestIntegrationStatus/compact_eventlog.json",
-		&compactGolden)
-	test.Must(t, err, "read golden file for expected compact eventlog items")
+	eventsGolden := filepath.Join("testdata", t.Name(), "eventlog.json")
+
+	test.TestMessageAgainstGolden(t, regenerate, events, eventsGolden,
+		ignoreCommonTimestamps())
 
 	lastEvt, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
 		After: -1,
@@ -1156,15 +1178,10 @@ func TestIntegrationStatus(t *testing.T) {
 		})
 	test.Must(t, err, "failed to get compacted eventlog")
 
-	cmpDiff := cmp.Diff(&compactGolden, compactEvents,
-		protocmp.Transform(),
-		cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
-			return k == timestampField
-		}),
-	)
-	if cmpDiff != "" {
-		t.Fatalf("compact eventlog mismatch (-want +got):\n%s", cmpDiff)
-	}
+	compactGolden := filepath.Join("testdata", t.Name(), "compact_eventlog.json")
+
+	test.TestMessageAgainstGolden(t, regenerate, compactEvents, compactGolden,
+		ignoreCommonTimestamps())
 }
 
 func TestIntegrationDeleteTimeout(t *testing.T) {

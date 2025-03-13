@@ -284,12 +284,7 @@ func (pr *PGReplication) startReplication(
 	default:
 	}
 
-	err = pr.replicationLoop(ctx, conn)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return pr.replicationLoop(ctx, conn)
 }
 
 // https://www.postgresql.org/docs/current/errcodes-appendix.html#ERRCODES-TABLE

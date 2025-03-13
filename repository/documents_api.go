@@ -92,14 +92,7 @@ func (a *DocumentsService) GetStatus(
 	}
 
 	return &repository.GetStatusResponse{
-		Status: &repository.Status{
-			Id:             status.ID,
-			Version:        status.Version,
-			Creator:        status.Creator,
-			Created:        status.Created.Format(time.RFC3339),
-			Meta:           status.Meta,
-			MetaDocVersion: status.MetaDocVersion,
-		},
+		Status: StatusToRPC(status),
 	}, nil
 }
 
@@ -179,14 +172,7 @@ func (a *DocumentsService) GetStatusOverview(
 		}
 
 		for name, status := range di.Heads {
-			ri.Heads[name] = &repository.Status{
-				Id:             status.ID,
-				Version:        status.Version,
-				Creator:        status.Creator,
-				Created:        status.Created.Format(time.RFC3339),
-				Meta:           status.Meta,
-				MetaDocVersion: status.MetaDocVersion,
-			}
+			ri.Heads[name] = StatusToRPC(status)
 		}
 
 		res.Items = append(res.Items, &ri)
@@ -242,14 +228,54 @@ func (a *DocumentsService) GetStatusHistory(
 	}
 
 	for i := range history {
-		res.Statuses[i] = &repository.Status{
-			Id:             history[i].ID,
-			Version:        history[i].Version,
-			Creator:        history[i].Creator,
-			Created:        history[i].Created.Format(time.RFC3339),
-			Meta:           history[i].Meta,
-			MetaDocVersion: history[i].MetaDocVersion,
+		res.Statuses[i] = StatusToRPC(history[i])
+	}
+
+	return &res, nil
+}
+
+// GetNilStatuses implements repository.Documents.
+func (a *DocumentsService) GetNilStatuses(
+	ctx context.Context, req *repository.GetNilStatusesRequest,
+) (*repository.GetNilStatusesResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.accessCheck(ctx, auth, docUUID, ReadPermission)
+	if err != nil {
+		return nil, err
+	}
+
+	stored, err := a.store.GetNilStatuses(ctx, docUUID, req.Names)
+	if err != nil {
+		return nil, twirp.InternalErrorf("read status information: %v", err)
+	}
+
+	res := repository.GetNilStatusesResponse{
+		Statuses: make(map[string]*repository.DocumentStatuses),
+	}
+
+	for name, statuses := range stored {
+		var list repository.DocumentStatuses
+
+		for i := range statuses {
+			list.Items = append(list.Items, StatusToRPC(statuses[i]))
 		}
+
+		res.Statuses[name] = &list
 	}
 
 	return &res, nil
@@ -1178,7 +1204,7 @@ func (a *DocumentsService) GetHistory(
 	}
 
 	history, err := a.store.GetVersionHistory(
-		ctx, docUUID, req.Before, 10,
+		ctx, docUUID, req.Before, 10, req.LoadStatuses,
 	)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, twirp.NotFoundError("no such version")
@@ -1187,15 +1213,39 @@ func (a *DocumentsService) GetHistory(
 	var res repository.GetHistoryResponse
 
 	for _, up := range history {
-		res.Versions = append(res.Versions, &repository.DocumentVersion{
-			Version: up.Version,
-			Created: up.Created.Format(time.RFC3339),
-			Creator: up.Creator,
-			Meta:    up.Meta,
-		})
+		v := repository.DocumentVersion{
+			Version:  up.Version,
+			Created:  up.Created.Format(time.RFC3339),
+			Creator:  up.Creator,
+			Meta:     up.Meta,
+			Statuses: make(map[string]*repository.DocumentStatuses),
+		}
+
+		for name, items := range up.Statuses {
+			var r repository.DocumentStatuses
+
+			for i := range items {
+				r.Items = append(r.Items, StatusToRPC(items[i]))
+			}
+
+			v.Statuses[name] = &r
+		}
+
+		res.Versions = append(res.Versions, &v)
 	}
 
 	return &res, nil
+}
+
+func StatusToRPC(status Status) *repository.Status {
+	return &repository.Status{
+		Id:             status.ID,
+		Version:        status.Version,
+		Creator:        status.Creator,
+		Created:        status.Created.Format(time.RFC3339),
+		Meta:           status.Meta,
+		MetaDocVersion: status.MetaDocVersion,
+	}
 }
 
 func (a *DocumentsService) accessCheck(
@@ -1312,15 +1362,7 @@ func (a *DocumentsService) GetMeta(
 			resp.Heads = make(map[string]*repository.Status)
 		}
 
-		s := repository.Status{
-			Id:      head.ID,
-			Version: head.Version,
-			Creator: head.Creator,
-			Created: head.Created.Format(time.RFC3339),
-			Meta:    head.Meta,
-		}
-
-		resp.Heads[name] = &s
+		resp.Heads[name] = StatusToRPC(head)
 	}
 
 	for _, acl := range meta.ACL {
