@@ -24,7 +24,7 @@ require (
 	github.com/rakutentech/jwk-go v1.2.0
 	github.com/tmaxmax/go-sse v0.10.0
 	github.com/ttab/darknut v0.1.0
-	github.com/ttab/elephant-api v0.17.15-0.20250312131728-d867de5eabc2
+	github.com/ttab/elephant-api v0.17.15
 	github.com/ttab/elephantine v0.17.6
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.7.5
@@ -127,7 +127,7 @@ require (
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
-	golang.org/x/net v0.34.0 // indirect
+	golang.org/x/net v0.37.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
