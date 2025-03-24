@@ -1708,6 +1708,43 @@ func (q *Queries) GetMetricKinds(ctx context.Context) ([]MetricKind, error) {
 	return items, nil
 }
 
+const getMetrics = `-- name: GetMetrics :many
+SELECT uuid, kind, label, value
+FROM metric
+WHERE uuid = ANY($1::uuid[])
+      AND kind = ANY($2::text[])
+`
+
+type GetMetricsParams struct {
+	UUID []uuid.UUID
+	Kind []string
+}
+
+func (q *Queries) GetMetrics(ctx context.Context, arg GetMetricsParams) ([]Metric, error) {
+	rows, err := q.db.Query(ctx, getMetrics, arg.UUID, arg.Kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Metric
+	for rows.Next() {
+		var i Metric
+		if err := rows.Scan(
+			&i.UUID,
+			&i.Kind,
+			&i.Label,
+			&i.Value,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMultipleStatusHeads = `-- name: GetMultipleStatusHeads :many
 SELECT h.uuid, h.name, h.current_id, h.updated, h.updater_uri, s.version,
        s.meta_doc_version,

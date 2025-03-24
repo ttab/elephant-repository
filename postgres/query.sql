@@ -766,6 +766,12 @@ SELECT name, aggregation
 FROM metric_kind 
 ORDER BY name;
 
+-- name: GetMetrics :many
+SELECT uuid, kind, label, value
+FROM metric
+WHERE uuid = ANY(@uuid::uuid[])
+      AND (@kind IS NULL OR kind = ANY(@kind::text[]));
+
 -- name: RegisterOrReplaceMetric :exec
 INSERT INTO metric(uuid, kind, label, value)
 VALUES (@uuid, @kind, @label, @value)

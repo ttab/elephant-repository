@@ -186,6 +186,9 @@ type MetricStore interface {
 	RegisterOrIncrementMetric(
 		ctx context.Context, metric Metric,
 	) error
+	GetMetrics(
+		ctx context.Context, uuids []uuid.UUID, kinds []string,
+	) ([]Metric, error)
 }
 
 type DocumentStatus struct {

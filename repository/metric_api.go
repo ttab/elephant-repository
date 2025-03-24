@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/google/uuid"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/twitchtv/twirp"
 )
@@ -66,9 +67,57 @@ var _ repository.Metrics = &MetricsService{}
 
 // GetMetrics implements repository.Metrics.
 func (m *MetricsService) GetMetrics(
-	_ context.Context, _ *repository.GetMetricsRequest,
+	ctx context.Context, req *repository.GetMetricsRequest,
 ) (*repository.GetMetricsResponse, error) {
-	panic("unimplemented")
+	_, err := RequireAnyScope(ctx, ScopeMetricsAdmin, ScopeMetricsRead)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(req.Uuids) == 0 {
+		return nil, twirp.RequiredArgumentError("uuids")
+	}
+
+	uuids := make([]uuid.UUID, len(req.Uuids))
+
+	for i := range req.Uuids {
+		u, err := uuid.Parse(req.Uuids[i])
+		if err != nil {
+			return nil, twirp.InvalidArgument.Errorf("invalid UUID: %w", err)
+		}
+
+		uuids[i] = u
+	}
+
+	metrics, err := m.store.GetMetrics(ctx,
+		uuids, req.Kinds)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"read metrics from store: %w", err)
+	}
+
+	res := repository.GetMetricsResponse{
+		Documents: make(map[string]*repository.DocumentMetrics),
+	}
+
+	for _, m := range metrics {
+		docUUID := m.UUID.String()
+
+		dm := res.Documents[docUUID]
+		if dm == nil {
+			dm = &repository.DocumentMetrics{}
+
+			res.Documents[docUUID] = dm
+		}
+
+		dm.Metrics = append(dm.Metrics, &repository.Metric{
+			Kind:  m.Kind,
+			Label: m.Label,
+			Value: m.Value,
+		})
+	}
+
+	return &res, nil
 }
 
 // GetKinds implements repository.Metrics.

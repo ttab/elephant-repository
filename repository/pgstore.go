@@ -36,7 +36,10 @@ type PGDocStoreOptions struct {
 }
 
 // Interface guard.
-var _ DocStore = &PGDocStore{}
+var (
+	_ DocStore    = &PGDocStore{}
+	_ MetricStore = &PGDocStore{}
+)
 
 type PGDocStore struct {
 	logger *slog.Logger
@@ -2868,6 +2871,36 @@ func (s *PGDocStore) GetMetricKinds(
 		res = append(res, &MetricKind{
 			Name:        rows[i].Name,
 			Aggregation: Aggregation(rows[i].Aggregation),
+		})
+	}
+
+	return res, nil
+}
+
+// GetMetrics implements MetricStore.
+func (s *PGDocStore) GetMetrics(
+	ctx context.Context, uuids []uuid.UUID, kinds []string,
+) ([]Metric, error) {
+	if len(kinds) == 0 {
+		kinds = nil
+	}
+
+	rows, err := s.reader.GetMetrics(ctx, postgres.GetMetricsParams{
+		UUID: uuids,
+		Kind: kinds,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read from db: %w", err)
+	}
+
+	var res []Metric
+
+	for _, row := range rows {
+		res = append(res, Metric{
+			UUID:  row.UUID,
+			Kind:  row.Kind,
+			Label: row.Label,
+			Value: row.Value,
 		})
 	}
 
