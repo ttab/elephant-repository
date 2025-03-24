@@ -34,32 +34,35 @@ func TestIntegrationMetrics(t *testing.T) {
 
 	tc := testingAPIServer(t, logger, testingServerOptions{})
 
-	client := tc.MetricsClient(t, itest.StandardClaims(t, "metrics_admin"))
+	clientAdmin := tc.MetricsClient(t,
+		itest.StandardClaims(t, "metrics_admin"))
 
-	documentsClient := tc.DocumentsClient(t, itest.StandardClaims(t, "doc_write"))
+	documentsClient := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_write"))
 
 	ctx := t.Context()
 
-	// test kinds
-	_, err := client.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
+	// Test kind registration.
+
+	_, err := clientAdmin.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
 		Name:        "wordcount",
 		Aggregation: repository.MetricAggregation_REPLACE,
 	})
 	test.Must(t, err, "register kind")
 
-	_, err = client.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
+	_, err = clientAdmin.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
 		Name:        "revisions",
 		Aggregation: repository.MetricAggregation_INCREMENT,
 	})
 	test.Must(t, err, "register kind")
 
-	_, err = client.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
+	_, err = clientAdmin.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
 		Name:        "revisions",
 		Aggregation: repository.MetricAggregation_REPLACE,
 	})
 	test.MustNot(t, err, "register duplicate kind")
 
-	kinds, err := client.GetKinds(ctx, &repository.GetMetricKindsRequest{})
+	kinds, err := clientAdmin.GetKinds(ctx, &repository.GetMetricKindsRequest{})
 	test.Must(t, err, "get kinds")
 
 	test.EqualMessage(t, &repository.GetMetricKindsResponse{
@@ -75,12 +78,12 @@ func TestIntegrationMetrics(t *testing.T) {
 		},
 	}, kinds, "get the list of registered metric kinds")
 
-	_, err = client.DeleteKind(ctx, &repository.DeleteMetricKindRequest{
+	_, err = clientAdmin.DeleteKind(ctx, &repository.DeleteMetricKindRequest{
 		Name: "revisions",
 	})
 	test.Must(t, err, "delete kind")
 
-	kinds, err = client.GetKinds(ctx, &repository.GetMetricKindsRequest{})
+	kinds, err = clientAdmin.GetKinds(ctx, &repository.GetMetricKindsRequest{})
 	test.Must(t, err, "get kinds")
 
 	test.EqualMessage(t, &repository.GetMetricKindsResponse{
@@ -92,7 +95,8 @@ func TestIntegrationMetrics(t *testing.T) {
 		},
 	}, kinds, "get the list of registered metric kinds minus deleted")
 
-	// test register metric
+	// Test register metric.
+
 	_, err = documentsClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
 		Document: &newsdoc.Document{
@@ -109,40 +113,71 @@ func TestIntegrationMetrics(t *testing.T) {
 	})
 	test.Must(t, err, "create test document")
 
-	client = tc.MetricsClient(t, itest.StandardClaims(t, "metrics_write"))
+	clientWrite := tc.MetricsClient(t,
+		itest.StandardClaims(t, "metrics_write"))
 
-	_, err = client.RegisterMetric(ctx, &repository.RegisterMetricRequest{
-		Uuid:  "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
-		Kind:  "wordcount",
-		Label: "default",
-		Value: 123,
-	})
+	_, err = clientWrite.RegisterMetric(ctx,
+		&repository.RegisterMetricRequest{
+			Uuid:  "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
+			Kind:  "wordcount",
+			Label: "default",
+			Value: 123,
+		})
 	test.Must(t, err, "register the metric")
 
-	client = tc.MetricsClient(t, itest.StandardClaims(t, "metrics_write:wordcount"))
+	clientWriteWC := tc.MetricsClient(t,
+		itest.StandardClaims(t, "metrics_write:wordcount"))
 
-	_, err = client.RegisterMetric(ctx, &repository.RegisterMetricRequest{
-		Uuid:  "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
-		Kind:  "wordcount",
-		Label: "default",
-		Value: 123,
-	})
+	_, err = clientWriteWC.RegisterMetric(ctx,
+		&repository.RegisterMetricRequest{
+			Uuid:  "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
+			Kind:  "wordcount",
+			Label: "default",
+			Value: 123,
+		})
 	test.Must(t, err, "register the metric")
 
-	client = tc.MetricsClient(t, itest.StandardClaims(t, "metrics_write:revisions"))
+	clientWriteRev := tc.MetricsClient(t,
+		itest.StandardClaims(t, "metrics_write:revisions"))
 
-	_, err = client.RegisterMetric(ctx, &repository.RegisterMetricRequest{
-		Uuid:  "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
-		Kind:  "wordcount",
-		Label: "default",
-		Value: 123,
-	})
+	_, err = clientWriteRev.RegisterMetric(ctx,
+		&repository.RegisterMetricRequest{
+			Uuid:  "d98d2c21-980c-4c7f-b0b5-9ed9feba291b",
+			Kind:  "wordcount",
+			Label: "default",
+			Value: 123,
+		})
 	test.MustNot(t, err, "register the metric")
 
-	client = tc.MetricsClient(t, itest.StandardClaims(t, "metrics_admin"))
+	// Test reading.
 
-	// test delete kind
-	_, err = client.DeleteKind(ctx, &repository.DeleteMetricKindRequest{
+	clientRead := tc.MetricsClient(t,
+		itest.StandardClaims(t, "metrics_read"))
+
+	metricRes, err := clientRead.GetMetrics(ctx,
+		&repository.GetMetricsRequest{
+			Uuids: []string{"d98d2c21-980c-4c7f-b0b5-9ed9feba291b"},
+			Kinds: []string{"wordcount"},
+		})
+	test.Must(t, err, "read metrics")
+
+	test.EqualMessage(t, &repository.GetMetricsResponse{
+		Documents: map[string]*repository.DocumentMetrics{
+			"d98d2c21-980c-4c7f-b0b5-9ed9feba291b": {
+				Metrics: []*repository.Metric{
+					{
+						Kind:  "wordcount",
+						Label: "default",
+						Value: 123,
+					},
+				},
+			},
+		},
+	}, metricRes, "get the registered metrics")
+
+	// Test delete kind.
+
+	_, err = clientAdmin.DeleteKind(ctx, &repository.DeleteMetricKindRequest{
 		Name: "wordcount",
 	})
 	test.Must(t, err, "delete kind in use")
