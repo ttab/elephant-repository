@@ -9,13 +9,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.62
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.37.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
-	github.com/expr-lang/expr v1.16.9
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/expr-lang/expr v1.17.1
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgerrcode v0.0.0-20240316143900-6e2875d9b438
-	github.com/jackc/pglogrepl v0.0.0-20240307033717-828fbfe908e9
-	github.com/jackc/pgx/v5 v5.7.2
+	github.com/jackc/pglogrepl v0.0.0-20250322012620-f1e2b1498ed6
+	github.com/jackc/pgx/v5 v5.7.3
 	github.com/jackc/tern/v2 v2.3.2
 	github.com/joho/godotenv v1.5.1
 	github.com/julienschmidt/httprouter v1.3.0
@@ -24,13 +24,13 @@ require (
 	github.com/rakutentech/jwk-go v1.2.0
 	github.com/tmaxmax/go-sse v0.10.0
 	github.com/ttab/darknut v0.1.0
-	github.com/ttab/elephant-api v0.17.16-0.20250324054713-35c431ccc8d0
+	github.com/ttab/elephant-api v0.17.16
 	github.com/ttab/elephantine v0.17.6
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.7.5
 	github.com/ttab/newsdoc v0.7.1
 	github.com/ttab/revisor v0.9.3
-	github.com/ttab/revisorschemas v0.5.9
+	github.com/ttab/revisorschemas v0.5.11
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.6
 	golang.org/x/mod v0.24.0
