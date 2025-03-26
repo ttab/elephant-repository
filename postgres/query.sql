@@ -770,7 +770,7 @@ ORDER BY name;
 SELECT uuid, kind, label, value
 FROM metric
 WHERE uuid = ANY(@uuid::uuid[])
-      AND (@kind IS NULL OR kind = ANY(@kind::text[]));
+      AND (@kind::text[] IS NULL OR kind = ANY(@kind::text[]));
 
 -- name: RegisterOrReplaceMetric :exec
 INSERT INTO metric(uuid, kind, label, value)
@@ -867,3 +867,90 @@ WHERE assignment = @assignment AND version != @version;
 -- name: CleanUpDeliverables :exec
 DELETE FROM planning_deliverable
 WHERE assignment = @assignment AND version != @version;
+
+-- name: GetScheduled :many
+SELECT
+        ws.uuid,
+        ws.type,
+        s.id AS status_id,
+        s.version AS document_version,
+        pa.uuid AS assignment,
+        pa.planning_item,
+        pa.publish AS publish,
+        s.creator_uri
+FROM workflow_state AS ws
+     INNER JOIN planning_deliverable AS pd
+           ON pd.document = ws.uuid
+     INNER JOIN planning_assignment AS pa
+           ON pa.uuid = pd.assignment
+     INNER JOIN status_heads AS sh
+           ON sh.uuid = ws.uuid
+           AND sh.name = 'withheld'
+     INNER JOIN document_status AS s
+           ON s.uuid = sh.uuid
+           AND s.name = sh.name
+           AND s.id = sh.current_id
+WHERE ws.step = 'withheld'
+      AND (
+          @not_source::text[] IS NULL
+          OR s.meta->>'source' IS NULL
+          OR s.meta->>'source' != ANY(@not_source)
+      )
+      AND pa.publish > @after
+ORDER BY pa.publish ASC
+LIMIT 10;
+
+-- name: GetDelayedScheduled :many
+SELECT
+        ws.uuid,
+        ws.type,
+        s.id AS status_id,
+        s.version AS document_version,
+        pa.uuid AS assignment,
+        pa.planning_item,
+        pa.publish AS publish,
+        s.creator_uri
+FROM workflow_state AS ws
+     INNER JOIN planning_deliverable AS pd
+           ON pd.document = ws.uuid
+     INNER JOIN planning_assignment AS pa
+           ON pa.uuid = pd.assignment
+     INNER JOIN status_heads AS sh
+           ON sh.uuid = ws.uuid
+           AND sh.name = 'withheld'
+     INNER JOIN document_status AS s
+           ON s.uuid = sh.uuid
+           AND s.name = sh.name
+           AND s.id = sh.current_id
+WHERE ws.step = 'withheld'
+      AND (
+          @not_source::text[] IS NULL
+          OR s.meta->>'source' IS NULL
+          OR s.meta->>'source' != ANY(@not_source)
+      )
+      AND pa.publish < @before
+      AND pa.publish > @cutoff;
+
+-- name: GetDelayedScheduledCount :one
+SELECT COUNT(*)
+FROM workflow_state AS ws
+     INNER JOIN planning_deliverable AS pd
+           ON pd.document = ws.uuid
+     INNER JOIN planning_assignment AS pa
+           ON pa.uuid = pd.assignment
+     INNER JOIN status_heads AS sh
+           ON sh.uuid = ws.uuid
+           AND sh.name = 'withheld'
+     INNER JOIN document_status AS s
+           ON s.uuid = sh.uuid
+           AND s.name = sh.name
+           AND s.id = sh.current_id
+WHERE ws.step = 'withheld'
+      AND (
+          @not_source::text[] IS NULL
+          OR s.meta->>'source' IS NULL
+          OR s.meta->>'source' != ANY(@not_source)
+      )
+      AND pa.publish < @before
+      AND pa.publish > @cutoff;
+

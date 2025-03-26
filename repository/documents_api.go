@@ -33,6 +33,7 @@ type WorkflowProvider interface {
 
 type DocumentsService struct {
 	store           DocStore
+	sched           ScheduleStore
 	validator       DocumentValidator
 	workflows       WorkflowProvider
 	defaultLanguage string
@@ -40,12 +41,14 @@ type DocumentsService struct {
 
 func NewDocumentsService(
 	store DocStore,
+	sched ScheduleStore,
 	validator DocumentValidator,
 	workflows WorkflowProvider,
 	defaultLanguage string,
 ) *DocumentsService {
 	return &DocumentsService{
 		store:           store,
+		sched:           sched,
 		validator:       validator,
 		workflows:       workflows,
 		defaultLanguage: defaultLanguage,
@@ -1533,13 +1536,15 @@ func (a *DocumentsService) buildUpdateRequest(
 	}
 
 	up := UpdateRequest{
-		UUID:      docUUID,
-		Updated:   updated,
-		Updater:   updater,
-		Meta:      req.Meta,
-		Status:    RPCToStatusUpdate(req.Status),
-		IfMatch:   req.IfMatch,
-		LockToken: req.LockToken,
+		UUID:            docUUID,
+		Updated:         updated,
+		Updater:         updater,
+		Meta:            req.Meta,
+		Status:          RPCToStatusUpdate(req.Status),
+		IfMatch:         req.IfMatch,
+		LockToken:       req.LockToken,
+		IfWorkflowState: req.IfWorkflowState,
+		IfStatusHeads:   req.IfStatusHeads,
 	}
 
 	if req.Document != nil {
@@ -2108,6 +2113,43 @@ func (a *DocumentsService) Unlock(
 	}
 
 	return &repository.UnlockResponse{}, nil
+}
+
+// GetWithheld implements repository.Documents.
+func (a *DocumentsService) GetWithheld(
+	ctx context.Context, _ *repository.GetWithheldRequest,
+) (*repository.GetWithheldResponse, error) {
+	_, err := RequireAnyScope(ctx,
+		ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	after := time.Now().Add(-SchedulerRetryWindown)
+
+	scheduled, err := a.sched.GetScheduled(ctx, after, []string{"oc"})
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"get scheduled documents: %w", err)
+	}
+
+	var res repository.GetWithheldResponse
+
+	for _, sch := range scheduled {
+		res.Items = append(res.Items, &repository.ScheduledDocument{
+			Uuid:            sch.UUID.String(),
+			Type:            sch.Type,
+			StatusId:        sch.StatusID,
+			DocumentVersion: sch.DocumentVersion,
+			PlanningItem:    sch.PlanningItem.String(),
+			Assignment:      sch.Assignment.String(),
+			Publish:         sch.Publish.Format(time.RFC3339),
+			ScheduledBy:     sch.ScheduledBy,
+		})
+	}
+
+	return &res, nil
 }
 
 func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {

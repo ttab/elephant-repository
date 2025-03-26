@@ -319,17 +319,19 @@ const (
 )
 
 type UpdateRequest struct {
-	UUID         uuid.UUID
-	Updated      time.Time
-	Updater      string
-	Meta         newsdoc.DataMap
-	ACL          []ACLEntry
-	DefaultACL   []ACLEntry
-	Status       []StatusUpdate
-	Document     *newsdoc.Document
-	MainDocument *uuid.UUID
-	IfMatch      int64
-	LockToken    string
+	UUID            uuid.UUID
+	Updated         time.Time
+	Updater         string
+	Meta            newsdoc.DataMap
+	ACL             []ACLEntry
+	DefaultACL      []ACLEntry
+	Status          []StatusUpdate
+	Document        *newsdoc.Document
+	MainDocument    *uuid.UUID
+	IfMatch         int64
+	LockToken       string
+	IfWorkflowState string
+	IfStatusHeads   map[string]int64
 }
 
 type DeleteRequest struct {

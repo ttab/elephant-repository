@@ -1533,6 +1533,18 @@ func (s *PGDocStore) Update(
 			state.Type = info.Info.Type
 		}
 
+		if state.Request.IfWorkflowState != "" {
+			wf, err := q.GetWorkflowState(ctx, state.UUID)
+			if err != nil {
+				return nil, fmt.Errorf("get workflow state: %w", err)
+			}
+
+			if wf.Step != state.Request.IfWorkflowState {
+				return nil, DocStoreErrorf(ErrCodeFailedPrecondition,
+					"not in the correct workflow state")
+			}
+		}
+
 		//nolint:nestif
 		if state.Exists && state.Doc != nil {
 			if isMetaURI(state.Doc.URI) && info.MainDoc == nil {
@@ -1629,11 +1641,31 @@ func (s *PGDocStore) Update(
 
 		statusHeads := make(map[string]Status)
 
-		if len(state.Request.Status) > 0 {
+		if len(state.Request.Status) > 0 || len(state.Request.IfStatusHeads) > 0 {
 			heads, err := s.getFullDocumentHeads(ctx, s.reader,
 				state.Request.UUID)
 			if err != nil {
 				return nil, err
+			}
+
+			for name, id := range state.Request.IfStatusHeads {
+				current, ok := heads[name]
+
+				switch {
+				case id == -1 && !ok:
+					continue
+				case id == -1 && ok:
+					return nil, DocStoreErrorf(
+						ErrCodeFailedPrecondition,
+						"status %q exists", name,
+					)
+				case current.ID != id:
+					return nil, DocStoreErrorf(
+						ErrCodeFailedPrecondition,
+						"status %q didn't have the expected ID %d",
+						name, id,
+					)
+				}
 			}
 
 			mv, err := q.GetMetaDocVersion(ctx, pg.UUID(state.UUID))

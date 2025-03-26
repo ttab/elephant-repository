@@ -27,6 +27,7 @@ import (
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephant-repository/sinks"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/langos"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
@@ -121,6 +122,10 @@ func main() {
 				Name:  "no-replicator",
 				Usage: "Disable the replicator",
 			},
+			&cli.BoolFlag{
+				Name:  "no-scheduler",
+				Usage: "Disable scheduled publishing",
+			},
 		}, elephantine.AuthenticationCLIFlags()...),
 	}
 
@@ -151,6 +156,8 @@ func runServer(c *cli.Context) error {
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
 	grace := elephantine.NewGracefulShutdown(logger, 20*time.Second)
 	paramSource := elephantine.NewLazySSM()
+
+	defer grace.Stop()
 
 	_, err := langos.GetLanguage(defaultLanguage)
 	if err != nil {
@@ -289,7 +296,11 @@ func runServer(c *cli.Context) error {
 	}
 
 	docService := repository.NewDocumentsService(
-		store, validator, workflows, defaultLanguage,
+		store,
+		repository.NewSchedulePGStore(dbpool),
+		validator,
+		workflows,
+		defaultLanguage,
 	)
 
 	setupCtx, cancel := context.WithTimeout(c.Context, 10*time.Second)
@@ -335,7 +346,7 @@ func runServer(c *cli.Context) error {
 
 		group.Go(func() error {
 			archiver, err := startArchiver(c.Context, gCtx,
-				log, conf, dbpool)
+				log, conf, dbpool) //
 			if err != nil {
 				return err
 			}
@@ -404,6 +415,37 @@ func runServer(c *cli.Context) error {
 	err = group.Wait()
 	if err != nil {
 		return fmt.Errorf("subsystem setup failed: %w", err)
+	}
+
+	if !conf.NoScheduler {
+		scheduler, err := repository.NewScheduler(
+			logger,
+			prometheus.DefaultRegisterer,
+			repository.NewSchedulePGStore(dbpool),
+			docService,
+			[]string{"oc"})
+		if err != nil {
+			return fmt.Errorf("create publish scheduler: %w", err)
+		}
+
+		go func() {
+			logger.Debug("starting scheduler")
+
+			ctx := grace.CancelOnStop(c.Context)
+
+			err := scheduler.RunInJobLock(
+				ctx, nil,
+				func() (*pg.JobLock, error) {
+					return pg.NewJobLock(
+						dbpool, logger, "scheduler",
+						pg.JobLockOptions{})
+				})
+			if err != nil {
+				logger.Error(
+					"sceduled document publishing disabled due to error",
+					elephantine.LogKeyError, err)
+			}
+		}()
 	}
 
 	schemaService := repository.NewSchemasService(logger, store)
