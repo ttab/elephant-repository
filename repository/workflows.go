@@ -165,7 +165,7 @@ type StatusRuleInput struct {
 	Update      DocumentUpdate
 	Document    newsdoc.Document
 	VersionMeta newsdoc.DataMap
-	Heads       map[string]Status
+	Heads       map[string]StatusHead
 	User        elephantine.JWTClaims
 }
 

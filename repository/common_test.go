@@ -22,6 +22,7 @@ import (
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/elephantine/test"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
@@ -187,7 +188,7 @@ func (tc *TestContext) MetricsClient(
 
 type testingServerOptions struct {
 	RunArchiver        bool
-	RunReplicator      bool
+	RunEventlogBuilder bool
 	SharedSecret       string
 	ExtraSchemas       []string
 	NoStandardStatuses bool
@@ -269,22 +270,32 @@ func testingAPIServer(
 		t.Cleanup(archiver.Stop)
 	}
 
-	if opts.RunReplicator {
-		repl, err := repository.NewPGReplication(
-			logger, dbpool, env.PostgresURI, t.Name(),
-			prometheus.NewRegistry(),
-		)
-		test.Must(t, err, "create replicator")
+	if opts.RunEventlogBuilder {
+		log := logger.With(elephantine.LogKeyComponent, "eventlog-builder")
 
-		go repl.Run(ctx)
+		log.Debug("setting up eventlog builder")
 
-		t.Cleanup(repl.Stop)
+		updates := make(chan int64, 1)
 
-		select {
-		case <-time.After(10 * time.Second):
-			t.Fatal("failed to start replicator")
-		case <-repl.Started():
-		}
+		store.OnEventOutbox(t.Context(), updates)
+
+		builder, err := repository.NewEventlogBuilder(
+			log, dbpool, reg, updates)
+		test.Must(t, err, "set up eventlog builder")
+
+		go func() {
+			err := pg.RunInJobLock(t.Context(),
+				dbpool, log,
+				"eventlog-builder", "eventlog-builder",
+				pg.JobLockOptions{},
+				func(ctx context.Context) error {
+					return builder.Run(ctx)
+				})
+			if err != nil {
+				log.ErrorContext(ctx, "eventlog builder has stopped",
+					elephantine.LogKeyError, err)
+			}
+		}()
 	}
 
 	validator, err := repository.NewValidator(

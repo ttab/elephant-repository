@@ -107,20 +107,25 @@ func main() {
 				EnvVars: []string{"S3_ACCESS_KEY_SECRET"},
 			},
 			&cli.BoolFlag{
-				Name:  "no-core-schema",
-				Usage: "Don't register the built in core schema",
+				Name:    "no-core-schema",
+				Usage:   "Don't register the built in core schema",
+				EnvVars: []string{"NO_CORE_SCHEMA"},
 			},
 			&cli.BoolFlag{
-				Name:  "no-archiver",
-				Usage: "Disable the archiver",
+				Name:    "no-archiver",
+				Usage:   "Disable the archiver",
+				EnvVars: []string{"NO_ARCHIVER"},
 			},
 			&cli.BoolFlag{
-				Name:  "no-eventsink",
-				Usage: "Disable the eventsink",
+				Name:    "no-eventsink",
+				Usage:   "Disable the eventsink",
+				EnvVars: []string{"NO_EVENTSINK"},
 			},
 			&cli.BoolFlag{
-				Name:  "no-replicator",
-				Usage: "Disable the replicator",
+				Name:    "no-eventlog-builder",
+				Usage:   "Disable the eventlog builder",
+				Aliases: []string{"no-replicator"},
+				EnvVars: []string{"NO_EVENTLOG_BUILDER"},
 			},
 			&cli.BoolFlag{
 				Name:  "no-scheduler",
@@ -230,8 +235,10 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
 
-	go store.RunListener(c.Context)
-	go store.RunCleaner(c.Context, 5*time.Minute)
+	stopCtx := grace.CancelOnStop(c.Context)
+
+	go store.RunListener(stopCtx)
+	go store.RunCleaner(stopCtx, 5*time.Minute)
 
 	if !conf.NoCoreSchema {
 		err = repository.EnsureCoreSchema(c.Context, store)
@@ -308,35 +315,31 @@ func runServer(c *cli.Context) error {
 
 	group, gCtx := errgroup.WithContext(setupCtx)
 
-	if !conf.NoReplicator {
-		group.Go(func() error {
-			log := logger.With(elephantine.LogKeyComponent, "replicator")
+	if !conf.NoEventlogBuilder {
+		ctx := grace.CancelOnStop(c.Context)
+		log := logger.With(elephantine.LogKeyComponent, "eventlog-builder")
 
-			log.Debug("setting up replication")
+		log.Debug("setting up eventlog builder")
 
-			repl, err := repository.NewPGReplication(
-				log, dbpool, conf.DB, "eventlogslot",
-				prometheus.DefaultRegisterer)
+		builder, err := repository.NewEventlogBuilder(
+			log, dbpool, prometheus.DefaultRegisterer, nil)
+		if err != nil {
+			return fmt.Errorf("set up eventlog builder: %w", err)
+		}
+
+		go func() {
+			err := pg.RunInJobLock(ctx,
+				dbpool, log,
+				"eventlog-builder", "eventlog-builder",
+				pg.JobLockOptions{},
+				func(ctx context.Context) error {
+					return builder.Run(ctx)
+				})
 			if err != nil {
-				return fmt.Errorf(
-					"failed to create replicator: %w", err)
+				log.ErrorContext(ctx, "eventlog builder has stopped",
+					elephantine.LogKeyError, err)
 			}
-
-			// TODO: Inconsistent Run functions for subsystems. The
-			// reporter and archivers don't block. Though maybe it's
-			// the better behaviour to actually block so that it
-			// becomes obvious at the callsite that a goroutine is
-			// spawned.
-			go repl.Run(c.Context)
-
-			go func() {
-				<-grace.ShouldStop()
-				repl.Stop()
-				logger.Info("stopped replication")
-			}()
-
-			return nil
-		})
+		}()
 	}
 
 	if !conf.NoArchiver {

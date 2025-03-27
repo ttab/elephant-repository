@@ -1164,7 +1164,7 @@ func (a *Archiver) archiveDocumentVersions(
 			err)
 	}
 
-	err = notifyArchived(ctx, a.logger, q, ArchivedEvent{
+	err = pg.Publish(ctx, tx, NotifyArchived, ArchivedEvent{
 		Type:    ArchiveEventTypeVersion,
 		UUID:    dv.UUID,
 		Version: dv.Version,
@@ -1281,7 +1281,7 @@ func (a *Archiver) archiveDocumentStatuses(
 			"failed to update archived status in db: %w", err)
 	}
 
-	err = notifyArchived(ctx, a.logger, q, ArchivedEvent{
+	err = pg.Publish(ctx, tx, NotifyArchived, ArchivedEvent{
 		Type:    ArchiveEventTypeStatus,
 		UUID:    ds.UUID,
 		Name:    ds.Name,
