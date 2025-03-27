@@ -635,8 +635,8 @@ func (a *Archiver) processRestores(
 	})
 
 	var (
-		parentSig string
-		lastID    int64
+		parentSig   string
+		lastVersion int64
 	)
 
 	for versionsPages.HasMorePages() {
@@ -663,10 +663,10 @@ func (a *Archiver) processRestores(
 					"invalid version object name: %w", err)
 			}
 
-			if id != lastID+1 {
+			if id != lastVersion+1 {
 				return false, fmt.Errorf(
 					"expected version %d, got %d",
-					lastID+1, id)
+					lastVersion+1, id)
 			}
 
 			sig, err := a.restoreDocumentVersion(
@@ -676,14 +676,14 @@ func (a *Archiver) processRestores(
 					"restore version %d: %w", id, err)
 			}
 
-			lastID = id
+			lastVersion = id
 			parentSig = sig
 		}
 	}
 
-	if lastID != manifest.LastVersion {
+	if lastVersion != manifest.LastVersion {
 		return false, fmt.Errorf("expected %d versions, got %d",
-			manifest.LastVersion, lastID)
+			manifest.LastVersion, lastVersion)
 	}
 
 	statusesPages := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
@@ -691,9 +691,12 @@ func (a *Archiver) processRestores(
 		Prefix: aws.String(statusesPrefix),
 	})
 
-	var lastStatus string
+	var (
+		lastStatus string
+		lastID     int64
+	)
 
-	observedHeads := make(map[string]int64)
+	observedHeads := make(map[string]*ArchivedDocumentStatus)
 
 	for statusesPages.HasMorePages() {
 		page, err := statusesPages.NextPage(ctx)
@@ -745,7 +748,7 @@ func (a *Archiver) processRestores(
 					lastID+1, id)
 			}
 
-			sig, err := a.restoreDocumentStatus(
+			sig, stat, err := a.restoreDocumentStatus(
 				ctx, q, &parentSig, id, *o.Key)
 			if err != nil {
 				return false, fmt.Errorf(
@@ -754,28 +757,36 @@ func (a *Archiver) processRestores(
 
 			lastID = id
 			parentSig = sig
-			observedHeads[name] = id
+			observedHeads[name] = stat
 		}
 	}
 
 	// Verify the restored statuses against the manifest.
 	for name, head := range manifest.Heads {
-		if observedHeads[name] == head {
+		if observedHeads[name].ID == head {
 			continue
 		}
 
 		return false, fmt.Errorf("expected %d %q statuses, got %d",
-			head, name, observedHeads[name])
+			head, name, observedHeads[name].ID)
 	}
 
-	var acls []postgres.ACLUpdateParams
+	var (
+		acls      = make([]postgres.ACLUpdateParams, len(spec.ACL))
+		eventACLs = make([]postgres.ACLEntry, len(spec.ACL))
+	)
 
-	for _, acl := range spec.ACL {
-		acls = append(acls, postgres.ACLUpdateParams{
+	for i, acl := range spec.ACL {
+		acls[i] = postgres.ACLUpdateParams{
 			UUID:        req.UUID,
 			URI:         acl.URI,
 			Permissions: acl.Permissions,
-		})
+		}
+
+		eventACLs[i] = postgres.ACLEntry{
+			URI:         acl.URI,
+			Permissions: acl.Permissions,
+		}
 	}
 
 	docInfo, err := q.GetDocumentRow(ctx, req.UUID)
@@ -820,6 +831,66 @@ func (a *Archiver) processRestores(
 	})
 	if err != nil {
 		return false, fmt.Errorf("set restore as finished: %w", err)
+	}
+
+	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
+		Event:       string(TypeDocumentVersion),
+		UUID:        req.UUID,
+		Timestamp:   time.Now(),
+		Version:     lastVersion,
+		Updater:     req.Creator,
+		Type:        docInfo.Type,
+		Language:    docInfo.Language.String,
+		SystemState: SystemStateRestoring,
+	})
+	if err != nil {
+		return false, fmt.Errorf("add last version event to outbox: %w", err)
+	}
+
+	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
+		Event:       string(TypeACLUpdate),
+		UUID:        req.UUID,
+		Timestamp:   time.Now(),
+		Updater:     req.Creator,
+		ACL:         eventACLs,
+		Type:        docInfo.Type,
+		Language:    docInfo.Language.String,
+		SystemState: SystemStateRestoring,
+	})
+	if err != nil {
+		return false, fmt.Errorf("add restore finished event to outbox: %w", err)
+	}
+
+	for name, head := range observedHeads {
+		err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
+			Event:       string(TypeNewStatus),
+			UUID:        req.UUID,
+			Timestamp:   time.Now(),
+			Status:      name,
+			StatusID:    head.ID,
+			Version:     head.Version,
+			Updater:     req.Creator,
+			Type:        docInfo.Type,
+			Language:    docInfo.Language.String,
+			SystemState: SystemStateRestoring,
+		})
+		if err != nil {
+			return false, fmt.Errorf(
+				"add %s status event to outbox: %w", name, err)
+		}
+	}
+
+	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
+		Event:     string(TypeRestoreFinished),
+		UUID:      req.UUID,
+		Timestamp: time.Now(),
+		Version:   lastVersion,
+		Updater:   req.Creator,
+		Type:      docInfo.Type,
+		Language:  docInfo.Language.String,
+	})
+	if err != nil {
+		return false, fmt.Errorf("add restore finished event to outbox: %w", err)
 	}
 
 	err = tx.Commit(ctx)
@@ -903,10 +974,10 @@ func annotateMeta(originalMeta []byte, add newsdoc.DataMap) ([]byte, error) {
 func (a *Archiver) restoreDocumentStatus(
 	ctx context.Context, q *postgres.Queries, parentSig *string,
 	id int64, key string,
-) (string, error) {
+) (string, *ArchivedDocumentStatus, error) {
 	stat, sig, err := a.reader.ReadDocumentStatus(ctx, key, parentSig)
 	if err != nil {
-		return "", fmt.Errorf("read archived status: %w", err)
+		return "", nil, fmt.Errorf("read archived status: %w", err)
 	}
 
 	err = q.CreateStatusHead(ctx, postgres.CreateStatusHeadParams{
@@ -921,7 +992,7 @@ func (a *Archiver) restoreDocumentStatus(
 		SystemState: pg.TextOrNull(SystemStateRestoring),
 	})
 	if err != nil {
-		return "", fmt.Errorf("create status head: %w", err)
+		return "", nil, fmt.Errorf("create status head: %w", err)
 	}
 
 	var meta map[string]string
@@ -929,7 +1000,7 @@ func (a *Archiver) restoreDocumentStatus(
 	if len(stat.Meta) > 0 {
 		err := json.Unmarshal(stat.Meta, &meta)
 		if err != nil {
-			return "", fmt.Errorf("unmarshal status meta: %w", err)
+			return "", nil, fmt.Errorf("unmarshal status meta: %w", err)
 		}
 	}
 
@@ -944,10 +1015,10 @@ func (a *Archiver) restoreDocumentStatus(
 		MetaDocVersion: stat.MetaDocVersion,
 	})
 	if err != nil {
-		return "", fmt.Errorf("insert document status: %w", err)
+		return "", nil, fmt.Errorf("insert document status: %w", err)
 	}
 
-	return sig, nil
+	return sig, stat, nil
 }
 
 func (a *Archiver) processPurges(

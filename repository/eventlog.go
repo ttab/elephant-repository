@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -120,9 +119,6 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 		return fmt.Errorf("get last event ID: %w", err)
 	}
 
-	println("starting after", lastID)
-	enc := json.NewEncoder(os.Stderr)
-
 	for {
 		outEvents, err := q.ReadEventOutbox(ctx)
 		if err != nil {
@@ -166,8 +162,6 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 
 				params.Acl = data
 			}
-
-			enc.Encode(params)
 
 			err := eb.recordEvent(ctx, item.ID, params)
 			if err != nil {
