@@ -792,6 +792,121 @@ func (q *Queries) GetCurrentDocumentVersions(ctx context.Context, uuids []uuid.U
 	return items, nil
 }
 
+const getDelayedScheduled = `-- name: GetDelayedScheduled :many
+SELECT
+        ws.uuid,
+        ws.type,
+        s.id AS status_id,
+        s.version AS document_version,
+        pa.uuid AS assignment,
+        pa.planning_item,
+        pa.publish AS publish,
+        s.creator_uri
+FROM workflow_state AS ws
+     INNER JOIN planning_deliverable AS pd
+           ON pd.document = ws.uuid
+     INNER JOIN planning_assignment AS pa
+           ON pa.uuid = pd.assignment
+     INNER JOIN status_heads AS sh
+           ON sh.uuid = ws.uuid
+           AND sh.name = 'withheld'
+     INNER JOIN document_status AS s
+           ON s.uuid = sh.uuid
+           AND s.name = sh.name
+           AND s.id = sh.current_id
+WHERE ws.step = 'withheld'
+      AND (
+          $1::text[] IS NULL
+          OR s.meta->>'source' IS NULL
+          OR s.meta->>'source' != ANY($1)
+      )
+      AND pa.publish < $2
+      AND pa.publish > $3
+`
+
+type GetDelayedScheduledParams struct {
+	NotSource []string
+	Before    pgtype.Timestamptz
+	Cutoff    pgtype.Timestamptz
+}
+
+type GetDelayedScheduledRow struct {
+	UUID            uuid.UUID
+	Type            string
+	StatusID        int64
+	DocumentVersion int64
+	Assignment      uuid.UUID
+	PlanningItem    uuid.UUID
+	Publish         pgtype.Timestamptz
+	CreatorUri      string
+}
+
+func (q *Queries) GetDelayedScheduled(ctx context.Context, arg GetDelayedScheduledParams) ([]GetDelayedScheduledRow, error) {
+	rows, err := q.db.Query(ctx, getDelayedScheduled, arg.NotSource, arg.Before, arg.Cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDelayedScheduledRow
+	for rows.Next() {
+		var i GetDelayedScheduledRow
+		if err := rows.Scan(
+			&i.UUID,
+			&i.Type,
+			&i.StatusID,
+			&i.DocumentVersion,
+			&i.Assignment,
+			&i.PlanningItem,
+			&i.Publish,
+			&i.CreatorUri,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getDelayedScheduledCount = `-- name: GetDelayedScheduledCount :one
+SELECT COUNT(*)
+FROM workflow_state AS ws
+     INNER JOIN planning_deliverable AS pd
+           ON pd.document = ws.uuid
+     INNER JOIN planning_assignment AS pa
+           ON pa.uuid = pd.assignment
+     INNER JOIN status_heads AS sh
+           ON sh.uuid = ws.uuid
+           AND sh.name = 'withheld'
+     INNER JOIN document_status AS s
+           ON s.uuid = sh.uuid
+           AND s.name = sh.name
+           AND s.id = sh.current_id
+WHERE ws.step = 'withheld'
+      AND (
+          $1::text[] IS NULL
+          OR s.meta->>'source' IS NULL
+          OR s.meta->>'source' != ANY($1)
+      )
+      AND pa.publish < $2
+      AND pa.publish > $3
+`
+
+type GetDelayedScheduledCountParams struct {
+	NotSource []string
+	Before    pgtype.Timestamptz
+	Cutoff    pgtype.Timestamptz
+}
+
+func (q *Queries) GetDelayedScheduledCount(ctx context.Context, arg GetDelayedScheduledCountParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getDelayedScheduledCount, arg.NotSource, arg.Before, arg.Cutoff)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getDeleteRecordForUpdate = `-- name: GetDeleteRecordForUpdate :one
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
        main_doc, language, meta_doc_record, heads, finalised, purged
@@ -1712,7 +1827,7 @@ const getMetrics = `-- name: GetMetrics :many
 SELECT uuid, kind, label, value
 FROM metric
 WHERE uuid = ANY($1::uuid[])
-      AND kind = ANY($2::text[])
+      AND ($2::text[] IS NULL OR kind = ANY($2::text[]))
 `
 
 type GetMetricsParams struct {
@@ -2017,6 +2132,84 @@ func (q *Queries) GetPlanningItem(ctx context.Context, argUuid uuid.UUID) (Plann
 		&i.Event,
 	)
 	return i, err
+}
+
+const getScheduled = `-- name: GetScheduled :many
+SELECT
+        ws.uuid,
+        ws.type,
+        s.id AS status_id,
+        s.version AS document_version,
+        pa.uuid AS assignment,
+        pa.planning_item,
+        pa.publish AS publish,
+        s.creator_uri
+FROM workflow_state AS ws
+     INNER JOIN planning_deliverable AS pd
+           ON pd.document = ws.uuid
+     INNER JOIN planning_assignment AS pa
+           ON pa.uuid = pd.assignment
+     INNER JOIN status_heads AS sh
+           ON sh.uuid = ws.uuid
+           AND sh.name = 'withheld'
+     INNER JOIN document_status AS s
+           ON s.uuid = sh.uuid
+           AND s.name = sh.name
+           AND s.id = sh.current_id
+WHERE ws.step = 'withheld'
+      AND (
+          $1::text[] IS NULL
+          OR s.meta->>'source' IS NULL
+          OR s.meta->>'source' != ANY($1)
+      )
+      AND pa.publish > $2
+ORDER BY pa.publish ASC
+LIMIT 10
+`
+
+type GetScheduledParams struct {
+	NotSource []string
+	After     pgtype.Timestamptz
+}
+
+type GetScheduledRow struct {
+	UUID            uuid.UUID
+	Type            string
+	StatusID        int64
+	DocumentVersion int64
+	Assignment      uuid.UUID
+	PlanningItem    uuid.UUID
+	Publish         pgtype.Timestamptz
+	CreatorUri      string
+}
+
+func (q *Queries) GetScheduled(ctx context.Context, arg GetScheduledParams) ([]GetScheduledRow, error) {
+	rows, err := q.db.Query(ctx, getScheduled, arg.NotSource, arg.After)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetScheduledRow
+	for rows.Next() {
+		var i GetScheduledRow
+		if err := rows.Scan(
+			&i.UUID,
+			&i.Type,
+			&i.StatusID,
+			&i.DocumentVersion,
+			&i.Assignment,
+			&i.PlanningItem,
+			&i.Publish,
+			&i.CreatorUri,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getSchema = `-- name: GetSchema :one

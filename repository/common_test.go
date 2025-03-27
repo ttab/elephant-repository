@@ -297,7 +297,11 @@ func testingAPIServer(
 	test.Must(t, err, "create workflows")
 
 	docService := repository.NewDocumentsService(
-		store, validator, workflows, "sv-se",
+		store,
+		repository.NewSchedulePGStore(dbpool),
+		validator,
+		workflows,
+		"sv-se",
 	)
 	schemaService := repository.NewSchemasService(logger, store)
 	workflowService := repository.NewWorkflowsService(store)

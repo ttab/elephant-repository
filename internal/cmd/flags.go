@@ -23,6 +23,7 @@ type BackendConfig struct {
 	NoReplicator   bool
 	NoEventsink    bool
 	NoReporter     bool
+	NoScheduler    bool
 	JWTAudience    string
 	JWTScopePrefix string
 }
@@ -36,6 +37,7 @@ func BackendConfigFromContext(c *cli.Context, src elephantine.ParameterSource) (
 		NoEventsink:    c.Bool("no-eventsink"),
 		NoReporter:     c.Bool("no-reporter"),
 		NoReplicator:   c.Bool("no-replicator"),
+		NoScheduler:    c.Bool("no-scheduler"),
 		JWTAudience:    c.String("jwt-audience"),
 		JWTScopePrefix: c.String("jwt-scope-prefix"),
 		S3Options: repository.S3Options{
