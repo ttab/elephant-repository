@@ -365,7 +365,7 @@ func (s *PGDocStore) insertDeleteRecord(
 		return 0, fmt.Errorf("create delete record: %w", err)
 	}
 
-	err = s.addEventToOutbox(ctx, tx, postgres.OutboxEvent{
+	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
 		Event:            string(TypeDeleteDocument),
 		UUID:             id,
 		Version:          pf.Info.CurrentVersion,
@@ -1433,6 +1433,7 @@ func (s *PGDocStore) Update(
 		state.Language = info.Language
 		state.IsMetaDoc = info.MainDoc != nil
 		state.MainDocType = info.MainDocType
+		state.SystemState = info.Info.SystemState.String
 
 		if state.Exists {
 			state.Type = info.Info.Type
@@ -1554,6 +1555,7 @@ func (s *PGDocStore) Update(
 				MainDocument:     state.Request.MainDocument,
 				MainDocumentType: state.MainDocType,
 				Version:          state.Version,
+				SystemState:      state.SystemState,
 			})
 
 			// Progress workflow state.
@@ -1723,6 +1725,7 @@ func (s *PGDocStore) Update(
 				MainDocumentType: state.MainDocType,
 				Version:          status.Version,
 				MetaDocVersion:   metaDocVersion,
+				SystemState:      state.SystemState,
 			})
 
 			// Progress workflow state
@@ -1773,6 +1776,7 @@ func (s *PGDocStore) Update(
 				Language:         state.Language,
 				MainDocument:     state.Request.MainDocument,
 				MainDocumentType: state.MainDocType,
+				SystemState:      state.SystemState,
 			})
 		}
 
@@ -1796,20 +1800,25 @@ func (s *PGDocStore) Update(
 
 			// Queue up the event for the workflow update.
 			evts = append(evts, postgres.OutboxEvent{
-				Event:            string(TypeACLUpdate),
-				UUID:             state.Request.UUID,
-				Timestamp:        state.Created,
-				Updater:          state.Creator,
-				Type:             state.Type,
-				Language:         state.Language,
-				MainDocument:     state.Request.MainDocument,
-				MainDocumentType: state.MainDocType,
+				Event:              string(TypeWorkflow),
+				UUID:               state.Request.UUID,
+				Version:            state.Version,
+				Timestamp:          state.Created,
+				Updater:            state.Creator,
+				Type:               state.Type,
+				Language:           state.Language,
+				MainDocument:       state.Request.MainDocument,
+				MainDocumentType:   state.MainDocType,
+				WorkflowStep:       wState.Step,
+				WorkflowCheckpoint: wState.LastCheckpoint,
+				// TODO: previous step?
+				SystemState: state.SystemState,
 			})
 		}
 	}
 
 	for i := range evts {
-		err := s.addEventToOutbox(ctx, tx, evts[i])
+		err := addEventToOutbox(ctx, tx, evts[i])
 		if err != nil {
 			return nil, fmt.Errorf("send events: %w", err)
 		}
@@ -1946,6 +1955,7 @@ type docUpdateState struct {
 	IsMetaDoc   bool
 	MainDocID   *uuid.UUID
 	MainDocType string
+	SystemState string
 }
 
 func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
@@ -3129,7 +3139,7 @@ func (s *PGDocStore) UpdatePreflight(
 	}, nil
 }
 
-func (s *PGDocStore) addEventToOutbox(
+func addEventToOutbox(
 	ctx context.Context,
 	tx pgx.Tx,
 	evt postgres.OutboxEvent,
@@ -3141,7 +3151,7 @@ func (s *PGDocStore) addEventToOutbox(
 		return fmt.Errorf("store event in outbox: %w", err)
 	}
 
-	err = s.eventOutbox.Publish(ctx, tx, id)
+	err = pg.Publish(ctx, tx, NotifyEventOutbox, id)
 	if err != nil {
 		return fmt.Errorf("send outbox notification: %w", err)
 	}
