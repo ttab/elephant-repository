@@ -62,8 +62,8 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver:   true,
-		RunReplicator: true,
+		RunArchiver:        true,
+		RunEventlogBuilder: true,
 	})
 
 	sseConn := tc.SSEConnect(t, []string{"firehose"},
@@ -335,13 +335,14 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 	t.Parallel()
 
+	regenerate := regenerateTestFixtures()
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	var expectedEvents int64
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver:   false,
-		RunReplicator: true,
+		RunArchiver:        false,
+		RunEventlogBuilder: true,
 	})
 
 	client := tc.DocumentsClient(t,
@@ -451,29 +452,21 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 		log, err := client.Eventlog(ctx,
 			&repository.GetEventlogRequest{
-				After: -5,
+				After: 0,
 			})
 		test.Must(t, err, "get eventlog")
-		test.Equal(t, 5, len(log.Items),
-			"get the expected number of events")
+		// test.Equal(t, 5, len(log.Items),
+		// 	"get the expected number of events")
 
-		var golden repository.GetEventlogResponse
-
-		err = elephantine.UnmarshalFile(
-			"testdata/TestIntegrationDocumentLanguage/eventlog.json",
-			&golden)
-		test.Must(t, err, "read golden file for expected eventlog items")
-
-		diff := cmp.Diff(&golden, log,
-			protocmp.Transform(),
-			cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
-				return k == timestampField ||
-					k == idField
-			}),
-		)
-		if diff != "" {
-			t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
+		for i := range log.Items {
+			log.Items[i].Timestamp = ""
 		}
+
+		test.TestMessageAgainstGolden(t, regenerate, log,
+			"testdata/TestIntegrationDocumentLanguage/eventlog.json",
+			cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
+				return k == timestampField
+			}))
 	})
 }
 
@@ -494,8 +487,8 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver:   true,
-		RunReplicator: true,
+		RunArchiver:        true,
+		RunEventlogBuilder: true,
 	})
 
 	ctx := t.Context()
@@ -871,8 +864,8 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver:   true,
-		RunReplicator: true,
+		RunArchiver:        true,
+		RunEventlogBuilder: true,
 	})
 
 	client := tc.DocumentsClient(t,
@@ -1021,7 +1014,7 @@ func TestIntegrationStatus(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunReplicator: true,
+		RunEventlogBuilder: true,
 	})
 
 	client := tc.DocumentsClient(t,
@@ -2075,7 +2068,7 @@ func TestUUIDNormalisation(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunReplicator: true,
+		RunEventlogBuilder: true,
 	})
 
 	client := tc.DocumentsClient(t,

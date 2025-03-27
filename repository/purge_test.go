@@ -33,8 +33,8 @@ func TestPurge(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver:   true,
-		RunReplicator: true,
+		RunArchiver:        true,
+		RunEventlogBuilder: true,
 	})
 
 	client := tc.DocumentsClient(t,

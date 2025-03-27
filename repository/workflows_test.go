@@ -27,7 +27,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunReplicator: true,
+		RunEventlogBuilder: true,
 	})
 
 	client := tc.DocumentsClient(t,

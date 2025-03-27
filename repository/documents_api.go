@@ -39,6 +39,11 @@ type DocumentsService struct {
 	defaultLanguage string
 }
 
+// CreateUpload implements repository.Documents.
+func (a *DocumentsService) CreateUpload(context.Context, *repository.CreateUploadRequest) (*repository.CreateUploadResponse, error) {
+	panic("unimplemented")
+}
+
 func NewDocumentsService(
 	store DocStore,
 	sched ScheduleStore,
@@ -1251,6 +1256,17 @@ func StatusToRPC(status Status) *repository.Status {
 	}
 }
 
+func StatusHeadToRPCStatus(status StatusHead) *repository.Status {
+	return &repository.Status{
+		Id:             status.ID,
+		Version:        status.Version,
+		Creator:        status.Creator,
+		Created:        status.Created.Format(time.RFC3339),
+		Meta:           status.Meta,
+		MetaDocVersion: status.MetaDocVersion,
+	}
+}
+
 func (a *DocumentsService) accessCheck(
 	ctx context.Context,
 	auth *elephantine.AuthInfo, docUUID uuid.UUID,
@@ -1365,7 +1381,7 @@ func (a *DocumentsService) GetMeta(
 			resp.Heads = make(map[string]*repository.Status)
 		}
 
-		resp.Heads[name] = StatusToRPC(head)
+		resp.Heads[name] = StatusHeadToRPCStatus(head)
 	}
 
 	for _, acl := range meta.ACL {

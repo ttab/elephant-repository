@@ -1,14 +1,42 @@
 {
   "items": [
     {
+      "id": "1",
+      "event": "document",
+      "uuid": "1d450529-fd98-4e4e-80c2-f70f9194737a",
+      "version": "1",
+      "updater_uri": "user://test/testintegrationdocumentlanguage",
+      "type": "core/article",
+      "language": "sv-se"
+    },
+    {
+      "id": "2",
+      "event": "acl",
+      "uuid": "1d450529-fd98-4e4e-80c2-f70f9194737a",
+      "acl": [
+        {
+          "uri": "user://test/testintegrationdocumentlanguage",
+          "permissions": [
+            "r",
+            "w"
+          ]
+        }
+      ],
+      "updater_uri": "user://test/testintegrationdocumentlanguage",
+      "type": "core/article",
+      "language": "sv-se"
+    },
+    {
+      "id": "3",
       "event": "document",
       "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
-      "version": 1,
+      "version": "1",
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
       "language": "en-gb"
     },
     {
+      "id": "4",
       "event": "acl",
       "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
       "acl": [
@@ -25,30 +53,33 @@
       "language": "en-gb"
     },
     {
+      "id": "5",
       "event": "status",
       "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
-      "version": 1,
+      "version": "1",
       "status": "usable",
-      "status_id": 1,
+      "status_id": "1",
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
       "language": "en-gb"
     },
     {
+      "id": "6",
       "event": "document",
       "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
-      "version": 2,
+      "version": "2",
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
       "language": "en-us",
       "old_language": "en-gb"
     },
     {
+      "id": "7",
       "event": "status",
       "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
-      "version": 2,
+      "version": "2",
       "status": "usable",
-      "status_id": 2,
+      "status_id": "2",
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
       "language": "en-us",

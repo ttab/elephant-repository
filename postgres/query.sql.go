@@ -38,6 +38,19 @@ func (q *Queries) ActivateSchema(ctx context.Context, arg ActivateSchemaParams) 
 	return err
 }
 
+const addEventToOutbox = `-- name: AddEventToOutbox :one
+INSERT INTO event_outbox_item(event)
+VALUES($1)
+RETURNING id
+`
+
+func (q *Queries) AddEventToOutbox(ctx context.Context, event OutboxEvent) (int64, error) {
+	row := q.db.QueryRow(ctx, addEventToOutbox, event)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const bulkCheckPermissions = `-- name: BulkCheckPermissions :many
 SELECT d.uuid
 FROM document AS d
@@ -450,6 +463,15 @@ WHERE name = $1
 
 func (q *Queries) DeleteMetricKind(ctx context.Context, name string) error {
 	_, err := q.db.Exec(ctx, deleteMetricKind, name)
+	return err
+}
+
+const deleteOutboxEvent = `-- name: DeleteOutboxEvent :exec
+DELETE FROM event_outbox_item WHERE id = $1
+`
+
+func (q *Queries) DeleteOutboxEvent(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteOutboxEvent, id)
 	return err
 }
 
@@ -1587,22 +1609,36 @@ func (q *Queries) GetExpiredDocumentLocks(ctx context.Context, cutoff pgtype.Tim
 
 const getFullDocumentHeads = `-- name: GetFullDocumentHeads :many
 SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
-       s.archived, s.signature, s.meta_doc_version
+       s.archived, s.signature, s.meta_doc_version, h.language
 FROM status_heads AS h
      INNER JOIN document_status AS s ON
            s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
 WHERE h.uuid = $1
 `
 
-func (q *Queries) GetFullDocumentHeads(ctx context.Context, argUuid uuid.UUID) ([]DocumentStatus, error) {
+type GetFullDocumentHeadsRow struct {
+	UUID           uuid.UUID
+	Name           string
+	ID             int64
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           map[string]string
+	Archived       bool
+	Signature      pgtype.Text
+	MetaDocVersion pgtype.Int8
+	Language       pgtype.Text
+}
+
+func (q *Queries) GetFullDocumentHeads(ctx context.Context, argUuid uuid.UUID) ([]GetFullDocumentHeadsRow, error) {
 	rows, err := q.db.Query(ctx, getFullDocumentHeads, argUuid)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []DocumentStatus
+	var items []GetFullDocumentHeadsRow
 	for rows.Next() {
-		var i DocumentStatus
+		var i GetFullDocumentHeadsRow
 		if err := rows.Scan(
 			&i.UUID,
 			&i.Name,
@@ -1614,6 +1650,7 @@ func (q *Queries) GetFullDocumentHeads(ctx context.Context, argUuid uuid.UUID) (
 			&i.Archived,
 			&i.Signature,
 			&i.MetaDocVersion,
+			&i.Language,
 		); err != nil {
 			return nil, err
 		}
@@ -2846,19 +2883,20 @@ func (q *Queries) InsertDocumentStatus(ctx context.Context, arg InsertDocumentSt
 	return err
 }
 
-const insertIntoEventLog = `-- name: InsertIntoEventLog :one
+const insertIntoEventLog = `-- name: InsertIntoEventLog :exec
 INSERT INTO eventlog(
-       event, uuid, type, timestamp, updater, version, status, status_id, acl,
+       id, event, uuid, type, timestamp, updater, version, status, status_id, acl,
        language, old_language, main_doc, system_state, workflow_state, workflow_checkpoint,
        main_doc_type
 ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9,
-       $10, $11, $12, $13, $14, $15,
-       $16
-) RETURNING id
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+       $11, $12, $13, $14, $15, $16,
+       $17
+)
 `
 
 type InsertIntoEventLogParams struct {
+	ID                 int64
 	Event              string
 	UUID               uuid.UUID
 	Type               pgtype.Text
@@ -2877,8 +2915,9 @@ type InsertIntoEventLogParams struct {
 	MainDocType        pgtype.Text
 }
 
-func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLogParams) (int64, error) {
-	row := q.db.QueryRow(ctx, insertIntoEventLog,
+func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLogParams) error {
+	_, err := q.db.Exec(ctx, insertIntoEventLog,
+		arg.ID,
 		arg.Event,
 		arg.UUID,
 		arg.Type,
@@ -2896,9 +2935,7 @@ func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLog
 		arg.WorkflowCheckpoint,
 		arg.MainDocType,
 	)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
+	return err
 }
 
 const insertJobLock = `-- name: InsertJobLock :one
@@ -3104,6 +3141,32 @@ type PurgeDeleteRecordDetailsParams struct {
 func (q *Queries) PurgeDeleteRecordDetails(ctx context.Context, arg PurgeDeleteRecordDetailsParams) error {
 	_, err := q.db.Exec(ctx, purgeDeleteRecordDetails, arg.PurgedTime, arg.ID)
 	return err
+}
+
+const readEventOutbox = `-- name: ReadEventOutbox :many
+SELECT id, event FROM event_outbox_item
+ORDER BY id ASC
+LIMIT 20
+`
+
+func (q *Queries) ReadEventOutbox(ctx context.Context) ([]EventOutboxItem, error) {
+	rows, err := q.db.Query(ctx, readEventOutbox)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EventOutboxItem
+	for rows.Next() {
+		var i EventOutboxItem
+		if err := rows.Scan(&i.ID, &i.Event); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const readForRestore = `-- name: ReadForRestore :one

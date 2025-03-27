@@ -32,6 +32,14 @@ type ActiveSchema struct {
 	Version string
 }
 
+type AttachedObject struct {
+	Document  uuid.UUID
+	Name      string
+	CreatedBy string
+	CreatedAt pgtype.Timestamptz
+	Meta      []byte
+}
+
 type DeleteRecord struct {
 	ID            int64
 	UUID          uuid.UUID
@@ -118,6 +126,11 @@ type DocumentVersion struct {
 	Archived     bool
 	Signature    pgtype.Text
 	Language     pgtype.Text
+}
+
+type EventOutboxItem struct {
+	ID    int64
+	Event OutboxEvent
 }
 
 type Eventlog struct {
@@ -271,6 +284,14 @@ type StatusRule struct {
 	AccessRule  bool
 	AppliesTo   []string
 	Expression  string
+}
+
+type Upload struct {
+	ID        uuid.UUID
+	CreatedBy string
+	CreatedAt pgtype.Timestamptz
+	Name      string
+	Meta      []byte
 }
 
 type Workflow struct {
