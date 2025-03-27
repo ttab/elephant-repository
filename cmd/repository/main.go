@@ -442,7 +442,7 @@ func runServer(c *cli.Context) error {
 				})
 			if err != nil {
 				logger.Error(
-					"sceduled document publishing disabled due to error",
+					"scheduled document publishing disabled due to error",
 					elephantine.LogKeyError, err)
 			}
 		}()
