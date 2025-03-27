@@ -24,10 +24,10 @@ import (
 // scheduler can act on set times.
 const SchedulerMaxPollInterval = 1 * time.Minute
 
-// SchedulerRetryWindown is the time after a planned publish that the scheduler
-// will attempt to act on it. After the retry window has passed the document
-// will still be in the withheld state, unless otherwise changed, but no
-// attempts will be made to publish it.
+// SchedulerRetryWindow defines the duration after a planned publish time 
+// during which the scheduler will attempt to publish the document.
+// After the retry window has passed the document will still be in the withheld state,
+// unless otherwise changed, but no attempts will be made to publish it.
 const SchedulerRetryWindown = 30 * time.Minute
 
 // SchedulerDelayedTreshold is the treshold after which a scheduled publish will
