@@ -346,7 +346,7 @@ func runServer(c *cli.Context) error {
 
 		group.Go(func() error {
 			archiver, err := startArchiver(c.Context, gCtx,
-				log, conf, dbpool) //
+				log, conf, dbpool)
 			if err != nil {
 				return err
 			}

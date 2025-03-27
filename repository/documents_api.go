@@ -2126,7 +2126,7 @@ func (a *DocumentsService) GetWithheld(
 		return nil, err
 	}
 
-	after := time.Now().Add(-SchedulerRetryWindown)
+	after := time.Now().Add(-SchedulerRetryWindow)
 
 	scheduled, err := a.sched.GetScheduled(ctx, after, []string{"oc"})
 	if err != nil {

@@ -24,11 +24,11 @@ import (
 // scheduler can act on set times.
 const SchedulerMaxPollInterval = 1 * time.Minute
 
-// SchedulerRetryWindow defines the duration after a planned publish time 
+// SchedulerRetryWindow defines the duration after a planned publish time
 // during which the scheduler will attempt to publish the document.
 // After the retry window has passed the document will still be in the withheld state,
 // unless otherwise changed, but no attempts will be made to publish it.
-const SchedulerRetryWindown = 30 * time.Minute
+const SchedulerRetryWindow = 30 * time.Minute
 
 // SchedulerDelayedTreshold is the treshold after which a scheduled publish will
 // be counted as delayed. Delayed documents will be visible in the
@@ -148,7 +148,7 @@ func (s *Scheduler) Run(ctx context.Context, recheckSignal <-chan struct{}) erro
 }
 
 func (s *Scheduler) iteration(ctx context.Context) (time.Time, error) {
-	after := time.Now().Add(-SchedulerRetryWindown)
+	after := time.Now().Add(-SchedulerRetryWindow)
 
 	upcoming, err := s.store.GetScheduled(ctx, after, s.excludeSources)
 	if err != nil {
