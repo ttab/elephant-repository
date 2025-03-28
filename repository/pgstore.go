@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ttab/elephant-repository/internal"
@@ -22,7 +21,6 @@ import (
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -47,11 +45,12 @@ type PGDocStore struct {
 	reader *postgres.Queries
 	opts   PGDocStoreOptions
 
-	archived     *FanOut[ArchivedEvent]
-	schemas      *FanOut[SchemaEvent]
-	deprecations *FanOut[DeprecationEvent]
-	workflows    *FanOut[WorkflowEvent]
-	eventlog     *FanOut[int64]
+	archived     *pg.FanOut[ArchivedEvent]
+	schemas      *pg.FanOut[SchemaEvent]
+	deprecations *pg.FanOut[DeprecationEvent]
+	workflows    *pg.FanOut[WorkflowEvent]
+	eventOutbox  *pg.FanOut[int64]
+	eventlog     *pg.FanOut[int64]
 }
 
 func NewPGDocStore(
@@ -67,11 +66,12 @@ func NewPGDocStore(
 		pool:         pool,
 		reader:       postgres.New(pool),
 		opts:         options,
-		archived:     NewFanOut[ArchivedEvent](),
-		schemas:      NewFanOut[SchemaEvent](),
-		deprecations: NewFanOut[DeprecationEvent](),
-		workflows:    NewFanOut[WorkflowEvent](),
-		eventlog:     NewFanOut[int64](),
+		archived:     pg.NewFanOut[ArchivedEvent](NotifyArchived),
+		schemas:      pg.NewFanOut[SchemaEvent](NotifySchemasUpdated),
+		deprecations: pg.NewFanOut[DeprecationEvent](NotifyDeprecationsUpdated),
+		workflows:    pg.NewFanOut[WorkflowEvent](NotifyWorkflowsUpdated),
+		eventOutbox:  pg.NewFanOut[int64](NotifyEventOutbox),
+		eventlog:     pg.NewFanOut[int64](NotifyEventlog),
 	}, nil
 }
 
@@ -132,6 +132,20 @@ func (s *PGDocStore) OnWorkflowUpdate(
 	})
 }
 
+// OnEventOutbox notifies the channel ch of all new outbox events. Subscription
+// is automatically cancelled once the context is cancelled.
+//
+// Note that we don't provide any delivery guarantees for these events.
+// non-blocking send is used on ch, so if it's unbuffered events will be
+// discarded if the receiver is busy.
+func (s *PGDocStore) OnEventOutbox(
+	ctx context.Context, ch chan int64,
+) {
+	go s.eventOutbox.Listen(ctx, ch, func(_ int64) bool {
+		return true
+	})
+}
+
 // OnEventlog notifies the channel ch of all new eventlog IDs. Subscription is
 // automatically cancelled once the context is cancelled.
 //
@@ -149,142 +163,16 @@ func (s *PGDocStore) OnEventlog(
 // RunListener opens a connection to the database and subscribes to all store
 // notifications.
 func (s *PGDocStore) RunListener(ctx context.Context) {
-	for {
-		err := s.runListener(ctx)
-		if errors.Is(err, context.Canceled) {
-			return
-		} else if err != nil {
-			s.logger.ErrorContext(
-				ctx, "failed to run notification listener",
-				elephantine.LogKeyError, err,
-			)
-		}
-
-		time.Sleep(5 * time.Second)
-	}
-}
-
-func (s *PGDocStore) runListener(ctx context.Context) error {
-	conn, err := s.pool.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to acquire connection from pool: %w", err)
+	fanOuts := []pg.ChannelSubscription{
+		s.archived,
+		s.schemas,
+		s.deprecations,
+		s.workflows,
+		s.eventOutbox,
+		s.eventlog,
 	}
 
-	pConn := conn.Hijack()
-
-	defer func() {
-		err := pConn.Close(ctx)
-		if err != nil {
-			s.logger.ErrorContext(ctx,
-				"failed to close PG listen connection",
-				elephantine.LogKeyError, err)
-		}
-	}()
-
-	notifications := []NotifyChannel{
-		NotifyArchived,
-		NotifySchemasUpdated,
-		NotifyDeprecationsUpdated,
-		NotifyWorkflowsUpdated,
-		NotifyEventlog,
-	}
-
-	for _, channel := range notifications {
-		ident := pgx.Identifier{string(channel)}
-
-		_, err := pConn.Exec(ctx, "LISTEN "+ident.Sanitize())
-		if err != nil {
-			return fmt.Errorf("failed to start listening to %q: %w",
-				channel, err)
-		}
-	}
-
-	received := make(chan *pgconn.Notification)
-	grp, gCtx := errgroup.WithContext(ctx)
-
-	grp.Go(func() error {
-		for {
-			notification, err := pConn.WaitForNotification(gCtx)
-			if err != nil {
-				return fmt.Errorf(
-					"error while waiting for notification: %w", err)
-			}
-
-			received <- notification
-		}
-	})
-
-	grp.Go(func() error {
-		for {
-			var notification *pgconn.Notification
-
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case notification = <-received:
-			}
-
-			switch NotifyChannel(notification.Channel) {
-			case NotifySchemasUpdated:
-				var e SchemaEvent
-
-				err := json.Unmarshal(
-					[]byte(notification.Payload), &e)
-				if err != nil {
-					break
-				}
-
-				s.schemas.Notify(e)
-			case NotifyDeprecationsUpdated:
-				var e DeprecationEvent
-
-				err := json.Unmarshal(
-					[]byte(notification.Payload), &e)
-				if err != nil {
-					break
-				}
-
-				s.deprecations.Notify(e)
-			case NotifyArchived:
-				var e ArchivedEvent
-
-				err := json.Unmarshal(
-					[]byte(notification.Payload), &e)
-				if err != nil {
-					break
-				}
-
-				s.archived.Notify(e)
-			case NotifyWorkflowsUpdated:
-				var e WorkflowEvent
-
-				err := json.Unmarshal(
-					[]byte(notification.Payload), &e)
-				if err != nil {
-					break
-				}
-
-				s.workflows.Notify(e)
-			case NotifyEventlog:
-				var e int64
-
-				err := json.Unmarshal(
-					[]byte(notification.Payload), &e)
-				if err != nil {
-					break
-				}
-
-				s.eventlog.Notify(e)
-			}
-		}
-	})
-
-	err = grp.Wait()
-	if err != nil {
-		return err //nolint:wrapcheck
-	}
-
-	return nil
+	pg.Subscribe(ctx, s.logger, s.pool, fanOuts...)
 }
 
 // Delete implements DocStore.
@@ -392,7 +280,7 @@ func (s *PGDocStore) Delete(
 
 	if metaInfo != nil {
 		mdr, err := s.insertDeleteRecord(
-			ctx, q, req.Updated, req.Updater,
+			ctx, tx, q, req.Updated, req.Updater,
 			metaUUID, metaInfo,
 			metaJSON, 0, nil,
 		)
@@ -410,7 +298,7 @@ func (s *PGDocStore) Delete(
 	}
 
 	_, err = s.insertDeleteRecord(
-		ctx, q, req.Updated, req.Updater,
+		ctx, tx, q, req.Updated, req.Updater,
 		req.UUID, mainInfo,
 		metaJSON, metaDocRecord, acl,
 	)
@@ -428,7 +316,7 @@ func (s *PGDocStore) Delete(
 }
 
 func (s *PGDocStore) insertDeleteRecord(
-	ctx context.Context, q *postgres.Queries,
+	ctx context.Context, tx pgx.Tx, q *postgres.Queries,
 	updated time.Time, updater string,
 	id uuid.UUID,
 	pf *UpdatePrefligthInfo,
@@ -475,6 +363,22 @@ func (s *PGDocStore) insertDeleteRecord(
 		})
 	if err != nil {
 		return 0, fmt.Errorf("create delete record: %w", err)
+	}
+
+	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
+		Event:            string(TypeDeleteDocument),
+		UUID:             id,
+		Version:          pf.Info.CurrentVersion,
+		Timestamp:        updated,
+		Updater:          updater,
+		Type:             pf.Info.Type,
+		MainDocument:     pf.MainDoc,
+		MainDocumentType: pf.MainDocType,
+		Language:         pf.Language,
+		// TODO: add delete record ID?
+	})
+	if err != nil {
+		return 0, fmt.Errorf("add delete event to outbox: %w", err)
 	}
 
 	err = q.DeleteDocumentEntry(ctx, id)
@@ -1092,11 +996,7 @@ func (s *PGDocStore) GetVersionHistory(
 
 	for _, status := range statuses {
 		// Find the version that the status applies to.
-		for {
-			if versions[versionIdx] == status.Version {
-				break
-			}
-
+		for versions[versionIdx] != status.Version {
 			versionIdx++
 
 			if versionIdx > len(versions) {
@@ -1355,7 +1255,7 @@ func (s *PGDocStore) GetDocumentMeta(
 		Modified:           info.Updated.Time,
 		UpdaterURI:         info.UpdaterUri,
 		CurrentVersion:     info.CurrentVersion,
-		Statuses:           make(map[string]Status),
+		Statuses:           make(map[string]StatusHead),
 		MainDocument:       mainDoc,
 		WorkflowState:      info.WorkflowState.String,
 		WorkflowCheckpoint: info.WorkflowCheckpoint.String,
@@ -1408,8 +1308,8 @@ func (s *PGDocStore) GetDocumentACL(
 
 func (s *PGDocStore) getFullDocumentHeads(
 	ctx context.Context, q *postgres.Queries, docUUID uuid.UUID,
-) (map[string]Status, error) {
-	statuses := make(map[string]Status)
+) (map[string]StatusHead, error) {
+	statuses := make(map[string]StatusHead)
 
 	heads, err := q.GetFullDocumentHeads(ctx, docUUID)
 	if err != nil {
@@ -1417,13 +1317,14 @@ func (s *PGDocStore) getFullDocumentHeads(
 	}
 
 	for _, head := range heads {
-		status := Status{
+		status := StatusHead{
 			ID:             head.ID,
 			Version:        head.Version,
 			Creator:        head.CreatorUri,
 			Created:        head.Created.Time,
 			MetaDocVersion: head.MetaDocVersion.Int64,
 			Meta:           head.Meta,
+			Language:       head.Language.String,
 		}
 
 		statuses[head.Name] = status
@@ -1528,6 +1429,7 @@ func (s *PGDocStore) Update(
 		state.Language = info.Language
 		state.IsMetaDoc = info.MainDoc != nil
 		state.MainDocType = info.MainDocType
+		state.SystemState = info.Info.SystemState.String
 
 		if state.Exists {
 			state.Type = info.Info.Type
@@ -1583,6 +1485,8 @@ func (s *PGDocStore) Update(
 		}
 	}
 
+	var evts []postgres.OutboxEvent
+
 	for _, state := range updates {
 		var (
 			initialCreate bool
@@ -1603,6 +1507,10 @@ func (s *PGDocStore) Update(
 		}
 
 		if state.Doc != nil {
+			if state.Exists && state.Language != state.Doc.Language {
+				state.OldLanguage = state.Language
+			}
+
 			state.Language = state.Doc.Language
 
 			version := state.Version + 1
@@ -1631,6 +1539,21 @@ func (s *PGDocStore) Update(
 
 			state.Version = version
 
+			// Queue up the document version event for the eventlog.
+			evts = append(evts, postgres.OutboxEvent{
+				Event:            string(TypeDocumentVersion),
+				UUID:             state.UUID,
+				Timestamp:        state.Created,
+				Updater:          state.Creator,
+				Type:             state.Type,
+				Language:         state.Language,
+				OldLanguage:      state.OldLanguage,
+				MainDocument:     state.Request.MainDocument,
+				MainDocumentType: state.MainDocType,
+				Version:          state.Version,
+				SystemState:      state.SystemState,
+			})
+
 			// Progress workflow state.
 			wState = workflow.Step(wState, WorkflowStep{
 				Version: version,
@@ -1639,7 +1562,7 @@ func (s *PGDocStore) Update(
 
 		var metaDocVersion int64
 
-		statusHeads := make(map[string]Status)
+		statusHeads := make(map[string]StatusHead)
 
 		if len(state.Request.Status) > 0 || len(state.Request.IfStatusHeads) > 0 {
 			heads, err := s.getFullDocumentHeads(ctx, s.reader,
@@ -1777,6 +1700,30 @@ func (s *PGDocStore) Update(
 				return nil, fmt.Errorf("insert document status: %w", err)
 			}
 
+			var oldLanguage string
+
+			if lang != statusHeads[stat.Name].Language {
+				oldLanguage = statusHeads[stat.Name].Language
+			}
+
+			// Queue up the status event for the eventlog.
+			evts = append(evts, postgres.OutboxEvent{
+				Event:            string(TypeNewStatus),
+				UUID:             state.Request.UUID,
+				Status:           stat.Name,
+				StatusID:         status.ID,
+				Timestamp:        state.Created,
+				Updater:          state.Creator,
+				Type:             state.Type,
+				Language:         state.Language,
+				OldLanguage:      oldLanguage,
+				MainDocument:     state.Request.MainDocument,
+				MainDocumentType: state.MainDocType,
+				Version:          status.Version,
+				MetaDocVersion:   metaDocVersion,
+				SystemState:      state.SystemState,
+			})
+
 			// Progress workflow state
 			oldState := wState
 			wState = workflow.Step(wState, WorkflowStep{
@@ -1798,10 +1745,35 @@ func (s *PGDocStore) Update(
 			aclUpdate = state.Request.DefaultACL
 		}
 
-		err = updateACL(ctx, q, state.Request.Updater,
-			state.Request.UUID, state.Type, state.Language, aclUpdate)
-		if err != nil {
-			return nil, fmt.Errorf("update ACL: %w", err)
+		if len(aclUpdate) > 0 {
+			err := updateACL(ctx, q, state.Request.Updater,
+				state.Request.UUID, state.Type, state.Language, aclUpdate)
+			if err != nil {
+				return nil, fmt.Errorf("update ACL: %w", err)
+			}
+
+			entries := make([]postgres.ACLEntry, len(aclUpdate))
+
+			for i := range aclUpdate {
+				entries[i] = postgres.ACLEntry{
+					URI:         aclUpdate[i].URI,
+					Permissions: aclUpdate[i].Permissions,
+				}
+			}
+
+			// Queue up the event for the ACL update.
+			evts = append(evts, postgres.OutboxEvent{
+				Event:            string(TypeACLUpdate),
+				UUID:             state.Request.UUID,
+				Timestamp:        state.Created,
+				Updater:          state.Creator,
+				Type:             state.Type,
+				ACL:              entries,
+				Language:         state.Language,
+				MainDocument:     state.Request.MainDocument,
+				MainDocumentType: state.MainDocType,
+				SystemState:      state.SystemState,
+			})
 		}
 
 		if !state.IsMetaDoc && hasWorkflow && (initialCreate || !wState.Equal(startWState)) {
@@ -1821,12 +1793,32 @@ func (s *PGDocStore) Update(
 			if err != nil {
 				return nil, fmt.Errorf("update workflow state: %w", err)
 			}
+
+			// Queue up the event for the workflow update.
+			evts = append(evts, postgres.OutboxEvent{
+				Event:              string(TypeWorkflow),
+				UUID:               state.Request.UUID,
+				Version:            state.Version,
+				Timestamp:          state.Created,
+				Updater:            state.Creator,
+				Type:               state.Type,
+				Language:           state.Language,
+				MainDocument:       state.Request.MainDocument,
+				MainDocumentType:   state.MainDocType,
+				WorkflowStep:       wState.Step,
+				WorkflowCheckpoint: wState.LastCheckpoint,
+				// TODO: previous step?
+				SystemState: state.SystemState,
+			})
 		}
 	}
 
-	// TODO: model links, or should we just skip that? Could a stored
-	// procedure iterate over links instead of us doing the batch thing
-	// here?
+	for i := range evts {
+		err := addEventToOutbox(ctx, tx, evts[i])
+		if err != nil {
+			return nil, fmt.Errorf("send events: %w", err)
+		}
+	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
@@ -1955,9 +1947,11 @@ type docUpdateState struct {
 	Type        string
 	Exists      bool
 	Language    string
+	OldLanguage string
 	IsMetaDoc   bool
 	MainDocID   *uuid.UUID
 	MainDocType string
+	SystemState string
 }
 
 func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
@@ -2006,7 +2000,7 @@ func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
 func (s *PGDocStore) buildStatusRuleInput(
 	ctx context.Context, q *postgres.Queries,
 	uuid uuid.UUID, name string, status Status, up DocumentUpdate,
-	d *newsdoc.Document, versionMeta newsdoc.DataMap, statusHeads map[string]Status,
+	d *newsdoc.Document, versionMeta newsdoc.DataMap, statusHeads map[string]StatusHead,
 ) (StatusRuleInput, error) {
 	input := StatusRuleInput{
 		Name:   name,
@@ -2100,7 +2094,7 @@ func (s *PGDocStore) UpdateStatus(
 			return fmt.Errorf("failed to update status: %w", err)
 		}
 
-		err = notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+		err = s.workflows.Publish(ctx, tx, WorkflowEvent{
 			Type: WorkflowEventTypeStatusChange,
 			Name: req.Name,
 		})
@@ -2153,7 +2147,7 @@ func (s *PGDocStore) UpdateStatusRule(
 			return fmt.Errorf("failed to update status rule: %w", err)
 		}
 
-		err = notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+		err = s.workflows.Publish(ctx, tx, WorkflowEvent{
 			Type:    WorkflowEventTypeStatusRuleChange,
 			DocType: rule.Type,
 			Name:    rule.Name,
@@ -2180,7 +2174,7 @@ func (s *PGDocStore) DeleteStatusRule(
 			return fmt.Errorf("failed to delete status rule: %w", err)
 		}
 
-		err = notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+		err = s.workflows.Publish(ctx, tx, WorkflowEvent{
 			Type:    WorkflowEventTypeStatusRuleChange,
 			DocType: docType,
 			Name:    name,
@@ -2269,7 +2263,7 @@ func (s *PGDocStore) SetDocumentWorkflow(
 			return fmt.Errorf("failed to update workflow: %w", err)
 		}
 
-		err = notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+		err = s.workflows.Publish(ctx, tx, WorkflowEvent{
 			Type:    WorkflowEventTypeWorkflowChange,
 			DocType: workflow.Type,
 		})
@@ -2297,7 +2291,7 @@ func (s *PGDocStore) DeleteDocumentWorkflow(
 			return nil
 		}
 
-		err = notifyWorkflowUpdated(ctx, s.logger, q, WorkflowEvent{
+		err = s.workflows.Publish(ctx, tx, WorkflowEvent{
 			Type:    WorkflowEventTypeWorkflowChange,
 			DocType: docType,
 		})
@@ -2611,7 +2605,7 @@ func (s *PGDocStore) RegisterSchema(
 		}
 
 		if req.Activate {
-			err = s.activateSchema(ctx, q, req.Name, req.Version)
+			err = s.activateSchema(ctx, tx, req.Name, req.Version)
 			if err != nil {
 				return fmt.Errorf(
 					"failed to activate schema version: %w", err)
@@ -2632,14 +2626,16 @@ func (s *PGDocStore) ActivateSchema(
 	ctx context.Context, name, version string,
 ) error {
 	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
-		return s.activateSchema(ctx, postgres.New(tx), name, version)
+		return s.activateSchema(ctx, tx, name, version)
 	})
 }
 
 // RegisterSchema implements DocStore.
 func (s *PGDocStore) activateSchema(
-	ctx context.Context, q *postgres.Queries, name, version string,
+	ctx context.Context, tx pgx.Tx, name, version string,
 ) error {
+	q := postgres.New(tx)
+
 	err := q.ActivateSchema(ctx, postgres.ActivateSchemaParams{
 		Name:    name,
 		Version: version,
@@ -2649,7 +2645,7 @@ func (s *PGDocStore) activateSchema(
 			"failed to activate schema version: %w", err)
 	}
 
-	err = notifySchemaUpdated(ctx, s.logger, q, SchemaEvent{
+	err = s.schemas.Publish(ctx, tx, SchemaEvent{
 		Type: SchemaEventTypeActivation,
 		Name: name,
 	})
@@ -2680,7 +2676,7 @@ func (s *PGDocStore) DeactivateSchema(
 		return fmt.Errorf("failed to remove active schema: %w", err)
 	}
 
-	err = notifySchemaUpdated(ctx, s.logger, q, SchemaEvent{
+	err = s.schemas.Publish(ctx, tx, SchemaEvent{
 		Type: SchemaEventTypeDeactivation,
 		Name: name,
 	})
@@ -2825,8 +2821,9 @@ func (s *PGDocStore) UpdateDeprecation(
 			return fmt.Errorf("failed to save deprecation to database: %w", err)
 		}
 
-		err = notifyDeprecationUpdated(ctx, s.logger, q,
-			DeprecationEvent{Label: deprecation.Label})
+		err = s.deprecations.Publish(ctx, tx, DeprecationEvent{
+			Label: deprecation.Label,
+		})
 		if err != nil {
 			return fmt.Errorf("failed to send deprecation update notification: %w", err)
 		}
@@ -3001,10 +2998,6 @@ func updateACL(
 	ctx context.Context, q *postgres.Queries, updater string,
 	docUUID uuid.UUID, docType string, language string, updateACL []ACLEntry,
 ) error {
-	if len(updateACL) == 0 {
-		return nil
-	}
-
 	// Batch ACL updates, ACLs with empty permissions are dropped
 	// immediately.
 	var acls []postgres.ACLUpdateParams
@@ -3140,4 +3133,24 @@ func (s *PGDocStore) UpdatePreflight(
 			Comment: info.LockComment.String,
 		},
 	}, nil
+}
+
+func addEventToOutbox(
+	ctx context.Context,
+	tx pgx.Tx,
+	evt postgres.OutboxEvent,
+) error {
+	q := postgres.New(tx)
+
+	id, err := q.AddEventToOutbox(ctx, evt)
+	if err != nil {
+		return fmt.Errorf("store event in outbox: %w", err)
+	}
+
+	err = pg.Publish(ctx, tx, NotifyEventOutbox, id)
+	if err != nil {
+		return fmt.Errorf("send outbox notification: %w", err)
+	}
+
+	return nil
 }

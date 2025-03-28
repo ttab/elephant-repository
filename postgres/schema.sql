@@ -181,6 +181,19 @@ CREATE TABLE public.active_schemas (
 
 
 --
+-- Name: attached_object; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.attached_object (
+    document uuid NOT NULL,
+    name text NOT NULL,
+    created_by text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    meta jsonb NOT NULL
+);
+
+
+--
 -- Name: delete_record; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -321,6 +334,30 @@ CREATE TABLE public.document_version (
     archived boolean DEFAULT false NOT NULL,
     signature text,
     language text
+);
+
+
+--
+-- Name: event_outbox_item; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.event_outbox_item (
+    id bigint NOT NULL,
+    event jsonb NOT NULL
+);
+
+
+--
+-- Name: event_outbox_item_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.event_outbox_item ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.event_outbox_item_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
 );
 
 
@@ -612,6 +649,19 @@ CREATE TABLE public.status_rule (
 
 
 --
+-- Name: upload; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.upload (
+    id uuid NOT NULL,
+    created_by text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    name text NOT NULL,
+    meta jsonb NOT NULL
+);
+
+
+--
 -- Name: workflow; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -665,6 +715,14 @@ ALTER TABLE ONLY public.acl
 
 ALTER TABLE ONLY public.active_schemas
     ADD CONSTRAINT active_schemas_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: attached_object attached_object_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attached_object
+    ADD CONSTRAINT attached_object_pkey PRIMARY KEY (document, name);
 
 
 --
@@ -737,6 +795,14 @@ ALTER TABLE ONLY public.document
 
 ALTER TABLE ONLY public.document_version
     ADD CONSTRAINT document_version_pkey PRIMARY KEY (uuid, version);
+
+
+--
+-- Name: event_outbox_item event_outbox_item_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.event_outbox_item
+    ADD CONSTRAINT event_outbox_item_pkey PRIMARY KEY (id);
 
 
 --
@@ -873,6 +939,14 @@ ALTER TABLE ONLY public.status
 
 ALTER TABLE ONLY public.status_rule
     ADD CONSTRAINT status_rule_pkey PRIMARY KEY (type, name);
+
+
+--
+-- Name: upload upload_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.upload
+    ADD CONSTRAINT upload_pkey PRIMARY KEY (id);
 
 
 --

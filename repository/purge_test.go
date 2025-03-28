@@ -33,8 +33,8 @@ func TestPurge(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver:   true,
-		RunReplicator: true,
+		RunArchiver:        true,
+		RunEventlogBuilder: true,
 	})
 
 	client := tc.DocumentsClient(t,
@@ -159,11 +159,7 @@ func TestPurge(t *testing.T) {
 
 	// Read the eventlog until we're reasonably sure that we're not
 	// generating surplus events.
-	for {
-		if time.Since(eventPollStarted) > 1*time.Second {
-			break
-		}
-
+	for time.Since(eventPollStarted) <= 1*time.Second {
 		res, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
 			After:  lastID,
 			WaitMs: 200,

@@ -17,3 +17,6 @@ sql:
         - column: "document_status.meta"
           go_type:
             type: "map[string]string"
+        - column: "event_outbox_item.event"
+          go_type:
+            type: "OutboxEvent"

@@ -372,7 +372,7 @@ type DocumentMeta struct {
 	UpdaterURI         string
 	CurrentVersion     int64
 	ACL                []ACLEntry
-	Statuses           map[string]Status
+	Statuses           map[string]StatusHead
 	SystemLock         SystemState
 	Lock               Lock
 	MainDocument       string
@@ -438,6 +438,16 @@ type Status struct {
 	Created        time.Time
 	Meta           newsdoc.DataMap
 	MetaDocVersion int64
+}
+
+type StatusHead struct {
+	ID             int64
+	Version        int64
+	Creator        string
+	Created        time.Time
+	Meta           newsdoc.DataMap
+	MetaDocVersion int64
+	Language       string
 }
 
 type StatusOverviewItem struct {

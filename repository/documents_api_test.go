@@ -62,8 +62,8 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver:   true,
-		RunReplicator: true,
+		RunArchiver:        true,
+		RunEventlogBuilder: true,
 	})
 
 	sseConn := tc.SSEConnect(t, []string{"firehose"},
@@ -334,36 +334,20 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 	}
 
 	t.Parallel()
+	ctx := t.Context()
 
+	regenerate := regenerateTestFixtures()
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	var expectedEvents int64
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver:   false,
-		RunReplicator: true,
+		RunArchiver:        false,
+		RunEventlogBuilder: true,
 	})
 
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
-
-	t.Run("NoLanguage", func(t *testing.T) {
-		doc := baseDocument(
-			"1d450529-fd98-4e4e-80c2-f70f9194737a",
-			"example://1d450529-fd98-4e4e-80c2-f70f9194737a",
-		)
-
-		doc.Language = ""
-
-		_, err := client.Update(t.Context(), &repository.UpdateRequest{
-			Uuid:     doc.Uuid,
-			Document: doc,
-		})
-		test.Must(t, err, "update a document without a language")
-
-		// Doc + ACL
-		expectedEvents += 2
-	})
 
 	t.Run("InvalidLanguage", func(t *testing.T) {
 		doc := baseDocument(
@@ -395,86 +379,92 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 		test.MustNot(t, err, "update a document with a malformed language code")
 	})
 
-	t.Run("LanguageAndRegion", func(t *testing.T) {
-		ctx := t.Context()
+	// Document without a language
 
-		doc := baseDocument(
-			"00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
-			"example://00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
-		)
+	nlDoc := baseDocument(
+		"1d450529-fd98-4e4e-80c2-f70f9194737a",
+		"example://1d450529-fd98-4e4e-80c2-f70f9194737a",
+	)
 
-		doc.Language = "en-GB"
+	nlDoc.Language = ""
 
-		info1, err := client.Update(ctx, &repository.UpdateRequest{
-			Uuid:     doc.Uuid,
-			Document: doc,
-		})
-		test.Must(t, err, "update a document with a valid language and region")
-		_, err = client.Update(ctx, &repository.UpdateRequest{
-			Uuid: doc.Uuid,
-			Status: []*repository.StatusUpdate{
-				{
-					Name:    "usable",
-					Version: info1.Version,
-				},
-			},
-		})
-		test.Must(t, err, "set version one as usable")
-
-		doc.Language = "en-US"
-
-		info2, err := client.Update(ctx, &repository.UpdateRequest{
-			Uuid:     doc.Uuid,
-			Document: doc,
-		})
-		test.Must(t, err, "update a document with a new language")
-
-		_, err = client.Update(ctx, &repository.UpdateRequest{
-			Uuid: doc.Uuid,
-			Status: []*repository.StatusUpdate{
-				{
-					Name:    "usable",
-					Version: info2.Version,
-				},
-			},
-		})
-		test.Must(t, err, "set version two as usable")
-
-		expectedEvents += 5
-
-		// Wait until the expected events have been registered.
-		_, err = client.Eventlog(ctx,
-			&repository.GetEventlogRequest{
-				After: expectedEvents - 1,
-			})
-		test.Must(t, err, "wait for eventlog")
-
-		log, err := client.Eventlog(ctx,
-			&repository.GetEventlogRequest{
-				After: -5,
-			})
-		test.Must(t, err, "get eventlog")
-		test.Equal(t, 5, len(log.Items),
-			"get the expected number of events")
-
-		var golden repository.GetEventlogResponse
-
-		err = elephantine.UnmarshalFile(
-			"testdata/TestIntegrationDocumentLanguage/eventlog.json",
-			&golden)
-		test.Must(t, err, "read golden file for expected eventlog items")
-
-		diff := cmp.Diff(&golden, log,
-			protocmp.Transform(),
-			cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
-				return k == timestampField ||
-					k == idField
-			}),
-		)
-		if diff != "" {
-			t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
-		}
+	_, err := client.Update(t.Context(), &repository.UpdateRequest{
+		Uuid:     nlDoc.Uuid,
+		Document: nlDoc,
 	})
+	test.Must(t, err, "update a document without a language")
+
+	// Doc + ACL
+	expectedEvents += 2
+
+	enDoc := baseDocument(
+		"00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
+		"example://00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
+	)
+
+	enDoc.Language = "en-GB"
+
+	info1, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     enDoc.Uuid,
+		Document: enDoc,
+	})
+	test.Must(t, err, "update a document with a valid language and region")
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: enDoc.Uuid,
+		Status: []*repository.StatusUpdate{
+			{
+				Name:    "usable",
+				Version: info1.Version,
+			},
+		},
+	})
+	test.Must(t, err, "set version one as usable")
+
+	enDoc.Language = "en-US"
+
+	info2, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     enDoc.Uuid,
+		Document: enDoc,
+	})
+	test.Must(t, err, "update a document with a new language")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: enDoc.Uuid,
+		Status: []*repository.StatusUpdate{
+			{
+				Name:    "usable",
+				Version: info2.Version,
+			},
+		},
+	})
+	test.Must(t, err, "set version two as usable")
+
+	expectedEvents += 5
+
+	// Wait until the expected events have been registered.
+	_, err = client.Eventlog(ctx,
+		&repository.GetEventlogRequest{
+			After: expectedEvents - 1,
+		})
+	test.Must(t, err, "wait for eventlog")
+
+	log, err := client.Eventlog(ctx,
+		&repository.GetEventlogRequest{
+			After: 0,
+		})
+	test.Must(t, err, "get eventlog")
+	test.Equal(t, int(expectedEvents), len(log.Items),
+		"get the expected number of events")
+
+	for i := range log.Items {
+		log.Items[i].Timestamp = ""
+	}
+
+	test.TestMessageAgainstGolden(t, regenerate, log,
+		"testdata/TestIntegrationDocumentLanguage/eventlog.json",
+		cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
+			return k == timestampField
+		}))
 }
 
 func TestDocumentsServiceMetaDocuments(t *testing.T) {
@@ -494,8 +484,8 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver:   true,
-		RunReplicator: true,
+		RunArchiver:        true,
+		RunEventlogBuilder: true,
 	})
 
 	ctx := t.Context()
@@ -871,8 +861,8 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver:   true,
-		RunReplicator: true,
+		RunArchiver:        true,
+		RunEventlogBuilder: true,
 	})
 
 	client := tc.DocumentsClient(t,
@@ -1021,7 +1011,7 @@ func TestIntegrationStatus(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunReplicator: true,
+		RunEventlogBuilder: true,
 	})
 
 	client := tc.DocumentsClient(t,
@@ -2075,7 +2065,7 @@ func TestUUIDNormalisation(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunReplicator: true,
+		RunEventlogBuilder: true,
 	})
 
 	client := tc.DocumentsClient(t,
