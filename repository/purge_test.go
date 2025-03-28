@@ -159,11 +159,7 @@ func TestPurge(t *testing.T) {
 
 	// Read the eventlog until we're reasonably sure that we're not
 	// generating surplus events.
-	for {
-		if time.Since(eventPollStarted) > 1*time.Second {
-			break
-		}
-
+	for time.Since(eventPollStarted) <= 1*time.Second {
 		res, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
 			After:  lastID,
 			WaitMs: 200,

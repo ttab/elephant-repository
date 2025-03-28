@@ -1,69 +1,82 @@
+version: "2"
 linters:
   enable:
-  - bodyclose
-  - copyloopvar
-  - dogsled
-  - dupl
-  - errcheck
-  - errorlint
-  - exhaustive
-  - forbidigo
-  - gci
-  - gochecknoinits
-  - goconst
-  - gocritic
-  - godot
-  - godox
-  - gofumpt
-  - goheader
-  - goimports
-  - gomoddirectives
-  - gomodguard
-  - goprintffuncname
-  - gosec
-  - gosimple
-  - govet
-  - importas
-  - ineffassign
-  - lll
-  - makezero
-  - misspell
-  - nakedret
-  - nestif
-  - nilnil
-  - nlreturn
-  - nolintlint
-  - predeclared
-  - promlinter
-  - revive
-  - staticcheck
-  - stylecheck
-  - testpackage
-  - thelper
-  - typecheck
-  - unconvert
-  - unparam
-  - unused
-  - usetesting
-  - whitespace
-  - wrapcheck
-  - wsl
-linters-settings:
-  wrapcheck:
-    ignoreSigs:
-      - .Errorf(
-      - errors.New(
-      - errors.Unwrap(
-      - errors.Join(
-      - .Wrap(
-      - .Wrapf(
-      - .WithMessage(
-      - .WithMessagef(
-      - .WithStack(
-      - .WithTX(
-  nestif:
-    min-complexity: 6
-  godox:
-    keywords:
-      - FIXME
-      - BUG
+    - bodyclose
+    - copyloopvar
+    - dogsled
+    - dupl
+    - errorlint
+    - exhaustive
+    - forbidigo
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - godot
+    - godox
+    - goheader
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - importas
+    - lll
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilnil
+    - nlreturn
+    - nolintlint
+    - predeclared
+    - promlinter
+    - revive
+    - staticcheck
+    - testpackage
+    - thelper
+    - unconvert
+    - unparam
+    - usetesting
+    - whitespace
+    - wrapcheck
+    - wsl
+  settings:
+    godox:
+      keywords:
+        - FIXME
+        - BUG
+    nestif:
+      min-complexity: 6
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - errors.Join(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .WithStack(
+        - .WithTX(
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

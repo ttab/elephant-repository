@@ -369,11 +369,7 @@ func testingAPIServer(
 		workflowDeadline := time.After(1 * time.Second)
 
 		// Wait until the workflow provider notices the change.
-		for {
-			if tc.WorkflowProvider.HasStatus("core/article", "approved") {
-				break
-			}
-
+		for !tc.WorkflowProvider.HasStatus("core/article", "approved") {
 			select {
 			case <-workflowDeadline:
 				t.Fatal("workflow didn't get updated in time")
