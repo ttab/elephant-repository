@@ -1032,7 +1032,7 @@ func (a *Archiver) processPurges(
 	}
 
 	err = q.FinishPurgeRequest(ctx, postgres.FinishPurgeRequestParams{
-		ID:       req.DeleteRecordID,
+		ID:       req.ID,
 		Finished: pg.Time(purgedTime),
 	})
 	if err != nil {
