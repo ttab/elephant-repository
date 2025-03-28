@@ -39,11 +39,6 @@ type DocumentsService struct {
 	defaultLanguage string
 }
 
-// CreateUpload implements repository.Documents.
-func (a *DocumentsService) CreateUpload(context.Context, *repository.CreateUploadRequest) (*repository.CreateUploadResponse, error) {
-	panic("unimplemented")
-}
-
 func NewDocumentsService(
 	store DocStore,
 	sched ScheduleStore,
@@ -2166,6 +2161,13 @@ func (a *DocumentsService) GetWithheld(
 	}
 
 	return &res, nil
+}
+
+// CreateUpload implements repository.Documents.
+func (a *DocumentsService) CreateUpload(
+	_ context.Context, _ *repository.CreateUploadRequest,
+) (*repository.CreateUploadResponse, error) {
+	panic("unimplemented")
 }
 
 func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {

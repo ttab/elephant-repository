@@ -996,11 +996,7 @@ func (s *PGDocStore) GetVersionHistory(
 
 	for _, status := range statuses {
 		// Find the version that the status applies to.
-		for {
-			if versions[versionIdx] == status.Version {
-				break
-			}
-
+		for versions[versionIdx] != status.Version {
 			versionIdx++
 
 			if versionIdx > len(versions) {

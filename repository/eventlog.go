@@ -29,14 +29,6 @@ const (
 	TypeWorkflow        EventType = "workflow"
 )
 
-const (
-	tableDocument      = "document"
-	tableStatusHeads   = "status_heads"
-	tableDeleteRecord  = "delete_record"
-	tableACLAudit      = "acl_audit"
-	tableWorkflowState = "workflow_state"
-)
-
 type Event struct {
 	ID                 int64      `json:"id"`
 	Event              EventType  `json:"event"`
@@ -137,7 +129,7 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 
 			params := postgres.InsertIntoEventLogParams{
 				ID:                 lastID + 1,
-				Event:              string(evt.Event),
+				Event:              evt.Event,
 				UUID:               evt.UUID,
 				Timestamp:          pg.Time(evt.Timestamp),
 				Updater:            pg.TextOrNull(evt.Updater),
@@ -175,7 +167,7 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return ctx.Err() //nolint: wrapcheck
 		case <-eb.outboxNotifications:
 		case <-timer.C:
 		}
