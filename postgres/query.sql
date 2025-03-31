@@ -20,7 +20,7 @@ WHERE uuid = $1;
 
 -- name: GetFullDocumentHeads :many
 SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
-       s.archived, s.signature, s.meta_doc_version
+       s.archived, s.signature, s.meta_doc_version, h.language
 FROM status_heads AS h
      INNER JOIN document_status AS s ON
            s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
@@ -635,16 +635,16 @@ DELETE FROM document_lock
 WHERE uuid = @uuid
   AND token = @token;  
 
--- name: InsertIntoEventLog :one
+-- name: InsertIntoEventLog :exec
 INSERT INTO eventlog(
-       event, uuid, type, timestamp, updater, version, status, status_id, acl,
+       id, event, uuid, type, timestamp, updater, version, status, status_id, acl,
        language, old_language, main_doc, system_state, workflow_state, workflow_checkpoint,
        main_doc_type
 ) VALUES (
-       @event, @uuid, @type, @timestamp, @updater, @version, @status, @status_id, @acl,
+       @id, @event, @uuid, @type, @timestamp, @updater, @version, @status, @status_id, @acl,
        @language, @old_language, @main_doc, @system_state, @workflow_state, @workflow_checkpoint,
        @main_doc_type
-) RETURNING id;
+);
 
 -- name: GetEventlog :many
 SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater,
@@ -954,3 +954,15 @@ WHERE ws.step = 'withheld'
       AND pa.publish < @before
       AND pa.publish > @cutoff;
 
+-- name: AddEventToOutbox :one
+INSERT INTO event_outbox_item(event)
+VALUES(@event)
+RETURNING id;
+
+-- name: DeleteOutboxEvent :exec
+DELETE FROM event_outbox_item WHERE id = @id;
+
+-- name: ReadEventOutbox :many
+SELECT id, event FROM event_outbox_item
+ORDER BY id ASC
+LIMIT 20;
