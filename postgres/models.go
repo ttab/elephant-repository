@@ -33,11 +33,21 @@ type ActiveSchema struct {
 }
 
 type AttachedObject struct {
-	Document  uuid.UUID
-	Name      string
-	CreatedBy string
-	CreatedAt pgtype.Timestamptz
-	Meta      []byte
+	Document      uuid.UUID
+	Name          string
+	Version       int64
+	ObjectVersion string
+	AttachedAt    int64
+	CreatedBy     string
+	CreatedAt     pgtype.Timestamptz
+	Meta          AssetMetadata
+}
+
+type AttachedObjectCurrent struct {
+	Document uuid.UUID
+	Name     string
+	Version  int64
+	Deleted  bool
 }
 
 type DeleteRecord struct {
@@ -151,6 +161,7 @@ type Eventlog struct {
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
+	Extra              EventlogExtra
 }
 
 type Eventsink struct {
@@ -290,8 +301,7 @@ type Upload struct {
 	ID        uuid.UUID
 	CreatedBy string
 	CreatedAt pgtype.Timestamptz
-	Name      string
-	Meta      []byte
+	Meta      AssetMetadata
 }
 
 type Workflow struct {

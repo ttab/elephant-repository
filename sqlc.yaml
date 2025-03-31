@@ -20,3 +20,12 @@ sql:
         - column: "event_outbox_item.event"
           go_type:
             type: "OutboxEvent"
+        - column: "upload.meta"
+          go_type:
+            type: "AssetMetadata"
+        - column: "attached_object.meta"
+          go_type:
+            type: "AssetMetadata"
+        - column: "eventlog.extra"
+          go_type:
+            type: "EventlogExtra"

@@ -117,7 +117,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	eventsGolden := filepath.Join("testdata", t.Name(), "events.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, events, eventsGolden,
-		ignoreCommonTimestamps())
+		test.IgnoreTimestamps{})
 
 	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docUUID,
@@ -127,7 +127,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	metaGolden := filepath.Join("testdata", t.Name(), "meta.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, meta, metaGolden,
-		ignoreCommonTimestamps())
+		test.IgnoreTimestamps{})
 }
 
 func ignoreCommonTimestamps() cmp.Option {

@@ -55,6 +55,7 @@ const (
 	ScopeDocumentWrite        = "doc_write"
 	ScopeMetaDocumentWriteAll = "meta_doc_write_all"
 	ScopeDocumentImport       = "doc_import"
+	ScopeAssetUpload          = "asset_upload"
 	ScopeEventlogRead         = "eventlog_read"
 	ScopeMetricsAdmin         = "metrics_admin"
 	ScopeMetricsWrite         = "metrics_write"

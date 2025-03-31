@@ -12,6 +12,7 @@ type BackendConfig struct {
 	ReportingDB       string
 	Eventsink         string
 	ArchiveBucket     string
+	AssetBucket       string
 	ReportBucket      string
 	S3Endpoint        string
 	S3KeyID           string
@@ -32,6 +33,7 @@ func BackendConfigFromContext(c *cli.Context, src elephantine.ParameterSource) (
 	cfg := BackendConfig{
 		Eventsink:         c.String("eventsink"),
 		ArchiveBucket:     c.String("archive-bucket"),
+		AssetBucket:       c.String("asset-bucket"),
 		ReportBucket:      c.String("report-bucket"),
 		NoArchiver:        c.Bool("no-archiver"),
 		NoEventsink:       c.Bool("no-eventsink"),

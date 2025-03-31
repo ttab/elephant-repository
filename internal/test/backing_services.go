@@ -11,6 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/tern/v2/migrate"
 	"github.com/ory/dockertest/v3"
@@ -30,6 +31,7 @@ var (
 type Environment struct {
 	S3           *s3.Client
 	Bucket       string
+	AssetBucket  string
 	PostgresURI  string
 	ReportingURI string
 	Migrator     *migrate.Migrator
@@ -67,6 +69,20 @@ func SetUpBackingServices(
 		Bucket: aws.String(bucket),
 	})
 	must(t, err, "create bucket")
+
+	assetBucket := bucket + "-assets"
+	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
+		Bucket: aws.String(assetBucket),
+	})
+	must(t, err, "create asset bucket")
+
+	_, err = s3Client.PutBucketVersioning(ctx, &s3.PutBucketVersioningInput{
+		Bucket: aws.String(assetBucket),
+		VersioningConfiguration: &types.VersioningConfiguration{
+			Status: types.BucketVersioningStatusEnabled,
+		},
+	})
+	must(t, err, "enable asset bucket versioning")
 
 	adminConn, err := pgx.Connect(ctx,
 		bs.getPostgresURI("elephant", "elephant"))
@@ -106,6 +122,7 @@ IN ROLE %[3]s`,
 	env := Environment{
 		S3:          s3Client,
 		Bucket:      bucket,
+		AssetBucket: assetBucket,
 		PostgresURI: bs.getPostgresURI(t.Name(), t.Name()),
 		ReportingURI: bs.getPostgresURI(
 			reportingUser, t.Name(),

@@ -47,6 +47,8 @@ type Event struct {
 	WorkflowStep       string     `json:"workflow_step,omitempty"`
 	WorkflowCheckpoint string     `json:"workflow_checkpoint,omitempty"`
 	MainDocumentType   string     `json:"main_document_type,omitempty"`
+	AttachedObjects    []string   `json:"attached_objects,omitempty"`
+	DetachedObjects    []string   `json:"detached_objects,omitempty"`
 }
 
 func NewEventlogBuilder(
@@ -144,6 +146,10 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 				SystemState:        pg.TextOrNull(evt.SystemState),
 				WorkflowState:      pg.TextOrNull(evt.WorkflowStep),
 				WorkflowCheckpoint: pg.TextOrNull(evt.WorkflowCheckpoint),
+				Extra: postgres.EventlogExtra{
+					AttachedObjects: evt.AttachedObjects,
+					DetachedObjects: evt.DetachedObjects,
+				},
 			}
 
 			if evt.ACL != nil {

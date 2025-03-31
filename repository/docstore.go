@@ -117,6 +117,20 @@ type DocStore interface {
 	Unlock(
 		ctx context.Context, uuid uuid.UUID, token string,
 	) error
+	CreateUpload(ctx context.Context, upload Upload) error
+}
+
+type Upload struct {
+	ID        uuid.UUID
+	CreatedBy string
+	CreatedAt time.Time
+	Meta      AssetMetadata
+}
+
+type AssetMetadata struct {
+	Filename string            `json:"filename"`
+	Mimetype string            `json:"mimetype"`
+	Props    map[string]string `json:"props"`
 }
 
 type SchemaStore interface {
@@ -332,6 +346,8 @@ type UpdateRequest struct {
 	LockToken       string
 	IfWorkflowState string
 	IfStatusHeads   map[string]int64
+	AttachObjects   map[string]Upload
+	DetachObjects   []string
 }
 
 type DeleteRequest struct {
@@ -378,6 +394,12 @@ type DocumentMeta struct {
 	MainDocument       string
 	WorkflowState      string
 	WorkflowCheckpoint string
+	Attachments        []AttachmentRef
+}
+
+type AttachmentRef struct {
+	Name    string
+	Version int64
 }
 
 type ACLEntry struct {

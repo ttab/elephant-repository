@@ -38,6 +38,41 @@ func (q *Queries) ActivateSchema(ctx context.Context, arg ActivateSchemaParams) 
 	return err
 }
 
+const addAttachedObject = `-- name: AddAttachedObject :exec
+INSERT INTO attached_object(
+       document, name, version, object_version, attached_at,
+       created_by, created_at, meta
+) VALUES (
+       $1, $2, $3, $4, $5,
+       $6, $7, $8
+)
+`
+
+type AddAttachedObjectParams struct {
+	Document      uuid.UUID
+	Name          string
+	Version       int64
+	ObjectVersion string
+	AttachedAt    int64
+	CreatedBy     string
+	CreatedAt     pgtype.Timestamptz
+	Meta          AssetMetadata
+}
+
+func (q *Queries) AddAttachedObject(ctx context.Context, arg AddAttachedObjectParams) error {
+	_, err := q.db.Exec(ctx, addAttachedObject,
+		arg.Document,
+		arg.Name,
+		arg.Version,
+		arg.ObjectVersion,
+		arg.AttachedAt,
+		arg.CreatedBy,
+		arg.CreatedAt,
+		arg.Meta,
+	)
+	return err
+}
+
 const addEventToOutbox = `-- name: AddEventToOutbox :one
 INSERT INTO event_outbox_item(event)
 VALUES($1)
@@ -131,6 +166,30 @@ func (q *Queries) BulkGetDocumentData(ctx context.Context, arg BulkGetDocumentDa
 		return nil, err
 	}
 	return items, nil
+}
+
+const changeAttachedObjectVersion = `-- name: ChangeAttachedObjectVersion :exec
+UPDATE attached_object SET object_version = $1
+WHERE document = $2
+      AND name = $3
+      AND version = $4
+`
+
+type ChangeAttachedObjectVersionParams struct {
+	ObjectVersion string
+	Document      uuid.UUID
+	Name          string
+	Version       int64
+}
+
+func (q *Queries) ChangeAttachedObjectVersion(ctx context.Context, arg ChangeAttachedObjectVersionParams) error {
+	_, err := q.db.Exec(ctx, changeAttachedObjectVersion,
+		arg.ObjectVersion,
+		arg.Document,
+		arg.Name,
+		arg.Version,
+	)
+	return err
 }
 
 const changeWorkflowState = `-- name: ChangeWorkflowState :exec
@@ -386,6 +445,28 @@ func (q *Queries) CreateStatusHead(ctx context.Context, arg CreateStatusHeadPara
 		arg.CreatorUri,
 		arg.Language,
 		arg.SystemState,
+	)
+	return err
+}
+
+const createUpload = `-- name: CreateUpload :exec
+INSERT INTO upload(id, created_at, created_by, meta)
+VALUES ($1, $2, $3, $4)
+`
+
+type CreateUploadParams struct {
+	ID        uuid.UUID
+	CreatedAt pgtype.Timestamptz
+	CreatedBy string
+	Meta      AssetMetadata
+}
+
+func (q *Queries) CreateUpload(ctx context.Context, arg CreateUploadParams) error {
+	_, err := q.db.Exec(ctx, createUpload,
+		arg.ID,
+		arg.CreatedAt,
+		arg.CreatedBy,
+		arg.Meta,
 	)
 	return err
 }
@@ -687,17 +768,103 @@ func (q *Queries) GetActiveStatuses(ctx context.Context, type_ pgtype.Text) ([]G
 	return items, nil
 }
 
+const getAttachedObject = `-- name: GetAttachedObject :one
+SELECT
+        o.document,
+        o.name,
+        o.version,
+        o.object_version,
+        o.attached_at,
+        o.created_by,
+        o.created_at,
+        o.meta,
+        c.deleted
+FROM attached_object_current AS c
+     INNER JOIN attached_object AS o ON
+           o.document = c.document
+           AND o.name = c.name
+           AND o.version = c.version
+WHERE c.document = $1
+      AND c.name = $2
+`
+
+type GetAttachedObjectParams struct {
+	Document uuid.UUID
+	Name     string
+}
+
+type GetAttachedObjectRow struct {
+	Document      uuid.UUID
+	Name          string
+	Version       int64
+	ObjectVersion string
+	AttachedAt    int64
+	CreatedBy     string
+	CreatedAt     pgtype.Timestamptz
+	Meta          AssetMetadata
+	Deleted       bool
+}
+
+func (q *Queries) GetAttachedObject(ctx context.Context, arg GetAttachedObjectParams) (GetAttachedObjectRow, error) {
+	row := q.db.QueryRow(ctx, getAttachedObject, arg.Document, arg.Name)
+	var i GetAttachedObjectRow
+	err := row.Scan(
+		&i.Document,
+		&i.Name,
+		&i.Version,
+		&i.ObjectVersion,
+		&i.AttachedAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.Meta,
+		&i.Deleted,
+	)
+	return i, err
+}
+
+const getAttachments = `-- name: GetAttachments :many
+SELECT name, version FROM attached_object_current
+WHERE document = $1
+      AND deleted = false
+`
+
+type GetAttachmentsRow struct {
+	Name    string
+	Version int64
+}
+
+func (q *Queries) GetAttachments(ctx context.Context, document uuid.UUID) ([]GetAttachmentsRow, error) {
+	rows, err := q.db.Query(ctx, getAttachments, document)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAttachmentsRow
+	for rows.Next() {
+		var i GetAttachmentsRow
+		if err := rows.Scan(&i.Name, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCompactedEventlog = `-- name: GetCompactedEventlog :many
 SELECT
         w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
         w.status_id, w.acl, w.updater, w.language, w.old_language, w.main_doc,
-        w.system_state, workflow_state, workflow_checkpoint, main_doc_type
+        w.system_state, workflow_state, workflow_checkpoint, main_doc_type,
+        extra
 FROM (
      SELECT DISTINCT ON (
             e.uuid,
             CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END,
             CASE WHEN NOT e.old_language IS NULL THEN null ELSE 0 END
-       ) id, event, uuid, timestamp, type, version, status, status_id, acl, updater, main_doc, language, old_language, system_state, workflow_state, workflow_checkpoint, main_doc_type FROM eventlog AS e
+       ) id, event, uuid, timestamp, type, version, status, status_id, acl, updater, main_doc, language, old_language, system_state, workflow_state, workflow_checkpoint, main_doc_type, extra FROM eventlog AS e
      WHERE e.id > $1 AND e.id <= $2
      AND ($3::text IS NULL OR e.type = $3)
      ORDER BY
@@ -736,6 +903,7 @@ type GetCompactedEventlogRow struct {
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
+	Extra              EventlogExtra
 }
 
 func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEventlogParams) ([]GetCompactedEventlogRow, error) {
@@ -771,6 +939,7 @@ func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEven
 			&i.WorkflowState,
 			&i.WorkflowCheckpoint,
 			&i.MainDocType,
+			&i.Extra,
 		); err != nil {
 			return nil, err
 		}
@@ -1492,7 +1661,7 @@ func (q *Queries) GetEnforcedDeprecations(ctx context.Context) ([]string, error)
 const getEventlog = `-- name: GetEventlog :many
 SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater,
        language, old_language, main_doc, system_state,
-       workflow_state, workflow_checkpoint, main_doc_type
+       workflow_state, workflow_checkpoint, main_doc_type, extra
 FROM eventlog
 WHERE id > $1
 ORDER BY id ASC
@@ -1522,6 +1691,7 @@ type GetEventlogRow struct {
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
+	Extra              EventlogExtra
 }
 
 func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]GetEventlogRow, error) {
@@ -1551,6 +1721,7 @@ func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]Get
 			&i.WorkflowState,
 			&i.WorkflowCheckpoint,
 			&i.MainDocType,
+			&i.Extra,
 		); err != nil {
 			return nil, err
 		}
@@ -1748,7 +1919,8 @@ func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, e
 
 const getLastEvent = `-- name: GetLastEvent :one
 SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl,
-       language, old_language, main_doc, workflow_state, workflow_checkpoint, main_doc_type
+       language, old_language, main_doc, workflow_state, workflow_checkpoint, main_doc_type,
+       extra
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1
@@ -1771,6 +1943,7 @@ type GetLastEventRow struct {
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
+	Extra              EventlogExtra
 }
 
 func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
@@ -1793,6 +1966,7 @@ func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
 		&i.WorkflowState,
 		&i.WorkflowCheckpoint,
 		&i.MainDocType,
+		&i.Extra,
 	)
 	return i, err
 }
@@ -2508,6 +2682,30 @@ func (q *Queries) GetTypeOfDocument(ctx context.Context, argUuid uuid.UUID) (str
 	return type_, err
 }
 
+const getUpload = `-- name: GetUpload :one
+SELECT id, created_at, created_by, meta
+FROM upload WHERE id = $1
+`
+
+type GetUploadRow struct {
+	ID        uuid.UUID
+	CreatedAt pgtype.Timestamptz
+	CreatedBy string
+	Meta      AssetMetadata
+}
+
+func (q *Queries) GetUpload(ctx context.Context, id uuid.UUID) (GetUploadRow, error) {
+	row := q.db.QueryRow(ctx, getUpload, id)
+	var i GetUploadRow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.CreatedBy,
+		&i.Meta,
+	)
+	return i, err
+}
+
 const getVersion = `-- name: GetVersion :one
 SELECT created, creator_uri, meta, archived
 FROM document_version
@@ -2887,11 +3085,11 @@ const insertIntoEventLog = `-- name: InsertIntoEventLog :exec
 INSERT INTO eventlog(
        id, event, uuid, type, timestamp, updater, version, status, status_id, acl,
        language, old_language, main_doc, system_state, workflow_state, workflow_checkpoint,
-       main_doc_type
+       main_doc_type, extra
 ) VALUES (
        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
        $11, $12, $13, $14, $15, $16,
-       $17
+       $17, $18
 )
 `
 
@@ -2913,6 +3111,7 @@ type InsertIntoEventLogParams struct {
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
+	Extra              EventlogExtra
 }
 
 func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLogParams) error {
@@ -2934,6 +3133,7 @@ func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLog
 		arg.WorkflowState,
 		arg.WorkflowCheckpoint,
 		arg.MainDocType,
+		arg.Extra,
 	)
 	return err
 }
@@ -3314,6 +3514,33 @@ func (q *Queries) ReleaseJobLock(ctx context.Context, arg ReleaseJobLockParams) 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const setCurrentAttachedObject = `-- name: SetCurrentAttachedObject :exec
+INSERT INTO attached_object_current(
+       document, name, version, deleted
+) VALUES (
+       $1, $2, $3, $4
+) ON CONFLICT (document, name) DO UPDATE SET
+       version = excluded.version,
+       deleted = excluded.deleted
+`
+
+type SetCurrentAttachedObjectParams struct {
+	Document uuid.UUID
+	Name     string
+	Version  int64
+	Deleted  bool
+}
+
+func (q *Queries) SetCurrentAttachedObject(ctx context.Context, arg SetCurrentAttachedObjectParams) error {
+	_, err := q.db.Exec(ctx, setCurrentAttachedObject,
+		arg.Document,
+		arg.Name,
+		arg.Version,
+		arg.Deleted,
+	)
+	return err
 }
 
 const setDocumentStatusAsArchived = `-- name: SetDocumentStatusAsArchived :exec

@@ -92,6 +92,11 @@ func main() {
 				EnvVars: []string{"ARCHIVE_BUCKET"},
 			},
 			&cli.StringFlag{
+				Name:    "asset-bucket",
+				Value:   "elephant-assets",
+				EnvVars: []string{"ASSET_BUCKET"},
+			},
+			&cli.StringFlag{
 				Name:    "s3-endpoint",
 				Usage:   "Override the S3 endpoint for use with Minio",
 				EnvVars: []string{"S3_ENDPOINT"},
@@ -208,11 +213,14 @@ func runServer(c *cli.Context) error {
 			"failed to instrument S3 HTTP client: %w", err)
 	}
 
-	s3Client, err := repository.S3Client(c.Context, conf.S3Options)
+	s3Client, err := repository.S3Client(c.Context, s3Conf)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to create S3 client: %w", err)
 	}
+
+	presignClient := s3.NewPresignClient(s3Client,
+		s3.WithPresignExpires(15*time.Minute))
 
 	dbpool, err := pgxpool.New(c.Context, conf.DB)
 	if err != nil {
@@ -229,8 +237,12 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
+	assets := repository.NewAssetBucket(
+		logger, presignClient,
+		s3Client, conf.AssetBucket)
+
 	store, err := repository.NewPGDocStore(
-		logger, dbpool, repository.PGDocStoreOptions{})
+		logger, dbpool, assets, repository.PGDocStoreOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
@@ -307,6 +319,7 @@ func runServer(c *cli.Context) error {
 		repository.NewSchedulePGStore(dbpool),
 		validator,
 		workflows,
+		assets,
 		defaultLanguage,
 	)
 

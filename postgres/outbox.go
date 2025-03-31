@@ -24,9 +24,16 @@ type OutboxEvent struct {
 	WorkflowCheckpoint string     `json:"workflow_checkpoint,omitempty"`
 	MainDocumentType   string     `json:"main_document_type,omitempty"`
 	MetaDocVersion     int64      `json:"meta_doc_version,omitempty"`
+	AttachedObjects    []string   `json:"attached_objects,omitempty"`
+	DetachedObjects    []string   `json:"detached_objects,omitempty"`
 }
 
 type ACLEntry struct {
 	URI         string   `json:"uri"`
 	Permissions []string `json:"permissions"`
+}
+
+type EventlogExtra struct {
+	AttachedObjects []string `json:"attached_objects,omitempty"`
+	DetachedObjects []string `json:"detached_objects,omitempty"`
 }
