@@ -2279,7 +2279,7 @@ func (a *DocumentsService) CreateUpload(
 
 // GetAttachments implements repository.Documents.
 func (a *DocumentsService) GetAttachments(
-	ctx context.Context, req *repository.GetAttachmentsRequest,
+	_ context.Context, _ *repository.GetAttachmentsRequest,
 ) (*repository.GetAttachmentsResponse, error) {
 	panic("unimplemented")
 }

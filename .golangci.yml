@@ -58,6 +58,7 @@ linters:
         - .WithMessagef(
         - .WithStack(
         - .WithTX(
+        - elephantine.InvalidArgumentf(
   exclusions:
     generated: lax
     presets:

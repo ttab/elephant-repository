@@ -1619,9 +1619,8 @@ func (s *PGDocStore) Update(
 				evt.AttachedObjects = append(evt.AttachedObjects, name)
 			}
 
-			for _, name := range state.Request.DetachObjects {
-				evt.DetachedObjects = append(evt.DetachedObjects, name)
-			}
+			evt.DetachedObjects = append(evt.DetachedObjects,
+				state.Request.DetachObjects...)
 
 			// Queue up the document version event for the eventlog.
 			evts = append(evts, evt)

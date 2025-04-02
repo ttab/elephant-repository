@@ -20,8 +20,6 @@ func NewAssetBucket(
 	client *s3.Client,
 	name string,
 ) *AssetBucket {
-	println("ab conf witj", name)
-
 	return &AssetBucket{
 		log:     log,
 		presign: presign,
