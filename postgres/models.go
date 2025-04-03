@@ -162,7 +162,7 @@ type Eventlog struct {
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
-	Extra              EventlogExtra
+	Extra              *EventlogExtra
 }
 
 type Eventsink struct {

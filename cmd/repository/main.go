@@ -650,10 +650,11 @@ func startArchiver(
 	}
 
 	archiver, err := repository.NewArchiver(repository.ArchiverOptions{
-		Logger: logger,
-		S3:     aS3,
-		Bucket: conf.ArchiveBucket,
-		DB:     dbpool,
+		Logger:      logger,
+		S3:          aS3,
+		Bucket:      conf.ArchiveBucket,
+		AssetBucket: conf.AssetBucket,
+		DB:          dbpool,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create archiver: %w", err)

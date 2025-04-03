@@ -147,7 +147,7 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 				SystemState:        pg.TextOrNull(evt.SystemState),
 				WorkflowState:      pg.TextOrNull(evt.WorkflowStep),
 				WorkflowCheckpoint: pg.TextOrNull(evt.WorkflowCheckpoint),
-				Extra: postgres.EventlogExtra{
+				Extra: &postgres.EventlogExtra{
 					AttachedObjects: evt.AttachedObjects,
 					DetachedObjects: evt.DetachedObjects,
 					DeleteRecordID:  evt.DeleteRecordID,

@@ -28,7 +28,7 @@ sql:
             type: "AssetMetadata"
         - column: "eventlog.extra"
           go_type:
-            type: "EventlogExtra"
+            type: "*EventlogExtra"
         - column: "delete_record.attachments"
           go_type:
             type: "[]AttachedObject"

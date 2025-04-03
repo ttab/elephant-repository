@@ -814,9 +814,13 @@ func (s *PGDocStore) GetEventlog(
 			SystemState:        res[i].SystemState.String,
 			WorkflowStep:       res[i].WorkflowState.String,
 			WorkflowCheckpoint: res[i].WorkflowCheckpoint.String,
-			AttachedObjects:    res[i].Extra.AttachedObjects,
-			DetachedObjects:    res[i].Extra.DetachedObjects,
-			DeleteRecordID:     res[i].Extra.DeleteRecordID,
+		}
+
+		extra := res[i].Extra
+		if extra != nil {
+			e.AttachedObjects = extra.AttachedObjects
+			e.DetachedObjects = extra.DetachedObjects
+			e.DeleteRecordID = extra.DeleteRecordID
 		}
 
 		if res[i].Acl != nil {
@@ -876,9 +880,13 @@ func (s *PGDocStore) GetCompactedEventlog(
 			SystemState:        res[i].SystemState.String,
 			WorkflowStep:       res[i].WorkflowState.String,
 			WorkflowCheckpoint: res[i].WorkflowCheckpoint.String,
-			AttachedObjects:    res[i].Extra.AttachedObjects,
-			DetachedObjects:    res[i].Extra.DetachedObjects,
-			DeleteRecordID:     res[i].Extra.DeleteRecordID,
+		}
+
+		extra := res[i].Extra
+		if extra != nil {
+			e.AttachedObjects = extra.AttachedObjects
+			e.DetachedObjects = extra.DetachedObjects
+			e.DeleteRecordID = extra.DeleteRecordID
 		}
 
 		if res[i].Acl != nil {

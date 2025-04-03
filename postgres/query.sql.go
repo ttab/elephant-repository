@@ -956,7 +956,7 @@ type GetCompactedEventlogRow struct {
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
-	Extra              EventlogExtra
+	Extra              *EventlogExtra
 }
 
 func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEventlogParams) ([]GetCompactedEventlogRow, error) {
@@ -1797,7 +1797,7 @@ type GetEventlogRow struct {
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
-	Extra              EventlogExtra
+	Extra              *EventlogExtra
 }
 
 func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]GetEventlogRow, error) {
@@ -2049,7 +2049,7 @@ type GetLastEventRow struct {
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
-	Extra              EventlogExtra
+	Extra              *EventlogExtra
 }
 
 func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
@@ -3221,7 +3221,7 @@ type InsertIntoEventLogParams struct {
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
-	Extra              EventlogExtra
+	Extra              *EventlogExtra
 }
 
 func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLogParams) error {
