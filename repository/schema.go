@@ -11,7 +11,7 @@ import (
 
 func EnsureCoreSchema(ctx context.Context, store SchemaStore) error {
 	core, err := revisor.DecodeConstraintSetsFS(revisorschemas.Files(),
-		"core.json", "core-planning.json")
+		"core.json", "core-metadoc.json", "core-planning.json")
 	if err != nil {
 		return fmt.Errorf("invalid embedded core schemas: %w", err)
 	}
