@@ -63,10 +63,11 @@ type DeleteRecord struct {
 	Language      pgtype.Text
 	MetaDocRecord pgtype.Int8
 	Finalised     pgtype.Timestamptz
-	Acl           []byte
-	Heads         []byte
+	Acl           []ACLEntry
+	Heads         map[string]int64
 	Purged        pgtype.Timestamptz
 	MainDocType   pgtype.Text
+	Attachments   []AttachedObject
 }
 
 type Deprecation struct {

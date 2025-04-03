@@ -118,6 +118,12 @@ type DocStore interface {
 		ctx context.Context, uuid uuid.UUID, token string,
 	) error
 	CreateUpload(ctx context.Context, upload Upload) error
+	GetAttachments(
+		ctx context.Context,
+		documents []uuid.UUID,
+		attachment string,
+		getDownloadLink bool,
+	) ([]AttachmentDetails, error)
 }
 
 type Upload struct {
@@ -125,6 +131,15 @@ type Upload struct {
 	CreatedBy string
 	CreatedAt time.Time
 	Meta      AssetMetadata
+}
+
+type AttachmentDetails struct {
+	Document     uuid.UUID
+	Name         string
+	Version      int64
+	DownloadLink string
+	Filename     string
+	ContentType  string
 }
 
 type AssetMetadata struct {

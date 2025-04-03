@@ -26,6 +26,7 @@ type OutboxEvent struct {
 	MetaDocVersion     int64      `json:"meta_doc_version,omitempty"`
 	AttachedObjects    []string   `json:"attached_objects,omitempty"`
 	DetachedObjects    []string   `json:"detached_objects,omitempty"`
+	DeleteRecordID     int64      `json:"delete_record_id,omitempty"`
 }
 
 type ACLEntry struct {
@@ -36,4 +37,5 @@ type ACLEntry struct {
 type EventlogExtra struct {
 	AttachedObjects []string `json:"attached_objects,omitempty"`
 	DetachedObjects []string `json:"detached_objects,omitempty"`
+	DeleteRecordID  int64    `json:"delete_record_id,omitempty"`
 }

@@ -285,7 +285,7 @@ func (s *PGDocStore) Delete(
 		mdr, err := s.insertDeleteRecord(
 			ctx, tx, q, req.Updated, req.Updater,
 			metaUUID, metaInfo,
-			metaJSON, 0, nil,
+			metaJSON, 0, nil, nil,
 		)
 		if err != nil {
 			return fmt.Errorf(
@@ -300,10 +300,15 @@ func (s *PGDocStore) Delete(
 		return fmt.Errorf("get ACLs for archiving: %w", err)
 	}
 
+	attachments, err := q.GetDocumentAttachmentDetails(ctx, req.UUID)
+	if err != nil {
+		return fmt.Errorf("get attachment info for archiving: %w", err)
+	}
+
 	_, err = s.insertDeleteRecord(
 		ctx, tx, q, req.Updated, req.Updater,
 		req.UUID, mainInfo,
-		metaJSON, metaDocRecord, acl,
+		metaJSON, metaDocRecord, acl, attachments,
 	)
 	if err != nil {
 		return fmt.Errorf(
@@ -326,6 +331,7 @@ func (s *PGDocStore) insertDeleteRecord(
 	metaJSON []byte,
 	metaDocRecord int64,
 	acls []ACLEntry,
+	attachments []postgres.AttachedObject,
 ) (int64, error) {
 	heads, err := q.GetDocumentHeads(ctx, id)
 	if err != nil {
@@ -338,14 +344,13 @@ func (s *PGDocStore) insertDeleteRecord(
 		statusHeads[h.Name] = h.CurrentID
 	}
 
-	headsData, err := json.Marshal(statusHeads)
-	if err != nil {
-		return 0, fmt.Errorf("marshal document heads: %w", err)
-	}
+	aclEntries := make([]postgres.ACLEntry, len(acls))
 
-	aclData, err := json.Marshal(acls)
-	if err != nil {
-		return 0, fmt.Errorf("marshal ACL data: %w", err)
+	for i := range acls {
+		aclEntries[i] = postgres.ACLEntry{
+			URI:         acls[i].URI,
+			Permissions: acls[i].Permissions,
+		}
 	}
 
 	recordID, err := q.InsertDeleteRecord(ctx,
@@ -361,8 +366,9 @@ func (s *PGDocStore) insertDeleteRecord(
 			MainDocType:   pg.TextOrNull(pf.MainDocType),
 			MetaDocRecord: pg.BigintOrNull(metaDocRecord),
 			Language:      pg.Text(pf.Language),
-			Heads:         headsData,
-			Acl:           aclData,
+			Heads:         statusHeads,
+			Acl:           aclEntries,
+			Attachments:   attachments,
 		})
 	if err != nil {
 		return 0, fmt.Errorf("create delete record: %w", err)
@@ -378,7 +384,7 @@ func (s *PGDocStore) insertDeleteRecord(
 		MainDocument:     pf.MainDoc,
 		MainDocumentType: pf.MainDocType,
 		Language:         pf.Language,
-		// TODO: add delete record ID?
+		DeleteRecordID:   recordID,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("add delete event to outbox: %w", err)
@@ -810,6 +816,7 @@ func (s *PGDocStore) GetEventlog(
 			WorkflowCheckpoint: res[i].WorkflowCheckpoint.String,
 			AttachedObjects:    res[i].Extra.AttachedObjects,
 			DetachedObjects:    res[i].Extra.DetachedObjects,
+			DeleteRecordID:     res[i].Extra.DeleteRecordID,
 		}
 
 		if res[i].Acl != nil {
@@ -871,6 +878,7 @@ func (s *PGDocStore) GetCompactedEventlog(
 			WorkflowCheckpoint: res[i].WorkflowCheckpoint.String,
 			AttachedObjects:    res[i].Extra.AttachedObjects,
 			DetachedObjects:    res[i].Extra.DetachedObjects,
+			DeleteRecordID:     res[i].Extra.DeleteRecordID,
 		}
 
 		if res[i].Acl != nil {
@@ -2189,6 +2197,51 @@ func (s *PGDocStore) CreateUpload(
 	}
 
 	return nil
+}
+
+// GetAttachments implements DocStore.
+func (s *PGDocStore) GetAttachments(
+	ctx context.Context,
+	documents []uuid.UUID,
+	attachment string,
+	getDownloadLink bool,
+) ([]AttachmentDetails, error) {
+	rows, err := s.reader.GetAttachmentsForDocuments(ctx,
+		postgres.GetAttachmentsForDocumentsParams{
+			Documents: documents,
+			Name:      attachment,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("read from database: %w", err)
+	}
+
+	res := make([]AttachmentDetails, len(rows))
+
+	for i := range rows {
+		var dlLink string
+
+		if getDownloadLink {
+			l, err := s.assets.CreateDownloadURL(ctx,
+				rows[i].Document,
+				rows[i].Name)
+			if err != nil {
+				return nil, fmt.Errorf("create download link: %w", err)
+			}
+
+			dlLink = l
+		}
+
+		res[i] = AttachmentDetails{
+			Document:     rows[i].Document,
+			Name:         rows[i].Name,
+			Version:      rows[i].Version,
+			DownloadLink: dlLink,
+			Filename:     rows[i].Meta.Filename,
+			ContentType:  rows[i].Meta.Mimetype,
+		}
+	}
+
+	return res, nil
 }
 
 func pointer[T any](v T) *T {

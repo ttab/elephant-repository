@@ -853,6 +853,59 @@ func (q *Queries) GetAttachments(ctx context.Context, document uuid.UUID) ([]Get
 	return items, nil
 }
 
+const getAttachmentsForDocuments = `-- name: GetAttachmentsForDocuments :many
+SELECT
+        o.document,
+        o.name,
+        o.version,
+        o.meta
+FROM attached_object_current AS c
+     INNER JOIN attached_object AS o ON
+           o.document = c.document
+           AND o.name = c.name
+           AND o.version = c.version
+WHERE c.document = ANY($1::uuid[])
+      AND c.name = $2
+      AND c.deleted = false
+`
+
+type GetAttachmentsForDocumentsParams struct {
+	Documents []uuid.UUID
+	Name      string
+}
+
+type GetAttachmentsForDocumentsRow struct {
+	Document uuid.UUID
+	Name     string
+	Version  int64
+	Meta     AssetMetadata
+}
+
+func (q *Queries) GetAttachmentsForDocuments(ctx context.Context, arg GetAttachmentsForDocumentsParams) ([]GetAttachmentsForDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, getAttachmentsForDocuments, arg.Documents, arg.Name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAttachmentsForDocumentsRow
+	for rows.Next() {
+		var i GetAttachmentsForDocumentsRow
+		if err := rows.Scan(
+			&i.Document,
+			&i.Name,
+			&i.Version,
+			&i.Meta,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCompactedEventlog = `-- name: GetCompactedEventlog :many
 SELECT
         w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
@@ -1100,7 +1153,8 @@ func (q *Queries) GetDelayedScheduledCount(ctx context.Context, arg GetDelayedSc
 
 const getDeleteRecordForUpdate = `-- name: GetDeleteRecordForUpdate :one
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads, finalised, purged
+       main_doc, language, meta_doc_record, heads, finalised, purged,
+       attachments
 FROM delete_record
 WHERE id = $1 AND uuid = $2
 FOR UPDATE
@@ -1123,9 +1177,10 @@ type GetDeleteRecordForUpdateRow struct {
 	MainDoc       pgtype.UUID
 	Language      pgtype.Text
 	MetaDocRecord pgtype.Int8
-	Heads         []byte
+	Heads         map[string]int64
 	Finalised     pgtype.Timestamptz
 	Purged        pgtype.Timestamptz
+	Attachments   []AttachedObject
 }
 
 func (q *Queries) GetDeleteRecordForUpdate(ctx context.Context, arg GetDeleteRecordForUpdateParams) (GetDeleteRecordForUpdateRow, error) {
@@ -1146,6 +1201,7 @@ func (q *Queries) GetDeleteRecordForUpdate(ctx context.Context, arg GetDeleteRec
 		&i.Heads,
 		&i.Finalised,
 		&i.Purged,
+		&i.Attachments,
 	)
 	return i, err
 }
@@ -1200,6 +1256,54 @@ func (q *Queries) GetDocumentACL(ctx context.Context, argUuid uuid.UUID) ([]Acl,
 	return items, nil
 }
 
+const getDocumentAttachmentDetails = `-- name: GetDocumentAttachmentDetails :many
+SELECT
+        o.document,
+        o.name,
+        o.version,
+        o.object_version,
+        o.attached_at,
+        o.created_by,
+        o.created_at,
+        o.meta
+FROM attached_object_current AS c
+     INNER JOIN attached_object AS o ON
+           o.document = c.document
+           AND o.name = c.name
+           AND o.version = c.version
+WHERE c.document = $1
+      AND c.deleted = false
+`
+
+func (q *Queries) GetDocumentAttachmentDetails(ctx context.Context, document uuid.UUID) ([]AttachedObject, error) {
+	rows, err := q.db.Query(ctx, getDocumentAttachmentDetails, document)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AttachedObject
+	for rows.Next() {
+		var i AttachedObject
+		if err := rows.Scan(
+			&i.Document,
+			&i.Name,
+			&i.Version,
+			&i.ObjectVersion,
+			&i.AttachedAt,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.Meta,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDocumentData = `-- name: GetDocumentData :one
 SELECT v.document_data, v.version
 FROM document as d
@@ -1221,7 +1325,7 @@ func (q *Queries) GetDocumentData(ctx context.Context, argUuid uuid.UUID) (GetDo
 }
 
 const getDocumentForDeletion = `-- name: GetDocumentForDeletion :one
-SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.version
+SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.version, dr.attachments
 FROM delete_record AS dr
 WHERE dr.finalised IS NULL
 ORDER BY dr.created
@@ -1230,11 +1334,12 @@ LIMIT 1
 `
 
 type GetDocumentForDeletionRow struct {
-	ID      int64
-	UUID    uuid.UUID
-	Heads   []byte
-	Acl     []byte
-	Version int64
+	ID          int64
+	UUID        uuid.UUID
+	Heads       map[string]int64
+	Acl         []ACLEntry
+	Version     int64
+	Attachments []AttachedObject
 }
 
 func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDeletionRow, error) {
@@ -1246,6 +1351,7 @@ func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDel
 		&i.Heads,
 		&i.Acl,
 		&i.Version,
+		&i.Attachments,
 	)
 	return i, err
 }
@@ -2912,10 +3018,12 @@ func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEnt
 const insertDeleteRecord = `-- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads, acl, main_doc_type
+       main_doc, language, meta_doc_record, heads, acl, main_doc_type,
+       attachments
 ) VALUES(
        $1, $2, $3, $4, $5, $6, $7,
-       $8, $9, $10, $11, $12, $13
+       $8, $9, $10, $11, $12, $13,
+       $14
 ) RETURNING id
 `
 
@@ -2930,9 +3038,10 @@ type InsertDeleteRecordParams struct {
 	MainDoc       pgtype.UUID
 	Language      pgtype.Text
 	MetaDocRecord pgtype.Int8
-	Heads         []byte
-	Acl           []byte
+	Heads         map[string]int64
+	Acl           []ACLEntry
 	MainDocType   pgtype.Text
+	Attachments   []AttachedObject
 }
 
 func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecordParams) (int64, error) {
@@ -2950,6 +3059,7 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 		arg.Heads,
 		arg.Acl,
 		arg.MainDocType,
+		arg.Attachments,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -3224,7 +3334,7 @@ func (q *Queries) InsertSigningKey(ctx context.Context, arg InsertSigningKeyPara
 
 const listDeleteRecords = `-- name: ListDeleteRecords :many
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, finalised, purged
+       main_doc, language, meta_doc_record, finalised, purged, attachments
 FROM delete_record AS r
 WHERE ($1::uuid IS NULL OR r.uuid = $1)
       AND ($2::bigint = 0 OR r.id < $2)
@@ -3252,6 +3362,7 @@ type ListDeleteRecordsRow struct {
 	MetaDocRecord pgtype.Int8
 	Finalised     pgtype.Timestamptz
 	Purged        pgtype.Timestamptz
+	Attachments   []AttachedObject
 }
 
 func (q *Queries) ListDeleteRecords(ctx context.Context, arg ListDeleteRecordsParams) ([]ListDeleteRecordsRow, error) {
@@ -3277,6 +3388,7 @@ func (q *Queries) ListDeleteRecords(ctx context.Context, arg ListDeleteRecordsPa
 			&i.MetaDocRecord,
 			&i.Finalised,
 			&i.Purged,
+			&i.Attachments,
 		); err != nil {
 			return nil, err
 		}

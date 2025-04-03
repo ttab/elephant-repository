@@ -35,6 +35,7 @@
     "version": 1,
     "updater_uri": "user://test/testpurge",
     "type": "core/article",
-    "language": "en"
+    "language": "en",
+    "delete_record_id": 1
   }
 ]

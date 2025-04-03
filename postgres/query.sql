@@ -380,15 +380,17 @@ insert into document(
 -- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads, acl, main_doc_type
+       main_doc, language, meta_doc_record, heads, acl, main_doc_type,
+       attachments
 ) VALUES(
        @uuid, @uri, @type, @version, @created, @creator_uri, @meta,
-       @main_doc, @language, @meta_doc_record, @heads, @acl, @main_doc_type
+       @main_doc, @language, @meta_doc_record, @heads, @acl, @main_doc_type,
+       @attachments
 ) RETURNING id;
 
 -- name: ListDeleteRecords :many
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, finalised, purged
+       main_doc, language, meta_doc_record, finalised, purged, attachments
 FROM delete_record AS r
 WHERE (sqlc.narg('uuid')::uuid IS NULL OR r.uuid = @uuid)
       AND (@before_id::bigint = 0 OR r.id < @before_id)
@@ -397,7 +399,8 @@ ORDER BY r.id DESC;
 
 -- name: GetDeleteRecordForUpdate :one
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads, finalised, purged
+       main_doc, language, meta_doc_record, heads, finalised, purged,
+       attachments
 FROM delete_record
 WHERE id = @id AND uuid = @uuid
 FOR UPDATE;
@@ -445,7 +448,7 @@ FOR UPDATE OF v SKIP LOCKED
 LIMIT 1;
 
 -- name: GetDocumentForDeletion :one
-SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.version
+SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.version, dr.attachments
 FROM delete_record AS dr
 WHERE dr.finalised IS NULL
 ORDER BY dr.created
@@ -925,6 +928,39 @@ INSERT INTO attached_object_current(
 SELECT name, version FROM attached_object_current
 WHERE document = @document
       AND deleted = false;
+
+-- name: GetDocumentAttachmentDetails :many
+SELECT
+        o.document,
+        o.name,
+        o.version,
+        o.object_version,
+        o.attached_at,
+        o.created_by,
+        o.created_at,
+        o.meta
+FROM attached_object_current AS c
+     INNER JOIN attached_object AS o ON
+           o.document = c.document
+           AND o.name = c.name
+           AND o.version = c.version
+WHERE c.document = @document
+      AND c.deleted = false;
+
+-- name: GetAttachmentsForDocuments :many
+SELECT
+        o.document,
+        o.name,
+        o.version,
+        o.meta
+FROM attached_object_current AS c
+     INNER JOIN attached_object AS o ON
+           o.document = c.document
+           AND o.name = c.name
+           AND o.version = c.version
+WHERE c.document = ANY(@documents::uuid[])
+      AND c.name = @name
+      AND c.deleted = false;
 
 -- name: GetScheduled :many
 SELECT

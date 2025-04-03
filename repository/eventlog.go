@@ -49,6 +49,7 @@ type Event struct {
 	MainDocumentType   string     `json:"main_document_type,omitempty"`
 	AttachedObjects    []string   `json:"attached_objects,omitempty"`
 	DetachedObjects    []string   `json:"detached_objects,omitempty"`
+	DeleteRecordID     int64      `json:"delete_record_id,omitempty"`
 }
 
 func NewEventlogBuilder(
@@ -149,6 +150,7 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 				Extra: postgres.EventlogExtra{
 					AttachedObjects: evt.AttachedObjects,
 					DetachedObjects: evt.DetachedObjects,
+					DeleteRecordID:  evt.DeleteRecordID,
 				},
 			}
 

@@ -45,7 +45,8 @@
     "version": 2,
     "updater_uri": "user://test/testdeleterestore",
     "type": "core/article",
-    "language": "en"
+    "language": "en",
+    "delete_record_id": 1
   },
   {
     "id": 5,
@@ -118,7 +119,8 @@
     "version": 2,
     "updater_uri": "user://test/testdeleterestore",
     "type": "core/article",
-    "language": "en-gb"
+    "language": "en-gb",
+    "delete_record_id": 2
   },
   {
     "id": 11,

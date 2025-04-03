@@ -694,6 +694,7 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		WorkflowCheckpoint: evt.WorkflowCheckpoint,
 		AttachedObjects:    evt.AttachedObjects,
 		DetachedObjects:    evt.DetachedObjects,
+		DeleteRecordId:     evt.DeleteRecordID,
 	}
 }
 
@@ -2279,9 +2280,72 @@ func (a *DocumentsService) CreateUpload(
 
 // GetAttachments implements repository.Documents.
 func (a *DocumentsService) GetAttachments(
-	_ context.Context, _ *repository.GetAttachmentsRequest,
+	ctx context.Context, req *repository.GetAttachmentsRequest,
 ) (*repository.GetAttachmentsResponse, error) {
-	panic("unimplemented")
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentAdmin, ScopeDocumentReadAll,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(req.Documents) == 0 {
+		return nil, twirp.RequiredArgumentError("documents")
+	}
+
+	if req.AttachmentName == "" {
+		return nil, twirp.RequiredArgumentError("attachment_name")
+	}
+
+	docIDs := make([]uuid.UUID, len(req.Documents))
+
+	for i, id := range req.Documents {
+		docID, err := uuid.Parse(id)
+		if err != nil {
+			return nil, elephantine.InvalidArgumentf(
+				"documents", "invalid document UUID: %v", err)
+		}
+
+		docIDs[i] = docID
+	}
+
+	grantees := slices.Clone(auth.Claims.Units)
+	grantees = append(grantees, auth.Claims.Subject)
+
+	allowedDocs, err := a.store.BulkCheckPermissions(ctx, BulkCheckPermissionRequest{
+		UUIDs:       docIDs,
+		GranteeURIs: grantees,
+		Permissions: []Permission{ReadPermission},
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf("check permissions: %v", err)
+	}
+
+	attachments, err := a.store.GetAttachments(
+		ctx,
+		allowedDocs,
+		req.AttachmentName,
+		req.DownloadLink)
+	if err != nil {
+		return nil, twirp.InternalErrorf("get attachments: %v", err)
+	}
+
+	res := repository.GetAttachmentsResponse{
+		Attachments: make([]*repository.AttachmentDetails, len(attachments)),
+	}
+
+	for i := range attachments {
+		res.Attachments[i] = &repository.AttachmentDetails{
+			Document:     attachments[i].Document.String(),
+			Name:         attachments[i].Name,
+			Version:      attachments[i].Version,
+			DownloadLink: attachments[i].DownloadLink,
+			Filename:     attachments[i].Filename,
+			ContentType:  attachments[i].ContentType,
+		}
+	}
+
+	return &res, nil
 }
 
 func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {

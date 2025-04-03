@@ -6,6 +6,9 @@ ALTER TABLE eventlog
 ALTER TABLE upload
       DROP COLUMN name;
 
+ALTER TABLE delete_record
+      ADD COLUMN attachments jsonb;
+
 -- Restart with the attached object schema
 DROP TABLE IF EXISTS attached_object;
 
@@ -59,3 +62,6 @@ ALTER TABLE upload
 
 ALTER TABLE eventlog
       DROP COLUMN extra;
+
+ALTER TABLE delete_record
+      DROP COLUMN attachments;

@@ -269,6 +269,7 @@ func testingAPIServer(
 			Logger:            logger,
 			S3:                env.S3,
 			Bucket:            env.Bucket,
+			AssetBucket:       env.AssetBucket,
 			DB:                dbpool,
 			MetricsRegisterer: reg,
 		})

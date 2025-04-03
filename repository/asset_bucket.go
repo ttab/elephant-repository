@@ -51,6 +51,22 @@ func (ab *AssetBucket) CreateUploadURL(
 	return req.URL, nil
 }
 
+// CreateDownloadURL creates a presigned download URL that clients can use to
+// download an asset from the object store.
+func (ab *AssetBucket) CreateDownloadURL(
+	ctx context.Context, document uuid.UUID, name string,
+) (string, error) {
+	req, err := ab.presign.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: &ab.name,
+		Key:    aws.String(ab.objKey(document, name)),
+	}, s3.WithPresignExpires(15*time.Minute))
+	if err != nil {
+		return "", fmt.Errorf("sign download URL: %w", err)
+	}
+
+	return req.URL, nil
+}
+
 func (ab *AssetBucket) UploadExists(
 	ctx context.Context, id uuid.UUID,
 ) (bool, error) {
@@ -157,5 +173,5 @@ func (ab *AssetBucket) objKey(
 	document uuid.UUID,
 	name string,
 ) string {
-	return fmt.Sprintf("objects/%s/%s", document, name)
+	return fmt.Sprintf("objects/%s/%s", name, document)
 }

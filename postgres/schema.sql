@@ -228,7 +228,8 @@ CREATE TABLE public.delete_record (
     acl jsonb,
     heads jsonb,
     purged timestamp with time zone,
-    main_doc_type text
+    main_doc_type text,
+    attachments jsonb
 );
 
 
