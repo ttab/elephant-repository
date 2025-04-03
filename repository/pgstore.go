@@ -1522,6 +1522,12 @@ func (s *PGDocStore) Update(
 			}
 		}
 
+		if state.IsMetaDoc && len(state.Request.AttachObjects) > 0 {
+			return nil, DocStoreErrorf(
+				ErrCodeBadRequest,
+				"objects cannot be attached to meta documents")
+		}
+
 		//nolint:nestif
 		if state.Exists && state.Doc != nil {
 			if isMetaURI(state.Doc.URI) && info.MainDoc == nil {
