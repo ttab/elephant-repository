@@ -334,8 +334,12 @@ func runServer(c *cli.Context) error {
 
 		log.Debug("setting up eventlog builder")
 
+		updates := make(chan int64, 1)
+
+		store.OnEventOutbox(ctx, updates)
+
 		builder, err := repository.NewEventlogBuilder(
-			log, dbpool, prometheus.DefaultRegisterer, nil)
+			log, dbpool, prometheus.DefaultRegisterer, updates)
 		if err != nil {
 			return fmt.Errorf("set up eventlog builder: %w", err)
 		}

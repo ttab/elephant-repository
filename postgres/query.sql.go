@@ -3458,11 +3458,11 @@ func (q *Queries) PurgeDeleteRecordDetails(ctx context.Context, arg PurgeDeleteR
 const readEventOutbox = `-- name: ReadEventOutbox :many
 SELECT id, event FROM event_outbox_item
 ORDER BY id ASC
-LIMIT 20
+LIMIT $1::bigint
 `
 
-func (q *Queries) ReadEventOutbox(ctx context.Context) ([]EventOutboxItem, error) {
-	rows, err := q.db.Query(ctx, readEventOutbox)
+func (q *Queries) ReadEventOutbox(ctx context.Context, count int64) ([]EventOutboxItem, error) {
+	rows, err := q.db.Query(ctx, readEventOutbox, count)
 	if err != nil {
 		return nil, err
 	}

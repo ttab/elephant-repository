@@ -102,7 +102,10 @@ type EventlogBuilder struct {
 	events   *prometheus.CounterVec
 }
 
-const outboxPollInterval = 1 * time.Minute
+const (
+	outboxPollInterval = 1 * time.Minute
+	outboxBatchSize    = 20
+)
 
 func (eb *EventlogBuilder) Run(ctx context.Context) error {
 	q := postgres.New(eb.pool)
@@ -115,7 +118,7 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 	}
 
 	for {
-		outEvents, err := q.ReadEventOutbox(ctx)
+		outEvents, err := q.ReadEventOutbox(ctx, outboxBatchSize)
 		if err != nil {
 			return fmt.Errorf("read event outbox: %w", err)
 		}
@@ -169,6 +172,11 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 			}
 
 			lastID = params.ID
+		}
+
+		if len(outEvents) == outboxBatchSize {
+			// Immediately run again if we got a full batch.
+			continue
 		}
 
 		timer.Reset(outboxPollInterval)
