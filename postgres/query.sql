@@ -1059,4 +1059,4 @@ DELETE FROM event_outbox_item WHERE id = @id;
 -- name: ReadEventOutbox :many
 SELECT id, event FROM event_outbox_item
 ORDER BY id ASC
-LIMIT 20;
+LIMIT sqlc.arg(count)::bigint;
