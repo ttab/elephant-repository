@@ -130,10 +130,7 @@ func TestAssetUpload(t *testing.T) {
 		filepath.Join(dataDir, "meta-post-detach.json"),
 		test.IgnoreTimestamps{})
 
-	log, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
-		After: -5,
-	})
-	test.Must(t, err, "get eventlog")
+	log := collectEventlog(t, client, 3, 5*time.Second)
 
 	test.TestMessageAgainstGolden(t, regenerate, log,
 		filepath.Join(dataDir, "events.json"),
