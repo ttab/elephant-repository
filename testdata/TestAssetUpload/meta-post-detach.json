@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "acl": [
+      {
+        "permissions": [
+          "r",
+          "w"
+        ],
+        "uri": "user://test/testassetupload"
+      }
+    ],
+    "created": "2023-01-10T20:06:37+01:00",
+    "creator_uri": "user://test/testassetupload",
+    "current_version": "2",
+    "modified": "2023-01-10T20:06:37+01:00",
+    "updater_uri": "user://test/testassetupload"
+  }
+}

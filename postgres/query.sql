@@ -380,15 +380,17 @@ insert into document(
 -- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads, acl, main_doc_type
+       main_doc, language, meta_doc_record, heads, acl, main_doc_type,
+       attachments
 ) VALUES(
        @uuid, @uri, @type, @version, @created, @creator_uri, @meta,
-       @main_doc, @language, @meta_doc_record, @heads, @acl, @main_doc_type
+       @main_doc, @language, @meta_doc_record, @heads, @acl, @main_doc_type,
+       @attachments
 ) RETURNING id;
 
 -- name: ListDeleteRecords :many
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, finalised, purged
+       main_doc, language, meta_doc_record, finalised, purged, attachments
 FROM delete_record AS r
 WHERE (sqlc.narg('uuid')::uuid IS NULL OR r.uuid = @uuid)
       AND (@before_id::bigint = 0 OR r.id < @before_id)
@@ -397,7 +399,8 @@ ORDER BY r.id DESC;
 
 -- name: GetDeleteRecordForUpdate :one
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
-       main_doc, language, meta_doc_record, heads, finalised, purged
+       main_doc, language, meta_doc_record, heads, finalised, purged,
+       attachments
 FROM delete_record
 WHERE id = @id AND uuid = @uuid
 FOR UPDATE;
@@ -445,7 +448,7 @@ FOR UPDATE OF v SKIP LOCKED
 LIMIT 1;
 
 -- name: GetDocumentForDeletion :one
-SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.version
+SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.version, dr.attachments
 FROM delete_record AS dr
 WHERE dr.finalised IS NULL
 ORDER BY dr.created
@@ -639,17 +642,17 @@ WHERE uuid = @uuid
 INSERT INTO eventlog(
        id, event, uuid, type, timestamp, updater, version, status, status_id, acl,
        language, old_language, main_doc, system_state, workflow_state, workflow_checkpoint,
-       main_doc_type
+       main_doc_type, extra
 ) VALUES (
        @id, @event, @uuid, @type, @timestamp, @updater, @version, @status, @status_id, @acl,
        @language, @old_language, @main_doc, @system_state, @workflow_state, @workflow_checkpoint,
-       @main_doc_type
+       @main_doc_type, @extra
 );
 
 -- name: GetEventlog :many
 SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater,
        language, old_language, main_doc, system_state,
-       workflow_state, workflow_checkpoint, main_doc_type
+       workflow_state, workflow_checkpoint, main_doc_type, extra
 FROM eventlog
 WHERE id > @after
 ORDER BY id ASC
@@ -657,7 +660,8 @@ LIMIT sqlc.arg(row_limit);
 
 -- name: GetLastEvent :one
 SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl,
-       language, old_language, main_doc, workflow_state, workflow_checkpoint, main_doc_type
+       language, old_language, main_doc, workflow_state, workflow_checkpoint, main_doc_type,
+       extra
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1;
@@ -670,7 +674,8 @@ ORDER BY id DESC LIMIT 1;
 SELECT
         w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
         w.status_id, w.acl, w.updater, w.language, w.old_language, w.main_doc,
-        w.system_state, workflow_state, workflow_checkpoint, main_doc_type
+        w.system_state, workflow_state, workflow_checkpoint, main_doc_type,
+        extra
 FROM (
      SELECT DISTINCT ON (
             e.uuid,
@@ -867,6 +872,95 @@ WHERE assignment = @assignment AND version != @version;
 -- name: CleanUpDeliverables :exec
 DELETE FROM planning_deliverable
 WHERE assignment = @assignment AND version != @version;
+
+-- name: CreateUpload :exec
+INSERT INTO upload(id, created_at, created_by, meta)
+VALUES (@id, @created_at, @created_by, @meta);
+
+-- name: GetUpload :one
+SELECT id, created_at, created_by, meta
+FROM upload WHERE id = @id;
+
+-- name: GetAttachedObject :one
+SELECT
+        o.document,
+        o.name,
+        o.version,
+        o.object_version,
+        o.attached_at,
+        o.created_by,
+        o.created_at,
+        o.meta,
+        c.deleted
+FROM attached_object_current AS c
+     INNER JOIN attached_object AS o ON
+           o.document = c.document
+           AND o.name = c.name
+           AND o.version = c.version
+WHERE c.document = @document
+      AND c.name = @name;
+
+-- name: AddAttachedObject :exec
+INSERT INTO attached_object(
+       document, name, version, object_version, attached_at,
+       created_by, created_at, meta
+) VALUES (
+       @document, @name, @version, @object_version, @attached_at,
+       @created_by, @created_at, @meta
+);
+
+-- name: ChangeAttachedObjectVersion :exec
+UPDATE attached_object SET object_version = @object_version
+WHERE document = @document
+      AND name = @name
+      AND version = @version;
+
+-- name: SetCurrentAttachedObject :exec
+INSERT INTO attached_object_current(
+       document, name, version, deleted
+) VALUES (
+       @document, @name, @version, @deleted
+) ON CONFLICT (document, name) DO UPDATE SET
+       version = excluded.version,
+       deleted = excluded.deleted;
+
+-- name: GetAttachments :many
+SELECT name, version FROM attached_object_current
+WHERE document = @document
+      AND deleted = false;
+
+-- name: GetDocumentAttachmentDetails :many
+SELECT
+        o.document,
+        o.name,
+        o.version,
+        o.object_version,
+        o.attached_at,
+        o.created_by,
+        o.created_at,
+        o.meta
+FROM attached_object_current AS c
+     INNER JOIN attached_object AS o ON
+           o.document = c.document
+           AND o.name = c.name
+           AND o.version = c.version
+WHERE c.document = @document
+      AND c.deleted = false;
+
+-- name: GetAttachmentsForDocuments :many
+SELECT
+        o.document,
+        o.name,
+        o.version,
+        o.meta
+FROM attached_object_current AS c
+     INNER JOIN attached_object AS o ON
+           o.document = c.document
+           AND o.name = c.name
+           AND o.version = c.version
+WHERE c.document = ANY(@documents::uuid[])
+      AND c.name = @name
+      AND c.deleted = false;
 
 -- name: GetScheduled :many
 SELECT

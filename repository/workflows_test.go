@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-repository/internal"
 	itest "github.com/ttab/elephant-repository/internal/test"
@@ -117,7 +115,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	eventsGolden := filepath.Join("testdata", t.Name(), "events.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, events, eventsGolden,
-		ignoreCommonTimestamps())
+		test.IgnoreTimestamps{})
 
 	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docUUID,
@@ -127,13 +125,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	metaGolden := filepath.Join("testdata", t.Name(), "meta.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, meta, metaGolden,
-		ignoreCommonTimestamps())
-}
-
-func ignoreCommonTimestamps() cmp.Option {
-	return cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
-		return k == createdField || k == modifiedField || k == timestampField
-	})
+		test.IgnoreTimestamps{})
 }
 
 func collectEventlog(

@@ -5,10 +5,11 @@ go 1.24.1
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/aws/aws-sdk-go-v2 v1.36.3
-	github.com/aws/aws-sdk-go-v2/config v1.29.11
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.64
+	github.com/aws/aws-sdk-go-v2/config v1.29.12
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.65
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.37.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
+	github.com/aws/smithy-go v1.22.2
 	github.com/expr-lang/expr v1.17.2
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/go-cmp v0.7.0
@@ -23,8 +24,8 @@ require (
 	github.com/rakutentech/jwk-go v1.2.0
 	github.com/tmaxmax/go-sse v0.10.0
 	github.com/ttab/darknut v0.1.0
-	github.com/ttab/elephant-api v0.17.18-0.20250326142413-4c5f71fe0c42
-	github.com/ttab/elephantine v0.17.8
+	github.com/ttab/elephant-api v0.17.18
+	github.com/ttab/elephantine v0.17.10
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.7.5
 	github.com/ttab/newsdoc v0.7.1
@@ -59,9 +60,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.58.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.25.2 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.29.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.30.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.17 // indirect
-	github.com/aws/smithy-go v1.22.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -127,7 +127,7 @@ require (
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/net v0.37.0 // indirect
-	golang.org/x/oauth2 v0.27.0 // indirect
+	golang.org/x/oauth2 v0.28.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.9.0 // indirect

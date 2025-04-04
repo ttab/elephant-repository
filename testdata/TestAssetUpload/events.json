@@ -1,0 +1,48 @@
+{
+  "items": [
+    {
+      "attached_objects": [
+        "plaintext"
+      ],
+      "event": "document",
+      "id": "1",
+      "language": "en",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "type": "core/article",
+      "updater_uri": "user://test/testassetupload",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "version": "1"
+    },
+    {
+      "acl": [
+        {
+          "permissions": [
+            "r",
+            "w"
+          ],
+          "uri": "user://test/testassetupload"
+        }
+      ],
+      "event": "acl",
+      "id": "2",
+      "language": "en",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "type": "core/article",
+      "updater_uri": "user://test/testassetupload",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+    },
+    {
+      "detached_objects": [
+        "plaintext"
+      ],
+      "event": "document",
+      "id": "3",
+      "language": "en",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "type": "core/article",
+      "updater_uri": "user://test/testassetupload",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "version": "2"
+    }
+  ]
+}

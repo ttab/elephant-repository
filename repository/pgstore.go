@@ -43,6 +43,7 @@ type PGDocStore struct {
 	logger *slog.Logger
 	pool   *pgxpool.Pool
 	reader *postgres.Queries
+	assets *AssetBucket
 	opts   PGDocStoreOptions
 
 	archived     *pg.FanOut[ArchivedEvent]
@@ -55,6 +56,7 @@ type PGDocStore struct {
 
 func NewPGDocStore(
 	logger *slog.Logger, pool *pgxpool.Pool,
+	assets *AssetBucket,
 	options PGDocStoreOptions,
 ) (*PGDocStore, error) {
 	if options.DeleteTimeout == 0 {
@@ -65,6 +67,7 @@ func NewPGDocStore(
 		logger:       logger,
 		pool:         pool,
 		reader:       postgres.New(pool),
+		assets:       assets,
 		opts:         options,
 		archived:     pg.NewFanOut[ArchivedEvent](NotifyArchived),
 		schemas:      pg.NewFanOut[SchemaEvent](NotifySchemasUpdated),
@@ -282,7 +285,7 @@ func (s *PGDocStore) Delete(
 		mdr, err := s.insertDeleteRecord(
 			ctx, tx, q, req.Updated, req.Updater,
 			metaUUID, metaInfo,
-			metaJSON, 0, nil,
+			metaJSON, 0, nil, nil,
 		)
 		if err != nil {
 			return fmt.Errorf(
@@ -297,10 +300,15 @@ func (s *PGDocStore) Delete(
 		return fmt.Errorf("get ACLs for archiving: %w", err)
 	}
 
+	attachments, err := q.GetDocumentAttachmentDetails(ctx, req.UUID)
+	if err != nil {
+		return fmt.Errorf("get attachment info for archiving: %w", err)
+	}
+
 	_, err = s.insertDeleteRecord(
 		ctx, tx, q, req.Updated, req.Updater,
 		req.UUID, mainInfo,
-		metaJSON, metaDocRecord, acl,
+		metaJSON, metaDocRecord, acl, attachments,
 	)
 	if err != nil {
 		return fmt.Errorf(
@@ -323,6 +331,7 @@ func (s *PGDocStore) insertDeleteRecord(
 	metaJSON []byte,
 	metaDocRecord int64,
 	acls []ACLEntry,
+	attachments []postgres.AttachedObject,
 ) (int64, error) {
 	heads, err := q.GetDocumentHeads(ctx, id)
 	if err != nil {
@@ -335,14 +344,13 @@ func (s *PGDocStore) insertDeleteRecord(
 		statusHeads[h.Name] = h.CurrentID
 	}
 
-	headsData, err := json.Marshal(statusHeads)
-	if err != nil {
-		return 0, fmt.Errorf("marshal document heads: %w", err)
-	}
+	aclEntries := make([]postgres.ACLEntry, len(acls))
 
-	aclData, err := json.Marshal(acls)
-	if err != nil {
-		return 0, fmt.Errorf("marshal ACL data: %w", err)
+	for i := range acls {
+		aclEntries[i] = postgres.ACLEntry{
+			URI:         acls[i].URI,
+			Permissions: acls[i].Permissions,
+		}
 	}
 
 	recordID, err := q.InsertDeleteRecord(ctx,
@@ -358,8 +366,9 @@ func (s *PGDocStore) insertDeleteRecord(
 			MainDocType:   pg.TextOrNull(pf.MainDocType),
 			MetaDocRecord: pg.BigintOrNull(metaDocRecord),
 			Language:      pg.Text(pf.Language),
-			Heads:         headsData,
-			Acl:           aclData,
+			Heads:         statusHeads,
+			Acl:           aclEntries,
+			Attachments:   attachments,
 		})
 	if err != nil {
 		return 0, fmt.Errorf("create delete record: %w", err)
@@ -375,7 +384,7 @@ func (s *PGDocStore) insertDeleteRecord(
 		MainDocument:     pf.MainDoc,
 		MainDocumentType: pf.MainDocType,
 		Language:         pf.Language,
-		// TODO: add delete record ID?
+		DeleteRecordID:   recordID,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("add delete event to outbox: %w", err)
@@ -807,6 +816,13 @@ func (s *PGDocStore) GetEventlog(
 			WorkflowCheckpoint: res[i].WorkflowCheckpoint.String,
 		}
 
+		extra := res[i].Extra
+		if extra != nil {
+			e.AttachedObjects = extra.AttachedObjects
+			e.DetachedObjects = extra.DetachedObjects
+			e.DeleteRecordID = extra.DeleteRecordID
+		}
+
 		if res[i].Acl != nil {
 			err := json.Unmarshal(res[i].Acl, &e.ACL)
 			if err != nil {
@@ -864,6 +880,13 @@ func (s *PGDocStore) GetCompactedEventlog(
 			SystemState:        res[i].SystemState.String,
 			WorkflowStep:       res[i].WorkflowState.String,
 			WorkflowCheckpoint: res[i].WorkflowCheckpoint.String,
+		}
+
+		extra := res[i].Extra
+		if extra != nil {
+			e.AttachedObjects = extra.AttachedObjects
+			e.DetachedObjects = extra.DetachedObjects
+			e.DeleteRecordID = extra.DeleteRecordID
 		}
 
 		if res[i].Acl != nil {
@@ -1276,6 +1299,20 @@ func (s *PGDocStore) GetDocumentMeta(
 
 	meta.Statuses = heads
 
+	attached, err := s.reader.GetAttachments(ctx, docID)
+	if err != nil {
+		return nil, fmt.Errorf("get attachment information: %w", err)
+	}
+
+	meta.Attachments = make([]AttachmentRef, len(attached))
+
+	for i := range attached {
+		meta.Attachments[i] = AttachmentRef{
+			Name:    attached[i].Name,
+			Version: attached[i].Version,
+		}
+	}
+
 	acl, err := s.GetDocumentACL(ctx, docID)
 	if err != nil {
 		return nil, err
@@ -1393,6 +1430,44 @@ func (s *PGDocStore) Update(
 ) (_ []DocumentUpdate, outErr error) {
 	var updates []*docUpdateState
 
+	// Check if referenced uploads exist before we start any actual work.
+	for _, req := range requests {
+		for name, upload := range req.AttachObjects {
+			uploadInfo, err := s.reader.GetUpload(ctx, upload.ID)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"unknown upload %s: %w",
+					upload.ID, err,
+				)
+			}
+
+			// Transfer the metadata from the upload row.
+			upload.Meta = AssetMetadata{
+				Filename: uploadInfo.Meta.Filename,
+				Mimetype: uploadInfo.Meta.Mimetype,
+				Props:    uploadInfo.Meta.Props,
+			}
+
+			req.AttachObjects[name] = upload
+
+			exists, err := s.assets.UploadExists(ctx, upload.ID)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"check if %q (%s) has been uploaded: %w",
+					name, upload, err,
+				)
+			}
+
+			if !exists {
+				return nil, elephantine.InvalidArgumentf(
+					"attach_objects",
+					"no object uploaded for %q (%s)",
+					name, upload,
+				)
+			}
+		}
+	}
+
 	// Do serialisation work before we start a transaction. That way we
 	// don't keep row locks or hog connections while doing that
 	// busy-work. Likewise we don't even try to statedate the db in the
@@ -1445,6 +1520,12 @@ func (s *PGDocStore) Update(
 				return nil, DocStoreErrorf(ErrCodeFailedPrecondition,
 					"not in the correct workflow state")
 			}
+		}
+
+		if state.IsMetaDoc && len(state.Request.AttachObjects) > 0 {
+			return nil, DocStoreErrorf(
+				ErrCodeBadRequest,
+				"objects cannot be attached to meta documents")
 		}
 
 		//nolint:nestif
@@ -1539,8 +1620,7 @@ func (s *PGDocStore) Update(
 
 			state.Version = version
 
-			// Queue up the document version event for the eventlog.
-			evts = append(evts, postgres.OutboxEvent{
+			evt := postgres.OutboxEvent{
 				Event:            string(TypeDocumentVersion),
 				UUID:             state.UUID,
 				Timestamp:        state.Created,
@@ -1552,7 +1632,20 @@ func (s *PGDocStore) Update(
 				MainDocumentType: state.MainDocType,
 				Version:          state.Version,
 				SystemState:      state.SystemState,
-			})
+			}
+
+			// Add attaches and detaches to the event, we'll act on
+			// these later, but they're recorded as part of the
+			// document update.
+			for name := range state.Request.AttachObjects {
+				evt.AttachedObjects = append(evt.AttachedObjects, name)
+			}
+
+			evt.DetachedObjects = append(evt.DetachedObjects,
+				state.Request.DetachObjects...)
+
+			// Queue up the document version event for the eventlog.
+			evts = append(evts, evt)
 
 			// Progress workflow state.
 			wState = workflow.Step(wState, WorkflowStep{
@@ -1820,8 +1913,31 @@ func (s *PGDocStore) Update(
 		}
 	}
 
+	// Process attachments last, as we want to reasonably certain that the
+	// transaction will be a success before we start manipulating the object
+	// store.
+	revertAttachments, err := s.processAttachments(ctx, q, updates)
+	if err != nil {
+		return nil, fmt.Errorf("process attachments: %w", err)
+	}
+
 	err = tx.Commit(ctx)
 	if err != nil {
+		// Revert object store changes, any failure to revert an object
+		// will be logged. The database entries will still refer to the
+		// correct object versions after such a failure, but if f.ex. an
+		// object was updated the most recent version of the object will
+		// not be the one referenced by the DB, we then run the risk of
+		// having the referenced version being deleted by bucket
+		// lifecycle policies.
+		//
+		// TODO: We need dedicated methods that can be used for
+		// recovering from such an inconsistent state. As the database
+		// is the source of truth it should only require the UUID of a
+		// potentially inconsistent document to be able to fix the issue
+		// by manipulating the object store and attached_object table.
+		revertAttachments()
+
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 
@@ -1829,6 +1945,314 @@ func (s *PGDocStore) Update(
 
 	for _, s := range updates {
 		res = append(res, s.DocumentUpdate)
+	}
+
+	return res, nil
+}
+
+// processAttachments for the updates, on success it returns a function that can
+// be called to roll back the changes to the object store.
+func (s *PGDocStore) processAttachments(
+	ctx context.Context,
+	q *postgres.Queries,
+	updates []*docUpdateState,
+) (_ func(), outErr error) {
+	// If we fail we need to roll back the object store updates that have
+	// been made. This is tricky stuff as we never can guarantee any real
+	// consistency with the object store, but this will have to be on an
+	// best effort basis.
+	var attachRollback []attached
+
+	rollback := func() {
+		for _, r := range attachRollback {
+			err := s.doAttachmentObjectRevert(ctx, r)
+			if err != nil {
+				// Log the failure, flag for human review using an alert code.
+				s.logger.ErrorContext(ctx,
+					"failed to revert attached object",
+					elephantine.LogKeyError, err,
+					elephantine.LogKeyAlertCode, "attachment_object_rollback",
+					elephantine.LogKeyDocumentUUID, r.Document.String(),
+					"object_name", r.Name,
+				)
+			}
+		}
+	}
+
+	defer func() {
+		if outErr == nil || len(attachRollback) == 0 {
+			return
+		}
+
+		rollback()
+	}()
+
+	for _, state := range updates {
+		for name, spec := range state.Request.AttachObjects {
+			current, err := q.GetAttachedObject(ctx,
+				postgres.GetAttachedObjectParams{
+					Document: state.UUID,
+					Name:     name,
+				})
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return nil, fmt.Errorf(
+					"get current %q attachments for %s: %w",
+					name, state.UUID, err)
+			}
+
+			version := current.Version + 1
+
+			objectVersion, err := s.assets.AttachUpload(ctx, spec.ID, state.UUID, name)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"attach upload %q to document %s as %q: %w",
+					spec.ID, state.UUID, name, err,
+				)
+			}
+
+			attachRollback = append(attachRollback, attached{
+				Document:       state.UUID,
+				Name:           name,
+				CreatedVersion: objectVersion,
+			})
+
+			err = q.AddAttachedObject(ctx,
+				postgres.AddAttachedObjectParams{
+					Document:      state.UUID,
+					Name:          name,
+					Version:       version,
+					ObjectVersion: objectVersion,
+					AttachedAt:    state.Version,
+					CreatedAt:     pg.Time(state.Created),
+					CreatedBy:     state.Creator,
+					Meta: postgres.AssetMetadata{
+						Filename: spec.Meta.Filename,
+						Mimetype: spec.Meta.Filename,
+						Props:    spec.Meta.Props,
+					},
+				})
+			if err != nil {
+				return nil, fmt.Errorf(
+					"add attached %q object for document %s: %w",
+					name, state.UUID, err)
+			}
+
+			err = q.SetCurrentAttachedObject(ctx,
+				postgres.SetCurrentAttachedObjectParams{
+					Document: state.UUID,
+					Name:     name,
+					Version:  version,
+					Deleted:  false,
+				})
+			if err != nil {
+				return nil, fmt.Errorf(
+					"add current attached %q object for document %s: %w",
+					name, state.UUID, err)
+			}
+		}
+
+		for _, name := range state.Request.DetachObjects {
+			current, err := q.GetAttachedObject(ctx,
+				postgres.GetAttachedObjectParams{
+					Document: state.UUID,
+					Name:     name,
+				})
+			if errors.Is(err, pgx.ErrNoRows) || current.Deleted {
+				continue
+			} else if err != nil {
+				return nil, fmt.Errorf(
+					"get current %q attachments for %s: %w",
+					name, state.UUID, err)
+			}
+
+			err = s.assets.DeleteObject(ctx, state.UUID, name)
+			if err != nil {
+				return nil, fmt.Errorf("delete attached object: %w", err)
+			}
+
+			attachRollback = append(attachRollback, attached{
+				Document: state.UUID,
+				Name:     name,
+			})
+
+			err = q.SetCurrentAttachedObject(ctx,
+				postgres.SetCurrentAttachedObjectParams{
+					Document: state.UUID,
+					Name:     name,
+					Version:  current.Version,
+					Deleted:  true,
+				})
+			if err != nil {
+				return nil, fmt.Errorf(
+					"set current attached %q object for document %s as deleted: %w",
+					name, state.UUID, err)
+			}
+		}
+	}
+
+	return rollback, nil
+}
+
+// Attached objects that should be rolled back to previous version, or deleted.
+type attached struct {
+	Document       uuid.UUID
+	DocVersion     int64
+	Name           string
+	CreatedVersion string
+}
+
+func (s *PGDocStore) doAttachmentObjectRevert(
+	ctx context.Context, a attached,
+) (outErr error) {
+	// Detach the context cancellation from the parent context, if we get to
+	// this point we don't want to allow cancellation.
+	ctx, cancel := context.WithTimeout(
+		context.WithoutCancel(ctx),
+		10*time.Second,
+	)
+	defer cancel()
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("start transaction: %w", err)
+	}
+
+	defer pg.Rollback(tx, &outErr)
+
+	q := postgres.New(tx)
+
+	// We run a pre-flight request for an optimistic lock check (and to get
+	// a for-update-lock on the document row). If the document has been
+	// updated between our failure and the revert we will have to give up
+	// and flag the problem for human review.
+	_, err = s.UpdatePreflight(ctx, q,
+		a.Document, a.DocVersion, nil)
+	if err != nil {
+		return fmt.Errorf("acquire optimistic lock: %w", err)
+	}
+
+	var doesntExist bool
+
+	current, err := q.GetAttachedObject(ctx,
+		postgres.GetAttachedObjectParams{
+			Document: a.Document,
+			Name:     a.Name,
+		})
+	if errors.Is(err, pgx.ErrNoRows) {
+		doesntExist = true
+	} else if err != nil {
+		return fmt.Errorf("read information about current attachment: %w", err)
+	}
+
+	switch {
+	// Reverting first time creation.
+	case doesntExist && a.CreatedVersion != "":
+		err := s.assets.DeleteObject(ctx, a.Document, a.Name)
+		if err != nil {
+			return fmt.Errorf("delete object: %w", err)
+		}
+	// Reverting detach (delete) of object that didn't exist. This shouldn't
+	// happen as we treat a detach of something that doesn't exist as a noop
+	// and no rollback should be queued, but keeping this for case
+	// completeness - belt and suspenders.
+	case doesntExist && a.CreatedVersion == "":
+		return nil
+	// Reverting a new version that replaced previous version - or a delete
+	// of the attached object. Either way we need to restore the last
+	// version.
+	default:
+		newVersion, err := s.assets.RevertObject(
+			ctx, a.Document, a.Name, current.ObjectVersion)
+		if err != nil {
+			return fmt.Errorf(
+				"revert back to object version %q: %w",
+				current.ObjectVersion, err)
+		}
+
+		// Update the object version of the current version so that it
+		// refers to the version created by the revert.
+		err = q.ChangeAttachedObjectVersion(ctx,
+			postgres.ChangeAttachedObjectVersionParams{
+				Document:      a.Document,
+				Name:          a.Name,
+				Version:       current.Version,
+				ObjectVersion: newVersion,
+			})
+		if err != nil {
+			return fmt.Errorf("set object version to reverted object version: %w", err)
+		}
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("commit object revert: %w", err)
+	}
+
+	return nil
+}
+
+// CreateUpload implements DocStore.
+func (s *PGDocStore) CreateUpload(
+	ctx context.Context,
+	upload Upload,
+) error {
+	err := s.reader.CreateUpload(ctx, postgres.CreateUploadParams{
+		ID:        upload.ID,
+		CreatedAt: pg.Time(upload.CreatedAt),
+		CreatedBy: upload.CreatedBy,
+		Meta: postgres.AssetMetadata{
+			Filename: upload.Meta.Filename,
+			Mimetype: upload.Meta.Mimetype,
+			Props:    upload.Meta.Props,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("insert upload row: %w", err)
+	}
+
+	return nil
+}
+
+// GetAttachments implements DocStore.
+func (s *PGDocStore) GetAttachments(
+	ctx context.Context,
+	documents []uuid.UUID,
+	attachment string,
+	getDownloadLink bool,
+) ([]AttachmentDetails, error) {
+	rows, err := s.reader.GetAttachmentsForDocuments(ctx,
+		postgres.GetAttachmentsForDocumentsParams{
+			Documents: documents,
+			Name:      attachment,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("read from database: %w", err)
+	}
+
+	res := make([]AttachmentDetails, len(rows))
+
+	for i := range rows {
+		var dlLink string
+
+		if getDownloadLink {
+			l, err := s.assets.CreateDownloadURL(ctx,
+				rows[i].Document,
+				rows[i].Name)
+			if err != nil {
+				return nil, fmt.Errorf("create download link: %w", err)
+			}
+
+			dlLink = l
+		}
+
+		res[i] = AttachmentDetails{
+			Document:     rows[i].Document,
+			Name:         rows[i].Name,
+			Version:      rows[i].Version,
+			DownloadLink: dlLink,
+			Filename:     rows[i].Meta.Filename,
+			ContentType:  rows[i].Meta.Mimetype,
+		}
 	}
 
 	return res, nil

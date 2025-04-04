@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"fmt"
+	"maps"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,11 +33,16 @@ type WorkflowProvider interface {
 	GetDocumentWorkflow(docType string) (DocumentWorkflow, bool)
 }
 
+type UploadURLCreator interface {
+	CreateUploadURL(ctx context.Context, id uuid.UUID) (string, error)
+}
+
 type DocumentsService struct {
 	store           DocStore
 	sched           ScheduleStore
 	validator       DocumentValidator
 	workflows       WorkflowProvider
+	assets          UploadURLCreator
 	defaultLanguage string
 }
 
@@ -44,6 +51,7 @@ func NewDocumentsService(
 	sched ScheduleStore,
 	validator DocumentValidator,
 	workflows WorkflowProvider,
+	assets UploadURLCreator,
 	defaultLanguage string,
 ) *DocumentsService {
 	return &DocumentsService{
@@ -51,6 +59,7 @@ func NewDocumentsService(
 		sched:           sched,
 		validator:       validator,
 		workflows:       workflows,
+		assets:          assets,
 		defaultLanguage: defaultLanguage,
 	}
 }
@@ -644,6 +653,8 @@ func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
 		MainDocumentType: evt.MainDocumentType,
 		Language:         evt.Language,
 		OldLanguage:      evt.OldLanguage,
+		AttachedObjects:  evt.AttachedObjects,
+		DetachedObjects:  evt.DetachedObjects,
 	}, nil
 }
 
@@ -681,6 +692,9 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		SystemState:        evt.SystemState,
 		WorkflowState:      evt.WorkflowStep,
 		WorkflowCheckpoint: evt.WorkflowCheckpoint,
+		AttachedObjects:    evt.AttachedObjects,
+		DetachedObjects:    evt.DetachedObjects,
+		DeleteRecordId:     evt.DeleteRecordID,
 	}
 }
 
@@ -1379,6 +1393,14 @@ func (a *DocumentsService) GetMeta(
 		resp.Heads[name] = StatusHeadToRPCStatus(head)
 	}
 
+	for _, a := range meta.Attachments {
+		resp.Attachments = append(resp.Attachments,
+			&repository.AttachmentRef{
+				Name:    a.Name,
+				Version: a.Version,
+			})
+	}
+
 	for _, acl := range meta.ACL {
 		resp.Acl = append(resp.Acl, &repository.ACLEntry{
 			Uri:         acl.URI,
@@ -1556,6 +1578,28 @@ func (a *DocumentsService) buildUpdateRequest(
 		LockToken:       req.LockToken,
 		IfWorkflowState: req.IfWorkflowState,
 		IfStatusHeads:   req.IfStatusHeads,
+		DetachObjects:   req.DetachObjects,
+	}
+
+	if len(req.AttachObjects) > 0 {
+		up.AttachObjects = make(map[string]Upload, len(req.AttachObjects))
+
+		for name, idStr := range req.AttachObjects {
+			id, err := uuid.Parse(idStr)
+			if err != nil {
+				return nil, elephantine.InvalidArgumentf(
+					"attach_objects",
+					"invalid UUID for object %q: %v",
+					name, err,
+				)
+			}
+
+			up.AttachObjects[name] = Upload{
+				ID:        id,
+				CreatedBy: updater,
+				CreatedAt: updated,
+			}
+		}
 	}
 
 	if req.Document != nil {
@@ -1671,6 +1715,8 @@ func (a *DocumentsService) verifyUpdateRequests(
 	return auth, nil
 }
 
+var objectNameDisallowed = regexp.MustCompile(`[^a-z-]`)
+
 func (a *DocumentsService) verifyUpdateRequest(
 	ctx context.Context,
 	auth *elephantine.AuthInfo,
@@ -1711,10 +1757,27 @@ func (a *DocumentsService) verifyUpdateRequest(
 		}
 	}
 
-	if req.Document == nil && len(req.Status) == 0 && len(req.Acl) == 0 {
-		return twirp.InvalidArgumentError(
-			"document",
-			"required when no status or ACL updates are included")
+	if req.Document == nil {
+		switch {
+		case len(req.Status) == 0 && len(req.Acl) == 0:
+			return twirp.InvalidArgumentError(
+				"document",
+				"required when no status or ACL updates are included")
+		case len(req.AttachObjects) > 0:
+			return twirp.InvalidArgumentError("attach_objects",
+				"objects can only be attached when creating or updating the document")
+		case len(req.DetachObjects) > 0:
+			return twirp.InvalidArgumentError("detach_objects",
+				"objects can only be detached updating the document")
+		}
+	}
+
+	for name := range req.AttachObjects {
+		disallowed := objectNameDisallowed.FindString(name)
+		if disallowed != "" {
+			return elephantine.InvalidArgumentf("attach_objects",
+				"invalid character %q in object name", disallowed)
+		}
 	}
 
 	if req.IfMatch < -1 {
@@ -2165,9 +2228,124 @@ func (a *DocumentsService) GetWithheld(
 
 // CreateUpload implements repository.Documents.
 func (a *DocumentsService) CreateUpload(
-	_ context.Context, _ *repository.CreateUploadRequest,
+	ctx context.Context, req *repository.CreateUploadRequest,
 ) (*repository.CreateUploadResponse, error) {
-	panic("unimplemented")
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentAdmin, ScopeAssetUpload,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Name == "" {
+		return nil, twirp.RequiredArgumentError("name")
+	}
+
+	if req.ContentType == "" {
+		return nil, twirp.RequiredArgumentError("content_type")
+	}
+
+	upload := Upload{
+		ID:        uuid.New(),
+		CreatedBy: auth.Claims.Subject,
+		CreatedAt: time.Now(),
+		Meta: AssetMetadata{
+			Filename: req.Name,
+			Mimetype: req.ContentType,
+			Props:    make(map[string]string),
+		},
+	}
+
+	if req.Meta != nil {
+		maps.Copy(upload.Meta.Props, req.Meta)
+	}
+
+	err = a.store.CreateUpload(ctx, upload)
+	if err != nil {
+		return nil, twirp.InternalErrorf("store upload record: %v", err)
+	}
+
+	uploadURL, err := a.assets.CreateUploadURL(ctx, upload.ID)
+	if err != nil {
+		return nil, twirp.InternalErrorf("create upload URL: %v", err)
+	}
+
+	res := repository.CreateUploadResponse{
+		Id:  upload.ID.String(),
+		Url: uploadURL,
+	}
+
+	return &res, nil
+}
+
+// GetAttachments implements repository.Documents.
+func (a *DocumentsService) GetAttachments(
+	ctx context.Context, req *repository.GetAttachmentsRequest,
+) (*repository.GetAttachmentsResponse, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentAdmin, ScopeDocumentReadAll,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(req.Documents) == 0 {
+		return nil, twirp.RequiredArgumentError("documents")
+	}
+
+	if req.AttachmentName == "" {
+		return nil, twirp.RequiredArgumentError("attachment_name")
+	}
+
+	docIDs := make([]uuid.UUID, len(req.Documents))
+
+	for i, id := range req.Documents {
+		docID, err := uuid.Parse(id)
+		if err != nil {
+			return nil, elephantine.InvalidArgumentf(
+				"documents", "invalid document UUID: %v", err)
+		}
+
+		docIDs[i] = docID
+	}
+
+	grantees := slices.Clone(auth.Claims.Units)
+	grantees = append(grantees, auth.Claims.Subject)
+
+	allowedDocs, err := a.store.BulkCheckPermissions(ctx, BulkCheckPermissionRequest{
+		UUIDs:       docIDs,
+		GranteeURIs: grantees,
+		Permissions: []Permission{ReadPermission},
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf("check permissions: %v", err)
+	}
+
+	attachments, err := a.store.GetAttachments(
+		ctx,
+		allowedDocs,
+		req.AttachmentName,
+		req.DownloadLink)
+	if err != nil {
+		return nil, twirp.InternalErrorf("get attachments: %v", err)
+	}
+
+	res := repository.GetAttachmentsResponse{
+		Attachments: make([]*repository.AttachmentDetails, len(attachments)),
+	}
+
+	for i := range attachments {
+		res.Attachments[i] = &repository.AttachmentDetails{
+			Document:     attachments[i].Document.String(),
+			Name:         attachments[i].Name,
+			Version:      attachments[i].Version,
+			DownloadLink: attachments[i].DownloadLink,
+			Filename:     attachments[i].Filename,
+			ContentType:  attachments[i].ContentType,
+		}
+	}
+
+	return &res, nil
 }
 
 func EntityRefToRPC(ref []revisor.EntityRef) []*repository.EntityRef {

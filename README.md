@@ -46,6 +46,16 @@ The last status of a given name for a document is referred to as the "head". Jus
 
 TODO: write and link to workflow rule documentation, see presentation.slide
 
+## Attaching objects (files/assets)
+
+It's possible to attach objects (files/assets) to documents. This can be done using the `documents.CreateUpload` method to get an upload ID and URL. After making a PUT-request to the upload URL with the contents of the object the ID can be used together with a `documents.Update` request that performs a document write to attach the object to the document.
+
+When an object has been attached to a document that information is shown in the event for the update as `attached_objects`, conversely a detach shown as `detached_objects`. Assets are also described in the response to `Documents.GetMeta`.
+
+To download attachments use the `Documents.GetAttachments` with `DownloadLink` set to true, the response will then include a link that the object contents can be downloaded from.
+
+The actual attached objects are currently not being archived. Still an open question whether they should be, if this is used to store images and video it might not be something that we want automatically duplicated. They are, however, copied to the archive bucket if their document is deleted, so a document can be restored together with its attachments. Only the latest version of the currently attached objects are restored, backup of attachments has to be solved outside of the repository.
+
 ## Event output
 
 All changes to a document are emitted on the eventlog, accessed through `Documents.Eventlog`. Changes can be:

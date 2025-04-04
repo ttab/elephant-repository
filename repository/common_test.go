@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
@@ -223,7 +224,16 @@ func testingAPIServer(
 		go reportingPool.Close()
 	})
 
-	store, err := repository.NewPGDocStore(logger, dbpool,
+	assetBucket := repository.NewAssetBucket(
+		logger,
+		s3.NewPresignClient(env.S3, s3.WithPresignExpires(15*time.Minute)),
+		env.S3,
+		env.AssetBucket,
+	)
+
+	store, err := repository.NewPGDocStore(
+		logger, dbpool,
+		assetBucket,
 		repository.PGDocStoreOptions{
 			DeleteTimeout: 1 * time.Second,
 		})
@@ -259,6 +269,7 @@ func testingAPIServer(
 			Logger:            logger,
 			S3:                env.S3,
 			Bucket:            env.Bucket,
+			AssetBucket:       env.AssetBucket,
 			DB:                dbpool,
 			MetricsRegisterer: reg,
 		})
@@ -312,6 +323,7 @@ func testingAPIServer(
 		repository.NewSchedulePGStore(dbpool),
 		validator,
 		workflows,
+		assetBucket,
 		"sv-se",
 	)
 	schemaService := repository.NewSchemasService(logger, store)

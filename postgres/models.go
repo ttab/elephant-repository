@@ -33,11 +33,21 @@ type ActiveSchema struct {
 }
 
 type AttachedObject struct {
-	Document  uuid.UUID
-	Name      string
-	CreatedBy string
-	CreatedAt pgtype.Timestamptz
-	Meta      []byte
+	Document      uuid.UUID
+	Name          string
+	Version       int64
+	ObjectVersion string
+	AttachedAt    int64
+	CreatedBy     string
+	CreatedAt     pgtype.Timestamptz
+	Meta          AssetMetadata
+}
+
+type AttachedObjectCurrent struct {
+	Document uuid.UUID
+	Name     string
+	Version  int64
+	Deleted  bool
 }
 
 type DeleteRecord struct {
@@ -53,10 +63,11 @@ type DeleteRecord struct {
 	Language      pgtype.Text
 	MetaDocRecord pgtype.Int8
 	Finalised     pgtype.Timestamptz
-	Acl           []byte
-	Heads         []byte
+	Acl           []ACLEntry
+	Heads         map[string]int64
 	Purged        pgtype.Timestamptz
 	MainDocType   pgtype.Text
+	Attachments   []AttachedObject
 }
 
 type Deprecation struct {
@@ -151,6 +162,7 @@ type Eventlog struct {
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
+	Extra              *EventlogExtra
 }
 
 type Eventsink struct {
@@ -290,8 +302,7 @@ type Upload struct {
 	ID        uuid.UUID
 	CreatedBy string
 	CreatedAt pgtype.Timestamptz
-	Name      string
-	Meta      []byte
+	Meta      AssetMetadata
 }
 
 type Workflow struct {

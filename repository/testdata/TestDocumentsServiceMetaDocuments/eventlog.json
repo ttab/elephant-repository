@@ -114,7 +114,8 @@
       "type": "test/metadata",
       "language": "sv-se",
       "mainDocument": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
-      "mainDocumentType": "core/article"
+      "mainDocumentType": "core/article",
+      "delete_record_id": 1
     },
     {
       "id": "10",
@@ -124,7 +125,8 @@
       "version": "1",
       "updaterUri": "user://test/testdocumentsservicemetadocuments",
       "type": "core/article",
-      "language": "en"
+      "language": "en",
+      "delete_record_id": 2
     }
   ]
 }

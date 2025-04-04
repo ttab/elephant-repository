@@ -46,7 +46,8 @@
       "updater_uri": "user://test/testintegrationbasiccrud",
       "type": "core/article",
       "language": "en",
-      "version": 2
+      "version": 2,
+      "delete_record_id": 1
     }
   ]
 }

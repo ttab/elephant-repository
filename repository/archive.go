@@ -101,6 +101,7 @@ type ArchiverOptions struct {
 	Logger            *slog.Logger
 	S3                *s3.Client
 	Bucket            string
+	AssetBucket       string
 	DB                *pgxpool.Pool
 	MetricsRegisterer prometheus.Registerer
 }
@@ -111,6 +112,7 @@ type Archiver struct {
 	logger             *slog.Logger
 	s3                 *s3.Client
 	bucket             string
+	assetBucket        string
 	pool               *pgxpool.Pool
 	signingKeys        SigningKeySet
 	signingKeysChecked time.Time
@@ -130,6 +132,10 @@ type Archiver struct {
 func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 	if opts.MetricsRegisterer == nil {
 		opts.MetricsRegisterer = prometheus.DefaultRegisterer
+	}
+
+	if opts.AssetBucket == "" {
+		return nil, errors.New("missing required asset bucket option")
 	}
 
 	versionsArchived := prometheus.NewCounterVec(
@@ -202,6 +208,7 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		s3:                opts.S3,
 		pool:              opts.DB,
 		bucket:            opts.Bucket,
+		assetBucket:       opts.AssetBucket,
 		versionsArchived:  versionsArchived,
 		statusesArchived:  statusesArchived,
 		deletesProcessed:  deletesProcessed,
@@ -375,6 +382,20 @@ type DeleteManifest struct {
 	Heads       map[string]int64 `json:"heads"`
 	ACL         []ACLEntry       `json:"acl"`
 	Archived    time.Time        `json:"archived"`
+	Attached    []AttachedObject `json:"attached"`
+}
+
+type AttachedObject struct {
+	Document      uuid.UUID         `json:"document"`
+	Name          string            `json:"name"`
+	Version       int64             `json:"version"`
+	ObjectVersion string            `json:"object_version"`
+	AttachedAt    int64             `json:"attached_at"`
+	CreatedBy     string            `json:"created_by"`
+	CreatedAt     time.Time         `json:"created_at"`
+	Filename      string            `json:"filename"`
+	Mimetype      string            `json:"mimetype"`
+	Props         map[string]string `json:"props"`
 }
 
 func (m *DeleteManifest) GetArchivedTime() time.Time {
@@ -424,7 +445,7 @@ func (a *Archiver) processDeletes(
 				baseKey := strings.TrimPrefix(key, prefix)
 				dstKey := dstPrefix + baseKey
 
-				err := a.moveDeletedObject(gCtx, key, dstKey)
+				err := a.moveDeletedObject(gCtx, a.bucket, key, dstKey)
 				if err != nil {
 					return err
 				}
@@ -451,6 +472,20 @@ func (a *Archiver) processDeletes(
 		return nil
 	})
 
+	group.Go(func() error {
+		for _, o := range deleteOrder.Attachments {
+			key := fmt.Sprintf("objects/%s/%s", o.Name, o.Document)
+			dstKey := fmt.Sprintf("%sattached/%s", dstPrefix, o.Name)
+
+			err := a.moveDeletedObject(gCtx, a.assetBucket, key, dstKey)
+			if err != nil {
+				return fmt.Errorf("copy attachment: %w", err)
+			}
+		}
+
+		return nil
+	})
+
 	err = group.Wait()
 	if err != nil {
 		return false, fmt.Errorf("failed to move all document objects: %w", err)
@@ -459,16 +494,31 @@ func (a *Archiver) processDeletes(
 	manifest := DeleteManifest{
 		Archived:    time.Now(),
 		LastVersion: deleteOrder.Version,
+		Heads:       deleteOrder.Heads,
+		ACL:         make([]ACLEntry, len(deleteOrder.Acl)),
+		Attached:    make([]AttachedObject, len(deleteOrder.Attachments)),
 	}
 
-	err = json.Unmarshal(deleteOrder.Acl, &manifest.ACL)
-	if err != nil {
-		return false, fmt.Errorf("unmarshal delete order ACL: %w", err)
+	for i := range deleteOrder.Acl {
+		manifest.ACL[i] = ACLEntry{
+			URI:         deleteOrder.Acl[i].URI,
+			Permissions: deleteOrder.Acl[i].Permissions,
+		}
 	}
 
-	err = json.Unmarshal(deleteOrder.Heads, &manifest.Heads)
-	if err != nil {
-		return false, fmt.Errorf("unmarshal delete order heads: %w", err)
+	for i, a := range deleteOrder.Attachments {
+		manifest.Attached[i] = AttachedObject{
+			Document:      a.Document,
+			Name:          a.Name,
+			Version:       a.Version,
+			ObjectVersion: a.ObjectVersion,
+			AttachedAt:    a.AttachedAt,
+			CreatedBy:     a.CreatedBy,
+			CreatedAt:     a.CreatedAt.Time,
+			Filename:      a.Meta.Filename,
+			Mimetype:      a.Meta.Mimetype,
+			Props:         a.Meta.Props,
+		}
 	}
 
 	ref, err := a.storeArchiveObject(
@@ -771,6 +821,58 @@ func (a *Archiver) processRestores(
 			head, name, observedHeads[name].ID)
 	}
 
+	attachedNames := make([]string, len(manifest.Attached))
+
+	for i, o := range manifest.Attached {
+		srcKey := fmt.Sprintf("%sattached/%s", requestPrefix, o.Name)
+		key := fmt.Sprintf("objects/%s/%s", o.Name, o.Document)
+
+		res, err := a.s3.CopyObject(ctx, &s3.CopyObjectInput{
+			Bucket:     aws.String(a.assetBucket),
+			Key:        aws.String(key),
+			CopySource: aws.String(a.bucket + "/" + srcKey),
+		})
+		if err != nil {
+			return false, fmt.Errorf("restore attachment %q: %w",
+				o.Name, err)
+		}
+
+		if res.VersionId == nil {
+			return false, errors.New("attachment bucket is not versioned")
+		}
+
+		err = q.AddAttachedObject(ctx, postgres.AddAttachedObjectParams{
+			Document:      o.Document,
+			Name:          o.Name,
+			Version:       1,
+			ObjectVersion: *res.VersionId,
+			AttachedAt:    lastVersion,
+			CreatedBy:     o.CreatedBy,
+			CreatedAt:     pg.Time(o.CreatedAt),
+			Meta: postgres.AssetMetadata{
+				Filename: o.Filename,
+				Mimetype: o.Mimetype,
+				Props:    o.Props,
+			},
+		})
+		if err != nil {
+			return false, fmt.Errorf("store attachment data: %w", err)
+		}
+
+		err = q.SetCurrentAttachedObject(ctx,
+			postgres.SetCurrentAttachedObjectParams{
+				Document: o.Document,
+				Name:     o.Name,
+				Version:  1,
+				Deleted:  false,
+			})
+		if err != nil {
+			return false, fmt.Errorf("set current attachment: %w", err)
+		}
+
+		attachedNames[i] = o.Name
+	}
+
 	var (
 		acls      = make([]postgres.ACLUpdateParams, len(spec.ACL))
 		eventACLs = make([]postgres.ACLEntry, len(spec.ACL))
@@ -834,14 +936,15 @@ func (a *Archiver) processRestores(
 	}
 
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
-		Event:       string(TypeDocumentVersion),
-		UUID:        req.UUID,
-		Timestamp:   time.Now(),
-		Version:     lastVersion,
-		Updater:     req.Creator,
-		Type:        docInfo.Type,
-		Language:    docInfo.Language.String,
-		SystemState: SystemStateRestoring,
+		Event:           string(TypeDocumentVersion),
+		UUID:            req.UUID,
+		Timestamp:       time.Now(),
+		Version:         lastVersion,
+		Updater:         req.Creator,
+		Type:            docInfo.Type,
+		Language:        docInfo.Language.String,
+		SystemState:     SystemStateRestoring,
+		AttachedObjects: attachedNames,
 	})
 	if err != nil {
 		return false, fmt.Errorf("add last version event to outbox: %w", err)
@@ -1119,13 +1222,13 @@ func (a *Archiver) processPurges(
 }
 
 func (a *Archiver) moveDeletedObject(
-	ctx context.Context, key string, dstKey string,
+	ctx context.Context, sourceBucket string, key string, dstKey string,
 ) error {
 	_, err := a.s3.CopyObject(ctx, &s3.CopyObjectInput{
 		Bucket: aws.String(a.bucket),
 		Key:    aws.String(dstKey),
 		CopySource: aws.String(
-			a.bucket + "/" + key,
+			sourceBucket + "/" + key,
 		),
 	})
 	if err != nil {
@@ -1134,7 +1237,7 @@ func (a *Archiver) moveDeletedObject(
 	}
 
 	_, err = a.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
-		Bucket: aws.String(a.bucket),
+		Bucket: aws.String(sourceBucket),
 		Key:    aws.String(key),
 	})
 	if err != nil {
@@ -1163,6 +1266,7 @@ type ArchivedDocumentVersion struct {
 	MainDocument    *uuid.UUID      `json:"main_document,omitempty"`
 	ParentSignature string          `json:"parent_signature,omitempty"`
 	Archived        time.Time       `json:"archived"`
+	Attached        []string        `json:"attached"`
 }
 
 func (av *ArchivedDocumentVersion) GetArchivedTime() time.Time {

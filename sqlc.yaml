@@ -20,3 +20,21 @@ sql:
         - column: "event_outbox_item.event"
           go_type:
             type: "OutboxEvent"
+        - column: "upload.meta"
+          go_type:
+            type: "AssetMetadata"
+        - column: "attached_object.meta"
+          go_type:
+            type: "AssetMetadata"
+        - column: "eventlog.extra"
+          go_type:
+            type: "*EventlogExtra"
+        - column: "delete_record.attachments"
+          go_type:
+            type: "[]AttachedObject"
+        - column: "delete_record.heads"
+          go_type:
+            type: "map[string]int64"
+        - column: "delete_record.acl"
+          go_type:
+            type: "[]ACLEntry"

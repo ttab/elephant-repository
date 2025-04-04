@@ -462,9 +462,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 	test.TestMessageAgainstGolden(t, regenerate, log,
 		"testdata/TestIntegrationDocumentLanguage/eventlog.json",
-		cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
-			return k == timestampField
-		}))
+		test.IgnoreTimestamps{})
 }
 
 func TestDocumentsServiceMetaDocuments(t *testing.T) {
@@ -822,7 +820,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 
 	test.TestMessageAgainstGolden(t, regenerate, events,
 		filepath.Join(testData, "eventlog.json"),
-		ignoreCommonTimestamps(),
+		test.IgnoreTimestamps{},
 	)
 }
 
@@ -1130,7 +1128,7 @@ func TestIntegrationStatus(t *testing.T) {
 	test.TestMessageAgainstGolden(
 		t, regenerate, nilStatuses,
 		filepath.Join("testdata", t.Name(), "nil-statuses.json"),
-		ignoreCommonTimestamps())
+		test.IgnoreTimestamps{})
 
 	// Load and compare document history.
 	docHistory, err := client.GetHistory(ctx, &repository.GetHistoryRequest{
@@ -1142,7 +1140,7 @@ func TestIntegrationStatus(t *testing.T) {
 	docHistoryGolden := filepath.Join("testdata", t.Name(), "history.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, docHistory, docHistoryGolden,
-		ignoreCommonTimestamps())
+		test.IgnoreTimestamps{})
 
 	// Check that we got the expected events.
 	events := collectEventlog(t, client, 31, 5*time.Second)
@@ -1150,7 +1148,7 @@ func TestIntegrationStatus(t *testing.T) {
 	eventsGolden := filepath.Join("testdata", t.Name(), "eventlog.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, events, eventsGolden,
-		ignoreCommonTimestamps())
+		test.IgnoreTimestamps{})
 
 	lastEvt, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
 		After: -1,
@@ -1171,7 +1169,7 @@ func TestIntegrationStatus(t *testing.T) {
 	compactGolden := filepath.Join("testdata", t.Name(), "compact_eventlog.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, compactEvents, compactGolden,
-		ignoreCommonTimestamps())
+		test.IgnoreTimestamps{})
 }
 
 func TestIntegrationDeleteTimeout(t *testing.T) {
@@ -2000,28 +1998,9 @@ func TestIntegrationStatsOverview(t *testing.T) {
 			res, err := c.Client.GetStatusOverview(ctx, c.Req)
 			test.Must(t, err, "fatech status overview")
 
-			goldenFile := filepath.Join(dataDir, c.File)
-
-			if regenerate {
-				test.Must(t, elephantine.MarshalFile(goldenFile, res),
-					"write golden file")
-			}
-
-			var golden repository.GetStatusOverviewResponse
-
-			test.Must(t, elephantine.UnmarshalFile(goldenFile, &golden),
-				"read golden file")
-
-			diff := cmp.Diff(&golden, res,
-				protocmp.Transform(),
-				protocmp.IgnoreFields(&repository.StatusOverviewItem{},
-					"modified"),
-				protocmp.IgnoreFields(&repository.Status{},
-					"created"),
-			)
-			if diff != "" {
-				t.Fatalf("response mismatch (-want +got):\n%s", diff)
-			}
+			test.TestMessageAgainstGolden(t, regenerate, res,
+				filepath.Join(dataDir, c.File),
+				test.IgnoreTimestamps{})
 
 			for _, item := range res.Items {
 				mod, err := time.Parse(time.RFC3339, item.Modified)
