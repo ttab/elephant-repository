@@ -267,10 +267,10 @@ github.com/tmaxmax/go-sse v0.10.0 h1:j9F93WB4Hxt8wUf6oGffMm4dutALvUPoDDxfuDQOSqA
 github.com/tmaxmax/go-sse v0.10.0/go.mod h1:u/2kZQR1tyngo1lKaNCj1mJmhXGZWS1Zs5yiSOD+Eg8=
 github.com/ttab/darknut v0.1.0 h1:0EvIc82YzRYmxk8x/nEU374ci0TpGYaFOaGMKdggkYg=
 github.com/ttab/darknut v0.1.0/go.mod h1:G7jxtatph/rpttr2XOoElJpcUX25hWr+Uql5PhRf7ao=
-github.com/ttab/elephant-api v0.17.18-0.20250403084327-832cb0b3252f h1:TRW3IsT9fFaQwMDxKRoQbXmkjDVTcfdiRlMbiCc/zLQ=
-github.com/ttab/elephant-api v0.17.18-0.20250403084327-832cb0b3252f/go.mod h1:WGR/3SoEp5Isa/O2L0orN+nWkAxC3h6ylZtykqzVVjg=
-github.com/ttab/elephantine v0.17.10-0.20250402085828-59762c99a148 h1:0EAQOuddfrzyU1THCS8alRMtq60d8o1C/28Do2SGh+w=
-github.com/ttab/elephantine v0.17.10-0.20250402085828-59762c99a148/go.mod h1:Z4AdhxPCbgNPuFoYASjGQqOOe7OM49NVESTA0PR1fjw=
+github.com/ttab/elephant-api v0.17.18 h1:Xg4cCmhXOwuEzM5OhJcDgv9Y0Ks3+WJELRDp5NTKawA=
+github.com/ttab/elephant-api v0.17.18/go.mod h1:WGR/3SoEp5Isa/O2L0orN+nWkAxC3h6ylZtykqzVVjg=
+github.com/ttab/elephantine v0.17.10 h1:dwsm2KETshW2reSPVLNOk+3Vm2Q5FROd67xx+eoAXIo=
+github.com/ttab/elephantine v0.17.10/go.mod h1:Z4AdhxPCbgNPuFoYASjGQqOOe7OM49NVESTA0PR1fjw=
 github.com/ttab/langos v0.1.1 h1:87AksvnO5AWdXEKnb5Ga5H+dXvigDX8I1y46pTc8vDE=
 github.com/ttab/langos v0.1.1/go.mod h1:+E1sOSvBJIbE5VM0m2rfr83aqw0kZbfe/clqNtwSP8w=
 github.com/ttab/mage v0.7.5 h1:O31j/AODjH/OU2EZQ4bvqvuNzNv+NVB/mZJwWHPfm/M=
