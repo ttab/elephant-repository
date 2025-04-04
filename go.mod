@@ -1,6 +1,7 @@
 module github.com/ttab/elephant-repository
 
 go 1.24.1
+toolchain go1.24.1
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
@@ -8,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.12
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.65
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.37.1
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.1
 	github.com/aws/smithy-go v1.22.2
 	github.com/expr-lang/expr v1.17.2
 	github.com/golang-jwt/jwt/v5 v5.2.2
