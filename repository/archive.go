@@ -16,6 +16,7 @@ import (
 	mrand "math/rand"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -964,7 +965,13 @@ func (a *Archiver) processRestores(
 		return false, fmt.Errorf("add restore finished event to outbox: %w", err)
 	}
 
-	for name, head := range observedHeads {
+	heads := slices.Collect(maps.Keys(observedHeads))
+
+	slices.Sort(heads)
+
+	for _, name := range heads {
+		head := observedHeads[name]
+
 		err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
 			Event:       string(TypeNewStatus),
 			UUID:        req.UUID,
