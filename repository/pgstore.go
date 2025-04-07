@@ -24,9 +24,8 @@ import (
 )
 
 const (
-	elephantCRC            = 3997770000
-	LockSigningKeys        = elephantCRC + 1
-	LockLogicalReplication = elephantCRC + 2
+	elephantCRC     = 3997770000
+	LockSigningKeys = elephantCRC + 1
 )
 
 type PGDocStoreOptions struct {

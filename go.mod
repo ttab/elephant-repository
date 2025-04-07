@@ -14,7 +14,6 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgerrcode v0.0.0-20240316143900-6e2875d9b438
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/jackc/tern/v2 v2.3.2
 	github.com/joho/godotenv v1.5.1
@@ -24,7 +23,7 @@ require (
 	github.com/rakutentech/jwk-go v1.2.0
 	github.com/tmaxmax/go-sse v0.10.0
 	github.com/ttab/darknut v0.1.0
-	github.com/ttab/elephant-api v0.17.18
+	github.com/ttab/elephant-api v0.17.19-0.20250407200004-98bb320d1873
 	github.com/ttab/elephantine v0.17.10
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.7.5

@@ -59,7 +59,7 @@ Errors that resolve to "400 Bad Request" will be logged at the INFO level, anyth
   "err_code": "permission_denied",
   "err": "no read permission",
   "status_code": 403,
-  "scopes": "doc_write doc_delete schema_admin publish workflow_admin report_admin read_eventlog search",
+  "scopes": "doc_write doc_delete schema_admin publish workflow_admin read_eventlog search",
   "sub": "user://tt/hugo",
   "service": "Documents",
   "method": "Get",

@@ -124,27 +124,6 @@ func (tc *TestContext) WorkflowsClient(
 	return workflowsClient
 }
 
-func (tc *TestContext) ReportsClient(
-	t *testing.T, claims elephantine.JWTClaims,
-) rpc.Reports {
-	t.Helper()
-
-	token, err := itest.AccessKey(tc.SigningKey, claims)
-	test.Must(t, err, "create access key")
-
-	reportsClient := rpc.NewReportsProtobufClient(
-		tc.Server.URL, tc.Server.Client(),
-		twirp.WithClientHooks(&twirp.ClientHooks{
-			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
-				r.Header.Set("Authorization", bearerPrefix+token)
-
-				return ctx, nil
-			},
-		}))
-
-	return reportsClient
-}
-
 func (tc *TestContext) SchemasClient(
 	t *testing.T, claims elephantine.JWTClaims,
 ) rpc.Schemas {
@@ -214,14 +193,6 @@ func testingAPIServer(
 	t.Cleanup(func() {
 		// We don't want to block cleanup waiting for pool.
 		go dbpool.Close()
-	})
-
-	reportingPool, err := pgxpool.New(ctx, env.ReportingURI)
-	test.Must(t, err, "create reporting connection pool")
-
-	t.Cleanup(func() {
-		// We don't want to block cleanup waiting for pool.
-		go reportingPool.Close()
 	})
 
 	assetBucket := repository.NewAssetBucket(
