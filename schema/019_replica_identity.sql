@@ -1,0 +1,9 @@
+ALTER TABLE ONLY public.document REPLICA IDENTITY DEFAULT;
+ALTER TABLE ONLY public.status_heads REPLICA IDENTITY DEFAULT;
+ALTER TABLE ONLY public.workflow_state REPLICA IDENTITY DEFAULT;
+
+---- create above / drop below ----
+
+ALTER TABLE ONLY public.document REPLICA IDENTITY FULL;
+ALTER TABLE ONLY public.status_heads REPLICA IDENTITY FULL;
+ALTER TABLE ONLY public.workflow_state REPLICA IDENTITY FULL;
