@@ -2026,7 +2026,7 @@ func (s *PGDocStore) processAttachments(
 					CreatedBy:     state.Creator,
 					Meta: postgres.AssetMetadata{
 						Filename: spec.Meta.Filename,
-						Mimetype: spec.Meta.Filename,
+						Mimetype: spec.Meta.Mimetype,
 						Props:    spec.Meta.Props,
 					},
 				})
