@@ -276,8 +276,6 @@ CREATE TABLE public.document (
     main_doc_type text
 );
 
-ALTER TABLE ONLY public.document REPLICA IDENTITY FULL;
-
 
 --
 -- Name: document_link; Type: TABLE; Schema: public; Owner: -
@@ -648,8 +646,6 @@ CREATE TABLE public.status_heads (
     system_state text
 );
 
-ALTER TABLE ONLY public.status_heads REPLICA IDENTITY FULL;
-
 
 --
 -- Name: status_rule; Type: TABLE; Schema: public; Owner: -
@@ -705,8 +701,6 @@ CREATE TABLE public.workflow_state (
     status_name text,
     status_id bigint
 );
-
-ALTER TABLE ONLY public.workflow_state REPLICA IDENTITY FULL;
 
 
 --

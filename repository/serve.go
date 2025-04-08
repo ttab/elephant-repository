@@ -142,23 +142,6 @@ func WithWorkflowsAPI(
 	}
 }
 
-func WithReportsAPI(
-	service repository.Reports,
-	opts ServerOptions,
-) RouterOption {
-	return func(router *httprouter.Router) error {
-		api := repository.NewReportsServer(
-			service,
-			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(opts.Hooks),
-		)
-
-		registerAPI(router, opts, api)
-
-		return nil
-	}
-}
-
 func WithSSE(
 	handler http.Handler,
 	opt ServerOptions,

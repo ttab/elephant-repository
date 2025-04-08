@@ -29,12 +29,11 @@ var (
 )
 
 type Environment struct {
-	S3           *s3.Client
-	Bucket       string
-	AssetBucket  string
-	PostgresURI  string
-	ReportingURI string
-	Migrator     *migrate.Migrator
+	S3          *s3.Client
+	Bucket      string
+	AssetBucket string
+	PostgresURI string
+	Migrator    *migrate.Migrator
 }
 
 type T interface {
@@ -93,7 +92,7 @@ func SetUpBackingServices(
 	ident := pgx.Identifier{t.Name()}.Sanitize()
 
 	_, err = adminConn.Exec(ctx, fmt.Sprintf(`
-CREATE ROLE %s WITH LOGIN PASSWORD '%s' REPLICATION`,
+CREATE ROLE %s WITH LOGIN PASSWORD '%s'`,
 		ident, t.Name()))
 	must(t, err, "create user")
 
@@ -101,32 +100,11 @@ CREATE ROLE %s WITH LOGIN PASSWORD '%s' REPLICATION`,
 		"CREATE DATABASE "+ident+" WITH OWNER "+ident)
 	must(t, err, "create database")
 
-	reportingRole := t.Name() + "Reporting"
-	reportingUser := t.Name() + "ReportingUser"
-	reportingRoleIdent := pgx.Identifier{reportingRole}.Sanitize()
-	reportingUserIdent := pgx.Identifier{reportingUser}.Sanitize()
-
-	_, err = adminConn.Exec(ctx, fmt.Sprintf(
-		"CREATE ROLE %s",
-		reportingRoleIdent))
-	must(t, err, "create reporting role")
-
-	_, err = adminConn.Exec(ctx, fmt.Sprintf(
-		`
-CREATE ROLE %[1]s
-WITH LOGIN PASSWORD '%[2]s'
-IN ROLE %[3]s`,
-		reportingUserIdent, reportingUser, reportingRoleIdent))
-	must(t, err, "create reporting user")
-
 	env := Environment{
 		S3:          s3Client,
 		Bucket:      bucket,
 		AssetBucket: assetBucket,
 		PostgresURI: bs.getPostgresURI(t.Name(), t.Name()),
-		ReportingURI: bs.getPostgresURI(
-			reportingUser, t.Name(),
-		),
 	}
 
 	conn, err := pgx.Connect(ctx, env.PostgresURI)
@@ -143,16 +121,6 @@ IN ROLE %[3]s`,
 	if !skipMigrations {
 		err = m.Migrate(ctx)
 		must(t, err, "migrate to current DB schema")
-
-		_, err = conn.Exec(ctx, fmt.Sprintf(`
-GRANT SELECT
-ON TABLE
-   document, delete_record, document_version,
-   document_status, status_heads, status, status_rule,
-   acl, acl_audit
-TO %s`,
-			reportingRoleIdent))
-		must(t, err, "failed to grant reporting role permissions")
 	}
 
 	env.Migrator = m

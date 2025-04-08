@@ -17,8 +17,6 @@ Permissions are controlled by a set of scopes and document ACL lists.
 	ScopeEventlogRead    = "eventlog_read"
 	ScopeMetricsAdmin    = "metrics_admin"
 	ScopeMetricsWrite    = "metrics_write"
-	ScopeReportAdmin     = "report_admin"
-	ScopeReportRun       = "report_run"
 	ScopeSchemaAdmin     = "schema_admin"
 	ScopeSchemaRead      = "schema_read"
 	ScopeWorkflowAdmin   = "workflow_admin"

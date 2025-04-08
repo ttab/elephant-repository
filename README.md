@@ -2,7 +2,7 @@
 
 ![Image](docs/elephant.png?raw=true)
 
-Elephant repository is a [NewsDoc](https://github.com/ttab/newsdoc) document repository with versioning, ACLs for permissions, archiving, validation schemas, workflow statuses, reporting support, event output, and metrics for observability.
+Elephant repository is a [NewsDoc](https://github.com/ttab/newsdoc) document repository with versioning, ACLs for permissions, archiving, validation schemas, workflow statuses, event output, and metrics for observability.
 
 The repository depends on PostgreSQL for data storage and a S3 compatible store for archiving and reports. It can use AWS EventBridge as an event sink, but that is optional and can be disabled with `--no-eventsink`.
 
@@ -74,12 +74,6 @@ The repository also has the concept of event sinks where enriched events can be 
 The purpose of the enriched events is to allow the constructions of event-based architectures where f.ex. a Lambda function could subscribe to published articles with a specific category. This let's you avoid situations where a lot of systems load unnecessary just to determine if an event should be handled.
 
 TODO: link to more documentation of enriched format.
-
-## Reporting support
-
-The repository allows for scheduling of automatic reports. Reports are defined using SQL and are run with decreased privileges that has read-only access to select tables in the internal database.
-
-The results of the report run are written to a reporting S3 bucket where other systems can pick them up and post to f.ex. Slack.
 
 ## Metrics
 
@@ -182,10 +176,10 @@ The server will generate and a JWT signing key (and log a warning) if it's missi
 
 ###  Running the repository server
 
-The repository server runs the API, archiver, and replicator. If your environment has been set up correctly (env vars, postgres, and minio) you should be able to run it like this:
+The repository server runs the API, archiver, and eventlog builder. If your environment has been set up correctly (env vars, postgres, and minio) you should be able to run it like this:
 
 ``` shell
-go run ./cmd/repository run --mock-jwt-endpoint
+go run ./cmd/repository run --no-eventsink
 ```
 
 ## The database
@@ -196,9 +190,7 @@ The repository uses [mage](https://magefile.org/) as a task runner. Start a loca
 
 The database schema is defined using numbered [tern](https://github.com/jackc/tern) migrations in "./schema/". Initialise the schema by running `mage sql:migrate`. Set the `CONN_STRING` environment variable to run the `mage sql:*` operations against a remote database.
 
-Create a reporting role for the reports subsystem using `mage reportinguser`. Add the necessary replication permission using `mage replicationpermissions`. These operations can't be executed against a remote database, as they make assumptions about database and user names.
-
-Start a local minio instance and the necessary buckets using `mage s3:minio s3:bucket elephant-archive s3:bucket elephant-reports`.
+Start a local minio instance and the necessary buckets using `mage s3:minio s3:bucket elephant-archive s3:bucket elephant-assets`.
 
 Queries are defined in "./postgres/query.sql" and are compiled using [sqlc](https://sqlc.dev/) to a `Queries` struct in "./postgres/query.go". Run `make sql:generate` to compile queries.
 
@@ -324,19 +316,9 @@ ORDER BY vs.section, vs.newsvalue;
 (10 rows)
 ```
 
-### Change data capture
-
-As part of the schema the `eventlog` [publication](https://www.postgresql.org/docs/current/sql-createpublication.html) is created, and it captures changes for the tables `document`, `status_heads`, `delete_record` and `acl`. See `PGReplication` in "./eventlog.go" for the beginnings of an implementation.
-
-As we only want one process to consume the replication updates the CDC process starts with a request to acquire an [advisory lock](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) for the transaction using [pg_advisory_xact_lock](https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS) which means that it will block until the lock is acquired, or the request fails.
-
-A [logical](https://www.postgresql.org/docs/15/logicaldecoding.html) [replication slot](https://www.postgresql.org/docs/15/protocol-replication.html) will be created if it doesn't already exist, using [pglogrepl](https://github.com/jackc/pglogrepl).
-
-TODO: Currently the implementation just logs the events, but the plan is for it to create an event payload, store it in an eventlog table, and potentially send a [`pg_notify`](https://www.postgresql.org/docs/current/sql-notify.html) thin event that tells any waiting subsystems that there is a new event to consume.
-
 ### Archiving data
 
-The repository has an archiving subsystem that records all document changes (versions and statuses) to a S3 compatible store. TODO: We will use this fact to be able to purge document data from old versions in the database.
+The repository has an archiving subsystem that records all document changes (versions and statuses) to a S3 compatible store.
 
 #### Signing
 

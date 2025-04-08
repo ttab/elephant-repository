@@ -810,13 +810,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	})
 	isTwirpError(t, err, "get meta doc", twirp.NotFound, twirp.FailedPrecondition)
 
-	events, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
-		// One more event than we expect, so that we catch the
-		// unexpected.
-		BatchSize:   11,
-		BatchWaitMs: 200,
-	})
-	test.Must(t, err, "get eventlog")
+	events := collectEventlog(t, client, 10, 4*time.Second)
 
 	test.TestMessageAgainstGolden(t, regenerate, events,
 		filepath.Join(testData, "eventlog.json"),

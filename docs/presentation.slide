@@ -22,7 +22,7 @@ Except some cached configuration (validation schemas, statuses, et.c.) the servi
 * Small footprint
 * Redundancy will probably be main reason for running multiple instances
 * An instance can run with certain components disabled
-  * A dedicated API front instance could run with `--no-archiver --no-replicator --no-reporter`
+  * A dedicated API front instance could run with `--no-archiver --no-eventlog-builder --no-eventsink`
 
 Where it's necessary to coordinate between instances it's handled by Postgres row locks or advisory locks.
 
@@ -37,7 +37,6 @@ Elephant stores:
 * ACLs (access control lists)
 * document schemas
 * archive signing keys
-* reporting specifications
 
 All writes go through Postgres so that we get strong consistency guarantees.
 

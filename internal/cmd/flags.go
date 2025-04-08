@@ -9,11 +9,9 @@ import (
 type BackendConfig struct {
 	repository.S3Options
 	DB                string
-	ReportingDB       string
 	Eventsink         string
 	ArchiveBucket     string
 	AssetBucket       string
-	ReportBucket      string
 	S3Endpoint        string
 	S3KeyID           string
 	S3KeySecret       string
@@ -34,10 +32,8 @@ func BackendConfigFromContext(c *cli.Context, src elephantine.ParameterSource) (
 		Eventsink:         c.String("eventsink"),
 		ArchiveBucket:     c.String("archive-bucket"),
 		AssetBucket:       c.String("asset-bucket"),
-		ReportBucket:      c.String("report-bucket"),
 		NoArchiver:        c.Bool("no-archiver"),
 		NoEventsink:       c.Bool("no-eventsink"),
-		NoReporter:        c.Bool("no-reporter"),
 		NoEventlogBuilder: c.Bool("no-eventlog-builder"),
 		NoScheduler:       c.Bool("no-scheduler"),
 		JWTAudience:       c.String("jwt-audience"),
@@ -55,13 +51,6 @@ func BackendConfigFromContext(c *cli.Context, src elephantine.ParameterSource) (
 	}
 
 	cfg.DB = db
-
-	reportingDB, err := elephantine.ResolveParameter(c.Context, c, src, "reporting-db")
-	if err != nil {
-		return BackendConfig{}, err //nolint: wrapcheck
-	}
-
-	cfg.ReportingDB = reportingDB
 
 	return cfg, nil
 }

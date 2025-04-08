@@ -102,6 +102,12 @@ func TestAssetUpload(t *testing.T) {
 	test.Equal(t, 1, len(downloadLinks.Attachments),
 		"get download info for the attachment")
 
+	test.Equal(t, "my.txt", downloadLinks.Attachments[0].Filename,
+		"get the correct file name back")
+
+	test.Equal(t, "text/plain", downloadLinks.Attachments[0].ContentType,
+		"get the correct content type back")
+
 	downloadRes, err := http.Get(downloadLinks.Attachments[0].DownloadLink)
 	test.Must(t, err, "make download request")
 

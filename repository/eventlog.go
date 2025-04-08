@@ -75,7 +75,7 @@ func NewEventlogBuilder(
 	events := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "elephant_eventlog_events_total",
-			Help: "Number of received replicator events.",
+			Help: "Number of received eventlog events.",
 		},
 		[]string{"type", "doc_type"},
 	)
