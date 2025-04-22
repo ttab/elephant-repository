@@ -2309,16 +2309,29 @@ func (a *DocumentsService) GetAttachments(
 		docIDs[i] = docID
 	}
 
-	grantees := slices.Clone(auth.Claims.Units)
-	grantees = append(grantees, auth.Claims.Subject)
+	var allowedDocs []uuid.UUID
 
-	allowedDocs, err := a.store.BulkCheckPermissions(ctx, BulkCheckPermissionRequest{
-		UUIDs:       docIDs,
-		GranteeURIs: grantees,
-		Permissions: []Permission{ReadPermission},
-	})
-	if err != nil {
-		return nil, twirp.InternalErrorf("check permissions: %v", err)
+	permissionBypass := auth.Claims.HasAnyScope(
+		ScopeDocumentAdmin,
+		ScopeDocumentReadAll,
+	)
+	if permissionBypass {
+		allowedDocs = docIDs
+	} else {
+		grantees := slices.Clone(auth.Claims.Units)
+		grantees = append(grantees, auth.Claims.Subject)
+
+		allowed, err := a.store.BulkCheckPermissions(ctx,
+			BulkCheckPermissionRequest{
+				UUIDs:       docIDs,
+				GranteeURIs: grantees,
+				Permissions: []Permission{ReadPermission},
+			})
+		if err != nil {
+			return nil, twirp.InternalErrorf("check permissions: %v", err)
+		}
+
+		allowedDocs = allowed
 	}
 
 	attachments, err := a.store.GetAttachments(
