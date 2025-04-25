@@ -743,6 +743,24 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		},
 	}, docWithMetaDoc, "get the expected document back")
 
+	docWithMetaDocV1, err := client.Get(ctx, &repository.GetDocumentRequest{
+		Uuid:                docA.Uuid,
+		Version:             1,
+		MetaDocument:        repository.GetMetaDoc_META_INCLUDE,
+		MetaDocumentVersion: 1,
+	})
+	test.Must(t, err,
+		"be able to fetch requested version of document with requested version of meta doc")
+
+	test.EqualMessage(t, &repository.GetDocumentResponse{
+		Document: docA,
+		Version:  1,
+		Meta: &repository.MetaDocument{
+			Version:  1,
+			Document: mDocV1.Document,
+		},
+	}, docWithMetaDocV1, "get the expected document back")
+
 	docWithStatus, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:         docA.Uuid,
 		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
