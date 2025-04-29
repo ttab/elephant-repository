@@ -19,7 +19,7 @@ type Item struct {
 	InternalDescription *DescriptionBlock `newsdoc:"meta,type=core/description,role=internal"`
 	PublicDescription   *DescriptionBlock `newsdoc:"meta,type=core/description,role=public"`
 	Assignments         []AssignmentBlock `newsdoc:"meta,type=core/assignment"`
-	Event               *EventLink        `newsdoc:"links,type=core/event,rel=associated"`
+	Event               *EventLink        `newsdoc:"links,type=core/event,rel=event"`
 }
 
 type DescriptionBlock struct {
