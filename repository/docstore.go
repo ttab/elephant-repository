@@ -117,6 +117,9 @@ type DocStore interface {
 	Unlock(
 		ctx context.Context, uuid uuid.UUID, token string,
 	) error
+	GetDeliverableInfo(
+		ctx context.Context, uuid uuid.UUID,
+	) (DeliverableInfo, error)
 	CreateUpload(ctx context.Context, upload Upload) error
 	GetAttachments(
 		ctx context.Context,
@@ -124,6 +127,13 @@ type DocStore interface {
 		attachment string,
 		getDownloadLink bool,
 	) ([]AttachmentDetails, error)
+}
+
+type DeliverableInfo struct {
+	HasPlanningInfo bool
+	PlanningUUID    *uuid.UUID
+	AssignmentUUID  *uuid.UUID
+	EventUUID       *uuid.UUID
 }
 
 type Upload struct {

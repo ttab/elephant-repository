@@ -19,7 +19,7 @@ const (
 	SetStatusPermission Permission = "s"
 )
 
-var vailidPermissions = []Permission{
+var validPermissions = []Permission{
 	ReadPermission,
 	WritePermission,
 	MetaWritePermission,
@@ -27,7 +27,7 @@ var vailidPermissions = []Permission{
 }
 
 func IsValidPermission(p Permission) bool {
-	return slices.Contains(vailidPermissions, p)
+	return slices.Contains(validPermissions, p)
 }
 
 func (p Permission) Name() string {

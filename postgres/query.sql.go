@@ -1206,6 +1206,32 @@ func (q *Queries) GetDeleteRecordForUpdate(ctx context.Context, arg GetDeleteRec
 	return i, err
 }
 
+const getDeliverableInfo = `-- name: GetDeliverableInfo :one
+SELECT 
+       pa.planning_item AS planning_uuid,
+       pd.assignment AS assignment_uuid,
+       pi.event AS event_uuid
+FROM planning_deliverable pd
+     JOIN planning_assignment pa
+          ON pd.assignment = pa.uuid
+     JOIN planning_item pi
+          ON pa.planning_item = pi.uuid
+WHERE pd.document = $1
+`
+
+type GetDeliverableInfoRow struct {
+	PlanningUuid   uuid.UUID
+	AssignmentUuid uuid.UUID
+	EventUuid      pgtype.UUID
+}
+
+func (q *Queries) GetDeliverableInfo(ctx context.Context, argUuid uuid.UUID) (GetDeliverableInfoRow, error) {
+	row := q.db.QueryRow(ctx, getDeliverableInfo, argUuid)
+	var i GetDeliverableInfoRow
+	err := row.Scan(&i.PlanningUuid, &i.AssignmentUuid, &i.EventUuid)
+	return i, err
+}
+
 const getDeprecations = `-- name: GetDeprecations :many
 SELECT label, enforced
 FROM deprecation
