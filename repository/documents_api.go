@@ -975,6 +975,11 @@ func (a *DocumentsService) Get(
 			"status cannot be specified together with a version")
 	}
 
+	if req.MetaDocumentVersion > 0 && req.Status != "" {
+		return nil, twirp.InvalidArgumentError("status",
+			"status cannot be specified together with a meta document version")
+	}
+
 	docUUID, err := validateRequiredUUIDParam(req.Uuid)
 	if err != nil {
 		return nil, err
@@ -1003,6 +1008,10 @@ func (a *DocumentsService) Get(
 		version     int64
 		metaVersion int64
 	)
+
+	if req.MetaDocumentVersion > 0 {
+		metaVersion = req.MetaDocumentVersion
+	}
 
 	switch {
 	case req.Version > 0:
