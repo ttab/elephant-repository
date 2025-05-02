@@ -43,7 +43,6 @@ type AssignmentBlock struct {
 	StartDate    time.Time         `newsdoc:"data.start_date,format=2006-01-02"`
 	EndDate      time.Time         `newsdoc:"data.end_date,format=2006-01-02"`
 	Status       *string           `newsdoc:"data.status"`
-	FullDay      bool              `newsdoc:"data.full_day"`
 	Public       bool              `newsdoc:"data.public"`
 	Kind         []AssignmentKind  `newsdoc:"meta,type=core/assignment-type"`
 	Assignees    []AssigneeLink    `newsdoc:"links,rel=assignee"`
@@ -129,7 +128,7 @@ func (p *Item) ToRows(version int64) (*Rows, error) {
 			Ends:         pg.PTime(a.Ends),
 			StartDate:    pg.Date(a.StartDate),
 			EndDate:      pg.Date(a.EndDate),
-			FullDay:      a.FullDay,
+			FullDay:      false,
 		}
 
 		for _, k := range a.Kind {
