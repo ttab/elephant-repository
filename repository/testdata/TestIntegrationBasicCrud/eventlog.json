@@ -40,6 +40,34 @@
     },
     {
       "id": 4,
+      "event": "document",
+      "uuid": "88040be2-2e30-4f34-8a9e-3f4802bab8cd",
+      "timestamp": "2023-04-19T08:45:40+02:00",
+      "version": 1,
+      "updater_uri": "user://test/testintegrationbasiccrud",
+      "type": "core/planning-item",
+      "language": "en"
+    },
+    {
+      "id": 5,
+      "event": "acl",
+      "uuid": "88040be2-2e30-4f34-8a9e-3f4802bab8cd",
+      "timestamp": "2023-04-19T08:45:40+02:00",
+      "acl": [
+        {
+          "uri": "user://test/testintegrationbasiccrud",
+          "permissions": [
+            "r",
+            "w"
+          ]
+        }
+      ],
+      "updater_uri": "user://test/testintegrationbasiccrud",
+      "type": "core/planning-item",
+      "language": "en"
+    },
+    {
+      "id": 6,
       "event": "delete_document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-04-19T08:45:40+02:00",

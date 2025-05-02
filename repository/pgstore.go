@@ -2257,6 +2257,25 @@ func (s *PGDocStore) GetAttachments(
 	return res, nil
 }
 
+// GetDeliverableInfo implements DocStore.
+func (s *PGDocStore) GetDeliverableInfo(ctx context.Context, id uuid.UUID) (DeliverableInfo, error) {
+	info, err := s.reader.GetDeliverableInfo(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DeliverableInfo{
+			HasPlanningInfo: false,
+		}, nil
+	} else if err != nil {
+		return DeliverableInfo{}, fmt.Errorf("read from database: %w", err)
+	}
+
+	return DeliverableInfo{
+		HasPlanningInfo: true,
+		PlanningUUID:    &info.PlanningUuid,
+		AssignmentUUID:  &info.AssignmentUuid,
+		EventUUID:       pg.ToUUIDPointer(info.EventUuid),
+	}, nil
+}
+
 func pointer[T any](v T) *T {
 	return &v
 }

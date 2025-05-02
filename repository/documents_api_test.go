@@ -29,6 +29,75 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
+func basePlanningDocument(planningUUID, assignmentUUID, deliverableUUID, eventUUID string) *newsdoc.Document {
+	d := &newsdoc.Document{
+		Uuid:     planningUUID,
+		Title:    "A planning-item",
+		Type:     "core/planning-item",
+		Uri:      "core://newscoverage/" + planningUUID,
+		Language: "en",
+		Meta: []*newsdoc.Block{
+			{
+				Type: "core/planning-item",
+				Data: map[string]string{
+					"start_date": "2025-04-28",
+					"end_date":   "2025-04-28",
+					"tentative":  "false",
+				},
+			},
+			{
+				Type:  "core/newsvalue",
+				Value: "3",
+			},
+		},
+	}
+
+	if assignmentUUID != "" {
+		a := &newsdoc.Block{
+			Id:   assignmentUUID,
+			Type: "core/assignment",
+			Data: map[string]string{
+				"full_day":   "false",
+				"start":      "2025-04-27T22:00:00.000Z",
+				"start_date": "2025-04-28",
+				"end_date":   "2025-04-28",
+				"public":     "true",
+			},
+			Meta: []*newsdoc.Block{
+				{
+					Type:  "core/assignment-type",
+					Value: "text",
+				},
+			},
+		}
+
+		if deliverableUUID != "" {
+			a.Links = []*newsdoc.Block{
+				{
+					Uuid: deliverableUUID,
+					Type: "core/article",
+					Rel:  "deliverable",
+				},
+			}
+		}
+
+		d.Meta = append(d.Meta, a)
+	}
+
+	if eventUUID != "" {
+		d.Links = []*newsdoc.Block{
+			{
+				Uuid:  eventUUID,
+				Type:  "core/event",
+				Title: "An event",
+				Rel:   "event",
+			},
+		}
+	}
+
+	return d
+}
+
 func baseDocument(uuid, uri string) *newsdoc.Document {
 	return &newsdoc.Document{
 		Uuid:     uuid,
@@ -170,6 +239,29 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	test.EqualMessage(t, doc, firstVersion.Document,
 		"expected the first document to be returned")
+
+	const (
+		planningUUID   = "88040be2-2e30-4f34-8a9e-3f4802bab8cd"
+		assignmentUUID = "e9160776-fdb2-4658-a7d1-ef1b8a434096"
+		eventUUID      = "887ade75-97d8-4b29-b15b-8fecb4525775"
+	)
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     planningUUID,
+		Document: basePlanningDocument(planningUUID, assignmentUUID, docUUID, eventUUID),
+	})
+	test.Must(t, err, "create planning-item")
+
+	deliverableInfo, err := client.GetDeliverableInfo(ctx, &repository.GetDeliverableInfoRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "get deliverable info")
+	test.EqualMessage(t, &repository.GetDeliverableInfoResponse{
+		HasPlanningInfo: true,
+		PlanningUuid:    planningUUID,
+		AssignmentUuid:  assignmentUUID,
+		EventUuid:       eventUUID,
+	}, deliverableInfo, "get expected deliverable info")
 
 	t0 := time.Now()
 

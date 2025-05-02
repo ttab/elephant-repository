@@ -873,6 +873,18 @@ WHERE assignment = @assignment AND version != @version;
 DELETE FROM planning_deliverable
 WHERE assignment = @assignment AND version != @version;
 
+-- name: GetDeliverableInfo :one
+SELECT 
+       pa.planning_item AS planning_uuid,
+       pd.assignment AS assignment_uuid,
+       pi.event AS event_uuid
+FROM planning_deliverable pd
+     JOIN planning_assignment pa
+          ON pd.assignment = pa.uuid
+     JOIN planning_item pi
+          ON pa.planning_item = pi.uuid
+WHERE pd.document = @uuid;
+
 -- name: CreateUpload :exec
 INSERT INTO upload(id, created_at, created_by, meta)
 VALUES (@id, @created_at, @created_by, @meta);

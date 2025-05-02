@@ -67,6 +67,55 @@ func NewDocumentsService(
 // Interface guard.
 var _ repository.Documents = &DocumentsService{}
 
+// GetDeliverableInfo implements repository.Documents.
+func (a *DocumentsService) GetDeliverableInfo(
+	ctx context.Context, req *repository.GetDeliverableInfoRequest,
+) (*repository.GetDeliverableInfoResponse, error) {
+	elephantine.SetLogMetadata(ctx,
+		elephantine.LogKeyDocumentUUID, req.Uuid,
+	)
+
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.accessCheck(ctx, auth, docUUID, ReadPermission)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := a.store.GetDeliverableInfo(ctx, docUUID)
+	if err != nil {
+		return nil, twirp.InternalErrorf("load deliverable info: %v", err)
+	}
+
+	var res repository.GetDeliverableInfoResponse
+
+	res.HasPlanningInfo = info.HasPlanningInfo
+
+	if info.PlanningUUID != nil {
+		res.PlanningUuid = info.PlanningUUID.String()
+	}
+
+	if info.AssignmentUUID != nil {
+		res.AssignmentUuid = info.AssignmentUUID.String()
+	}
+
+	if info.EventUUID != nil {
+		res.EventUuid = info.EventUUID.String()
+	}
+
+	return &res, nil
+}
+
 // GetStatus implements repository.Documents.
 func (a *DocumentsService) GetStatus(
 	ctx context.Context, req *repository.GetStatusRequest,
