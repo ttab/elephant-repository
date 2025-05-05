@@ -498,10 +498,12 @@ type StatusHead struct {
 }
 
 type StatusOverviewItem struct {
-	UUID           uuid.UUID
-	CurrentVersion int64
-	Updated        time.Time
-	Heads          map[string]Status
+	UUID               uuid.UUID
+	CurrentVersion     int64
+	Updated            time.Time
+	Heads              map[string]Status
+	WorkflowStep       string
+	WorkflowCheckpoint string
 }
 
 type StatusUpdate struct {

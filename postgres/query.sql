@@ -41,9 +41,11 @@ SELECT SUM(num) FROM (
 SELECT uuid, uri, permissions FROM acl WHERE uuid = $1;
 
 -- name: GetCurrentDocumentVersions :many
-SELECT uuid, current_version, updated
-FROM document
-WHERE uuid = ANY(@uuids::uuid[]);
+SELECT d.uuid, d.current_version, d.updated,
+       w.step AS workflow_step, w.checkpoint AS workflow_checkpoint
+FROM document AS d
+     LEFT OUTER JOIN workflow_state AS w ON w.uuid = d.uuid
+WHERE d.uuid = ANY(@uuids::uuid[]);
 
 -- name: GetMultipleStatusHeads :many
 SELECT h.uuid, h.name, h.current_id, h.updated, h.updater_uri, s.version,

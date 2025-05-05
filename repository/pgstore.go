@@ -1178,46 +1178,50 @@ func (s *PGDocStore) GetStatusOverview(
 
 	for _, v := range versions {
 		collected[v.UUID] = &StatusOverviewItem{
-			UUID:           v.UUID,
-			CurrentVersion: v.CurrentVersion,
-			Updated:        v.Updated.Time,
+			UUID:               v.UUID,
+			CurrentVersion:     v.CurrentVersion,
+			Updated:            v.Updated.Time,
+			WorkflowStep:       v.WorkflowStep.String,
+			WorkflowCheckpoint: v.WorkflowCheckpoint.String,
 		}
 	}
 
-	heads, err := s.reader.GetMultipleStatusHeads(ctx,
-		postgres.GetMultipleStatusHeadsParams{
-			Uuids:    uuids,
-			Statuses: statuses,
-			GetMeta:  getMeta,
-		})
-	if err != nil {
-		return nil, fmt.Errorf("get document heads: %w", err)
-	}
-
-	for _, h := range heads {
-		doc := collected[h.UUID]
-		if doc.Heads == nil {
-			doc.Heads = make(map[string]Status)
+	if len(statuses) > 0 {
+		heads, err := s.reader.GetMultipleStatusHeads(ctx,
+			postgres.GetMultipleStatusHeadsParams{
+				Uuids:    uuids,
+				Statuses: statuses,
+				GetMeta:  getMeta,
+			})
+		if err != nil {
+			return nil, fmt.Errorf("get document heads: %w", err)
 		}
 
-		var meta newsdoc.DataMap
-
-		if len(h.Meta) != 0 {
-			err := json.Unmarshal(h.Meta, &meta)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"unmarshal metadata for %s status %q: %w",
-					h.UUID, h.Name, err)
+		for _, h := range heads {
+			doc := collected[h.UUID]
+			if doc.Heads == nil {
+				doc.Heads = make(map[string]Status)
 			}
-		}
 
-		doc.Heads[h.Name] = Status{
-			ID:             h.CurrentID,
-			Version:        h.Version,
-			Creator:        h.UpdaterUri,
-			Created:        h.Updated.Time,
-			Meta:           meta,
-			MetaDocVersion: h.MetaDocVersion.Int64,
+			var meta newsdoc.DataMap
+
+			if len(h.Meta) != 0 {
+				err := json.Unmarshal(h.Meta, &meta)
+				if err != nil {
+					return nil, fmt.Errorf(
+						"unmarshal metadata for %s status %q: %w",
+						h.UUID, h.Name, err)
+				}
+			}
+
+			doc.Heads[h.Name] = Status{
+				ID:             h.CurrentID,
+				Version:        h.Version,
+				Creator:        h.UpdaterUri,
+				Created:        h.Updated.Time,
+				Meta:           meta,
+				MetaDocVersion: h.MetaDocVersion.Int64,
+			}
 		}
 	}
 

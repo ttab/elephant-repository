@@ -172,10 +172,6 @@ func (a *DocumentsService) GetStatusOverview(
 		return nil, twirp.RequiredArgumentError("uuids")
 	}
 
-	if len(req.Statuses) == 0 {
-		return nil, twirp.RequiredArgumentError("statuses")
-	}
-
 	if len(req.Uuids) > 200 {
 		return nil, twirp.InvalidArgumentError("uuids",
 			"limited to 200 documents")
@@ -226,10 +222,12 @@ func (a *DocumentsService) GetStatusOverview(
 
 	for _, di := range data {
 		ri := repository.StatusOverviewItem{
-			Uuid:     di.UUID.String(),
-			Version:  di.CurrentVersion,
-			Modified: di.Updated.Format(time.RFC3339),
-			Heads:    make(map[string]*repository.Status, len(di.Heads)),
+			Uuid:               di.UUID.String(),
+			Version:            di.CurrentVersion,
+			Modified:           di.Updated.Format(time.RFC3339),
+			Heads:              make(map[string]*repository.Status, len(di.Heads)),
+			WorkflowState:      di.WorkflowStep,
+			WorkflowCheckpoint: di.WorkflowCheckpoint,
 		}
 
 		for name, status := range di.Heads {
