@@ -23,7 +23,7 @@
       "Ends": "2023-09-11T21:59:59Z",
       "StartDate": "2023-09-11",
       "EndDate": "2023-09-11",
-      "FullDay": true,
+      "FullDay": false,
       "Public": false,
       "Kind": [
         "text"
