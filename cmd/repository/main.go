@@ -51,7 +51,7 @@ func main() {
 			&cli.StringFlag{
 				Name:    "addr",
 				Value:   ":1080",
-				EnvVars: []string{"LISTEN_ADDR"},
+				EnvVars: []string{"ADDR", "LISTEN_ADDR"},
 			},
 			&cli.StringFlag{
 				Name:    "profile-addr",
