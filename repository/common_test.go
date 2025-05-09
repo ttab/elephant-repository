@@ -172,6 +172,7 @@ type testingServerOptions struct {
 	SharedSecret       string
 	ExtraSchemas       []string
 	NoStandardStatuses bool
+	NoCharcount        bool
 }
 
 func testingAPIServer(
@@ -202,11 +203,19 @@ func testingAPIServer(
 		env.AssetBucket,
 	)
 
+	var inMet []repository.MetricCalculator
+
+	if !opts.NoCharcount {
+		inMet = append(inMet, repository.NewCharCounter())
+	}
+
 	store, err := repository.NewPGDocStore(
+		t.Context(),
 		logger, dbpool,
 		assetBucket,
 		repository.PGDocStoreOptions{
-			DeleteTimeout: 1 * time.Second,
+			DeleteTimeout:      1 * time.Second,
+			MetricsCalculators: inMet,
 		})
 	test.Must(t, err, "create doc store")
 

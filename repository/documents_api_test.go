@@ -152,6 +152,9 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
+	mClient := tc.MetricsClient(t,
+		itest.StandardClaims(t, "metrics_read"))
+
 	ctx := t.Context()
 
 	t.Run("NegativeEventlogAfterOnEmpty", func(t *testing.T) {
@@ -179,6 +182,16 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	test.Equal(t, 1, res.Version, "expected this to be the first version")
 
+	charCount, err := mClient.GetMetrics(ctx, &repository.GetMetricsRequest{
+		Uuids: []string{doc.Uuid},
+		Kinds: []string{"charcount"},
+	})
+	test.Must(t, err, "get initial charcount")
+
+	test.EqualMessage(t,
+		singleMetricResponse(doc.Uuid, "charcount", "", 0),
+		charCount, "get the expected metrics")
+
 	doc2 := test.CloneMessage(doc)
 
 	doc2.Content = append(doc2.Content, &newsdoc.Block{
@@ -196,6 +209,16 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	test.Must(t, err, "update article")
 
 	test.Equal(t, 2, res.Version, "expected this to be the second version")
+
+	charCount2, err := mClient.GetMetrics(ctx, &repository.GetMetricsRequest{
+		Uuids: []string{doc.Uuid},
+		Kinds: []string{"charcount"},
+	})
+	test.Must(t, err, "get initial charcount")
+
+	test.EqualMessage(t,
+		singleMetricResponse(doc.Uuid, "charcount", "", 24),
+		charCount2, "get the expected metrics for second version")
 
 	docTypeShift := newsdoc.Document{
 		Type: "core/place",
@@ -330,6 +353,22 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	)
 	if sseDiff != "" {
 		t.Fatalf("sse <-> eventlog mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func singleMetricResponse(uuid string, kind string, label string, value int64) *repository.GetMetricsResponse {
+	return &repository.GetMetricsResponse{
+		Documents: map[string]*repository.DocumentMetrics{
+			uuid: {
+				Metrics: []*repository.Metric{
+					{
+						Kind:  kind,
+						Label: label,
+						Value: value,
+					},
+				},
+			},
+		},
 	}
 }
 

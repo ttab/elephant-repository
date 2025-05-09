@@ -32,7 +32,9 @@ func TestIntegrationMetrics(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
-	tc := testingAPIServer(t, logger, testingServerOptions{})
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		NoCharcount: true,
+	})
 
 	clientAdmin := tc.MetricsClient(t,
 		itest.StandardClaims(t, "metrics_admin"))
