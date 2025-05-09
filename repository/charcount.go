@@ -26,7 +26,7 @@ func (cc *Counter) GetKind() MetricKind {
 	}
 }
 
-func (cc *Counter) IsApplicableTo(doc newsdoc.Document) bool {
+func (cc *Counter) IsApplicableTo(_ newsdoc.Document) bool {
 	return true
 }
 

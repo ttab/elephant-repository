@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -105,6 +106,8 @@ func (im *IntrinsicMetrics) MeasureDocument(
 				err = reg.RegisterOrReplaceMetric(ctx, metric)
 			case AggregationIncrement:
 				err = reg.RegisterOrIncrementMetric(ctx, metric)
+			case AggregationNone:
+				err = errors.New("no aggregation specified")
 			default:
 				err = fmt.Errorf("unknown metric aggregation: %v", kind.Aggregation)
 			}
