@@ -136,6 +136,10 @@ func main() {
 				Name:  "no-scheduler",
 				Usage: "Disable scheduled publishing",
 			},
+			&cli.BoolFlag{
+				Name:  "no-charcounter",
+				Usage: "Disable built in character counter",
+			},
 		}, elephantine.AuthenticationCLIFlags()...),
 	}
 
@@ -161,11 +165,14 @@ func runServer(c *cli.Context) error {
 		logLevel        = c.String("log-level")
 		ensureSchemas   = c.StringSlice("ensure-schema")
 		defaultLanguage = c.String("default-language")
+		noCharCounter   = c.Bool("no-charcounter")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
 	grace := elephantine.NewGracefulShutdown(logger, 20*time.Second)
 	paramSource := elephantine.NewLazySSM()
+
+	stopCtx := grace.CancelOnStop(c.Context)
 
 	defer grace.Stop()
 
@@ -241,13 +248,20 @@ func runServer(c *cli.Context) error {
 		logger, presignClient,
 		s3Client, conf.AssetBucket)
 
+	var inMet []repository.MetricCalculator
+
+	if !noCharCounter {
+		inMet = append(inMet, repository.NewCharCounter())
+	}
+
 	store, err := repository.NewPGDocStore(
-		logger, dbpool, assets, repository.PGDocStoreOptions{})
+		stopCtx, logger, dbpool, assets,
+		repository.PGDocStoreOptions{
+			MetricsCalculators: inMet,
+		})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
-
-	stopCtx := grace.CancelOnStop(c.Context)
 
 	go store.RunListener(stopCtx)
 	go store.RunCleaner(stopCtx, 5*time.Minute)

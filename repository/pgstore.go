@@ -29,7 +29,8 @@ const (
 )
 
 type PGDocStoreOptions struct {
-	DeleteTimeout time.Duration
+	MetricsCalculators []MetricCalculator
+	DeleteTimeout      time.Duration
 }
 
 // Interface guard.
@@ -44,6 +45,7 @@ type PGDocStore struct {
 	reader *postgres.Queries
 	assets *AssetBucket
 	opts   PGDocStoreOptions
+	metr   *IntrinsicMetrics
 
 	archived     *pg.FanOut[ArchivedEvent]
 	schemas      *pg.FanOut[SchemaEvent]
@@ -54,6 +56,7 @@ type PGDocStore struct {
 }
 
 func NewPGDocStore(
+	ctx context.Context,
 	logger *slog.Logger, pool *pgxpool.Pool,
 	assets *AssetBucket,
 	options PGDocStoreOptions,
@@ -62,19 +65,27 @@ func NewPGDocStore(
 		options.DeleteTimeout = 5 * time.Second
 	}
 
-	return &PGDocStore{
+	s := &PGDocStore{
 		logger:       logger,
 		pool:         pool,
 		reader:       postgres.New(pool),
 		assets:       assets,
 		opts:         options,
+		metr:         NewIntrinsicMetrics(logger, options.MetricsCalculators),
 		archived:     pg.NewFanOut[ArchivedEvent](NotifyArchived),
 		schemas:      pg.NewFanOut[SchemaEvent](NotifySchemasUpdated),
 		deprecations: pg.NewFanOut[DeprecationEvent](NotifyDeprecationsUpdated),
 		workflows:    pg.NewFanOut[WorkflowEvent](NotifyWorkflowsUpdated),
 		eventOutbox:  pg.NewFanOut[int64](NotifyEventOutbox),
 		eventlog:     pg.NewFanOut[int64](NotifyEventlog),
-	}, nil
+	}
+
+	err := s.metr.Setup(ctx, s)
+	if err != nil {
+		return nil, fmt.Errorf("set up intrinsic metrics: %w", err)
+	}
+
+	return s, nil
 }
 
 // OnSchemaUpdate notifies the channel ch of all archived status
@@ -1946,8 +1957,15 @@ func (s *PGDocStore) Update(
 
 	var res []DocumentUpdate
 
-	for _, s := range updates {
-		res = append(res, s.DocumentUpdate)
+	for _, up := range updates {
+		// Collect intrinsic metrics for document. This is outside of
+		// the transaction, and errors are only logged, because it's
+		// secondary to actually successfully storing documents.
+		if up.Doc != nil && !up.IsMetaDoc {
+			s.metr.MeasureDocument(ctx, s, up.UUID, *up.Doc)
+		}
+
+		res = append(res, up.DocumentUpdate)
 	}
 
 	return res, nil
