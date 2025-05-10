@@ -133,12 +133,19 @@ func main() {
 				EnvVars: []string{"NO_EVENTLOG_BUILDER"},
 			},
 			&cli.BoolFlag{
-				Name:  "no-scheduler",
-				Usage: "Disable scheduled publishing",
+				Name:    "no-scheduler",
+				Usage:   "Disable scheduled publishing",
+				EnvVars: []string{"NO_SCHEDULER"},
 			},
 			&cli.BoolFlag{
-				Name:  "no-charcounter",
-				Usage: "Disable built in character counter",
+				Name:    "no-charcounter",
+				Usage:   "Disable built in character counter",
+				EnvVars: []string{"NO_CHARCOUNTER"},
+			},
+			&cli.StringSliceFlag{
+				Name:    "cors-host",
+				Usage:   "CORS hosts to allow, supports wildcards",
+				EnvVars: []string{"CORS_HOSTS"},
 			},
 		}, elephantine.AuthenticationCLIFlags()...),
 	}
@@ -166,6 +173,7 @@ func runServer(c *cli.Context) error {
 		ensureSchemas   = c.StringSlice("ensure-schema")
 		defaultLanguage = c.String("default-language")
 		noCharCounter   = c.Bool("no-charcounter")
+		corsHosts       = c.StringSlice("cors-host")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -616,7 +624,7 @@ func runServer(c *cli.Context) error {
 	serverGroup.Go(func() error {
 		logger.Debug("starting API server")
 
-		err := repository.ListenAndServe(gCtx, addr, router)
+		err := repository.ListenAndServe(gCtx, addr, router, corsHosts)
 		if err != nil {
 			return fmt.Errorf("API server error: %w", err)
 		}
