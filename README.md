@@ -8,8 +8,6 @@ The repository depends on PostgreSQL for data storage and a S3 compatible store 
 
 All operations against the repository is exposed as a [Twirp RPC API](https://twitchtv.github.io/twirp/docs/intro.html) that you can communicate either using [Protobuf](https://protobuf.dev/) messages or standard JSON. See [Calling the API](#calling-the-api) for more details on communicating with the defined services.
 
-N.B. Until we reach v1.0.0 this must be seen as a tech preview of work in progress without any stability guarantees, and it is not in ANY way production ready.
-
 ## Versioning
 
 All updates to a document are stored as sequentially numbered versions with information about when it was created, who created it, and optional metadata for the version.
