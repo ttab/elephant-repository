@@ -27,18 +27,20 @@ func SetUpRouter(
 	return nil
 }
 
-func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
+func ListenAndServe(
+	ctx context.Context, addr string, h http.Handler,
+	corsHosts []string,
+) error {
 	var handler http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
 		ctx := elephantine.WithLogMetadata(r.Context())
 
 		h.ServeHTTP(w, r.WithContext(ctx))
 	}
 
-	// TODO: Configurable hosts
 	corsHandler := elephantine.CORSMiddleware(elephantine.CORSOptions{
 		AllowInsecure:          false,
 		AllowInsecureLocalhost: true,
-		Hosts:                  []string{"localhost", "tt.se"},
+		Hosts:                  corsHosts,
 		AllowedMethods:         []string{"GET", "POST"},
 		AllowedHeaders:         []string{"Authorization", "Content-Type", "Last-Event-ID"},
 	}, handler)
