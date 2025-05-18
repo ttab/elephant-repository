@@ -1020,6 +1020,13 @@ CREATE INDEX document_version_archived ON public.document_version USING btree (c
 
 
 --
+-- Name: idx_main_doc_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_main_doc_id ON public.document USING btree (main_doc);
+
+
+--
 -- Name: pending_purges; Type: INDEX; Schema: public; Owner: -
 --
 
