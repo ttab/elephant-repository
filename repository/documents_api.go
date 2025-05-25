@@ -1497,8 +1497,14 @@ func (a *DocumentsService) Update(
 	ctx context.Context, req *repository.UpdateRequest,
 ) (*repository.UpdateResponse, error) {
 	elephantine.SetLogMetadata(ctx,
-		elephantine.LogKeyDocumentUUID, req.Uuid,
-	)
+		elephantine.LogKeyDocumentUUID, req.Uuid)
+
+	if req.Document != nil {
+		elephantine.SetLogMetadata(ctx,
+			elephantine.LogKeyDocumentType, req.Document.Type)
+		elephantine.SetLogMetadata(ctx,
+			elephantine.LogKeyDocumentTitle, req.Document.Title)
+	}
 
 	auth, err := a.verifyUpdateRequests(ctx,
 		[]*repository.UpdateRequest{req})
