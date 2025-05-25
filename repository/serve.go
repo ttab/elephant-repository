@@ -31,11 +31,7 @@ func ListenAndServe(
 	ctx context.Context, addr string, h http.Handler,
 	corsHosts []string,
 ) error {
-	var handler http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
-		ctx := elephantine.WithLogMetadata(r.Context())
-
-		h.ServeHTTP(w, r.WithContext(ctx))
-	}
+	handler := elephantine.LogMetadataMiddleware(h)
 
 	corsHandler := elephantine.CORSMiddleware(elephantine.CORSOptions{
 		AllowInsecure:          false,
