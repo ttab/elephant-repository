@@ -319,9 +319,13 @@ func testingAPIServer(
 
 	srvOpts.Hooks = elephantine.LoggingHooks(logger)
 
-	srvOpts.SetJWTValidation(elephantine.NewStaticAuthInfoParser(jwtKey.PublicKey, elephantine.JWTAuthInfoParserOptions{
-		Issuer: "test",
-	}))
+	srvOpts.SetJWTValidation(
+		elephantine.NewStaticAuthInfoParser(
+			t.Context(),
+			jwtKey.PublicKey,
+			elephantine.JWTAuthInfoParserOptions{
+				Issuer: "test",
+			}))
 
 	err = repository.SetUpRouter(router,
 		repository.WithDocumentsAPI(docService, srvOpts),
