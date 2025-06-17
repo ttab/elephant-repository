@@ -2137,6 +2137,31 @@ func (q *Queries) GetMetaDocVersion(ctx context.Context, argUuid pgtype.UUID) (i
 	return current_version, err
 }
 
+const getMetaTypeUse = `-- name: GetMetaTypeUse :many
+SELECT main_type, meta_type
+FROM meta_type_use
+`
+
+func (q *Queries) GetMetaTypeUse(ctx context.Context) ([]MetaTypeUse, error) {
+	rows, err := q.db.Query(ctx, getMetaTypeUse)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MetaTypeUse
+	for rows.Next() {
+		var i MetaTypeUse
+		if err := rows.Scan(&i.MainType, &i.MetaType); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMetricKind = `-- name: GetMetricKind :one
 SELECT name, aggregation
 FROM metric_kind 
@@ -3366,6 +3391,31 @@ type InsertSigningKeyParams struct {
 func (q *Queries) InsertSigningKey(ctx context.Context, arg InsertSigningKeyParams) error {
 	_, err := q.db.Exec(ctx, insertSigningKey, arg.Kid, arg.Spec)
 	return err
+}
+
+const listActiveSchemas = `-- name: ListActiveSchemas :many
+SELECT a.name, a.version
+FROM active_schemas AS a
+`
+
+func (q *Queries) ListActiveSchemas(ctx context.Context) ([]ActiveSchema, error) {
+	rows, err := q.db.Query(ctx, listActiveSchemas)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ActiveSchema
+	for rows.Next() {
+		var i ActiveSchema
+		if err := rows.Scan(&i.Name, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listDeleteRecords = `-- name: ListDeleteRecords :many

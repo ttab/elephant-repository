@@ -20,12 +20,6 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-type SchemasService struct {
-	logger *slog.Logger
-	store  SchemaStore
-	client *http.Client
-}
-
 func NewSchemasService(logger *slog.Logger, store SchemaStore) *SchemasService {
 	return &SchemasService{
 		logger: logger,
@@ -36,6 +30,57 @@ func NewSchemasService(logger *slog.Logger, store SchemaStore) *SchemasService {
 
 // Interface guard.
 var _ repository.Schemas = &SchemasService{}
+
+type SchemasService struct {
+	logger *slog.Logger
+	store  SchemaStore
+	client *http.Client
+}
+
+// GetMetaTypes implements repository.Schemas.
+func (a *SchemasService) GetMetaTypes(
+	ctx context.Context, _ *repository.GetMetaTypesRequest,
+) (*repository.GetMetaTypesResponse, error) {
+	types, err := a.store.GetMetaTypes(ctx)
+	if err != nil {
+		return nil, twirp.InternalErrorf("read meta type info: %v", err)
+	}
+
+	var res repository.GetMetaTypesResponse
+
+	for _, t := range types {
+		res.Types = append(res.Types, &repository.MetaTypeInfo{
+			Name:   t.Name,
+			UsedBy: t.UsedBy,
+		})
+	}
+
+	return &res, nil
+}
+
+// ListActive implements repository.Schemas.
+func (a *SchemasService) ListActive(
+	ctx context.Context,
+	req *repository.ListActiveSchemasRequest,
+) (*repository.ListActiveSchemasResponse, error) {
+	schemas, err := a.store.ListActiveSchemas(ctx)
+	if err != nil {
+		return nil, twirp.InternalErrorf("read schema info: %v", err)
+	}
+
+	res := repository.ListActiveSchemasResponse{
+		Schemas: make([]*repository.Schema, len(schemas)),
+	}
+
+	for i, s := range schemas {
+		res.Schemas[i] = &repository.Schema{
+			Name:    s.Name,
+			Version: s.Version,
+		}
+	}
+
+	return &res, nil
+}
 
 // RegisterMetaType implements repository.Schemas.
 func (a *SchemasService) RegisterMetaType(
@@ -94,9 +139,15 @@ func (a *SchemasService) GetAllActive(
 		return nil, err
 	}
 
-	err = a.waitIfSchemasAreUnchanged(ctx, req.Known, req.WaitSeconds)
+	changed, err := a.waitForSchemaSchange(ctx, req.Known, req.WaitSeconds)
 	if err != nil {
 		return nil, fmt.Errorf("wait for schema changes: %w", err)
+	}
+
+	if !changed && req.OnlyChanged {
+		return &repository.GetAllActiveSchemasResponse{
+			Unchanged: true,
+		}, nil
 	}
 
 	schemas, err := a.store.GetActiveSchemas(ctx)
@@ -105,9 +156,18 @@ func (a *SchemasService) GetAllActive(
 			"failed to retrieve active schemas: %w", err)
 	}
 
-	var res repository.GetAllActiveSchemasResponse
+	var (
+		res   repository.GetAllActiveSchemasResponse
+		exist = make(map[string]bool)
+	)
 
 	for i := range schemas {
+		// Ignore known schema versions.
+		kv := req.Known[schemas[i].Name]
+		if req.OnlyChanged && kv == schemas[i].Version {
+			continue
+		}
+
 		data, err := json.Marshal(schemas[i].Specification)
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -120,51 +180,58 @@ func (a *SchemasService) GetAllActive(
 			Version: schemas[i].Version,
 			Spec:    string(data),
 		})
+
+		exist[schemas[i].Name] = true
+	}
+
+	for requested := range req.Known {
+		if exist[requested] {
+			continue
+		}
+
+		res.Removed = append(res.Removed, requested)
 	}
 
 	return &res, nil
 }
 
-func (a *SchemasService) waitIfSchemasAreUnchanged(
+func (a *SchemasService) waitForSchemaSchange(
 	ctx context.Context,
 	known map[string]string, waitSeconds int64,
-) error {
-	if len(known) == 0 {
-		return nil
-	}
-
-	versions, err := a.store.GetSchemaVersions(ctx)
-	if err != nil {
-		return fmt.Errorf(
-			"get current versions: %w", err)
-	}
-
-	if len(known) != len(versions) {
-		return nil
-	}
-
-	for n := range known {
-		if known[n] != versions[n] {
-			return nil
-		}
-	}
-
-	ch := make(chan SchemaEvent)
-
-	a.store.OnSchemaUpdate(ctx, ch)
-
+) (bool, error) {
 	if waitSeconds == 0 || waitSeconds > 10 {
 		waitSeconds = 10
 	}
 
 	timeout := time.Duration(waitSeconds) * time.Second
 
-	select {
-	case <-ch:
-	case <-time.After(timeout):
-	}
+	ch := make(chan SchemaEvent)
 
-	return nil
+	a.store.OnSchemaUpdate(ctx, ch)
+
+	for {
+		versions, err := a.store.GetSchemaVersions(ctx)
+		if err != nil {
+			return false, fmt.Errorf(
+				"get current versions: %w", err)
+		}
+
+		if len(known) != len(versions) {
+			return true, nil
+		}
+
+		for n := range known {
+			if known[n] != versions[n] {
+				return true, nil
+			}
+		}
+
+		select {
+		case <-ch:
+		case <-time.After(timeout):
+			return false, nil
+		}
+	}
 }
 
 // Get retrieves a schema.
@@ -359,7 +426,9 @@ func (a *SchemasService) SetActive(
 		}
 	} else {
 		err := a.store.ActivateSchema(ctx, req.Name, req.Version)
-		if err != nil {
+		if IsDocStoreErrorCode(err, ErrCodeFailedPrecondition) {
+			return nil, twirp.FailedPrecondition.Error(err.Error())
+		} else if err != nil {
 			return nil, fmt.Errorf(
 				"failed to register activation: %w", err)
 		}

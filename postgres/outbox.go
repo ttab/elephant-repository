@@ -38,4 +38,5 @@ type EventlogExtra struct {
 	AttachedObjects []string `json:"attached_objects,omitempty"`
 	DetachedObjects []string `json:"detached_objects,omitempty"`
 	DeleteRecordID  int64    `json:"delete_record_id,omitempty"`
+	MetaDocVersion  int64    `json:"metadoc_version,omitempty"`
 }

@@ -171,6 +171,8 @@ type SchemaStore interface {
 	GetSchema(
 		ctx context.Context, name, version string,
 	) (*Schema, error)
+	// ListActiveSchemas without populating the schema spec.
+	ListActiveSchemas(ctx context.Context) ([]*Schema, error)
 	GetActiveSchemas(ctx context.Context) ([]*Schema, error)
 	GetSchemaVersions(ctx context.Context) (map[string]string, error)
 	OnSchemaUpdate(ctx context.Context, ch chan SchemaEvent)
@@ -180,6 +182,9 @@ type SchemaStore interface {
 	RegisterMetaTypeUse(
 		ctx context.Context, mainType string, metaType string,
 	) error
+	GetMetaTypes(
+		ctx context.Context,
+	) ([]MetaTypeInfo, error)
 	GetDeprecations(
 		ctx context.Context,
 	) ([]*Deprecation, error)
@@ -329,6 +334,11 @@ type RegisterSchemaRequest struct {
 	Version       string
 	Specification revisor.ConstraintSet
 	Activate      bool
+}
+
+type MetaTypeInfo struct {
+	Name   string
+	UsedBy []string
 }
 
 type Deprecation struct {
