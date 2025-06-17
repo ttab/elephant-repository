@@ -62,27 +62,23 @@ func NewSSE(ctx context.Context, logger *slog.Logger, store DocStore) (*SSE, err
 
 	sseServer := &sse.Server{
 		Provider: sseProvider,
-		OnSession: func(sess *sse.Session) (sse.Subscription, bool) {
-			_, err := RequireAnyScope(sess.Req.Context(),
+		OnSession: func(w http.ResponseWriter, r *http.Request) (topics []string, allowed bool) {
+			_, err := RequireAnyScope(r.Context(),
 				ScopeEventlogRead,
 				ScopeDocumentAdmin,
 			)
 			if err != nil {
 				code := elephantine.TwirpErrorToHTTPStatusCode(err)
 
-				sess.Res.WriteHeader(code)
-				_, _ = sess.Res.Write([]byte(err.Error()))
+				w.WriteHeader(code)
+				_, _ = w.Write([]byte(err.Error()))
 
-				return sse.Subscription{}, false
+				return nil, false
 			}
 
-			query := sess.Req.URL.Query()
+			query := r.URL.Query()
 
-			return sse.Subscription{
-				Client:      sess,
-				LastEventID: sess.LastEventID,
-				Topics:      query["topic"],
-			}, true
+			return query["topic"], true
 		},
 	}
 
