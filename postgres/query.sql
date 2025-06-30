@@ -362,6 +362,11 @@ WHERE meta_type = @meta_type;
 SELECT main_type, meta_type
 FROM meta_type_use;
 
+-- name: GetMetaTypesWithUse :many
+SELECT m.meta_type, u.main_type
+       FROM meta_type AS m
+       LEFT OUTER JOIN meta_type_use AS u ON u.meta_type = m.meta_type;
+
 -- name: CheckMetaDocumentType :one
 SELECT coalesce(meta_type, ''), NOT d.main_doc IS NULL as is_meta_doc
 FROM document AS d

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -2819,7 +2820,7 @@ func (s *PGDocStore) GetTypeOfDocument(ctx context.Context, uuid uuid.UUID) (str
 
 // GetMetaTypes implements SchemaStore.
 func (s *PGDocStore) GetMetaTypes(ctx context.Context) ([]MetaTypeInfo, error) {
-	rows, err := s.reader.GetMetaTypeUse(ctx)
+	rows, err := s.reader.GetMetaTypesWithUse(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list meta type use: %w", err)
 	}
@@ -2836,13 +2837,20 @@ func (s *PGDocStore) GetMetaTypes(ctx context.Context) ([]MetaTypeInfo, error) {
 			m[info.Name] = info
 		}
 
-		info.UsedBy = append(info.UsedBy, r.MainType)
+		if r.MainType.Valid {
+			info.UsedBy = append(info.UsedBy, r.MainType.String)
+		}
 	}
 
 	res := make([]MetaTypeInfo, 0, len(m))
 
-	for _, info := range m {
-		res = append(res, *info)
+	// Ensure stable sort after using a intermediate map.
+	keys := slices.Collect(maps.Keys(m))
+
+	slices.Sort(keys)
+
+	for _, key := range keys {
+		res = append(res, *m[key])
 	}
 
 	return res, nil

@@ -2162,6 +2162,37 @@ func (q *Queries) GetMetaTypeUse(ctx context.Context) ([]MetaTypeUse, error) {
 	return items, nil
 }
 
+const getMetaTypesWithUse = `-- name: GetMetaTypesWithUse :many
+SELECT m.meta_type, u.main_type
+       FROM meta_type AS m
+       LEFT OUTER JOIN meta_type_use AS u ON u.meta_type = m.meta_type
+`
+
+type GetMetaTypesWithUseRow struct {
+	MetaType string
+	MainType pgtype.Text
+}
+
+func (q *Queries) GetMetaTypesWithUse(ctx context.Context) ([]GetMetaTypesWithUseRow, error) {
+	rows, err := q.db.Query(ctx, getMetaTypesWithUse)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMetaTypesWithUseRow
+	for rows.Next() {
+		var i GetMetaTypesWithUseRow
+		if err := rows.Scan(&i.MetaType, &i.MainType); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMetricKind = `-- name: GetMetricKind :one
 SELECT name, aggregation
 FROM metric_kind 
