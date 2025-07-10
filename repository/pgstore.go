@@ -2689,8 +2689,10 @@ func (s *PGDocStore) GetDocumentWorkflow(
 	var _z DocumentWorkflow
 
 	row, err := s.reader.GetDocumentWorkflow(ctx, docType)
-	if err != nil {
-		return _z, fmt.Errorf("failed to fetch workflows: %w", err)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return _z, DocStoreErrorf(ErrCodeNotFound, "no workflow defined")
+	} else if err != nil {
+		return _z, fmt.Errorf("failed to fetch workflow: %w", err)
 	}
 
 	wf := DocumentWorkflow{
