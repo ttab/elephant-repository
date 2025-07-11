@@ -37,6 +37,33 @@ type SchemasService struct {
 	client *http.Client
 }
 
+// GetDocumentTypes implements repository.Schemas.
+func (a *SchemasService) GetDocumentTypes(
+	ctx context.Context,
+	req *repository.GetDocumentTypesRequest,
+) (*repository.GetDocumentTypesResponse, error) {
+	schemas, err := a.store.GetActiveSchemas(ctx)
+	if err != nil {
+		return nil, twirp.InternalErrorf("get schemas: %v", err)
+	}
+
+	var declared []string
+
+	for _, sc := range schemas {
+		for _, doc := range sc.Specification.Documents {
+			if doc.Declares == "" {
+				continue
+			}
+
+			declared = append(declared, doc.Declares)
+		}
+	}
+
+	return &repository.GetDocumentTypesResponse{
+		Types: declared,
+	}, nil
+}
+
 // GetMetaTypes implements repository.Schemas.
 func (a *SchemasService) GetMetaTypes(
 	ctx context.Context, _ *repository.GetMetaTypesRequest,
