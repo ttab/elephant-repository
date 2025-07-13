@@ -40,7 +40,7 @@ type SchemasService struct {
 // GetDocumentTypes implements repository.Schemas.
 func (a *SchemasService) GetDocumentTypes(
 	ctx context.Context,
-	req *repository.GetDocumentTypesRequest,
+	_ *repository.GetDocumentTypesRequest,
 ) (*repository.GetDocumentTypesResponse, error) {
 	schemas, err := a.store.GetActiveSchemas(ctx)
 	if err != nil {
@@ -88,7 +88,7 @@ func (a *SchemasService) GetMetaTypes(
 // ListActive implements repository.Schemas.
 func (a *SchemasService) ListActive(
 	ctx context.Context,
-	req *repository.ListActiveSchemasRequest,
+	_ *repository.ListActiveSchemasRequest,
 ) (*repository.ListActiveSchemasResponse, error) {
 	schemas, err := a.store.ListActiveSchemas(ctx)
 	if err != nil {
