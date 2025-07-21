@@ -166,7 +166,7 @@ func (a *SchemasService) GetAllActive(
 		return nil, err
 	}
 
-	changed, err := a.waitForSchemaSchange(ctx, req.Known, req.WaitSeconds)
+	changed, err := a.waitForSchemaChange(ctx, req.Known, req.WaitSeconds)
 	if err != nil {
 		return nil, fmt.Errorf("wait for schema changes: %w", err)
 	}
@@ -222,7 +222,7 @@ func (a *SchemasService) GetAllActive(
 	return &res, nil
 }
 
-func (a *SchemasService) waitForSchemaSchange(
+func (a *SchemasService) waitForSchemaChange(
 	ctx context.Context,
 	known map[string]string, waitSeconds int64,
 ) (bool, error) {
