@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -37,6 +38,7 @@ type PGDocStoreOptions struct {
 var (
 	_ DocStore    = &PGDocStore{}
 	_ MetricStore = &PGDocStore{}
+	_ SchemaStore = &PGDocStore{}
 )
 
 type PGDocStore struct {
@@ -2687,8 +2689,10 @@ func (s *PGDocStore) GetDocumentWorkflow(
 	var _z DocumentWorkflow
 
 	row, err := s.reader.GetDocumentWorkflow(ctx, docType)
-	if err != nil {
-		return _z, fmt.Errorf("failed to fetch workflows: %w", err)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return _z, DocStoreErrorf(ErrCodeNotFound, "no workflow defined")
+	} else if err != nil {
+		return _z, fmt.Errorf("failed to fetch workflow: %w", err)
 	}
 
 	wf := DocumentWorkflow{
@@ -2814,6 +2818,44 @@ func (s *PGDocStore) GetTypeOfDocument(ctx context.Context, uuid uuid.UUID) (str
 	}
 
 	return t, nil
+}
+
+// GetMetaTypes implements SchemaStore.
+func (s *PGDocStore) GetMetaTypes(ctx context.Context) ([]MetaTypeInfo, error) {
+	rows, err := s.reader.GetMetaTypesWithUse(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list meta type use: %w", err)
+	}
+
+	m := make(map[string]*MetaTypeInfo)
+
+	for _, r := range rows {
+		info, ok := m[r.MetaType]
+		if !ok {
+			info = &MetaTypeInfo{
+				Name: r.MetaType,
+			}
+
+			m[info.Name] = info
+		}
+
+		if r.MainType.Valid {
+			info.UsedBy = append(info.UsedBy, r.MainType.String)
+		}
+	}
+
+	res := make([]MetaTypeInfo, 0, len(m))
+
+	// Ensure stable sort after using a intermediate map.
+	keys := slices.Collect(maps.Keys(m))
+
+	slices.Sort(keys)
+
+	for _, key := range keys {
+		res = append(res, *m[key])
+	}
+
+	return res, nil
 }
 
 type DocumentMetaType struct {
@@ -3089,9 +3131,16 @@ func (s *PGDocStore) RegisterSchema(
 func (s *PGDocStore) ActivateSchema(
 	ctx context.Context, name, version string,
 ) error {
-	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
+	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		return s.activateSchema(ctx, tx, name, version)
 	})
+	if pg.IsConstraintError(err, "active_schemas_name_version_fkey") {
+		return DocStoreErrorf(ErrCodeFailedPrecondition, "unknown version")
+	} else if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // RegisterSchema implements DocStore.
@@ -3181,6 +3230,27 @@ func (s *PGDocStore) GetActiveSchemas(
 			Name:          rows[i].Name,
 			Version:       rows[i].Version,
 			Specification: spec,
+		}
+	}
+
+	return res, nil
+}
+
+// ListActiveSchemas implements DocStore.
+func (s *PGDocStore) ListActiveSchemas(
+	ctx context.Context,
+) ([]*Schema, error) {
+	rows, err := s.reader.ListActiveSchemas(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch active schemas: %w", err)
+	}
+
+	res := make([]*Schema, len(rows))
+
+	for i := range rows {
+		res[i] = &Schema{
+			Name:    rows[i].Name,
+			Version: rows[i].Version,
 		}
 	}
 

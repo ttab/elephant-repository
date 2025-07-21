@@ -742,11 +742,36 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	})
 	test.Must(t, err, "register the meta type")
 
+	preUse, err := schema.GetMetaTypes(ctx,
+		&repository.GetMetaTypesRequest{})
+	test.Must(t, err, "get current meta types")
+
+	test.EqualMessage(t, &repository.GetMetaTypesResponse{
+		Types: []*repository.MetaTypeInfo{
+			{
+				Name: "test/metadata",
+			},
+		},
+	}, preUse, "get the expected meta type")
+
 	_, err = schema.RegisterMetaTypeUse(ctx, &repository.RegisterMetaTypeUseRequest{
 		MainType: "core/article",
 		MetaType: "test/metadata",
 	})
 	test.Must(t, err, "register the meta type for use with articles")
+
+	postUse, err := schema.GetMetaTypes(ctx,
+		&repository.GetMetaTypesRequest{})
+	test.Must(t, err, "get current meta types")
+
+	test.EqualMessage(t, &repository.GetMetaTypesResponse{
+		Types: []*repository.MetaTypeInfo{
+			{
+				Name:   "test/metadata",
+				UsedBy: []string{"core/article"},
+			},
+		},
+	}, postUse, "get the expected meta type")
 
 	mRes, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:               docA.Uuid,

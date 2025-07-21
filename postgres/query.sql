@@ -358,6 +358,15 @@ INSERT INTO meta_type_use(
 DELETE FROM meta_type
 WHERE meta_type = @meta_type;
 
+-- name: GetMetaTypeUse :many
+SELECT main_type, meta_type
+FROM meta_type_use;
+
+-- name: GetMetaTypesWithUse :many
+SELECT m.meta_type, u.main_type
+       FROM meta_type AS m
+       LEFT OUTER JOIN meta_type_use AS u ON u.meta_type = m.meta_type;
+
 -- name: CheckMetaDocumentType :one
 SELECT coalesce(meta_type, ''), NOT d.main_doc IS NULL as is_meta_doc
 FROM document AS d
@@ -555,6 +564,10 @@ WHERE a.name = @name;
 SELECT s.name, s.version, s.spec
 FROM document_schema AS s
 WHERE s.name = @name AND s.version = @version;
+
+-- name: ListActiveSchemas :many
+SELECT a.name, a.version
+FROM active_schemas AS a;
 
 -- name: GetActiveSchemas :many
 SELECT s.name, s.version, s.spec
