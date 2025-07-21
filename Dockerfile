@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.24.4-alpine3.22 AS build
+FROM --platform=$BUILDPLATFORM golang:1.24.5-alpine3.22 AS build
 
 WORKDIR /usr/src
 
@@ -11,7 +11,7 @@ ARG TARGETOS TARGETARCH
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -o /build/repository ./cmd/repository
 
-FROM alpine:3.21
+FROM alpine:3.22
 
 COPY --from=build /build/repository /usr/local/bin/repository
 
