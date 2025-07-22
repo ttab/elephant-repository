@@ -3650,6 +3650,8 @@ func (q *Queries) RegisterMetaTypeUse(ctx context.Context, arg RegisterMetaTypeU
 const registerMetricKind = `-- name: RegisterMetricKind :exec
 INSERT INTO metric_kind(name, aggregation)
 VALUES ($1, $2)
+ON CONFLICT (name) DO UPDATE
+   SET aggregation = excluded.aggregation
 `
 
 type RegisterMetricKindParams struct {
