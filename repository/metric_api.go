@@ -125,7 +125,8 @@ func (m *MetricsService) GetKinds(
 	ctx context.Context,
 	_ *repository.GetMetricKindsRequest,
 ) (*repository.GetMetricKindsResponse, error) {
-	_, err := RequireAnyScope(ctx, ScopeMetricsAdmin)
+	_, err := RequireAnyScope(ctx,
+		ScopeMetricsAdmin, ScopeMetricsRead, ScopeMetricsWrite)
 	if err != nil {
 		return nil, err
 	}
