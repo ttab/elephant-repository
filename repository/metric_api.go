@@ -125,7 +125,8 @@ func (m *MetricsService) GetKinds(
 	ctx context.Context,
 	_ *repository.GetMetricKindsRequest,
 ) (*repository.GetMetricKindsResponse, error) {
-	_, err := RequireAnyScope(ctx, ScopeMetricsAdmin)
+	_, err := RequireAnyScope(ctx,
+		ScopeMetricsAdmin, ScopeMetricsRead, ScopeMetricsWrite)
 	if err != nil {
 		return nil, err
 	}
@@ -194,10 +195,7 @@ func (m *MetricsService) RegisterKind(
 	}
 
 	err = m.store.RegisterMetricKind(ctx, req.Name, agg)
-	if IsDocStoreErrorCode(err, ErrCodeExists) {
-		return nil, twirp.FailedPrecondition.Error(
-			"metric kind already exists")
-	} else if err != nil {
+	if err != nil {
 		return nil, fmt.Errorf("failed to register metric kind: %w", err)
 	}
 
@@ -231,6 +229,7 @@ func (m *MetricsService) RegisterMetric(
 		return nil, twirp.InvalidArgument.Errorf("invalid argument: %w", err)
 	}
 
+	// TODO: the metric kinds are very cacheable.
 	kind, err := m.store.GetMetricKind(ctx, req.Kind)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, twirp.FailedPrecondition.Error(err.Error())

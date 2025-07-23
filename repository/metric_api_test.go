@@ -54,15 +54,15 @@ func TestIntegrationMetrics(t *testing.T) {
 
 	_, err = clientAdmin.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
 		Name:        "revisions",
-		Aggregation: repository.MetricAggregation_INCREMENT,
+		Aggregation: repository.MetricAggregation_REPLACE,
 	})
 	test.Must(t, err, "register kind")
 
 	_, err = clientAdmin.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
 		Name:        "revisions",
-		Aggregation: repository.MetricAggregation_REPLACE,
+		Aggregation: repository.MetricAggregation_INCREMENT,
 	})
-	test.MustNot(t, err, "register duplicate kind")
+	test.Must(t, err, "register kind update")
 
 	kinds, err := clientAdmin.GetKinds(ctx, &repository.GetMetricKindsRequest{})
 	test.Must(t, err, "get kinds")

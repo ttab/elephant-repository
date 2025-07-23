@@ -3381,10 +3381,7 @@ func (s *PGDocStore) RegisterMetricKind(
 			Name:        name,
 			Aggregation: int16(aggregation),
 		})
-		if pg.IsConstraintError(err, "metric_kind_pkey") {
-			return DocStoreErrorf(ErrCodeExists,
-				"metric kind already exists")
-		} else if err != nil {
+		if err != nil {
 			return fmt.Errorf("failed to save to databaase: %w", err)
 		}
 

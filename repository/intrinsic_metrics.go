@@ -59,7 +59,7 @@ func (im *IntrinsicMetrics) Setup(
 		kind := c.GetKind()
 
 		err := reg.RegisterMetricKind(ctx, kind.Name, kind.Aggregation)
-		if err != nil && !IsDocStoreErrorCode(err, ErrCodeExists) {
+		if err != nil {
 			return fmt.Errorf("register metric kind %q: %w", kind.Name, err)
 		}
 	}

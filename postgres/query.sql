@@ -770,7 +770,9 @@ LIMIT 1;
 
 -- name: RegisterMetricKind :exec
 INSERT INTO metric_kind(name, aggregation)
-VALUES (@name, @aggregation);
+VALUES (@name, @aggregation)
+ON CONFLICT (name) DO UPDATE
+   SET aggregation = excluded.aggregation;
 
 -- name: DeleteMetricKind :exec
 DELETE FROM metric_kind
