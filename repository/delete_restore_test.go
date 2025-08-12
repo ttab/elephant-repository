@@ -30,7 +30,7 @@ func TestDeleteRestore(t *testing.T) {
 
 	t.Parallel()
 
-	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunArchiver:        true,
@@ -95,6 +95,8 @@ func TestDeleteRestore(t *testing.T) {
 
 	test.Equal(t, 1, len(deletesA.Deletes), "expect one delete record")
 
+	// Prepare a document B that we want to write once the delete has been
+	// processed.
 	docB := test.CloneMessage(docA)
 
 	docB.Content = append(docB.Content, &newsdoc.Block{
@@ -109,7 +111,9 @@ func TestDeleteRestore(t *testing.T) {
 	var genBCreated bool
 
 	for !genBCreated {
-		time.Sleep(100 * time.Millisecond)
+		if time.Since(pollStart) > 2*time.Second {
+			t.Fatal("timed out waiting for write of generation B to succeed")
+		}
 
 		// Create document (gen B).
 		_, err = client.Update(ctx, &repository.UpdateRequest{
@@ -121,14 +125,11 @@ func TestDeleteRestore(t *testing.T) {
 		// The document is not in a state to be recreated until the
 		// delete has been processed.
 		case elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition):
+			time.Sleep(100 * time.Millisecond)
 		case err != nil:
 			t.Fatalf("unexpected error when creation generation B of the doc: %v", err)
-		case time.Since(pollStart) > 10*time.Second:
-			t.Fatal("timed out waiting for write of generation B to succeed")
 		default:
 			genBCreated = true
-
-			continue
 		}
 	}
 
@@ -182,7 +183,13 @@ func TestDeleteRestore(t *testing.T) {
 
 	var restoreStarted bool
 
+	pollStart = time.Now()
+
 	for !restoreStarted {
+		if time.Since(pollStart) > 2*time.Second {
+			t.Fatal("timed out waiting for document to become readable")
+		}
+
 		// Restore gen B.
 		_, err = client.Restore(ctx, &repository.RestoreRequest{
 			Uuid:           docUUID,
@@ -209,7 +216,13 @@ func TestDeleteRestore(t *testing.T) {
 
 	var doc *newsdoc.Document
 
+	pollStart = time.Now()
+
 	for doc == nil {
+		if time.Since(pollStart) > 2*time.Second {
+			t.Fatal("timed out waiting for document to become readable")
+		}
+
 		// Read the current version of the document.
 		res, err := client.Get(ctx, &repository.GetDocumentRequest{
 			Uuid: docUUID,
@@ -217,6 +230,8 @@ func TestDeleteRestore(t *testing.T) {
 
 		switch {
 		case elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition):
+			time.Sleep(100 * time.Millisecond)
+
 			// Restore is still processing
 			continue
 		case err != nil:
@@ -235,11 +250,11 @@ func TestDeleteRestore(t *testing.T) {
 		events      []*repository.EventlogItem
 	)
 
-	eventPollStarted := time.Now()
+	pollStart = time.Now()
 
 	// Read the eventlog until we get a "restore_finished" event.
 	for !gotFinEvent {
-		if time.Since(eventPollStarted) > 10*time.Second {
+		if time.Since(pollStart) > 10*time.Second {
 			t.Fatal("timed out waiting for restore finished event")
 		}
 

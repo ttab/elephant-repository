@@ -14,7 +14,6 @@ import (
 	"log/slog"
 	"maps"
 	mrand "math/rand"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -436,9 +435,7 @@ func (a *Archiver) archiveEventlogItem(
 			fmt.Errorf("update archiver state: %w", err)
 	}
 
-	// Update the archive count for new events that correspond to an update
-	// request that must be archived before delete.
-	if !deletedDoc && mustBeArchivedBeforeDelete(event.Event) {
+	if !deletedDoc {
 		_, err := q.UpdateDocumentUnarchivedCount(ctx,
 			postgres.UpdateDocumentUnarchivedCountParams{
 				UUID:  item.UUID,
@@ -485,16 +482,6 @@ func (a *Archiver) archiveEventlogItem(
 		Position:      item.ID,
 		LastSignature: ref.Signature,
 	}, nil
-}
-
-func mustBeArchivedBeforeDelete(eventType EventType) bool {
-	//nolint: exhaustive
-	switch eventType {
-	case TypeACLUpdate, TypeDocumentVersion, TypeNewStatus, TypeDeleteDocument:
-		return true
-	}
-
-	return false
 }
 
 func (a *Archiver) runPollLoop(ctx context.Context) error {
@@ -898,8 +885,9 @@ func (a *Archiver) processRestores(
 	})
 
 	var (
-		parentSig   string
-		lastVersion int64
+		parentSig    string
+		lastVersion  int64
+		lastAttached = map[string]int64{}
 	)
 
 	for versionsPages.HasMorePages() {
@@ -932,11 +920,21 @@ func (a *Archiver) processRestores(
 					lastVersion+1, id)
 			}
 
-			sig, err := a.restoreDocumentVersion(
-				ctx, q, &parentSig, id, nonce, req, *o.Key)
+			if id > manifest.LastVersion {
+				return false, fmt.Errorf(
+					"unexpected version %d, only want %d",
+					id, manifest.LastVersion)
+			}
+
+			attached, sig, err := a.restoreDocumentVersion(
+				ctx, tx, parentSig, id, nonce, req, *o.Key)
 			if err != nil {
 				return false, fmt.Errorf(
 					"restore version %d: %w", id, err)
+			}
+
+			for _, name := range attached {
+				lastAttached[name] = id
 			}
 
 			lastVersion = id
@@ -1012,7 +1010,7 @@ func (a *Archiver) processRestores(
 			}
 
 			sig, stat, err := a.restoreDocumentStatus(
-				ctx, q, &parentSig, id, *o.Key)
+				ctx, tx, parentSig, id, *o.Key, nonce)
 			if err != nil {
 				return false, fmt.Errorf(
 					"restore status %q %d: %w", name, id, err)
@@ -1042,6 +1040,8 @@ func (a *Archiver) processRestores(
 
 	attachedNames := make([]string, len(manifest.Attached))
 
+	// Adding the attached object at the end of the restore, but that's fine
+	// as it will become visible at the same time of commit.
 	for i, o := range manifest.Attached {
 		srcKey := fmt.Sprintf("%sattached/%s", requestPrefix, o.Name)
 		key := fmt.Sprintf("objects/%s/%s", o.Name, o.Document)
@@ -1060,12 +1060,17 @@ func (a *Archiver) processRestores(
 			return false, errors.New("attachment bucket is not versioned")
 		}
 
+		attachedAt, ok := lastAttached[o.Name]
+		if !ok {
+			return false, errors.New("no known attach document version")
+		}
+
 		err = q.AddAttachedObject(ctx, postgres.AddAttachedObjectParams{
 			Document:      o.Document,
 			Name:          o.Name,
 			Version:       1,
 			ObjectVersion: *res.VersionId,
-			AttachedAt:    lastVersion,
+			AttachedAt:    attachedAt,
 			CreatedBy:     o.CreatedBy,
 			CreatedAt:     pg.Time(o.CreatedAt),
 			Meta: postgres.AssetMetadata{
@@ -1155,22 +1160,6 @@ func (a *Archiver) processRestores(
 	}
 
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
-		Event:           string(TypeDocumentVersion),
-		UUID:            req.UUID,
-		Nonce:           nonce,
-		Timestamp:       time.Now(),
-		Version:         lastVersion,
-		Updater:         req.Creator,
-		Type:            docInfo.Type,
-		Language:        docInfo.Language.String,
-		SystemState:     SystemStateRestoring,
-		AttachedObjects: attachedNames,
-	})
-	if err != nil {
-		return false, fmt.Errorf("add last version event to outbox: %w", err)
-	}
-
-	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
 		Event:       string(TypeACLUpdate),
 		UUID:        req.UUID,
 		Nonce:       nonce,
@@ -1183,32 +1172,6 @@ func (a *Archiver) processRestores(
 	})
 	if err != nil {
 		return false, fmt.Errorf("add restore finished event to outbox: %w", err)
-	}
-
-	heads := slices.Collect(maps.Keys(observedHeads))
-
-	slices.Sort(heads)
-
-	for _, name := range heads {
-		head := observedHeads[name]
-
-		err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
-			Event:       string(TypeNewStatus),
-			UUID:        req.UUID,
-			Nonce:       nonce,
-			Timestamp:   time.Now(),
-			Status:      name,
-			StatusID:    head.ID,
-			Version:     head.Version,
-			Updater:     req.Creator,
-			Type:        docInfo.Type,
-			Language:    docInfo.Language.String,
-			SystemState: SystemStateRestoring,
-		})
-		if err != nil {
-			return false, fmt.Errorf(
-				"add %s status event to outbox: %w", name, err)
-		}
 	}
 
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
@@ -1234,12 +1197,19 @@ func (a *Archiver) processRestores(
 }
 
 func (a *Archiver) restoreDocumentVersion(
-	ctx context.Context, q *postgres.Queries, parentSig *string,
+	ctx context.Context, tx postgres.DBTX, parentSig string,
 	id int64, nonce uuid.UUID, req postgres.GetNextRestoreRequestRow, key string,
-) (string, error) {
-	dv, sig, err := a.reader.ReadDocumentVersion(ctx, key, parentSig)
+) ([]string, string, error) {
+	q := postgres.New(tx)
+
+	dv, sig, err := a.reader.ReadDocumentVersion(ctx, key, &parentSig)
 	if err != nil {
-		return "", fmt.Errorf("read archived version: %w", err)
+		return nil, "", fmt.Errorf("read archived version: %w", err)
+	}
+
+	evt, _, err := a.reader.ReadEvent(ctx, dv.EventID, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("read event information for version: %w", err)
 	}
 
 	updatedMetaData, err := annotateMeta(dv.Meta, newsdoc.DataMap{
@@ -1247,7 +1217,7 @@ func (a *Archiver) restoreDocumentVersion(
 		"restored_by": req.Creator,
 	})
 	if err != nil {
-		return "", fmt.Errorf(
+		return nil, "", fmt.Errorf(
 			"annotate metadata: %w", err)
 	}
 
@@ -1260,7 +1230,7 @@ func (a *Archiver) restoreDocumentVersion(
 		DocumentData: dv.DocumentData,
 	})
 	if err != nil {
-		return "", fmt.Errorf("create document version: %w", err)
+		return nil, "", fmt.Errorf("create document version: %w", err)
 	}
 
 	err = q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
@@ -1275,10 +1245,27 @@ func (a *Archiver) restoreDocumentVersion(
 		Language:   pg.Text(dv.Language),
 	})
 	if err != nil {
-		return "", fmt.Errorf("update document row: %w", err)
+		return nil, "", fmt.Errorf("update document row: %w", err)
 	}
 
-	return sig, nil
+	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
+		Event:           string(TypeDocumentVersion),
+		UUID:            req.UUID,
+		Nonce:           nonce,
+		Timestamp:       time.Now(),
+		Version:         id,
+		Updater:         req.Creator,
+		Type:            dv.Type,
+		Language:        dv.Language,
+		SystemState:     SystemStateRestoring,
+		AttachedObjects: evt.Event.AttachedObjects,
+		DetachedObjects: evt.Event.DetachedObjects,
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("add last version event to outbox: %w", err)
+	}
+
+	return evt.Event.AttachedObjects, sig, nil
 }
 
 func annotateMeta(originalMeta []byte, add newsdoc.DataMap) ([]byte, error) {
@@ -1305,10 +1292,12 @@ func annotateMeta(originalMeta []byte, add newsdoc.DataMap) ([]byte, error) {
 }
 
 func (a *Archiver) restoreDocumentStatus(
-	ctx context.Context, q *postgres.Queries, parentSig *string,
-	id int64, key string,
+	ctx context.Context, tx postgres.DBTX, parentSig string,
+	id int64, key string, nonce uuid.UUID,
 ) (string, *ArchivedDocumentStatus, error) {
-	stat, sig, err := a.reader.ReadDocumentStatus(ctx, key, parentSig)
+	q := postgres.New(tx)
+
+	stat, sig, err := a.reader.ReadDocumentStatus(ctx, key, &parentSig)
 	if err != nil {
 		return "", nil, fmt.Errorf("read archived status: %w", err)
 	}
@@ -1349,6 +1338,24 @@ func (a *Archiver) restoreDocumentStatus(
 	})
 	if err != nil {
 		return "", nil, fmt.Errorf("insert document status: %w", err)
+	}
+
+	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
+		Event:       string(TypeNewStatus),
+		UUID:        stat.UUID,
+		Nonce:       nonce,
+		Timestamp:   time.Now(),
+		Status:      stat.Name,
+		StatusID:    id,
+		Version:     stat.Version,
+		Updater:     stat.CreatorURI,
+		Type:        stat.Type,
+		Language:    stat.Language,
+		SystemState: SystemStateRestoring,
+	})
+	if err != nil {
+		return "", nil, fmt.Errorf(
+			"status event to outbox: %w", err)
 	}
 
 	return sig, stat, nil
@@ -1606,6 +1613,7 @@ type ArchivedDocumentStatus struct {
 	Archived        time.Time       `json:"archived"`
 	Language        string          `json:"language"`
 	MetaDocVersion  int64           `json:"meta_doc_version,omitempty"`
+	EventID         int64           `json:"event_id"`
 }
 
 func (as *ArchivedDocumentStatus) GetArchivedTime() time.Time {
@@ -1653,6 +1661,7 @@ func (a *Archiver) archiveDocumentStatus(
 	}
 
 	ds := ArchivedDocumentStatus{
+		EventID:         event.ID,
 		UUID:            unarchived.UUID,
 		Name:            unarchived.Name,
 		ID:              unarchived.ID,

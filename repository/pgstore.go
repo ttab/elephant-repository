@@ -3694,7 +3694,7 @@ func (s *PGDocStore) UpdatePreflight(
 
 func addEventToOutbox(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx postgres.DBTX,
 	evt postgres.OutboxEvent,
 ) error {
 	q := postgres.New(tx)
@@ -3704,15 +3704,13 @@ func addEventToOutbox(
 		return fmt.Errorf("store event in outbox: %w", err)
 	}
 
-	if mustBeArchivedBeforeDelete(EventType(evt.Event)) {
-		_, err := q.UpdateDocumentUnarchivedCount(ctx,
-			postgres.UpdateDocumentUnarchivedCountParams{
-				UUID:  evt.UUID,
-				Delta: 1,
-			})
-		if err != nil {
-			return fmt.Errorf("update document archive counter: %w", err)
-		}
+	_, err = q.UpdateDocumentUnarchivedCount(ctx,
+		postgres.UpdateDocumentUnarchivedCountParams{
+			UUID:  evt.UUID,
+			Delta: 1,
+		})
+	if err != nil {
+		return fmt.Errorf("update document archive counter: %w", err)
 	}
 
 	err = pg.Publish(ctx, tx, NotifyEventOutbox, id)
