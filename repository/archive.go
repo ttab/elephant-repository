@@ -345,7 +345,14 @@ func (a *Archiver) archiveEventlogItem(
 
 	q := postgres.New(tx)
 
-	var objRef *archiveObjectRef
+	var (
+		objRef *archiveObjectRef
+		objErr error
+		// deletedDoc signals that a document was deleted *before* it
+		// could be archived. This only happens in a repo migrated from
+		// a version before v1.2.0.
+		deletedDoc bool
+	)
 
 	// Create a new cleanup context that's detached from parent cancel, but
 	// with a timeout so that we don't hang.
@@ -354,32 +361,38 @@ func (a *Archiver) archiveEventlogItem(
 	defer cancelCleanup()
 
 	switch event.Event {
-	case TypeACLUpdate:
-	case TypeDeleteDocument:
+	case TypeACLUpdate, TypeDeleteDocument, TypeRestoreFinished, TypeWorkflow:
+		info, err := q.GetDocumentRow(ctx, event.UUID)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			objErr = errDocumentDeleted
+		case err != nil:
+			return postgres.GetEventlogArchiverRow{},
+				fmt.Errorf("get document info: %w", err)
+		case info.Nonce != event.Nonce:
+			objErr = errDocumentDeleted
+		}
 	case TypeDocumentVersion:
-		docRef, err := a.archiveDocumentVersion(ctx, cleanupCtx, event, tx)
-		if err != nil {
-			return postgres.GetEventlogArchiverRow{},
-				fmt.Errorf("archive document version: %w", err)
-		}
-
-		objRef = docRef
-	case TypeEventIgnored:
+		objRef, objErr = a.archiveDocumentVersion(ctx, cleanupCtx, event, tx)
 	case TypeNewStatus:
-		statusRef, err := a.archiveDocumentStatus(ctx, cleanupCtx, event, tx)
-		if err != nil {
-			return postgres.GetEventlogArchiverRow{},
-				fmt.Errorf("archive document status: %w", err)
-		}
-
-		objRef = statusRef
-	case TypeRestoreFinished:
-	case TypeWorkflow:
+		objRef, objErr = a.archiveDocumentStatus(ctx, cleanupCtx, event, tx)
+	case TypeEventIgnored:
+		panic(fmt.Sprintf("unexpected repository.EventType: %#v", event.Event))
 	default:
 		panic(fmt.Sprintf("unexpected repository.EventType: %#v", event.Event))
 	}
 
-	if objRef != nil {
+	switch {
+	case errors.Is(objErr, errDocumentDeleted):
+		// We are ignoring documents that have been deleted
+		// before they're archived. This is something that only
+		// will happen in an elephant installation that started
+		// before v1.2.0.
+		deletedDoc = true
+	case objErr != nil:
+		return postgres.GetEventlogArchiverRow{},
+			fmt.Errorf("archive event object: %w", objErr)
+	case objRef != nil:
 		archiveItem.ObjectSignature = objRef.Signature
 
 		// We try to clean up the S3 object for the related object if the
@@ -425,7 +438,7 @@ func (a *Archiver) archiveEventlogItem(
 
 	// Update the archive count for new events that correspond to an update
 	// request that must be archived before delete.
-	if mustBeArchivedBeforeDelete(event.Event) {
+	if !deletedDoc && mustBeArchivedBeforeDelete(event.Event) {
 		_, err := q.UpdateDocumentUnarchivedCount(ctx,
 			postgres.UpdateDocumentUnarchivedCountParams{
 				UUID:  item.UUID,
@@ -1496,6 +1509,8 @@ func (av *ArchivedDocumentVersion) GetParentSignature() string {
 	return av.ParentSignature
 }
 
+var errDocumentDeleted = errors.New("document deleted")
+
 func (a *Archiver) archiveDocumentVersion(
 	ctx context.Context,
 	cleanupCtx context.Context,
@@ -1509,10 +1524,16 @@ func (a *Archiver) archiveDocumentVersion(
 			UUID:    event.UUID,
 			Version: event.Version,
 		})
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, errDocumentDeleted
+	} else if err != nil {
 		return nil, fmt.Errorf(
 			"failed to get unarchived version from the database: %w",
 			err)
+	}
+
+	if unarchived.Nonce != event.Nonce {
+		return nil, errDocumentDeleted
 	}
 
 	dv := ArchivedDocumentVersion{
@@ -1598,21 +1619,26 @@ func (as *ArchivedDocumentStatus) GetParentSignature() string {
 func (a *Archiver) archiveDocumentStatus(
 	ctx context.Context,
 	cleanupCtx context.Context,
-	evt Event,
+	event Event,
 	tx postgres.DBTX,
 ) (_ *archiveObjectRef, outErr error) {
 	q := postgres.New(tx)
 
 	unarchived, err := q.GetDocumentStatusForArchiving(ctx,
 		postgres.GetDocumentStatusForArchivingParams{
-			UUID: evt.UUID,
-			Name: evt.Status,
-			ID:   evt.StatusID,
+			UUID: event.UUID,
+			Name: event.Status,
+			ID:   event.StatusID,
 		})
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, errDocumentDeleted
+	} else if err != nil {
 		return nil, fmt.Errorf(
-			"failed to get status from the database: %w",
-			err)
+			"failed to get status from the database: %w", err)
+	}
+
+	if unarchived.Nonce != event.Nonce {
+		return nil, errDocumentDeleted
 	}
 
 	var metaData []byte
@@ -1630,14 +1656,14 @@ func (a *Archiver) archiveDocumentStatus(
 		UUID:            unarchived.UUID,
 		Name:            unarchived.Name,
 		ID:              unarchived.ID,
-		Type:            evt.Type,
+		Type:            event.Type,
 		Version:         unarchived.Version,
 		Created:         unarchived.Created.Time,
 		CreatorURI:      unarchived.CreatorUri,
 		Meta:            metaData,
 		ParentSignature: unarchived.ParentSignature.String,
 		Archived:        time.Now(),
-		Language:        evt.Language,
+		Language:        event.Language,
 		MetaDocVersion:  unarchived.MetaDocVersion.Int64,
 	}
 

@@ -95,7 +95,7 @@ WHERE uuid = @UUID AND version = @version;
 
 -- name: GetDocumentRow :one
 SELECT uuid, uri, type, created, creator_uri, updated, updater_uri,
-       current_version, main_doc, language, system_state
+       current_version, main_doc, language, system_state, nonce
 FROM document
 WHERE uuid = @uuid;
 
@@ -441,8 +441,10 @@ WHERE size = @size;
 -- name: GetDocumentStatusForArchiving :one
 SELECT
         s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
-        s.meta_doc_version, p.signature AS parent_signature
+        s.meta_doc_version, p.signature AS parent_signature, d.nonce
 FROM document_status AS s
+     INNER JOIN document AS d
+           ON d.uuid = s.uuid
      LEFT JOIN document_status AS p
           ON p.uuid = s.uuid AND p.name = s.name AND p.id = s.id-1
 WHERE s.uuid = @uuid AND s.name = @name AND s.id = @id;
@@ -451,7 +453,7 @@ WHERE s.uuid = @uuid AND s.name = @name AND s.id = @id;
 SELECT
         v.uuid, v.version, v.created, v.creator_uri, v.meta, v.document_data,
         p.signature AS parent_signature, d.main_doc, d.uri, d.type,
-        v.language AS language
+        v.language AS language, d.nonce
 FROM document_version AS v
      LEFT JOIN document_version AS p
           ON p.uuid = v.uuid AND p.version = v.version-1
