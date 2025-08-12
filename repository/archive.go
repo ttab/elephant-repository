@@ -1010,7 +1010,7 @@ func (a *Archiver) processRestores(
 			}
 
 			sig, stat, err := a.restoreDocumentStatus(
-				ctx, tx, parentSig, id, *o.Key, nonce)
+				ctx, tx, parentSig, id, *o.Key, nonce, req)
 			if err != nil {
 				return false, fmt.Errorf(
 					"restore status %q %d: %w", name, id, err)
@@ -1254,7 +1254,7 @@ func (a *Archiver) restoreDocumentVersion(
 		Nonce:           nonce,
 		Timestamp:       time.Now(),
 		Version:         id,
-		Updater:         req.Creator,
+		Updater:         dv.CreatorURI,
 		Type:            dv.Type,
 		Language:        dv.Language,
 		SystemState:     SystemStateRestoring,
@@ -1294,6 +1294,7 @@ func annotateMeta(originalMeta []byte, add newsdoc.DataMap) ([]byte, error) {
 func (a *Archiver) restoreDocumentStatus(
 	ctx context.Context, tx postgres.DBTX, parentSig string,
 	id int64, key string, nonce uuid.UUID,
+	req postgres.GetNextRestoreRequestRow,
 ) (string, *ArchivedDocumentStatus, error) {
 	q := postgres.New(tx)
 
@@ -1317,7 +1318,7 @@ func (a *Archiver) restoreDocumentStatus(
 		return "", nil, fmt.Errorf("create status head: %w", err)
 	}
 
-	var meta map[string]string
+	meta := map[string]string{}
 
 	if len(stat.Meta) > 0 {
 		err := json.Unmarshal(stat.Meta, &meta)
@@ -1325,6 +1326,9 @@ func (a *Archiver) restoreDocumentStatus(
 			return "", nil, fmt.Errorf("unmarshal status meta: %w", err)
 		}
 	}
+
+	meta["restored_at"] = time.Now().Format(time.RFC3339)
+	meta["restored_by"] = req.Creator
 
 	err = q.InsertDocumentStatus(ctx, postgres.InsertDocumentStatusParams{
 		UUID:           stat.UUID,
