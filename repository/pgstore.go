@@ -256,14 +256,14 @@ func (s *PGDocStore) Delete(
 
 	timeout := time.After(s.opts.DeleteTimeout)
 
-	archived := make(chan ArchivedEvent)
+	archived := make(chan ArchivedEvent, 1)
 
 	go s.archived.Listen(ctx, archived, func(e ArchivedEvent) bool {
 		return slices.Contains(deleteDocs, e.UUID)
 	})
 
 	for {
-		var remaining int64
+		var remaining int32
 
 		for _, id := range deleteDocs {
 			n, err := q.GetDocumentUnarchivedCount(ctx, id)
@@ -287,7 +287,7 @@ func (s *PGDocStore) Delete(
 		case <-time.After(1 * time.Second):
 		case <-archived:
 		case <-ctx.Done():
-			return ctx.Err() //nolint:wrapcheck
+			return ctx.Err()
 		}
 	}
 
@@ -295,7 +295,7 @@ func (s *PGDocStore) Delete(
 
 	if metaInfo != nil {
 		mdr, err := s.insertDeleteRecord(
-			ctx, tx, q, req.Updated, req.Updater,
+			ctx, tx, req.Updated, req.Updater,
 			metaUUID, metaInfo,
 			metaJSON, 0, nil, nil,
 		)
@@ -318,7 +318,7 @@ func (s *PGDocStore) Delete(
 	}
 
 	_, err = s.insertDeleteRecord(
-		ctx, tx, q, req.Updated, req.Updater,
+		ctx, tx, req.Updated, req.Updater,
 		req.UUID, mainInfo,
 		metaJSON, metaDocRecord, acl, attachments,
 	)
@@ -336,7 +336,7 @@ func (s *PGDocStore) Delete(
 }
 
 func (s *PGDocStore) insertDeleteRecord(
-	ctx context.Context, tx pgx.Tx, q *postgres.Queries,
+	ctx context.Context, tx pgx.Tx,
 	updated time.Time, updater string,
 	id uuid.UUID,
 	pf *UpdatePrefligthInfo,
@@ -345,6 +345,8 @@ func (s *PGDocStore) insertDeleteRecord(
 	acls []ACLEntry,
 	attachments []postgres.AttachedObject,
 ) (int64, error) {
+	q := postgres.New(tx)
+
 	heads, err := q.GetDocumentHeads(ctx, id)
 	if err != nil {
 		return 0, fmt.Errorf("get document heads: %w", err)
@@ -368,6 +370,7 @@ func (s *PGDocStore) insertDeleteRecord(
 	recordID, err := q.InsertDeleteRecord(ctx,
 		postgres.InsertDeleteRecordParams{
 			UUID:          id,
+			Nonce:         pf.Info.Nonce,
 			URI:           pf.Info.URI,
 			Type:          pf.Info.Type,
 			Version:       pf.Info.CurrentVersion,
@@ -389,6 +392,7 @@ func (s *PGDocStore) insertDeleteRecord(
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
 		Event:            string(TypeDeleteDocument),
 		UUID:             id,
+		Nonce:            pf.Info.Nonce,
 		Version:          pf.Info.CurrentVersion,
 		Timestamp:        updated,
 		Updater:          updater,
@@ -413,6 +417,7 @@ func (s *PGDocStore) insertDeleteRecord(
 			UUID:     id,
 			URI:      pf.Info.URI,
 			RecordID: recordID,
+			Nonce:    pf.Info.Nonce,
 		})
 	if err != nil {
 		return 0, fmt.Errorf(
@@ -490,6 +495,7 @@ func (s *PGDocStore) RestoreDocument(
 	// version 0.
 	err = q.InsertDocument(ctx, postgres.InsertDocumentParams{
 		UUID:        docUUID,
+		Nonce:       uuid.New(),
 		URI:         record.URI,
 		Type:        record.Type,
 		Created:     pg.Time(time.Now()),
@@ -626,6 +632,7 @@ func (s *PGDocStore) ListDeleteRecords(
 
 		if row.MainDoc.Valid {
 			var id uuid.UUID = row.MainDoc.Bytes
+
 			mainDoc = &id
 		}
 
@@ -667,7 +674,6 @@ func (s *PGDocStore) GetDocument(
 
 	if version == 0 {
 		res, e := s.reader.GetDocumentData(ctx, uuid)
-
 		if e == nil {
 			data = res.DocumentData
 			version = res.Version
@@ -807,7 +813,6 @@ func (s *PGDocStore) GetEventlog(
 
 	evts := make([]Event, len(res))
 
-	//nolint: dupl
 	for i := range res {
 		e, err := eventlogRowToEvent(res[i])
 		if err != nil {
@@ -822,25 +827,26 @@ func (s *PGDocStore) GetEventlog(
 
 func eventlogRowToEvent(r postgres.GetEventlogRow) (Event, error) {
 	e := Event{
-		ID:                 res[i].ID,
-		Event:              EventType(res[i].Event),
-		UUID:               res[i].UUID,
-		Timestamp:          res[i].Timestamp.Time,
-		Updater:            res[i].Updater.String,
-		Type:               res[i].Type.String,
-		Version:            res[i].Version.Int64,
-		Status:             res[i].Status.String,
-		StatusID:           res[i].StatusID.Int64,
-		MainDocument:       pg.ToUUIDPointer(res[i].MainDoc),
-		MainDocumentType:   res[i].MainDocType.String,
-		Language:           res[i].Language.String,
-		OldLanguage:        res[i].OldLanguage.String,
-		SystemState:        res[i].SystemState.String,
-		WorkflowStep:       res[i].WorkflowState.String,
-		WorkflowCheckpoint: res[i].WorkflowCheckpoint.String,
+		ID:                 r.ID,
+		Event:              EventType(r.Event),
+		UUID:               r.UUID,
+		Nonce:              r.Nonce,
+		Timestamp:          r.Timestamp.Time,
+		Updater:            r.Updater.String,
+		Type:               r.Type.String,
+		Version:            r.Version.Int64,
+		Status:             r.Status.String,
+		StatusID:           r.StatusID.Int64,
+		MainDocument:       pg.ToUUIDPointer(r.MainDoc),
+		MainDocumentType:   r.MainDocType.String,
+		Language:           r.Language.String,
+		OldLanguage:        r.OldLanguage.String,
+		SystemState:        r.SystemState.String,
+		WorkflowStep:       r.WorkflowState.String,
+		WorkflowCheckpoint: r.WorkflowCheckpoint.String,
 	}
 
-	extra := res[i].Extra
+	extra := r.Extra
 	if extra != nil {
 		e.AttachedObjects = extra.AttachedObjects
 		e.DetachedObjects = extra.DetachedObjects
@@ -882,12 +888,12 @@ func (s *PGDocStore) GetCompactedEventlog(
 
 	evts := make([]Event, len(res))
 
-	//nolint: dupl
 	for i := range res {
 		e := Event{
 			ID:                 res[i].ID,
 			Event:              EventType(res[i].Event),
 			UUID:               res[i].UUID,
+			Nonce:              res[i].Nonce,
 			Timestamp:          res[i].Timestamp.Time,
 			Updater:            res[i].Updater.String,
 			Type:               res[i].Type.String,
@@ -1530,9 +1536,12 @@ func (s *PGDocStore) Update(
 		state.IsMetaDoc = info.MainDoc != nil
 		state.MainDocType = info.MainDocType
 		state.SystemState = info.Info.SystemState.String
+		state.Nonce = info.Info.Nonce
 
 		if state.Exists {
 			state.Type = info.Info.Type
+		} else {
+			state.Nonce = uuid.New()
 		}
 
 		if state.Request.IfWorkflowState != "" {
@@ -1625,6 +1634,7 @@ func (s *PGDocStore) Update(
 
 			props := documentVersionProps{
 				UUID:             state.UUID,
+				Nonce:            state.Nonce,
 				Version:          version,
 				Type:             state.Type,
 				URI:              state.Doc.URI,
@@ -1648,6 +1658,7 @@ func (s *PGDocStore) Update(
 			evt := postgres.OutboxEvent{
 				Event:            string(TypeDocumentVersion),
 				UUID:             state.UUID,
+				Nonce:            state.Nonce,
 				Timestamp:        state.Created,
 				Updater:          state.Creator,
 				Type:             state.Type,
@@ -1828,6 +1839,7 @@ func (s *PGDocStore) Update(
 			evts = append(evts, postgres.OutboxEvent{
 				Event:            string(TypeNewStatus),
 				UUID:             state.Request.UUID,
+				Nonce:            state.Nonce,
 				Status:           stat.Name,
 				StatusID:         status.ID,
 				Timestamp:        state.Created,
@@ -1883,6 +1895,7 @@ func (s *PGDocStore) Update(
 			evts = append(evts, postgres.OutboxEvent{
 				Event:            string(TypeACLUpdate),
 				UUID:             state.Request.UUID,
+				Nonce:            state.Nonce,
 				Timestamp:        state.Created,
 				Updater:          state.Creator,
 				Type:             state.Type,
@@ -1916,6 +1929,7 @@ func (s *PGDocStore) Update(
 			evts = append(evts, postgres.OutboxEvent{
 				Event:              string(TypeWorkflow),
 				UUID:               state.Request.UUID,
+				Nonce:              state.Nonce,
 				Version:            state.Version,
 				Timestamp:          state.Created,
 				Updater:            state.Creator,
@@ -1931,8 +1945,8 @@ func (s *PGDocStore) Update(
 		}
 	}
 
-	for i := range evts {
-		err := addEventToOutbox(ctx, tx, evts[i])
+	for _, evt := range evts {
+		err := addEventToOutbox(ctx, tx, evt)
 		if err != nil {
 			return nil, fmt.Errorf("send events: %w", err)
 		}
@@ -2332,6 +2346,7 @@ func loadWorkflowState(
 
 type documentVersionProps struct {
 	UUID             uuid.UUID
+	Nonce            uuid.UUID
 	Version          int64
 	Type             string
 	URI              string
@@ -2353,6 +2368,7 @@ func createNewDocumentVersion(
 ) error {
 	err := q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
 		UUID:        props.UUID,
+		Nonce:       props.Nonce,
 		URI:         props.URI,
 		Type:        props.Type,
 		Version:     props.Version,
@@ -2420,6 +2436,7 @@ type docUpdateState struct {
 	StatusMeta []map[string]string
 
 	Type        string
+	Nonce       uuid.UUID
 	Exists      bool
 	Language    string
 	OldLanguage string
@@ -3685,6 +3702,17 @@ func addEventToOutbox(
 	id, err := q.AddEventToOutbox(ctx, evt)
 	if err != nil {
 		return fmt.Errorf("store event in outbox: %w", err)
+	}
+
+	if mustBeArchivedBeforeDelete(EventType(evt.Event)) {
+		_, err := q.UpdateDocumentUnarchivedCount(ctx,
+			postgres.UpdateDocumentUnarchivedCountParams{
+				UUID:  evt.UUID,
+				Delta: 1,
+			})
+		if err != nil {
+			return fmt.Errorf("update document archive counter: %w", err)
+		}
 	}
 
 	err = pg.Publish(ctx, tx, NotifyEventOutbox, id)

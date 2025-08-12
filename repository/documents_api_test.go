@@ -317,7 +317,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		// One more event than we expect, so that we catch the
 		// unexpected.
 		BatchSize:   internal.MustInt32(len(golden.Items)) + 1,
-		BatchWaitMs: 200,
+		BatchWaitMs: 500,
 	})
 	test.Must(t, err, "get eventlog")
 
@@ -1882,7 +1882,8 @@ func TestDocumentLocking(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	ctx := t.Context()
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver: true,
+		RunEventlogBuilder: true,
+		RunArchiver:        true,
 	})
 
 	client := tc.DocumentsClient(t,

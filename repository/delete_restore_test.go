@@ -30,7 +30,7 @@ func TestDeleteRestore(t *testing.T) {
 
 	t.Parallel()
 
-	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunArchiver:        true,

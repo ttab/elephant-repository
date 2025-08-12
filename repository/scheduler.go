@@ -105,7 +105,7 @@ func (s *Scheduler) RunInJobLock(
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err() //nolint: wrapcheck
+			return ctx.Err()
 		default:
 		}
 	}
@@ -118,7 +118,7 @@ func (s *Scheduler) Run(ctx context.Context, recheckSignal <-chan struct{}) erro
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err() //nolint: wrapcheck
+			return ctx.Err()
 		default:
 		}
 
@@ -140,7 +140,7 @@ func (s *Scheduler) Run(ctx context.Context, recheckSignal <-chan struct{}) erro
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err() //nolint: wrapcheck
+			return ctx.Err()
 		case <-time.After(wait):
 		case <-recheckSignal:
 		}

@@ -33,6 +33,7 @@ type Event struct {
 	ID                 int64      `json:"id"`
 	Event              EventType  `json:"event"`
 	UUID               uuid.UUID  `json:"uuid"`
+	Nonce              uuid.UUID  `json:"nonce"`
 	Timestamp          time.Time  `json:"timestamp"`
 	Updater            string     `json:"updater"`
 	Type               string     `json:"type"`
@@ -108,6 +109,8 @@ const (
 )
 
 func (eb *EventlogBuilder) Run(ctx context.Context) error {
+	eb.logger.Info("starting eventlog builder")
+
 	q := postgres.New(eb.pool)
 
 	timer := time.NewTimer(outboxPollInterval)
@@ -137,6 +140,7 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 				ID:                 lastID + 1,
 				Event:              evt.Event,
 				UUID:               evt.UUID,
+				Nonce:              evt.Nonce,
 				Timestamp:          pg.Time(evt.Timestamp),
 				Updater:            pg.TextOrNull(evt.Updater),
 				Type:               pg.TextOrNull(evt.Type),
@@ -183,7 +187,7 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err() //nolint: wrapcheck
+			return ctx.Err()
 		case <-eb.outboxNotifications:
 		case <-timer.C:
 		}

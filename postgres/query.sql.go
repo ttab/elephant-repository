@@ -509,6 +509,16 @@ func (q *Queries) DeleteDocumentLock(ctx context.Context, arg DeleteDocumentLock
 	return result.RowsAffected(), nil
 }
 
+const deleteDocumentUnarchivedCounter = `-- name: DeleteDocumentUnarchivedCounter :exec
+DELETE FROM document_archive_counter
+WHERE uuid = $1
+`
+
+func (q *Queries) DeleteDocumentUnarchivedCounter(ctx context.Context, argUuid uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteDocumentUnarchivedCounter, argUuid)
+	return err
+}
+
 const deleteDocumentWorkflow = `-- name: DeleteDocumentWorkflow :execrows
 DELETE FROM workflow WHERE type = $1
 `
@@ -911,13 +921,13 @@ SELECT
         w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
         w.status_id, w.acl, w.updater, w.language, w.old_language, w.main_doc,
         w.system_state, workflow_state, workflow_checkpoint, main_doc_type,
-        extra
+        extra, signature, nonce
 FROM (
      SELECT DISTINCT ON (
             e.uuid,
             CASE WHEN e.event = 'delete_document' THEN null ELSE 0 END,
             CASE WHEN NOT e.old_language IS NULL THEN null ELSE 0 END
-       ) id, event, uuid, timestamp, type, version, status, status_id, acl, updater, main_doc, language, old_language, system_state, workflow_state, workflow_checkpoint, main_doc_type, extra FROM eventlog AS e
+       ) id, event, uuid, timestamp, type, version, status, status_id, acl, updater, main_doc, language, old_language, system_state, workflow_state, workflow_checkpoint, main_doc_type, extra, signature, nonce FROM eventlog AS e
      WHERE e.id > $1 AND e.id <= $2
      AND ($3::text IS NULL OR e.type = $3)
      ORDER BY
@@ -957,6 +967,8 @@ type GetCompactedEventlogRow struct {
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
 	Extra              *EventlogExtra
+	Signature          pgtype.Text
+	Nonce              uuid.UUID
 }
 
 func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEventlogParams) ([]GetCompactedEventlogRow, error) {
@@ -993,6 +1005,8 @@ func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEven
 			&i.WorkflowCheckpoint,
 			&i.MainDocType,
 			&i.Extra,
+			&i.Signature,
+			&i.Nonce,
 		); err != nil {
 			return nil, err
 		}
@@ -1361,7 +1375,7 @@ func (q *Queries) GetDocumentData(ctx context.Context, argUuid uuid.UUID) (GetDo
 }
 
 const getDocumentForDeletion = `-- name: GetDocumentForDeletion :one
-SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.version, dr.attachments
+SELECT dr.id, dr.uuid, dr.nonce, dr.heads, dr.acl, dr.version, dr.attachments
 FROM delete_record AS dr
 WHERE dr.finalised IS NULL
 ORDER BY dr.created
@@ -1372,6 +1386,7 @@ LIMIT 1
 type GetDocumentForDeletionRow struct {
 	ID          int64
 	UUID        uuid.UUID
+	Nonce       uuid.UUID
 	Heads       map[string]int64
 	Acl         []ACLEntry
 	Version     int64
@@ -1384,6 +1399,7 @@ func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDel
 	err := row.Scan(
 		&i.ID,
 		&i.UUID,
+		&i.Nonce,
 		&i.Heads,
 		&i.Acl,
 		&i.Version,
@@ -1394,6 +1410,7 @@ func (q *Queries) GetDocumentForDeletion(ctx context.Context) (GetDocumentForDel
 
 const getDocumentForUpdate = `-- name: GetDocumentForUpdate :one
 SELECT d.uri, d.type, d.current_version, d.main_doc, d.language, d.system_state,
+       d.nonce AS nonce,
        l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
        l.token as lock_token
@@ -1415,6 +1432,7 @@ type GetDocumentForUpdateRow struct {
 	MainDoc        pgtype.UUID
 	Language       pgtype.Text
 	SystemState    pgtype.Text
+	Nonce          uuid.UUID
 	LockUuid       pgtype.UUID
 	LockUri        pgtype.Text
 	LockCreated    pgtype.Timestamptz
@@ -1434,6 +1452,7 @@ func (q *Queries) GetDocumentForUpdate(ctx context.Context, arg GetDocumentForUp
 		&i.MainDoc,
 		&i.Language,
 		&i.SystemState,
+		&i.Nonce,
 		&i.LockUuid,
 		&i.LockUri,
 		&i.LockCreated,
@@ -1541,6 +1560,90 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, arg GetDocumentInfoParams
 	return i, err
 }
 
+const getDocumentLog = `-- name: GetDocumentLog :many
+SELECT e.id, e.event, e.uuid, e.timestamp, e.type, e.version, e.status,
+       e.status_id, e.acl, e.updater, e.language, e.old_language, e.main_doc,
+       e.system_state, e.workflow_state, e.workflow_checkpoint, e.main_doc_type,
+       e.extra, e.signature
+FROM eventlog AS e
+     LEFT OUTER JOIN document AS d
+           ON e.event = 'documen'
+              AND d.uuid = e.uuid
+              AND e.nonce = d.nonce
+              AND e.version = d.current_version
+WHERE e.id > $1
+      AND (d.uuid IS NOT NULL OR e.event = 'delete')
+ORDER BY e.id ASC
+LIMIT $2
+`
+
+type GetDocumentLogParams struct {
+	After    int64
+	RowLimit int32
+}
+
+type GetDocumentLogRow struct {
+	ID                 int64
+	Event              string
+	UUID               uuid.UUID
+	Timestamp          pgtype.Timestamptz
+	Type               pgtype.Text
+	Version            pgtype.Int8
+	Status             pgtype.Text
+	StatusID           pgtype.Int8
+	Acl                []byte
+	Updater            pgtype.Text
+	Language           pgtype.Text
+	OldLanguage        pgtype.Text
+	MainDoc            pgtype.UUID
+	SystemState        pgtype.Text
+	WorkflowState      pgtype.Text
+	WorkflowCheckpoint pgtype.Text
+	MainDocType        pgtype.Text
+	Extra              *EventlogExtra
+	Signature          pgtype.Text
+}
+
+func (q *Queries) GetDocumentLog(ctx context.Context, arg GetDocumentLogParams) ([]GetDocumentLogRow, error) {
+	rows, err := q.db.Query(ctx, getDocumentLog, arg.After, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDocumentLogRow
+	for rows.Next() {
+		var i GetDocumentLogRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Event,
+			&i.UUID,
+			&i.Timestamp,
+			&i.Type,
+			&i.Version,
+			&i.Status,
+			&i.StatusID,
+			&i.Acl,
+			&i.Updater,
+			&i.Language,
+			&i.OldLanguage,
+			&i.MainDoc,
+			&i.SystemState,
+			&i.WorkflowState,
+			&i.WorkflowCheckpoint,
+			&i.MainDocType,
+			&i.Extra,
+			&i.Signature,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDocumentRow = `-- name: GetDocumentRow :one
 SELECT uuid, uri, type, created, creator_uri, updated, updater_uri,
        current_version, main_doc, language, system_state
@@ -1584,43 +1687,33 @@ func (q *Queries) GetDocumentRow(ctx context.Context, argUuid uuid.UUID) (GetDoc
 const getDocumentStatusForArchiving = `-- name: GetDocumentStatusForArchiving :one
 SELECT
         s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
-        p.signature AS parent_signature, v.signature AS version_signature,
-        d.type, v.language, s.meta_doc_version
+        s.meta_doc_version, p.signature AS parent_signature
 FROM document_status AS s
-     INNER JOIN document AS d
-           ON d.uuid = s.uuid
-     LEFT JOIN document_version AS v
-           ON v.uuid = s.uuid
-              AND v.version = s.version
      LEFT JOIN document_status AS p
           ON p.uuid = s.uuid AND p.name = s.name AND p.id = s.id-1
-WHERE s.archived = false
-AND (s.id = 1 OR p.archived = true)
-AND (s.version = -1 OR v.signature IS NOT NULL)
-ORDER BY s.created
-FOR UPDATE OF s SKIP LOCKED
-LIMIT 1
+WHERE s.uuid = $1 AND s.name = $2 AND s.id = $3
 `
 
-type GetDocumentStatusForArchivingRow struct {
-	UUID             uuid.UUID
-	Name             string
-	ID               int64
-	Version          int64
-	Created          pgtype.Timestamptz
-	CreatorUri       string
-	Meta             map[string]string
-	ParentSignature  pgtype.Text
-	VersionSignature pgtype.Text
-	Type             string
-	Language         pgtype.Text
-	MetaDocVersion   pgtype.Int8
+type GetDocumentStatusForArchivingParams struct {
+	UUID uuid.UUID
+	Name string
+	ID   int64
 }
 
-// Any parent has to have been archived.
-// Accept null signature for the referenced version if we have a nil version.
-func (q *Queries) GetDocumentStatusForArchiving(ctx context.Context) (GetDocumentStatusForArchivingRow, error) {
-	row := q.db.QueryRow(ctx, getDocumentStatusForArchiving)
+type GetDocumentStatusForArchivingRow struct {
+	UUID            uuid.UUID
+	Name            string
+	ID              int64
+	Version         int64
+	Created         pgtype.Timestamptz
+	CreatorUri      string
+	Meta            map[string]string
+	MetaDocVersion  pgtype.Int8
+	ParentSignature pgtype.Text
+}
+
+func (q *Queries) GetDocumentStatusForArchiving(ctx context.Context, arg GetDocumentStatusForArchivingParams) (GetDocumentStatusForArchivingRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentStatusForArchiving, arg.UUID, arg.Name, arg.ID)
 	var i GetDocumentStatusForArchivingRow
 	err := row.Scan(
 		&i.UUID,
@@ -1630,32 +1723,22 @@ func (q *Queries) GetDocumentStatusForArchiving(ctx context.Context) (GetDocumen
 		&i.Created,
 		&i.CreatorUri,
 		&i.Meta,
-		&i.ParentSignature,
-		&i.VersionSignature,
-		&i.Type,
-		&i.Language,
 		&i.MetaDocVersion,
+		&i.ParentSignature,
 	)
 	return i, err
 }
 
 const getDocumentUnarchivedCount = `-- name: GetDocumentUnarchivedCount :one
-SELECT SUM(num) FROM (
-       SELECT COUNT(*) as num
-              FROM document_status AS s
-              WHERE s.uuid = $1 AND s.archived = false
-       UNION
-       SELECT COUNT(*) as num
-              FROM document_version AS v
-              WHERE v.uuid = $1 AND v.archived = false
-) AS unarchived
+SELECT unarchived FROM document_archive_counter
+WHERE uuid = $1
 `
 
-func (q *Queries) GetDocumentUnarchivedCount(ctx context.Context, argUuid uuid.UUID) (int64, error) {
+func (q *Queries) GetDocumentUnarchivedCount(ctx context.Context, argUuid uuid.UUID) (int32, error) {
 	row := q.db.QueryRow(ctx, getDocumentUnarchivedCount, argUuid)
-	var sum int64
-	err := row.Scan(&sum)
-	return sum, err
+	var unarchived int32
+	err := row.Scan(&unarchived)
+	return unarchived, err
 }
 
 const getDocumentVersionData = `-- name: GetDocumentVersionData :one
@@ -1686,12 +1769,13 @@ FROM document_version AS v
           ON p.uuid = v.uuid AND p.version = v.version-1
      INNER JOIN document AS d
           ON d.uuid = v.uuid
-WHERE v.archived = false
-AND (v.version = 1 OR p.archived = true)
-ORDER BY v.created
-FOR UPDATE OF v SKIP LOCKED
-LIMIT 1
+WHERE v.uuid = $1 AND v.version = $2
 `
+
+type GetDocumentVersionForArchivingParams struct {
+	UUID    uuid.UUID
+	Version int64
+}
 
 type GetDocumentVersionForArchivingRow struct {
 	UUID            uuid.UUID
@@ -1707,8 +1791,8 @@ type GetDocumentVersionForArchivingRow struct {
 	Language        pgtype.Text
 }
 
-func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context) (GetDocumentVersionForArchivingRow, error) {
-	row := q.db.QueryRow(ctx, getDocumentVersionForArchiving)
+func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context, arg GetDocumentVersionForArchivingParams) (GetDocumentVersionForArchivingRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentVersionForArchiving, arg.UUID, arg.Version)
 	var i GetDocumentVersionForArchivingRow
 	err := row.Scan(
 		&i.UUID,
@@ -1803,7 +1887,7 @@ func (q *Queries) GetEnforcedDeprecations(ctx context.Context) ([]string, error)
 const getEventlog = `-- name: GetEventlog :many
 SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater,
        language, old_language, main_doc, system_state,
-       workflow_state, workflow_checkpoint, main_doc_type, extra
+       workflow_state, workflow_checkpoint, main_doc_type, extra, signature, nonce
 FROM eventlog
 WHERE id > $1
 ORDER BY id ASC
@@ -1834,6 +1918,8 @@ type GetEventlogRow struct {
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
 	Extra              *EventlogExtra
+	Signature          pgtype.Text
+	Nonce              uuid.UUID
 }
 
 func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]GetEventlogRow, error) {
@@ -1864,6 +1950,8 @@ func (q *Queries) GetEventlog(ctx context.Context, arg GetEventlogParams) ([]Get
 			&i.WorkflowCheckpoint,
 			&i.MainDocType,
 			&i.Extra,
+			&i.Signature,
+			&i.Nonce,
 		); err != nil {
 			return nil, err
 		}
@@ -2079,7 +2167,7 @@ func (q *Queries) GetJobLock(ctx context.Context, name string) (GetJobLockRow, e
 const getLastEvent = `-- name: GetLastEvent :one
 SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl,
        language, old_language, main_doc, workflow_state, workflow_checkpoint, main_doc_type,
-       extra
+       extra, signature
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1
@@ -2103,6 +2191,7 @@ type GetLastEventRow struct {
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
 	Extra              *EventlogExtra
+	Signature          pgtype.Text
 }
 
 func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
@@ -2126,6 +2215,7 @@ func (q *Queries) GetLastEvent(ctx context.Context) (GetLastEventRow, error) {
 		&i.WorkflowCheckpoint,
 		&i.MainDocType,
 		&i.Extra,
+		&i.Signature,
 	)
 	return i, err
 }
@@ -2376,10 +2466,12 @@ func (q *Queries) GetNextPurgeRequest(ctx context.Context) (GetNextPurgeRequestR
 }
 
 const getNextRestoreRequest = `-- name: GetNextRestoreRequest :one
-SELECT r.id, r.uuid, r.delete_record_id, r.created, r.creator, r.spec
+SELECT r.id, r.uuid, d.nonce, r.delete_record_id, r.created, r.creator, r.spec
 FROM restore_request AS r
      INNER JOIN delete_record AS dr
            ON dr.id = r.delete_record_id
+     INNER JOIN document AS d
+           ON d.uuid = r.uuid AND d.system_state = 'restoring'
 WHERE r.finished IS NULL AND dr.purged IS NULL
 ORDER BY r.id ASC
 FOR UPDATE SKIP LOCKED
@@ -2389,6 +2481,7 @@ LIMIT 1
 type GetNextRestoreRequestRow struct {
 	ID             int64
 	UUID           uuid.UUID
+	Nonce          uuid.UUID
 	DeleteRecordID int64
 	Created        pgtype.Timestamptz
 	Creator        string
@@ -2401,6 +2494,7 @@ func (q *Queries) GetNextRestoreRequest(ctx context.Context) (GetNextRestoreRequ
 	err := row.Scan(
 		&i.ID,
 		&i.UUID,
+		&i.Nonce,
 		&i.DeleteRecordID,
 		&i.Created,
 		&i.Creator,
@@ -3128,11 +3222,11 @@ const insertDeleteRecord = `-- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
        main_doc, language, meta_doc_record, heads, acl, main_doc_type,
-       attachments
+       attachments, nonce
 ) VALUES(
        $1, $2, $3, $4, $5, $6, $7,
        $8, $9, $10, $11, $12, $13,
-       $14
+       $14, $15
 ) RETURNING id
 `
 
@@ -3151,6 +3245,7 @@ type InsertDeleteRecordParams struct {
 	Acl           []ACLEntry
 	MainDocType   pgtype.Text
 	Attachments   []AttachedObject
+	Nonce         uuid.UUID
 }
 
 func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecordParams) (int64, error) {
@@ -3169,6 +3264,7 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 		arg.Acl,
 		arg.MainDocType,
 		arg.Attachments,
+		arg.Nonce,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -3178,9 +3274,9 @@ func (q *Queries) InsertDeleteRecord(ctx context.Context, arg InsertDeleteRecord
 const insertDeletionPlaceholder = `-- name: InsertDeletionPlaceholder :exec
 insert into document(
        uuid, uri, type, created, creator_uri, updated, updater_uri,
-       current_version, system_state
+       current_version, system_state, nonce
 ) values (
-       $1, $2, '', now(), '', now(), '', $3, 'deleting'
+       $1, $2, '', now(), '', now(), '', $3, 'deleting', $4
 )
 `
 
@@ -3188,10 +3284,16 @@ type InsertDeletionPlaceholderParams struct {
 	UUID     uuid.UUID
 	URI      string
 	RecordID int64
+	Nonce    uuid.UUID
 }
 
 func (q *Queries) InsertDeletionPlaceholder(ctx context.Context, arg InsertDeletionPlaceholderParams) error {
-	_, err := q.db.Exec(ctx, insertDeletionPlaceholder, arg.UUID, arg.URI, arg.RecordID)
+	_, err := q.db.Exec(ctx, insertDeletionPlaceholder,
+		arg.UUID,
+		arg.URI,
+		arg.RecordID,
+		arg.Nonce,
+	)
 	return err
 }
 
@@ -3199,11 +3301,11 @@ const insertDocument = `-- name: InsertDocument :exec
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, system_state
+       main_doc, language, system_state, nonce
 ) VALUES (
        $1, $2, $3,
        $4, $5, $4, $5, $6,
-       $7, $8, $9
+       $7, $8, $9, $10
 )
 `
 
@@ -3217,6 +3319,7 @@ type InsertDocumentParams struct {
 	MainDoc     pgtype.UUID
 	Language    pgtype.Text
 	SystemState pgtype.Text
+	Nonce       uuid.UUID
 }
 
 func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) error {
@@ -3230,6 +3333,7 @@ func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) 
 		arg.MainDoc,
 		arg.Language,
 		arg.SystemState,
+		arg.Nonce,
 	)
 	return err
 }
@@ -3302,13 +3406,13 @@ func (q *Queries) InsertDocumentStatus(ctx context.Context, arg InsertDocumentSt
 
 const insertIntoEventLog = `-- name: InsertIntoEventLog :exec
 INSERT INTO eventlog(
-       id, event, uuid, type, timestamp, updater, version, status, status_id, acl,
+       id, event, uuid, nonce, type, timestamp, updater, version, status, status_id, acl,
        language, old_language, main_doc, system_state, workflow_state, workflow_checkpoint,
        main_doc_type, extra
 ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-       $11, $12, $13, $14, $15, $16,
-       $17, $18
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+       $12, $13, $14, $15, $16, $17,
+       $18, $19
 )
 `
 
@@ -3316,6 +3420,7 @@ type InsertIntoEventLogParams struct {
 	ID                 int64
 	Event              string
 	UUID               uuid.UUID
+	Nonce              uuid.UUID
 	Type               pgtype.Text
 	Timestamp          pgtype.Timestamptz
 	Updater            pgtype.Text
@@ -3338,6 +3443,7 @@ func (q *Queries) InsertIntoEventLog(ctx context.Context, arg InsertIntoEventLog
 		arg.ID,
 		arg.Event,
 		arg.UUID,
+		arg.Nonce,
 		arg.Type,
 		arg.Timestamp,
 		arg.Updater,
@@ -3878,6 +3984,22 @@ func (q *Queries) SetEventlogArchiver(ctx context.Context, arg SetEventlogArchiv
 	return err
 }
 
+const setEventlogItemAsArchived = `-- name: SetEventlogItemAsArchived :exec
+UPDATE eventlog
+SET signature = $1
+WHERE id = $2
+`
+
+type SetEventlogItemAsArchivedParams struct {
+	Signature pgtype.Text
+	ID        int64
+}
+
+func (q *Queries) SetEventlogItemAsArchived(ctx context.Context, arg SetEventlogItemAsArchivedParams) error {
+	_, err := q.db.Exec(ctx, setEventlogItemAsArchived, arg.Signature, arg.ID)
+	return err
+}
+
 const setPlanningAssignee = `-- name: SetPlanningAssignee :exec
 INSERT INTO planning_assignee(
        assignment, assignee, version, role
@@ -4089,6 +4211,26 @@ func (q *Queries) UpdateDocumentLock(ctx context.Context, arg UpdateDocumentLock
 	return err
 }
 
+const updateDocumentUnarchivedCount = `-- name: UpdateDocumentUnarchivedCount :one
+INSERT INTO document_archive_counter AS dac (uuid, unarchived)
+VALUES ($1, GREATEST(0, $2::int))
+ON CONFLICT (uuid) DO UPDATE
+   SET unarchived = GREATEST(0, dac.unarchived + $2::int)
+RETURNING unarchived
+`
+
+type UpdateDocumentUnarchivedCountParams struct {
+	UUID  uuid.UUID
+	Delta int32
+}
+
+func (q *Queries) UpdateDocumentUnarchivedCount(ctx context.Context, arg UpdateDocumentUnarchivedCountParams) (int32, error) {
+	row := q.db.QueryRow(ctx, updateDocumentUnarchivedCount, arg.UUID, arg.Delta)
+	var unarchived int32
+	err := row.Scan(&unarchived)
+	return unarchived, err
+}
+
 const updateEventsinkPosition = `-- name: UpdateEventsinkPosition :exec
 UPDATE eventsink SET position = $1 WHERE name = $2
 `
@@ -4157,11 +4299,11 @@ const upsertDocument = `-- name: UpsertDocument :exec
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, main_doc_type
+       main_doc, language, main_doc_type, nonce
 ) VALUES (
        $1, $2, $3,
        $4, $5, $4, $5, $6,
-       $7, $8, $9
+       $7, $8, $9, $10
 ) ON CONFLICT (uuid) DO UPDATE
      SET uri = $2,
          updated = $4,
@@ -4180,6 +4322,7 @@ type UpsertDocumentParams struct {
 	MainDoc     pgtype.UUID
 	Language    pgtype.Text
 	MainDocType pgtype.Text
+	Nonce       uuid.UUID
 }
 
 func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) error {
@@ -4193,6 +4336,7 @@ func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) 
 		arg.MainDoc,
 		arg.Language,
 		arg.MainDocType,
+		arg.Nonce,
 	)
 	return err
 }

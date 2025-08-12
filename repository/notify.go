@@ -18,11 +18,13 @@ type ArchiveEventType int
 const (
 	ArchiveEventTypeStatus ArchiveEventType = iota
 	ArchiveEventTypeVersion
+	ArchiveEventTypeLogItem
 )
 
 type ArchivedEvent struct {
-	Type ArchiveEventType `json:"type"`
-	UUID uuid.UUID        `json:"uuid"`
+	Type    ArchiveEventType `json:"type"`
+	EventID int64            `json:"event_id"`
+	UUID    uuid.UUID        `json:"uuid"`
 	// Version is the version of a document or the ID of a status.
 	Version int64  `json:"version"`
 	Name    string `json:"name,omitempty"`

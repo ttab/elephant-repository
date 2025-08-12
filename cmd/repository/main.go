@@ -178,7 +178,6 @@ func runServer(c *cli.Context) error {
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
 	grace := elephantine.NewGracefulShutdown(logger, 20*time.Second)
-	paramSource := elephantine.NewLazySSM()
 
 	stopCtx := grace.CancelOnStop(c.Context)
 
@@ -189,13 +188,15 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("invalid default language: %w", err)
 	}
 
-	conf, err := cmd.BackendConfigFromContext(c, paramSource)
+	conf, err := cmd.BackendConfigFromContext(c)
 	if err != nil {
 		return fmt.Errorf("failed to read configuration: %w", err)
 	}
 
+	println(conf.DB)
+
 	auth, err := elephantine.AuthenticationConfigFromCLI(
-		c, paramSource, nil,
+		c, nil,
 	)
 	if err != nil {
 		return fmt.Errorf("set up authentication: %w", err)
@@ -380,6 +381,7 @@ func runServer(c *cli.Context) error {
 			}
 		}()
 	}
+
 	if !conf.NoEventsink && conf.Eventsink != "" {
 		var sink sinks.EventSink
 
@@ -604,8 +606,10 @@ func runServer(c *cli.Context) error {
 		logger.Debug("starting archiver")
 
 		serverGroup.Go(func() error {
-			err := startArchiver(grace.CancelOnStop(gCtx),
-				log, conf, dbpool, store, grace)
+			err := startArchiver(
+				grace.CancelOnStop(gCtx),
+				log, conf, dbpool, store,
+			)
 			if err != nil {
 				return err
 			}
@@ -662,7 +666,6 @@ func runServer(c *cli.Context) error {
 func startArchiver(
 	ctx context.Context, logger *slog.Logger,
 	conf cmd.BackendConfig, dbpool *pgxpool.Pool, store *repository.PGDocStore,
-	grace *elephantine.GracefulShutdown,
 ) error {
 	aS3, err := repository.S3Client(ctx, conf.S3Options)
 	if err != nil {
@@ -675,6 +678,7 @@ func startArchiver(
 		Bucket:      conf.ArchiveBucket,
 		AssetBucket: conf.AssetBucket,
 		DB:          dbpool,
+		Store:       store,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create archiver: %w", err)

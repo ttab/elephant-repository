@@ -27,6 +27,7 @@ type OutboxEvent struct {
 	AttachedObjects    []string   `json:"attached_objects,omitempty"`
 	DetachedObjects    []string   `json:"detached_objects,omitempty"`
 	DeleteRecordID     int64      `json:"delete_record_id,omitempty"`
+	Nonce              uuid.UUID  `json:"nonce,omitempty"`
 }
 
 type ACLEntry struct {

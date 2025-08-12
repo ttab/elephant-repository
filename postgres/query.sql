@@ -1,5 +1,6 @@
 -- name: GetDocumentForUpdate :one
 SELECT d.uri, d.type, d.current_version, d.main_doc, d.language, d.system_state,
+       d.nonce AS nonce,
        l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
        l.token as lock_token
@@ -27,15 +28,19 @@ FROM status_heads AS h
 WHERE h.uuid = $1;
 
 -- name: GetDocumentUnarchivedCount :one
-SELECT SUM(num) FROM (
-       SELECT COUNT(*) as num
-              FROM document_status AS s
-              WHERE s.uuid = @uuid AND s.archived = false
-       UNION
-       SELECT COUNT(*) as num
-              FROM document_version AS v
-              WHERE v.uuid = @uuid AND v.archived = false
-) AS unarchived;
+SELECT unarchived FROM document_archive_counter
+WHERE uuid = @uuid;
+
+-- name: UpdateDocumentUnarchivedCount :one
+INSERT INTO document_archive_counter AS dac (uuid, unarchived)
+VALUES (@uuid, GREATEST(0, @delta::int))
+ON CONFLICT (uuid) DO UPDATE
+   SET unarchived = GREATEST(0, dac.unarchived + @delta::int)
+RETURNING unarchived;
+
+-- name: DeleteDocumentUnarchivedCounter :exec
+DELETE FROM document_archive_counter
+WHERE uuid = @uuid;
 
 -- name: GetDocumentACL :many
 SELECT uuid, uri, permissions FROM acl WHERE uuid = $1;
@@ -142,11 +147,11 @@ SELECT pg_notify(@channel::text, @message::text);
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, system_state
+       main_doc, language, system_state, nonce
 ) VALUES (
        @uuid, @uri, @type,
        @created, @creator_uri, @created, @creator_uri, @version,
-       @main_doc, @language, @system_state
+       @main_doc, @language, @system_state, @nonce
 );
 
 -- name: ReadForRestore :one
@@ -172,10 +177,12 @@ INSERT INTO restore_request(
 );
 
 -- name: GetNextRestoreRequest :one
-SELECT r.id, r.uuid, r.delete_record_id, r.created, r.creator, r.spec
+SELECT r.id, r.uuid, d.nonce, r.delete_record_id, r.created, r.creator, r.spec
 FROM restore_request AS r
      INNER JOIN delete_record AS dr
            ON dr.id = r.delete_record_id
+     INNER JOIN document AS d
+           ON d.uuid = r.uuid AND d.system_state = 'restoring'
 WHERE r.finished IS NULL AND dr.purged IS NULL
 ORDER BY r.id ASC
 FOR UPDATE SKIP LOCKED
@@ -248,11 +255,11 @@ WHERE id = @id;
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, main_doc_type
+       main_doc, language, main_doc_type, nonce
 ) VALUES (
        @uuid, @uri, @type,
        @created, @creator_uri, @created, @creator_uri, @version,
-       @main_doc, @language, @main_doc_type
+       @main_doc, @language, @main_doc_type, @nonce
 ) ON CONFLICT (uuid) DO UPDATE
      SET uri = @uri,
          updated = @created,
@@ -383,20 +390,20 @@ DELETE FROM document WHERE uuid = @uuid;
 -- name: InsertDeletionPlaceholder :exec
 insert into document(
        uuid, uri, type, created, creator_uri, updated, updater_uri,
-       current_version, system_state
+       current_version, system_state, nonce
 ) values (
-       @uuid, @uri, '', now(), '', now(), '', @record_id, 'deleting'
+       @uuid, @uri, '', now(), '', now(), '', @record_id, 'deleting', @nonce
 );
 
 -- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,
        main_doc, language, meta_doc_record, heads, acl, main_doc_type,
-       attachments
+       attachments, nonce
 ) VALUES(
        @uuid, @uri, @type, @version, @created, @creator_uri, @meta,
        @main_doc, @language, @meta_doc_record, @heads, @acl, @main_doc_type,
-       @attachments
+       @attachments, @nonce
 ) RETURNING id;
 
 -- name: ListDeleteRecords :many
@@ -434,24 +441,11 @@ WHERE size = @size;
 -- name: GetDocumentStatusForArchiving :one
 SELECT
         s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
-        p.signature AS parent_signature, v.signature AS version_signature,
-        d.type, v.language, s.meta_doc_version
+        s.meta_doc_version, p.signature AS parent_signature
 FROM document_status AS s
-     INNER JOIN document AS d
-           ON d.uuid = s.uuid
-     LEFT JOIN document_version AS v
-           ON v.uuid = s.uuid
-              AND v.version = s.version
      LEFT JOIN document_status AS p
           ON p.uuid = s.uuid AND p.name = s.name AND p.id = s.id-1
-WHERE s.archived = false
--- Any parent has to have been archived.
-AND (s.id = 1 OR p.archived = true)
--- Accept null signature for the referenced version if we have a nil version.
-AND (s.version = -1 OR v.signature IS NOT NULL)
-ORDER BY s.created
-FOR UPDATE OF s SKIP LOCKED
-LIMIT 1;
+WHERE s.uuid = @uuid AND s.name = @name AND s.id = @id;
 
 -- name: GetDocumentVersionForArchiving :one
 SELECT
@@ -463,14 +457,10 @@ FROM document_version AS v
           ON p.uuid = v.uuid AND p.version = v.version-1
      INNER JOIN document AS d
           ON d.uuid = v.uuid
-WHERE v.archived = false
-AND (v.version = 1 OR p.archived = true)
-ORDER BY v.created
-FOR UPDATE OF v SKIP LOCKED
-LIMIT 1;
+WHERE v.uuid = @uuid AND v.version = @version;
 
 -- name: GetDocumentForDeletion :one
-SELECT dr.id, dr.uuid, dr.heads, dr.acl, dr.version, dr.attachments
+SELECT dr.id, dr.uuid, dr.nonce, dr.heads, dr.acl, dr.version, dr.attachments
 FROM delete_record AS dr
 WHERE dr.finalised IS NULL
 ORDER BY dr.created
@@ -484,6 +474,11 @@ WHERE uuid = @uuid AND id = @id;
 -- name: FinaliseDocumentDelete :execrows
 DELETE FROM document
 WHERE uuid = @uuid AND system_state = 'deleting';
+
+-- name: SetEventlogItemAsArchived :exec
+UPDATE eventlog
+SET signature = @signature
+WHERE id = @id;
 
 -- name: SetDocumentVersionAsArchived :exec
 UPDATE document_version
@@ -666,11 +661,11 @@ WHERE uuid = @uuid
 
 -- name: InsertIntoEventLog :exec
 INSERT INTO eventlog(
-       id, event, uuid, type, timestamp, updater, version, status, status_id, acl,
+       id, event, uuid, nonce, type, timestamp, updater, version, status, status_id, acl,
        language, old_language, main_doc, system_state, workflow_state, workflow_checkpoint,
        main_doc_type, extra
 ) VALUES (
-       @id, @event, @uuid, @type, @timestamp, @updater, @version, @status, @status_id, @acl,
+       @id, @event, @uuid, @nonce, @type, @timestamp, @updater, @version, @status, @status_id, @acl,
        @language, @old_language, @main_doc, @system_state, @workflow_state, @workflow_checkpoint,
        @main_doc_type, @extra
 );
@@ -678,16 +673,32 @@ INSERT INTO eventlog(
 -- name: GetEventlog :many
 SELECT id, event, uuid, timestamp, type, version, status, status_id, acl, updater,
        language, old_language, main_doc, system_state,
-       workflow_state, workflow_checkpoint, main_doc_type, extra
+       workflow_state, workflow_checkpoint, main_doc_type, extra, signature, nonce
 FROM eventlog
 WHERE id > @after
 ORDER BY id ASC
 LIMIT sqlc.arg(row_limit);
 
+-- name: GetDocumentLog :many
+SELECT e.id, e.event, e.uuid, e.timestamp, e.type, e.version, e.status,
+       e.status_id, e.acl, e.updater, e.language, e.old_language, e.main_doc,
+       e.system_state, e.workflow_state, e.workflow_checkpoint, e.main_doc_type,
+       e.extra, e.signature
+FROM eventlog AS e
+     LEFT OUTER JOIN document AS d
+           ON e.event = 'documen'
+              AND d.uuid = e.uuid
+              AND e.nonce = d.nonce
+              AND e.version = d.current_version
+WHERE e.id > @after
+      AND (d.uuid IS NOT NULL OR e.event = 'delete')
+ORDER BY e.id ASC
+LIMIT sqlc.arg(row_limit);
+
 -- name: GetLastEvent :one
 SELECT id, event, uuid, timestamp, updater, type, version, status, status_id, acl,
        language, old_language, main_doc, workflow_state, workflow_checkpoint, main_doc_type,
-       extra
+       extra, signature
 FROM eventlog
 ORDER BY id DESC
 LIMIT 1;
@@ -701,7 +712,7 @@ SELECT
         w.id, w.event, w.uuid, w.timestamp, w.type, w.version, w.status,
         w.status_id, w.acl, w.updater, w.language, w.old_language, w.main_doc,
         w.system_state, workflow_state, workflow_checkpoint, main_doc_type,
-        extra
+        extra, signature, nonce
 FROM (
      SELECT DISTINCT ON (
             e.uuid,

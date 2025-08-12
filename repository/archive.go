@@ -186,6 +186,8 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 }
 
 func (a *Archiver) Run(ctx context.Context) error {
+	a.logger.Info("starting archiver")
+
 	a.stopped = make(chan struct{})
 	defer close(a.stopped)
 
@@ -238,7 +240,9 @@ func (a *Archiver) runEventlogArchiver(ctx context.Context) error {
 
 type ArchivedEventlogItem struct {
 	Event           Event     `json:"event"`
+	ParentID        int64     `json:"parent_id,omitempty"`
 	ParentSignature string    `json:"parent_signature,omitempty"`
+	ObjectSignature string    `json:"object_signature,omitempty"`
 	Archived        time.Time `json:"archived"`
 }
 
@@ -265,26 +269,18 @@ func (av *ArchivedEventlogBatch) GetParentSignature() string {
 }
 
 func (a *Archiver) archiveEventlog(ctx context.Context) error {
+	a.logger.Info("starting eventlog archiver")
+
 	q := postgres.New(a.pool)
 
-	newEvents := make(chan int64, 1)
+	newEvents := make(chan int64, 5)
 	a.store.OnEventlog(ctx, newEvents)
 
-	lastID, err := q.GetLastEventID(ctx)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("get last event ID: %w", err)
-	}
+	pollDelay := 100 * time.Millisecond
 
 	state, err := q.GetEventlogArchiver(ctx, 1)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("get current position: %w", err)
-	}
-
-	const batchSize = 1000
-
-	kState, err := q.GetEventlogArchiver(ctx, batchSize)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("get batch arcive state: %w", err)
 	}
 
 	for {
@@ -297,122 +293,195 @@ func (a *Archiver) archiveEventlog(ctx context.Context) error {
 		}
 
 		for _, item := range items {
-			if item.ID != state.Position+1 && !a.tolerateGaps {
-				return fmt.Errorf(
-					"inconsistent eventlog, expected event %d, got %d",
-					state.Position+1, item.ID)
-			}
-
-			event, err := eventlogRowToEvent(item)
+			newState, err := a.archiveEventlogItem(ctx, item, state)
 			if err != nil {
-				return fmt.Errorf(
-					"invalid event log item %d: %w", item.ID, err)
+				return err
 			}
 
-			archiveItem := ArchivedEventlogItem{
-				Event:           event,
-				ParentSignature: state.LastSignature,
-				Archived:        time.Now(),
-			}
+			state = newState
+		}
 
-			key := fmt.Sprintf("events/%020d.json", item.ID)
-
-			ref, err := a.storeArchiveObject(ctx, key, &archiveItem)
-			if err != nil {
-				return fmt.Errorf("archive log item %d: %w",
-					item.ID, err)
-			}
-
-			if item.ID%batchSize == 0 && kState.Position < item.ID {
-				signature, err := a.archiveEventlogBatch(ctx, q, kState, item.ID, batchSize)
-				if err != nil {
-					return fmt.Errorf("archive eventlog batch %d: %w", item.ID, err)
-				}
-
-				err = q.SetEventlogArchiver(ctx,
-					postgres.SetEventlogArchiverParams{
-						Size:      batchSize,
-						Position:  item.ID,
-						Signature: signature,
-					})
-				if err != nil {
-					return fmt.Errorf("update batch archiver state: %w", err)
-				}
-			}
-
-			err = q.SetEventlogArchiver(ctx,
-				postgres.SetEventlogArchiverParams{
-					Size:      1,
-					Position:  item.ID,
-					Signature: ref.Signature,
-				})
-			if err != nil {
-				return fmt.Errorf("update archiver state: %w", err)
-			}
-
-			state.Position = item.ID
-
-			a.eventsArchiver.Set(float64(item.ID))
-
-			if item.ID < lastID {
-				continue
-			}
-
-			select {
-			case <-newEvents:
-			case <-ctx.Done():
-				return ctx.Err()
-			}
+		select {
+		case <-time.After(pollDelay):
+		case <-newEvents:
+			pollDelay = 5 * time.Second
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }
 
-func (a *Archiver) archiveEventlogBatch(
-	ctx context.Context, q *postgres.Queries,
+func (a *Archiver) archiveEventlogItem(
+	ctx context.Context,
+	item postgres.GetEventlogRow,
 	state postgres.GetEventlogArchiverRow,
-	before int64, size int64,
-) (string, error) {
-	start := max(before-size, 1)
-	after := start - 1
-	length := before - start
+) (_ postgres.GetEventlogArchiverRow, outErr error) {
+	if item.ID != state.Position+1 && !a.tolerateGaps {
+		return postgres.GetEventlogArchiverRow{},
+			fmt.Errorf("inconsistent eventlog, expected event %d, got %d",
+				state.Position+1, item.ID)
+	}
 
-	items, err := q.GetEventlog(ctx, postgres.GetEventlogParams{
-		After:    after,
-		RowLimit: int32(length), //nolint: gosec
-	})
+	event, err := eventlogRowToEvent(item)
 	if err != nil {
-		return "", fmt.Errorf("read eventlog chunk: %w", err)
+		return postgres.GetEventlogArchiverRow{},
+			fmt.Errorf(
+				"invalid event log item %d: %w", item.ID, err)
 	}
 
-	if int64(len(items)) != length && !a.tolerateGaps {
-		return "", fmt.Errorf("inconsisten eventlog, missing %d events:",
-			length-int64(len(items)))
-	}
-
-	archiveItem := ArchivedEventlogBatch{
+	archiveItem := ArchivedEventlogItem{
+		Event:           event,
 		ParentSignature: state.LastSignature,
 		Archived:        time.Now(),
 	}
 
-	for _, row := range items {
-		event, err := eventlogRowToEvent(row)
-		if err != nil {
-			return "", fmt.Errorf(
-				"invalid event log item %d: %w", event.ID, err)
-		}
-
-		archiveItem.Events = append(archiveItem.Events, event)
+	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		return postgres.GetEventlogArchiverRow{},
+			fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	key := fmt.Sprintf("events-%d/%020d.json", size, before)
+	defer pg.Rollback(tx, &outErr)
+
+	q := postgres.New(tx)
+
+	var objRef *archiveObjectRef
+
+	// Create a new cleanup context that's detached from parent cancel, but
+	// with a timeout so that we don't hang.
+	cleanupCtx, cancelCleanup := context.WithTimeout(
+		context.WithoutCancel(ctx), 10*time.Second)
+	defer cancelCleanup()
+
+	switch event.Event {
+	case TypeACLUpdate:
+	case TypeDeleteDocument:
+	case TypeDocumentVersion:
+		docRef, err := a.archiveDocumentVersion(ctx, cleanupCtx, event, tx)
+		if err != nil {
+			return postgres.GetEventlogArchiverRow{},
+				fmt.Errorf("archive document version: %w", err)
+		}
+
+		objRef = docRef
+	case TypeEventIgnored:
+	case TypeNewStatus:
+		statusRef, err := a.archiveDocumentStatus(ctx, cleanupCtx, event, tx)
+		if err != nil {
+			return postgres.GetEventlogArchiverRow{},
+				fmt.Errorf("archive document status: %w", err)
+		}
+
+		objRef = statusRef
+	case TypeRestoreFinished:
+	case TypeWorkflow:
+	default:
+		panic(fmt.Sprintf("unexpected repository.EventType: %#v", event.Event))
+	}
+
+	if objRef != nil {
+		archiveItem.ObjectSignature = objRef.Signature
+
+		// We try to clean up the S3 object for the related object if the
+		// operation fails.
+		defer func() {
+			if outErr == nil {
+				return
+			}
+
+			objRef.Remove(cleanupCtx)
+		}()
+	}
+
+	key := fmt.Sprintf("events/%020d.json", item.ID)
 
 	ref, err := a.storeArchiveObject(ctx, key, &archiveItem)
 	if err != nil {
-		return "", fmt.Errorf("archive log item batch: %w",
-			err)
+		return postgres.GetEventlogArchiverRow{},
+			fmt.Errorf("archive log item %d: %w",
+				item.ID, err)
 	}
 
-	return ref.Signature, nil
+	// We try to clean up the eventlog item S3 object if the operation
+	// fails.
+	defer func() {
+		if outErr == nil {
+			return
+		}
+
+		ref.Remove(cleanupCtx)
+	}()
+
+	err = q.SetEventlogArchiver(ctx,
+		postgres.SetEventlogArchiverParams{
+			Size:      1,
+			Position:  item.ID,
+			Signature: ref.Signature,
+		})
+	if err != nil {
+		return postgres.GetEventlogArchiverRow{},
+			fmt.Errorf("update archiver state: %w", err)
+	}
+
+	// Update the archive count for new events that correspond to an update
+	// request that must be archived before delete.
+	if mustBeArchivedBeforeDelete(event.Event) {
+		_, err := q.UpdateDocumentUnarchivedCount(ctx,
+			postgres.UpdateDocumentUnarchivedCountParams{
+				UUID:  item.UUID,
+				Delta: -1,
+			})
+		if err != nil {
+			return postgres.GetEventlogArchiverRow{},
+				fmt.Errorf("update document archive counter: %w", err)
+		}
+	}
+
+	err = q.SetEventlogItemAsArchived(ctx,
+		postgres.SetEventlogItemAsArchivedParams{
+			ID:        item.ID,
+			Signature: pg.Text(ref.Signature),
+		})
+	if err != nil {
+		return postgres.GetEventlogArchiverRow{},
+			fmt.Errorf("set item as archived: %w", err)
+	}
+
+	err = pg.Publish(ctx, tx, NotifyArchived, ArchivedEvent{
+		Type:    ArchiveEventTypeLogItem,
+		EventID: item.ID,
+		UUID:    item.UUID,
+	})
+	if err != nil {
+		return postgres.GetEventlogArchiverRow{},
+			fmt.Errorf("send archived notification: %w", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return postgres.GetEventlogArchiverRow{},
+			fmt.Errorf("commit changes: %w", err)
+	}
+
+	state.LastSignature = ref.Signature
+	state.Position = item.ID
+
+	a.eventsArchiver.Set(float64(item.ID))
+
+	return postgres.GetEventlogArchiverRow{
+		Position:      item.ID,
+		LastSignature: ref.Signature,
+	}, nil
+}
+
+func mustBeArchivedBeforeDelete(eventType EventType) bool {
+	//nolint: exhaustive
+	switch eventType {
+	case TypeACLUpdate, TypeDocumentVersion, TypeNewStatus, TypeDeleteDocument:
+		return true
+	}
+
+	return false
 }
 
 func (a *Archiver) runPollLoop(ctx context.Context) error {
@@ -469,20 +538,6 @@ func (a *Archiver) runPollLoop(ctx context.Context) error {
 		now := time.Now()
 
 		err := runWithDelay(
-			"archive document versions", now,
-			a.versionsArchived, a.archiveDocumentVersions)
-		if err != nil {
-			return err
-		}
-
-		err = runWithDelay(
-			"archive document statuses", now,
-			a.statusesArchived, a.archiveDocumentStatuses)
-		if err != nil {
-			return err
-		}
-
-		err = runWithDelay(
 			"process document deletes", now,
 			a.deletesProcessed, a.processDeletes)
 		if err != nil {
@@ -520,6 +575,7 @@ func (a *Archiver) runPollLoop(ctx context.Context) error {
 }
 
 type DeleteManifest struct {
+	Nonce       uuid.UUID        `json:"nonce"`
 	LastVersion int64            `json:"last_version"`
 	Heads       map[string]int64 `json:"heads"`
 	ACL         []ACLEntry       `json:"acl"`
@@ -634,6 +690,7 @@ func (a *Archiver) processDeletes(
 	}
 
 	manifest := DeleteManifest{
+		Nonce:       deleteOrder.Nonce,
 		Archived:    time.Now(),
 		LastVersion: deleteOrder.Version,
 		Heads:       deleteOrder.Heads,
@@ -681,7 +738,7 @@ func (a *Archiver) processDeletes(
 
 	count, err := q.FinaliseDocumentDelete(ctx, deleteOrder.UUID)
 	if err != nil {
-		return false, fmt.Errorf("failed to delete document row: %w", err)
+		return false, fmt.Errorf("delete document row: %w", err)
 	}
 
 	if count != 1 {
@@ -695,12 +752,12 @@ func (a *Archiver) processDeletes(
 		Finalised: pg.Time(time.Now()),
 	})
 	if err != nil {
-		return false, fmt.Errorf("failed to set delete record as finished: %w", err)
+		return false, fmt.Errorf("set delete record as finished: %w", err)
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return false, fmt.Errorf("failed to commit transaction: %w", err)
+		return false, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return true, nil
@@ -788,7 +845,7 @@ func (a *Archiver) processRestores(
 	// Drop restore requests whose delete record has been purged.
 	err = q.DropInvalidRestoreRequests(ctx)
 	if err != nil {
-		return false, fmt.Errorf("")
+		return false, fmt.Errorf("drop invalid restores: %w", err)
 	}
 
 	req, err := q.GetNextRestoreRequest(ctx)
@@ -805,6 +862,7 @@ func (a *Archiver) processRestores(
 		return false, fmt.Errorf("unmarshal restore spec: %w", err)
 	}
 
+	nonce := req.Nonce
 	requestPrefix := fmt.Sprintf("deleted/%s/%019d/",
 		req.UUID, req.DeleteRecordID)
 	manifestKey := requestPrefix + "manifest.json"
@@ -862,7 +920,7 @@ func (a *Archiver) processRestores(
 			}
 
 			sig, err := a.restoreDocumentVersion(
-				ctx, q, &parentSig, id, req, *o.Key)
+				ctx, q, &parentSig, id, nonce, req, *o.Key)
 			if err != nil {
 				return false, fmt.Errorf(
 					"restore version %d: %w", id, err)
@@ -955,12 +1013,18 @@ func (a *Archiver) processRestores(
 
 	// Verify the restored statuses against the manifest.
 	for name, head := range manifest.Heads {
-		if observedHeads[name].ID == head {
+		observed, ok := observedHeads[name]
+		if !ok {
+			return false, fmt.Errorf(
+				"missing %q status in archive", name)
+		}
+
+		if observed.ID == head {
 			continue
 		}
 
 		return false, fmt.Errorf("expected %d %q statuses, got %d",
-			head, name, observedHeads[name].ID)
+			head, name, observed.ID)
 	}
 
 	attachedNames := make([]string, len(manifest.Attached))
@@ -1080,6 +1144,7 @@ func (a *Archiver) processRestores(
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
 		Event:           string(TypeDocumentVersion),
 		UUID:            req.UUID,
+		Nonce:           nonce,
 		Timestamp:       time.Now(),
 		Version:         lastVersion,
 		Updater:         req.Creator,
@@ -1095,6 +1160,7 @@ func (a *Archiver) processRestores(
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
 		Event:       string(TypeACLUpdate),
 		UUID:        req.UUID,
+		Nonce:       nonce,
 		Timestamp:   time.Now(),
 		Updater:     req.Creator,
 		ACL:         eventACLs,
@@ -1116,6 +1182,7 @@ func (a *Archiver) processRestores(
 		err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
 			Event:       string(TypeNewStatus),
 			UUID:        req.UUID,
+			Nonce:       nonce,
 			Timestamp:   time.Now(),
 			Status:      name,
 			StatusID:    head.ID,
@@ -1134,6 +1201,7 @@ func (a *Archiver) processRestores(
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
 		Event:     string(TypeRestoreFinished),
 		UUID:      req.UUID,
+		Nonce:     nonce,
 		Timestamp: time.Now(),
 		Version:   lastVersion,
 		Updater:   req.Creator,
@@ -1154,7 +1222,7 @@ func (a *Archiver) processRestores(
 
 func (a *Archiver) restoreDocumentVersion(
 	ctx context.Context, q *postgres.Queries, parentSig *string,
-	id int64, req postgres.GetNextRestoreRequestRow, key string,
+	id int64, nonce uuid.UUID, req postgres.GetNextRestoreRequestRow, key string,
 ) (string, error) {
 	dv, sig, err := a.reader.ReadDocumentVersion(ctx, key, parentSig)
 	if err != nil {
@@ -1184,6 +1252,7 @@ func (a *Archiver) restoreDocumentVersion(
 
 	err = q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
 		UUID:       dv.UUID,
+		Nonce:      nonce,
 		URI:        dv.URI,
 		Type:       dv.Type,
 		Created:    pg.Time(dv.Created),
@@ -1415,6 +1484,8 @@ type ArchivedDocumentVersion struct {
 	ParentSignature string          `json:"parent_signature,omitempty"`
 	Archived        time.Time       `json:"archived"`
 	Attached        []string        `json:"attached"`
+	Detached        []string        `json:"detached"`
+	EventID         int64           `json:"event_id"`
 }
 
 func (av *ArchivedDocumentVersion) GetArchivedTime() time.Time {
@@ -1425,23 +1496,21 @@ func (av *ArchivedDocumentVersion) GetParentSignature() string {
 	return av.ParentSignature
 }
 
-func (a *Archiver) archiveDocumentVersions(
+func (a *Archiver) archiveDocumentVersion(
 	ctx context.Context,
-) (_ bool, outErr error) {
-	tx, err := a.pool.Begin(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-
-	defer pg.Rollback(tx, &outErr)
-
+	cleanupCtx context.Context,
+	event Event,
+	tx postgres.DBTX,
+) (_ *archiveObjectRef, outErr error) {
 	q := postgres.New(tx)
 
-	unarchived, err := q.GetDocumentVersionForArchiving(ctx)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	} else if err != nil {
-		return false, fmt.Errorf(
+	unarchived, err := q.GetDocumentVersionForArchiving(ctx,
+		postgres.GetDocumentVersionForArchivingParams{
+			UUID:    event.UUID,
+			Version: event.Version,
+		})
+	if err != nil {
+		return nil, fmt.Errorf(
 			"failed to get unarchived version from the database: %w",
 			err)
 	}
@@ -1459,13 +1528,16 @@ func (a *Archiver) archiveDocumentVersions(
 		MainDocument:    pg.ToUUIDPointer(unarchived.MainDoc),
 		ParentSignature: unarchived.ParentSignature.String,
 		Archived:        time.Now(),
+		EventID:         event.ID,
+		Attached:        event.AttachedObjects,
+		Detached:        event.DetachedObjects,
 	}
 
 	key := fmt.Sprintf("documents/%s/versions/%019d.json", dv.UUID, dv.Version)
 
 	ref, err := a.storeArchiveObject(ctx, key, &dv)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
 	// We try to clean up the S3 object if the operation fails.
@@ -1474,16 +1546,17 @@ func (a *Archiver) archiveDocumentVersions(
 			return
 		}
 
-		ref.Remove(ctx)
+		ref.Remove(cleanupCtx)
 	}()
 
-	err = q.SetDocumentVersionAsArchived(ctx, postgres.SetDocumentVersionAsArchivedParams{
-		UUID:      dv.UUID,
-		Version:   dv.Version,
-		Signature: ref.Signature,
-	})
+	err = q.SetDocumentVersionAsArchived(ctx,
+		postgres.SetDocumentVersionAsArchivedParams{
+			UUID:      dv.UUID,
+			Version:   dv.Version,
+			Signature: ref.Signature,
+		})
 	if err != nil {
-		return false, fmt.Errorf("failed to update archived status in db: %w",
+		return nil, fmt.Errorf("failed to update archived status in db: %w",
 			err)
 	}
 
@@ -1493,31 +1566,25 @@ func (a *Archiver) archiveDocumentVersions(
 		Version: dv.Version,
 	})
 	if err != nil {
-		return false, fmt.Errorf("failed to send archive notification: %w", err)
+		return nil, fmt.Errorf("failed to send archive notification: %w", err)
 	}
 
-	err = tx.Commit(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return true, nil
+	return ref, nil
 }
 
 type ArchivedDocumentStatus struct {
-	UUID             uuid.UUID       `json:"uuid"`
-	Name             string          `json:"name"`
-	ID               int64           `json:"id"`
-	Type             string          `json:"type"`
-	Version          int64           `json:"version"`
-	Created          time.Time       `json:"created"`
-	CreatorURI       string          `json:"creator_uri"`
-	Meta             json.RawMessage `json:"meta,omitempty"`
-	ParentSignature  string          `json:"parent_signature,omitempty"`
-	VersionSignature string          `json:"version_signature"`
-	Archived         time.Time       `json:"archived"`
-	Language         string          `json:"language"`
-	MetaDocVersion   int64           `json:"meta_doc_version,omitempty"`
+	UUID            uuid.UUID       `json:"uuid"`
+	Name            string          `json:"name"`
+	ID              int64           `json:"id"`
+	Type            string          `json:"type"`
+	Version         int64           `json:"version"`
+	Created         time.Time       `json:"created"`
+	CreatorURI      string          `json:"creator_uri"`
+	Meta            json.RawMessage `json:"meta,omitempty"`
+	ParentSignature string          `json:"parent_signature,omitempty"`
+	Archived        time.Time       `json:"archived"`
+	Language        string          `json:"language"`
+	MetaDocVersion  int64           `json:"meta_doc_version,omitempty"`
 }
 
 func (as *ArchivedDocumentStatus) GetArchivedTime() time.Time {
@@ -1528,24 +1595,23 @@ func (as *ArchivedDocumentStatus) GetParentSignature() string {
 	return as.ParentSignature
 }
 
-func (a *Archiver) archiveDocumentStatuses(
+func (a *Archiver) archiveDocumentStatus(
 	ctx context.Context,
-) (_ bool, outErr error) {
-	tx, err := a.pool.Begin(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-
-	defer pg.Rollback(tx, &outErr)
-
+	cleanupCtx context.Context,
+	evt Event,
+	tx postgres.DBTX,
+) (_ *archiveObjectRef, outErr error) {
 	q := postgres.New(tx)
 
-	unarchived, err := q.GetDocumentStatusForArchiving(ctx)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	} else if err != nil {
-		return false, fmt.Errorf(
-			"failed to get unarchived version from the database: %w",
+	unarchived, err := q.GetDocumentStatusForArchiving(ctx,
+		postgres.GetDocumentStatusForArchivingParams{
+			UUID: evt.UUID,
+			Name: evt.Status,
+			ID:   evt.StatusID,
+		})
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to get status from the database: %w",
 			err)
 	}
 
@@ -1554,26 +1620,25 @@ func (a *Archiver) archiveDocumentStatuses(
 	if unarchived.Meta != nil {
 		d, err := json.Marshal(unarchived.Meta)
 		if err != nil {
-			return false, fmt.Errorf("marshal metadata: %w", err)
+			return nil, fmt.Errorf("marshal metadata: %w", err)
 		}
 
 		metaData = d
 	}
 
 	ds := ArchivedDocumentStatus{
-		UUID:             unarchived.UUID,
-		Name:             unarchived.Name,
-		ID:               unarchived.ID,
-		Type:             unarchived.Type,
-		Version:          unarchived.Version,
-		Created:          unarchived.Created.Time,
-		CreatorURI:       unarchived.CreatorUri,
-		Meta:             metaData,
-		ParentSignature:  unarchived.ParentSignature.String,
-		VersionSignature: unarchived.VersionSignature.String,
-		Archived:         time.Now(),
-		Language:         unarchived.Language.String,
-		MetaDocVersion:   unarchived.MetaDocVersion.Int64,
+		UUID:            unarchived.UUID,
+		Name:            unarchived.Name,
+		ID:              unarchived.ID,
+		Type:            evt.Type,
+		Version:         unarchived.Version,
+		Created:         unarchived.Created.Time,
+		CreatorURI:      unarchived.CreatorUri,
+		Meta:            metaData,
+		ParentSignature: unarchived.ParentSignature.String,
+		Archived:        time.Now(),
+		Language:        evt.Language,
+		MetaDocVersion:  unarchived.MetaDocVersion.Int64,
 	}
 
 	key := fmt.Sprintf("documents/%s/statuses/%s/%019d.json",
@@ -1581,7 +1646,7 @@ func (a *Archiver) archiveDocumentStatuses(
 
 	ref, err := a.storeArchiveObject(ctx, key, &ds)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
 	// We try to clean up the S3 object if the operation fails.
@@ -1590,18 +1655,18 @@ func (a *Archiver) archiveDocumentStatuses(
 			return
 		}
 
-		ref.Remove(ctx)
+		ref.Remove(cleanupCtx)
 	}()
 
-	err = q.SetDocumentStatusAsArchived(ctx, postgres.SetDocumentStatusAsArchivedParams{
-		UUID:      ds.UUID,
-		Name:      ds.Name,
-		ID:        ds.ID,
-		Signature: ref.Signature,
-	})
+	err = q.SetDocumentStatusAsArchived(ctx,
+		postgres.SetDocumentStatusAsArchivedParams{
+			Signature: ref.Signature,
+			UUID:      ds.UUID,
+			Name:      ds.Name,
+			ID:        ds.ID,
+		})
 	if err != nil {
-		return false, fmt.Errorf(
-			"failed to update archived status in db: %w", err)
+		return nil, fmt.Errorf("set status as archived: %w", err)
 	}
 
 	err = pg.Publish(ctx, tx, NotifyArchived, ArchivedEvent{
@@ -1611,15 +1676,10 @@ func (a *Archiver) archiveDocumentStatuses(
 		Version: ds.ID,
 	})
 	if err != nil {
-		return false, fmt.Errorf("failed to send archive notification: %w", err)
+		return nil, fmt.Errorf("send archived notification: %w", err)
 	}
 
-	err = tx.Commit(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return true, nil
+	return ref, nil
 }
 
 func (a *Archiver) ensureSigningKeys(ctx context.Context) (outErr error) {
