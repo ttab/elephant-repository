@@ -193,8 +193,6 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to read configuration: %w", err)
 	}
 
-	println(conf.DB)
-
 	auth, err := elephantine.AuthenticationConfigFromCLI(
 		c, nil,
 	)
