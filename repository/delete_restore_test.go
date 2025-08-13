@@ -8,15 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
 	"github.com/twitchtv/twirp"
-	"google.golang.org/protobuf/testing/protocmp"
 )
 
 func TestDeleteRestore(t *testing.T) {
@@ -292,41 +289,14 @@ func TestDeleteRestore(t *testing.T) {
 
 	goldenPath := filepath.Join(dataDir, "eventlog.json")
 
-	if regenerate {
-		pureGold := make([]*repository.EventlogItem, len(events))
-
-		it := newIncrementalTime()
-
-		// Avoid git diff noise in the golden file when
-		// regenerating. The time will be ignored in the diff test, but
-		// the changed timestamps will be misleading in PRs.
-		for i := range events {
-			e := test.CloneMessage(events[i])
-
-			e.Timestamp = it.NextTimestamp(
-				t, "event timestamp", e.Timestamp)
-
-			pureGold[i] = e
-		}
-
-		err := elephantine.MarshalFile(goldenPath, pureGold)
-		test.Must(t, err, "update golden file for eventlog")
-	}
-
-	var wantEvents []*repository.EventlogItem
-
-	err = elephantine.UnmarshalFile(goldenPath, &wantEvents)
-	test.Must(t, err, "read golden file for eventlog")
-
-	diff := cmp.Diff(
-		&repository.GetEventlogResponse{Items: wantEvents},
-		&repository.GetEventlogResponse{Items: events},
-		protocmp.Transform(),
-		protocmp.IgnoreFields(&repository.EventlogItem{}, "timestamp"),
+	test.TestMessageAgainstGolden(
+		t, regenerate,
+		&repository.GetEventlogResponse{
+			Items: events,
+		},
+		goldenPath,
+		test.IgnoreTimestamps{},
 	)
-	if diff != "" {
-		t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
-	}
 
 	historyRes, err := client.GetHistory(ctx, &repository.GetHistoryRequest{
 		Uuid:         docUUID,
@@ -336,57 +306,10 @@ func TestDeleteRestore(t *testing.T) {
 
 	historyGoldenPath := filepath.Join(dataDir, "history.json")
 
-	if regenerate {
-		pureGold := make([]*repository.DocumentVersion,
-			len(historyRes.Versions))
-
-		it := newIncrementalTime()
-
-		// Avoid git diff noise in the golden file when
-		// regenerating. The time will be ignored in the diff test, but
-		// the changed timestamps will be misleading in PRs.
-		for i := range historyRes.Versions {
-			v := test.CloneMessage(historyRes.Versions[i])
-
-			v.Meta["restored_at"] = it.NextTimestamp(
-				t, "version restored_at", v.Meta["restored_at"])
-
-			v.Created = it.NextTimestamp(
-				t, "version created", v.Created)
-
-			for _, s := range v.Statuses {
-				for _, item := range s.Items {
-					item.Created = it.NextTimestamp(
-						t, "status created", item.Created)
-
-					item.Meta["restored_at"] = it.NextTimestamp(
-						t, "status restored_at", item.Meta["restored_at"])
-				}
-			}
-
-			pureGold[i] = v
-		}
-
-		err := elephantine.MarshalFile(historyGoldenPath, pureGold)
-		test.Must(t, err, "update golden file for document history")
-	}
-
-	wantHistory := make([]*repository.DocumentVersion, len(events))
-
-	err = elephantine.UnmarshalFile(historyGoldenPath, &wantHistory)
-	test.Must(t, err, "read golden file for dcument history")
-
-	diff = cmp.Diff(
-		&repository.GetHistoryResponse{Versions: wantHistory},
-		&repository.GetHistoryResponse{Versions: historyRes.Versions},
-		protocmp.Transform(),
-		protocmp.IgnoreFields(&repository.DocumentVersion{}, "created"),
-		protocmp.IgnoreFields(&repository.Status{}, "created"),
-		cmpopts.IgnoreMapEntries(func(k, _ string) bool {
-			return k == "restored_at"
-		}),
+	test.TestMessageAgainstGolden(
+		t, regenerate, historyRes, historyGoldenPath,
+		test.IgnoreTimestamps{
+			Fields: []string{"created", "restored_at"},
+		},
 	)
-	if diff != "" {
-		t.Fatalf("dcument history mismatch (-want +got):\n%s", diff)
-	}
 }
