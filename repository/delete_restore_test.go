@@ -357,7 +357,10 @@ func TestDeleteRestore(t *testing.T) {
 			for _, s := range v.Statuses {
 				for _, item := range s.Items {
 					item.Created = it.NextTimestamp(
-						t, "version created", item.Created)
+						t, "status created", item.Created)
+
+					item.Meta["restored_at"] = it.NextTimestamp(
+						t, "status restored_at", item.Meta["restored_at"])
 				}
 			}
 
@@ -379,7 +382,7 @@ func TestDeleteRestore(t *testing.T) {
 		protocmp.Transform(),
 		protocmp.IgnoreFields(&repository.DocumentVersion{}, "created"),
 		protocmp.IgnoreFields(&repository.Status{}, "created"),
-		cmpopts.IgnoreMapEntries(func(k, v string) bool {
+		cmpopts.IgnoreMapEntries(func(k, _ string) bool {
 			return k == "restored_at"
 		}),
 	)

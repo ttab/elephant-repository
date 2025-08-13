@@ -14,9 +14,9 @@
             "id": 1,
             "version": 2,
             "creator": "user://test/testdeleterestore",
-            "created": "2025-08-13T05:57:13+02:00",
+            "created": "2024-01-01T00:00:03Z",
             "meta": {
-              "restored_at": "2025-08-13T05:57:14+02:00",
+              "restored_at": "2024-01-01T00:00:04Z",
               "restored_by": "user://test/testdeleterestore-b"
             }
           }
@@ -26,10 +26,10 @@
   },
   {
     "version": 1,
-    "created": "2024-01-01T00:00:04Z",
+    "created": "2024-01-01T00:00:06Z",
     "creator": "user://test/testdeleterestore",
     "meta": {
-      "restored_at": "2024-01-01T00:00:03Z",
+      "restored_at": "2024-01-01T00:00:05Z",
       "restored_by": "user://test/testdeleterestore-b"
     },
     "statuses": {
@@ -39,9 +39,9 @@
             "id": 1,
             "version": 1,
             "creator": "user://test/testdeleterestore",
-            "created": "2025-08-13T05:57:13+02:00",
+            "created": "2024-01-01T00:00:07Z",
             "meta": {
-              "restored_at": "2025-08-13T05:57:14+02:00",
+              "restored_at": "2024-01-01T00:00:08Z",
               "restored_by": "user://test/testdeleterestore-b"
             }
           }
