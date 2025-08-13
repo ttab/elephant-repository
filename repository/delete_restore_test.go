@@ -4,10 +4,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
@@ -37,10 +39,17 @@ func TestDeleteRestore(t *testing.T) {
 		RunEventlogBuilder: true,
 	})
 
+	scope := "doc_read doc_write doc_delete doc_restore eventlog_read"
+	unit := "core://unit/redaktionen"
+
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t,
-			"doc_read doc_write doc_delete doc_restore eventlog_read",
-			"core://unit/redaktionen"))
+			scope, unit))
+
+	clientB := tc.DocumentsClient(t,
+		itest.Claims(t,
+			strings.ToLower(t.Name())+"-b",
+			scope, unit))
 
 	ctx := t.Context()
 
@@ -63,6 +72,12 @@ func TestDeleteRestore(t *testing.T) {
 	_, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: docA,
+		Acl: []*repository.ACLEntry{
+			{
+				Uri:         unit,
+				Permissions: []string{"r", "w"},
+			},
+		},
 	})
 	test.Must(t, err, "create article")
 
@@ -190,8 +205,8 @@ func TestDeleteRestore(t *testing.T) {
 			t.Fatal("timed out waiting for document to become readable")
 		}
 
-		// Restore gen B.
-		_, err = client.Restore(ctx, &repository.RestoreRequest{
+		// Restore gen B as client B.
+		_, err = clientB.Restore(ctx, &repository.RestoreRequest{
 			Uuid:           docUUID,
 			DeleteRecordId: record.Id,
 			Acl: []*repository.ACLEntry{
@@ -311,5 +326,64 @@ func TestDeleteRestore(t *testing.T) {
 	)
 	if diff != "" {
 		t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
+	}
+
+	historyRes, err := client.GetHistory(ctx, &repository.GetHistoryRequest{
+		Uuid:         docUUID,
+		LoadStatuses: true,
+	})
+	test.Must(t, err, "get document history")
+
+	historyGoldenPath := filepath.Join(dataDir, "history.json")
+
+	if regenerate {
+		pureGold := make([]*repository.DocumentVersion,
+			len(historyRes.Versions))
+
+		it := newIncrementalTime()
+
+		// Avoid git diff noise in the golden file when
+		// regenerating. The time will be ignored in the diff test, but
+		// the changed timestamps will be misleading in PRs.
+		for i := range historyRes.Versions {
+			v := test.CloneMessage(historyRes.Versions[i])
+
+			v.Meta["restored_at"] = it.NextTimestamp(
+				t, "version restored_at", v.Meta["restored_at"])
+
+			v.Created = it.NextTimestamp(
+				t, "version created", v.Created)
+
+			for _, s := range v.Statuses {
+				for _, item := range s.Items {
+					item.Created = it.NextTimestamp(
+						t, "version created", item.Created)
+				}
+			}
+
+			pureGold[i] = v
+		}
+
+		err := elephantine.MarshalFile(historyGoldenPath, pureGold)
+		test.Must(t, err, "update golden file for document history")
+	}
+
+	wantHistory := make([]*repository.DocumentVersion, len(events))
+
+	err = elephantine.UnmarshalFile(historyGoldenPath, &wantHistory)
+	test.Must(t, err, "read golden file for dcument history")
+
+	diff = cmp.Diff(
+		&repository.GetHistoryResponse{Versions: wantHistory},
+		&repository.GetHistoryResponse{Versions: historyRes.Versions},
+		protocmp.Transform(),
+		protocmp.IgnoreFields(&repository.DocumentVersion{}, "created"),
+		protocmp.IgnoreFields(&repository.Status{}, "created"),
+		cmpopts.IgnoreMapEntries(func(k, v string) bool {
+			return k == "restored_at"
+		}),
+	)
+	if diff != "" {
+		t.Fatalf("dcument history mismatch (-want +got):\n%s", diff)
 	}
 }

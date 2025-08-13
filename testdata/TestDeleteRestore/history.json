@@ -1,0 +1,52 @@
+[
+  {
+    "version": 2,
+    "created": "2024-01-01T00:00:02Z",
+    "creator": "user://test/testdeleterestore",
+    "meta": {
+      "restored_at": "2024-01-01T00:00:01Z",
+      "restored_by": "user://test/testdeleterestore-b"
+    },
+    "statuses": {
+      "usable": {
+        "items": [
+          {
+            "id": 1,
+            "version": 2,
+            "creator": "user://test/testdeleterestore",
+            "created": "2025-08-13T05:57:13+02:00",
+            "meta": {
+              "restored_at": "2025-08-13T05:57:14+02:00",
+              "restored_by": "user://test/testdeleterestore-b"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "version": 1,
+    "created": "2024-01-01T00:00:04Z",
+    "creator": "user://test/testdeleterestore",
+    "meta": {
+      "restored_at": "2024-01-01T00:00:03Z",
+      "restored_by": "user://test/testdeleterestore-b"
+    },
+    "statuses": {
+      "done": {
+        "items": [
+          {
+            "id": 1,
+            "version": 1,
+            "creator": "user://test/testdeleterestore",
+            "created": "2025-08-13T05:57:13+02:00",
+            "meta": {
+              "restored_at": "2025-08-13T05:57:14+02:00",
+              "restored_by": "user://test/testdeleterestore-b"
+            }
+          }
+        ]
+      }
+    }
+  }
+]

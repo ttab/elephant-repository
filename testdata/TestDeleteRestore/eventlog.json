@@ -16,7 +16,7 @@
     "timestamp": "2024-01-01T00:00:02Z",
     "acl": [
       {
-        "uri": "user://test/testdeleterestore",
+        "uri": "core://unit/redaktionen",
         "permissions": [
           "r",
           "w"
@@ -184,7 +184,7 @@
         ]
       }
     ],
-    "updater_uri": "user://test/testdeleterestore",
+    "updater_uri": "user://test/testdeleterestore-b",
     "type": "core/article",
     "language": "en-gb",
     "system_state": "restoring"
@@ -195,7 +195,7 @@
     "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
     "timestamp": "2024-01-01T00:00:16Z",
     "version": 2,
-    "updater_uri": "user://test/testdeleterestore",
+    "updater_uri": "user://test/testdeleterestore-b",
     "type": "core/article",
     "language": "en-gb"
   }
