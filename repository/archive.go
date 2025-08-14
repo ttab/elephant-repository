@@ -330,6 +330,7 @@ func (a *Archiver) archiveEventlogItem(
 
 	archiveItem := ArchivedEventlogItem{
 		Event:           event,
+		ParentID:        state.Position,
 		ParentSignature: state.LastSignature,
 		Archived:        time.Now(),
 	}

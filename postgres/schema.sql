@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 17.5
+-- Dumped from database version 17.4 (Debian 17.4-1.pgdg120+2)
 -- Dumped by pg_dump version 17.4 (Debian 17.4-1.pgdg120+2)
 
 SET statement_timeout = 0;
@@ -16,20 +16,6 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
-
---
--- Name: crunchy_pooler; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS crunchy_pooler WITH SCHEMA public;
-
-
---
--- Name: EXTENSION crunchy_pooler; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION crunchy_pooler IS 'add support for connection pooling';
-
 
 --
 -- Name: create_status(uuid, character varying, bigint, bigint, timestamp with time zone, text, jsonb); Type: FUNCTION; Schema: public; Owner: -
@@ -521,17 +507,6 @@ CREATE TABLE public.metric_kind (
 
 
 --
--- Name: migration; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.migration (
-    name text NOT NULL,
-    finished boolean NOT NULL,
-    state jsonb NOT NULL
-);
-
-
---
 -- Name: planning_assignee; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -944,14 +919,6 @@ ALTER TABLE ONLY public.metric_kind
 
 ALTER TABLE ONLY public.metric
     ADD CONSTRAINT metric_pkey PRIMARY KEY (uuid, kind, label);
-
-
---
--- Name: migration migration_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.migration
-    ADD CONSTRAINT migration_pkey PRIMARY KEY (name);
 
 
 --

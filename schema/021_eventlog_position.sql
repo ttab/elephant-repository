@@ -47,24 +47,21 @@ CREATE TABLE IF NOT EXISTS eventlog_archiver(
        last_signature text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS migration(
-       name text PRIMARY KEY,
-       finished bool NOT NULL,
-       state jsonb NOT NULL
-);
 
--- The archive counter will be incremented for every write operation that
--- affects a document, and decreased when the corresponding event is archived.
+-- The archive counter will be incremented for every event that affects a
+-- document, and decreased when the corresponding event is archived.
 CREATE TABLE IF NOT EXISTS document_archive_counter(
        uuid uuid PRIMARY KEY,
        unarchived int NOT NULL,
+       -- Drop on delete, this is safe as document deletes aren't allowed to
+       -- proceed until the archive counter reaches zero.
        foreign key(uuid) references document(uuid)
                on delete cascade
 );
 
 ---- create above / drop below ----
 
-DROP TABLE IF EXISTS migration;
+DROP TABLE IF EXISTS document_archive_counter;
 
 DROP TABLE IF EXISTS eventlog_archiver;
 

@@ -1304,6 +1304,7 @@ func (s *PGDocStore) GetDocumentMeta(
 	}
 
 	meta := DocumentMeta{
+		Nonce:              info.Nonce,
 		Created:            info.Created.Time,
 		CreatorURI:         info.CreatorUri,
 		Modified:           info.Updated.Time,

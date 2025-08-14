@@ -667,6 +667,12 @@ func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
 			"invalid document UUID for event: %w", err)
 	}
 
+	docNonce, err := uuid.Parse(evt.DocumentNonce)
+	if err != nil {
+		return Event{}, fmt.Errorf(
+			"invalid document nonce for event: %w", err)
+	}
+
 	timestamp, err := time.Parse(time.RFC3339, evt.Timestamp)
 	if err != nil {
 		return Event{}, fmt.Errorf(
@@ -689,6 +695,7 @@ func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
 		ID:               evt.Id,
 		Event:            EventType(evt.Event),
 		UUID:             docUUID,
+		Nonce:            docNonce,
 		Type:             evt.Type,
 		Timestamp:        timestamp,
 		Updater:          evt.UpdaterUri,
@@ -725,6 +732,7 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		Id:                 evt.ID,
 		Event:              string(evt.Event),
 		Uuid:               evt.UUID.String(),
+		DocumentNonce:      evt.Nonce.String(),
 		Type:               evt.Type,
 		Timestamp:          evt.Timestamp.Format(time.RFC3339),
 		UpdaterUri:         evt.Updater,
@@ -1430,6 +1438,7 @@ func (a *DocumentsService) GetMeta(
 	}
 
 	resp := repository.DocumentMeta{
+		Nonce:              meta.Nonce.String(),
 		Created:            meta.Created.Format(time.RFC3339),
 		CreatorUri:         meta.CreatorURI,
 		Modified:           meta.Modified.Format(time.RFC3339),

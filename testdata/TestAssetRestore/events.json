@@ -1,89 +1,95 @@
 {
   "items": [
     {
-      "attached_objects": [
-        "plaintext"
-      ],
-      "event": "document",
       "id": "1",
-      "language": "en",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "type": "core/article",
-      "updater_uri": "user://test/testassetrestore",
+      "event": "document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "version": "1"
-    },
-    {
-      "acl": [
-        {
-          "permissions": [
-            "r",
-            "w"
-          ],
-          "uri": "user://test/testassetrestore"
-        }
-      ],
-      "event": "acl",
-      "id": "2",
-      "language": "en",
       "timestamp": "2023-01-10T20:06:37+01:00",
-      "type": "core/article",
+      "version": "1",
       "updater_uri": "user://test/testassetrestore",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
-    },
-    {
-      "delete_record_id": "1",
-      "event": "delete_document",
-      "id": "3",
+      "type": "core/article",
       "language": "en",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "type": "core/article",
-      "updater_uri": "user://test/testassetrestore",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "version": "1"
-    },
-    {
       "attached_objects": [
         "plaintext"
       ],
-      "event": "document",
-      "id": "4",
-      "language": "en",
-      "system_state": "restoring",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "type": "core/article",
-      "updater_uri": "user://test/testassetrestore",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "version": "1"
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
+      "id": "2",
+      "event": "acl",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
       "acl": [
         {
+          "uri": "user://test/testassetrestore",
           "permissions": [
             "r",
             "w"
-          ],
-          "uri": "user://test/testassetrestore"
+          ]
         }
       ],
-      "event": "acl",
-      "id": "5",
-      "language": "en",
-      "system_state": "restoring",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "type": "core/article",
       "updater_uri": "user://test/testassetrestore",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+      "type": "core/article",
+      "language": "en",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "event": "restore_finished",
-      "id": "6",
-      "language": "en",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "type": "core/article",
-      "updater_uri": "user://test/testassetrestore",
+      "id": "3",
+      "event": "delete_document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "version": "1"
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
+      "updater_uri": "user://test/testassetrestore",
+      "type": "core/article",
+      "language": "en",
+      "delete_record_id": "1",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "4",
+      "event": "document",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
+      "updater_uri": "user://test/testassetrestore",
+      "type": "core/article",
+      "language": "en",
+      "system_state": "restoring",
+      "attached_objects": [
+        "plaintext"
+      ],
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "5",
+      "event": "acl",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "acl": [
+        {
+          "uri": "user://test/testassetrestore",
+          "permissions": [
+            "r",
+            "w"
+          ]
+        }
+      ],
+      "updater_uri": "user://test/testassetrestore",
+      "type": "core/article",
+      "language": "en",
+      "system_state": "restoring",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "6",
+      "event": "restore_finished",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
+      "updater_uri": "user://test/testassetrestore",
+      "type": "core/article",
+      "language": "en",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
     }
   ]
 }

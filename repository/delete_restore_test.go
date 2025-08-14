@@ -296,6 +296,7 @@ func TestDeleteRestore(t *testing.T) {
 		},
 		goldenPath,
 		test.IgnoreTimestamps{},
+		ignoreUUIDField("document_nonce"),
 	)
 
 	historyRes, err := client.GetHistory(ctx, &repository.GetHistoryRequest{

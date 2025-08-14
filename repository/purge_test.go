@@ -177,41 +177,14 @@ func TestPurge(t *testing.T) {
 
 	goldenPath := filepath.Join(dataDir, "eventlog.json")
 
-	if regenerate {
-		pureGold := make([]*repository.EventlogItem, len(events))
-
-		it := newIncrementalTime()
-
-		// Avoid git diff noise in the golden file when
-		// regenerating. The time will be ignored in the diff test, but
-		// the changed timestamps will be misleading in PRs.
-		for i := range events {
-			e := test.CloneMessage(events[i])
-
-			e.Timestamp = it.NextTimestamp(
-				t, "event timestamp", e.Timestamp)
-
-			pureGold[i] = e
-		}
-
-		err := elephantine.MarshalFile(goldenPath, pureGold)
-		test.Must(t, err, "update golden file for eventlog")
-	}
-
-	var wantEvents []*repository.EventlogItem
-
-	err = elephantine.UnmarshalFile(goldenPath, &wantEvents)
-	test.Must(t, err, "read golden file for eventlog")
-
-	diff = cmp.Diff(
-		&repository.GetEventlogResponse{Items: wantEvents},
-		&repository.GetEventlogResponse{Items: events},
-		protocmp.Transform(),
-		protocmp.IgnoreFields(&repository.EventlogItem{}, "timestamp"),
+	test.TestMessageAgainstGolden(t, regenerate,
+		&repository.GetEventlogResponse{
+			Items: events,
+		},
+		goldenPath,
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("document_nonce"),
 	)
-	if diff != "" {
-		t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
-	}
 }
 
 func newIncrementalTime() *incrementalTime {

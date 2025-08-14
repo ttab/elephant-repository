@@ -7,7 +7,8 @@
       "version": "1",
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
-      "language": "sv-se"
+      "language": "sv-se",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
       "id": "2",
@@ -24,7 +25,8 @@
       ],
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
-      "language": "sv-se"
+      "language": "sv-se",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
       "id": "3",
@@ -33,7 +35,8 @@
       "version": "1",
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
-      "language": "en-gb"
+      "language": "en-gb",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
       "id": "4",
@@ -50,7 +53,8 @@
       ],
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
-      "language": "en-gb"
+      "language": "en-gb",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
       "id": "5",
@@ -61,7 +65,8 @@
       "status_id": "1",
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
-      "language": "en-gb"
+      "language": "en-gb",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
       "id": "6",
@@ -71,7 +76,8 @@
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
       "language": "en-us",
-      "old_language": "en-gb"
+      "old_language": "en-gb",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
       "id": "7",
@@ -83,7 +89,8 @@
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
       "language": "en-us",
-      "old_language": "en-gb"
+      "old_language": "en-gb",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
     }
   ]
 }

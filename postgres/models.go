@@ -215,12 +215,6 @@ type MetricKind struct {
 	Aggregation int16
 }
 
-type Migration struct {
-	Name     string
-	Finished bool
-	State    []byte
-}
-
 type PlanningAssignee struct {
 	Assignment uuid.UUID
 	Assignee   uuid.UUID
