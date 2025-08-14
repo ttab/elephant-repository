@@ -1213,6 +1213,11 @@ func (a *Archiver) restoreDocumentVersion(
 		return nil, "", fmt.Errorf("read event information for version: %w", err)
 	}
 
+	if evt.ObjectSignature != sig {
+		return nil, "", fmt.Errorf(
+			"document signature didn't match the stored event")
+	}
+
 	updatedMetaData, err := annotateMeta(dv.Meta, newsdoc.DataMap{
 		"restored_at": time.Now().Format(time.RFC3339),
 		"restored_by": req.Creator,
