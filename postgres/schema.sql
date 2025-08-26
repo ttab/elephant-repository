@@ -230,7 +230,8 @@ CREATE TABLE public.delete_record (
     heads jsonb,
     purged timestamp with time zone,
     main_doc_type text,
-    attachments jsonb
+    attachments jsonb,
+    nonce uuid NOT NULL
 );
 
 
@@ -274,7 +275,18 @@ CREATE TABLE public.document (
     main_doc uuid,
     language text,
     system_state text,
-    main_doc_type text
+    main_doc_type text,
+    nonce uuid NOT NULL
+);
+
+
+--
+-- Name: document_archive_counter; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.document_archive_counter (
+    uuid uuid NOT NULL,
+    unarchived integer NOT NULL
 );
 
 
@@ -398,7 +410,20 @@ CREATE TABLE public.eventlog (
     workflow_state text,
     workflow_checkpoint text,
     main_doc_type text,
-    extra jsonb
+    extra jsonb,
+    signature text,
+    nonce uuid NOT NULL
+);
+
+
+--
+-- Name: eventlog_archiver; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.eventlog_archiver (
+    size bigint NOT NULL,
+    "position" bigint NOT NULL,
+    last_signature text NOT NULL
 );
 
 
@@ -761,6 +786,14 @@ ALTER TABLE ONLY public.deprecation
 
 
 --
+-- Name: document_archive_counter document_archive_counter_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.document_archive_counter
+    ADD CONSTRAINT document_archive_counter_pkey PRIMARY KEY (uuid);
+
+
+--
 -- Name: document_link document_link_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -822,6 +855,14 @@ ALTER TABLE ONLY public.document_version
 
 ALTER TABLE ONLY public.event_outbox_item
     ADD CONSTRAINT event_outbox_item_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: eventlog_archiver eventlog_archiver_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.eventlog_archiver
+    ADD CONSTRAINT eventlog_archiver_pkey PRIMARY KEY (size);
 
 
 --
@@ -1142,6 +1183,14 @@ ALTER TABLE ONLY public.attached_object_current
 
 ALTER TABLE ONLY public.attached_object
     ADD CONSTRAINT attached_object_document_fkey FOREIGN KEY (document) REFERENCES public.document(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: document_archive_counter document_archive_counter_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.document_archive_counter
+    ADD CONSTRAINT document_archive_counter_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
 
 
 --

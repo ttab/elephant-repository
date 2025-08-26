@@ -26,9 +26,6 @@ ALTER TABLE eventlog ALTER COLUMN
 
 ---- create above / drop below ----
 
-ALTER TABLE document
-      DROP COLUMN event_meta;
-
-DROP TABLE IF EXISTS event_outbox_item
+DROP TABLE IF EXISTS event_outbox_item;
 DROP TABLE IF EXISTS attached_object;
 DROP TABLE IF EXISTS upload;

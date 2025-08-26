@@ -4,17 +4,16 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
 	"github.com/twitchtv/twirp"
-	"google.golang.org/protobuf/testing/protocmp"
 )
 
 func TestDeleteRestore(t *testing.T) {
@@ -37,10 +36,17 @@ func TestDeleteRestore(t *testing.T) {
 		RunEventlogBuilder: true,
 	})
 
+	scope := "doc_read doc_write doc_delete doc_restore eventlog_read"
+	unit := "core://unit/redaktionen"
+
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t,
-			"doc_read doc_write doc_delete doc_restore eventlog_read",
-			"core://unit/redaktionen"))
+			scope, unit))
+
+	clientB := tc.DocumentsClient(t,
+		itest.Claims(t,
+			strings.ToLower(t.Name())+"-b",
+			scope, unit))
 
 	ctx := t.Context()
 
@@ -63,6 +69,12 @@ func TestDeleteRestore(t *testing.T) {
 	_, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: docA,
+		Acl: []*repository.ACLEntry{
+			{
+				Uri:         unit,
+				Permissions: []string{"r", "w"},
+			},
+		},
 	})
 	test.Must(t, err, "create article")
 
@@ -95,6 +107,8 @@ func TestDeleteRestore(t *testing.T) {
 
 	test.Equal(t, 1, len(deletesA.Deletes), "expect one delete record")
 
+	// Prepare a document B that we want to write once the delete has been
+	// processed.
 	docB := test.CloneMessage(docA)
 
 	docB.Content = append(docB.Content, &newsdoc.Block{
@@ -109,7 +123,9 @@ func TestDeleteRestore(t *testing.T) {
 	var genBCreated bool
 
 	for !genBCreated {
-		time.Sleep(100 * time.Millisecond)
+		if time.Since(pollStart) > 2*time.Second {
+			t.Fatal("timed out waiting for write of generation B to succeed")
+		}
 
 		// Create document (gen B).
 		_, err = client.Update(ctx, &repository.UpdateRequest{
@@ -121,14 +137,11 @@ func TestDeleteRestore(t *testing.T) {
 		// The document is not in a state to be recreated until the
 		// delete has been processed.
 		case elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition):
+			time.Sleep(100 * time.Millisecond)
 		case err != nil:
 			t.Fatalf("unexpected error when creation generation B of the doc: %v", err)
-		case time.Since(pollStart) > 10*time.Second:
-			t.Fatal("timed out waiting for write of generation B to succeed")
 		default:
 			genBCreated = true
-
-			continue
 		}
 	}
 
@@ -182,9 +195,15 @@ func TestDeleteRestore(t *testing.T) {
 
 	var restoreStarted bool
 
+	pollStart = time.Now()
+
 	for !restoreStarted {
-		// Restore gen B.
-		_, err = client.Restore(ctx, &repository.RestoreRequest{
+		if time.Since(pollStart) > 2*time.Second {
+			t.Fatal("timed out waiting for document to become readable")
+		}
+
+		// Restore gen B as client B.
+		_, err = clientB.Restore(ctx, &repository.RestoreRequest{
 			Uuid:           docUUID,
 			DeleteRecordId: record.Id,
 			Acl: []*repository.ACLEntry{
@@ -209,7 +228,13 @@ func TestDeleteRestore(t *testing.T) {
 
 	var doc *newsdoc.Document
 
+	pollStart = time.Now()
+
 	for doc == nil {
+		if time.Since(pollStart) > 2*time.Second {
+			t.Fatal("timed out waiting for document to become readable")
+		}
+
 		// Read the current version of the document.
 		res, err := client.Get(ctx, &repository.GetDocumentRequest{
 			Uuid: docUUID,
@@ -217,6 +242,8 @@ func TestDeleteRestore(t *testing.T) {
 
 		switch {
 		case elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition):
+			time.Sleep(100 * time.Millisecond)
+
 			// Restore is still processing
 			continue
 		case err != nil:
@@ -235,11 +262,11 @@ func TestDeleteRestore(t *testing.T) {
 		events      []*repository.EventlogItem
 	)
 
-	eventPollStarted := time.Now()
+	pollStart = time.Now()
 
 	// Read the eventlog until we get a "restore_finished" event.
 	for !gotFinEvent {
-		if time.Since(eventPollStarted) > 10*time.Second {
+		if time.Since(pollStart) > 10*time.Second {
 			t.Fatal("timed out waiting for restore finished event")
 		}
 
@@ -262,39 +289,28 @@ func TestDeleteRestore(t *testing.T) {
 
 	goldenPath := filepath.Join(dataDir, "eventlog.json")
 
-	if regenerate {
-		pureGold := make([]*repository.EventlogItem, len(events))
-
-		it := newIncrementalTime()
-
-		// Avoid git diff noise in the golden file when
-		// regenerating. The time will be ignored in the diff test, but
-		// the changed timestamps will be misleading in PRs.
-		for i := range events {
-			e := test.CloneMessage(events[i])
-
-			e.Timestamp = it.NextTimestamp(
-				t, "event timestamp", e.Timestamp)
-
-			pureGold[i] = e
-		}
-
-		err := elephantine.MarshalFile(goldenPath, pureGold)
-		test.Must(t, err, "update golden file for eventlog")
-	}
-
-	var wantEvents []*repository.EventlogItem
-
-	err = elephantine.UnmarshalFile(goldenPath, &wantEvents)
-	test.Must(t, err, "read golden file for eventlog")
-
-	diff := cmp.Diff(
-		&repository.GetEventlogResponse{Items: wantEvents},
-		&repository.GetEventlogResponse{Items: events},
-		protocmp.Transform(),
-		protocmp.IgnoreFields(&repository.EventlogItem{}, "timestamp"),
+	test.TestMessageAgainstGolden(
+		t, regenerate,
+		&repository.GetEventlogResponse{
+			Items: events,
+		},
+		goldenPath,
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("document_nonce"),
 	)
-	if diff != "" {
-		t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
-	}
+
+	historyRes, err := client.GetHistory(ctx, &repository.GetHistoryRequest{
+		Uuid:         docUUID,
+		LoadStatuses: true,
+	})
+	test.Must(t, err, "get document history")
+
+	historyGoldenPath := filepath.Join(dataDir, "history.json")
+
+	test.TestMessageAgainstGolden(
+		t, regenerate, historyRes, historyGoldenPath,
+		test.IgnoreTimestamps{
+			Fields: []string{"created", "restored_at"},
+		},
+	)
 }

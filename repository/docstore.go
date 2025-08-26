@@ -417,6 +417,7 @@ type DeleteRecord struct {
 }
 
 type DocumentMeta struct {
+	Nonce              uuid.UUID
 	Created            time.Time
 	CreatorURI         string
 	Modified           time.Time

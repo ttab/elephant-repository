@@ -15,12 +15,11 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/google/uuid"
 	"github.com/tmaxmax/go-sse"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
-	"github.com/ttab/elephant-repository/internal"
 	itest "github.com/ttab/elephant-repository/internal/test"
-	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
@@ -113,13 +112,6 @@ func baseDocument(uuid, uri string) *newsdoc.Document {
 		},
 	}
 }
-
-const (
-	idField        = "id"
-	timestampField = "timestamp"
-	modifiedField  = "modified"
-	createdField   = "created"
-)
 
 func TestIntegrationBasicCrud(t *testing.T) {
 	if testing.Short() {
@@ -306,30 +298,19 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	})
 	test.MustNot(t, err, "expected get of old version to fail after delete")
 
-	var golden repository.GetEventlogResponse
-
-	err = elephantine.UnmarshalFile(
-		"testdata/TestIntegrationBasicCrud/eventlog.json",
-		&golden)
-	test.Must(t, err, "read golden file for expected eventlog items")
+	goldenEventlog := "testdata/TestIntegrationBasicCrud/eventlog.json"
 
 	events, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
-		// One more event than we expect, so that we catch the
-		// unexpected.
-		BatchSize:   internal.MustInt32(len(golden.Items)) + 1,
-		BatchWaitMs: 200,
+		BatchSize:   50,
+		BatchWaitMs: 500,
 	})
 	test.Must(t, err, "get eventlog")
 
-	diff := cmp.Diff(&golden, events,
-		protocmp.Transform(),
-		cmpopts.IgnoreMapEntries(func(k string, _ any) bool {
-			return k == timestampField
-		}),
+	test.TestMessageAgainstGolden(t, regenerateTestFixtures(),
+		events, goldenEventlog,
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("document_nonce"),
 	)
-	if diff != "" {
-		t.Fatalf("eventlog mismatch (-want +got):\n%s", diff)
-	}
 
 	sseDeadline := time.After(5 * time.Second)
 
@@ -352,7 +333,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		protocmp.Transform(),
 	)
 	if sseDiff != "" {
-		t.Fatalf("sse <-> eventlog mismatch (-want +got):\n%s", diff)
+		t.Fatalf("sse <-> eventlog mismatch (-want +got):\n%s", sseDiff)
 	}
 }
 
@@ -593,7 +574,20 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 
 	test.TestMessageAgainstGolden(t, regenerate, log,
 		"testdata/TestIntegrationDocumentLanguage/eventlog.json",
-		test.IgnoreTimestamps{})
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("document_nonce"))
+}
+
+func ignoreUUIDField(name string) test.GoldenHelper {
+	return test.IgnoreField[string]{
+		Name:       name,
+		DummyValue: uuid.UUID{}.String(),
+		Validator: func(v string) error {
+			_, err := uuid.Parse(v)
+
+			return err //nolint: wrapcheck
+		},
+	}
 }
 
 func TestDocumentsServiceMetaDocuments(t *testing.T) {
@@ -797,7 +791,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	ignoreTimeVariantValues := cmpopts.IgnoreMapEntries(
 		func(k string, _ any) bool {
 			switch k {
-			case "created", "modified":
+			case "created", "modified", "nonce":
 				return true
 			}
 
@@ -989,6 +983,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	test.TestMessageAgainstGolden(t, regenerate, events,
 		filepath.Join(testData, "eventlog.json"),
 		test.IgnoreTimestamps{},
+		ignoreUUIDField("document_nonce"),
 	)
 }
 
@@ -1100,7 +1095,7 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	ignoreTimeVariantValues := cmpopts.IgnoreMapEntries(
 		func(k string, _ any) bool {
 			switch k {
-			case "created", "modified":
+			case "created", "modified", "nonce":
 				return true
 			}
 
@@ -1316,7 +1311,8 @@ func TestIntegrationStatus(t *testing.T) {
 	eventsGolden := filepath.Join("testdata", t.Name(), "eventlog.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, events, eventsGolden,
-		test.IgnoreTimestamps{})
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("document_nonce"))
 
 	lastEvt, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
 		After: -1,
@@ -1337,7 +1333,8 @@ func TestIntegrationStatus(t *testing.T) {
 	compactGolden := filepath.Join("testdata", t.Name(), "compact_eventlog.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, compactEvents, compactGolden,
-		test.IgnoreTimestamps{})
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("document_nonce"))
 }
 
 func TestIntegrationDeleteTimeout(t *testing.T) {
@@ -1882,7 +1879,8 @@ func TestDocumentLocking(t *testing.T) {
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	ctx := t.Context()
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		RunArchiver: true,
+		RunEventlogBuilder: true,
+		RunArchiver:        true,
 	})
 
 	client := tc.DocumentsClient(t,

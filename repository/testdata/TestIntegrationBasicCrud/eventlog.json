@@ -1,81 +1,87 @@
 {
   "items": [
     {
-      "id": 1,
+      "id": "1",
       "event": "document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-04-19T08:45:40+02:00",
-      "version": 1,
-      "updater_uri": "user://test/testintegrationbasiccrud",
-      "type": "core/article",
-      "language": "en"
-    },
-    {
-      "id": 2,
-      "event": "acl",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-04-19T08:45:40+02:00",
-      "acl": [
-        {
-          "uri": "user://test/testintegrationbasiccrud",
-          "permissions": [
-            "r",
-            "w"
-          ]
-        }
-      ],
-      "updater_uri": "user://test/testintegrationbasiccrud",
-      "type": "core/article",
-      "language": "en"
-    },
-    {
-      "id": 3,
-      "event": "document",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-04-19T08:45:40+02:00",
-      "version": 2,
-      "updater_uri": "user://test/testintegrationbasiccrud",
-      "type": "core/article",
-      "language": "en"
-    },
-    {
-      "id": 4,
-      "event": "document",
-      "uuid": "88040be2-2e30-4f34-8a9e-3f4802bab8cd",
-      "timestamp": "2023-04-19T08:45:40+02:00",
-      "version": 1,
-      "updater_uri": "user://test/testintegrationbasiccrud",
-      "type": "core/planning-item",
-      "language": "en"
-    },
-    {
-      "id": 5,
-      "event": "acl",
-      "uuid": "88040be2-2e30-4f34-8a9e-3f4802bab8cd",
-      "timestamp": "2023-04-19T08:45:40+02:00",
-      "acl": [
-        {
-          "uri": "user://test/testintegrationbasiccrud",
-          "permissions": [
-            "r",
-            "w"
-          ]
-        }
-      ],
-      "updater_uri": "user://test/testintegrationbasiccrud",
-      "type": "core/planning-item",
-      "language": "en"
-    },
-    {
-      "id": 6,
-      "event": "delete_document",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-04-19T08:45:40+02:00",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
       "updater_uri": "user://test/testintegrationbasiccrud",
       "type": "core/article",
       "language": "en",
-      "version": 2,
-      "delete_record_id": 1
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "2",
+      "event": "acl",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "acl": [
+        {
+          "uri": "user://test/testintegrationbasiccrud",
+          "permissions": [
+            "r",
+            "w"
+          ]
+        }
+      ],
+      "updater_uri": "user://test/testintegrationbasiccrud",
+      "type": "core/article",
+      "language": "en",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "3",
+      "event": "document",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "2",
+      "updater_uri": "user://test/testintegrationbasiccrud",
+      "type": "core/article",
+      "language": "en",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "4",
+      "event": "document",
+      "uuid": "88040be2-2e30-4f34-8a9e-3f4802bab8cd",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
+      "updater_uri": "user://test/testintegrationbasiccrud",
+      "type": "core/planning-item",
+      "language": "en",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "5",
+      "event": "acl",
+      "uuid": "88040be2-2e30-4f34-8a9e-3f4802bab8cd",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "acl": [
+        {
+          "uri": "user://test/testintegrationbasiccrud",
+          "permissions": [
+            "r",
+            "w"
+          ]
+        }
+      ],
+      "updater_uri": "user://test/testintegrationbasiccrud",
+      "type": "core/planning-item",
+      "language": "en",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "6",
+      "event": "delete_document",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "2",
+      "updater_uri": "user://test/testintegrationbasiccrud",
+      "type": "core/article",
+      "language": "en",
+      "delete_record_id": "1",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
     }
   ]
 }

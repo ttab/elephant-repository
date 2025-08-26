@@ -38,7 +38,7 @@ linters:
     - usetesting
     - whitespace
     - wrapcheck
-    - wsl
+    - wsl_v5
   settings:
     godox:
       keywords:
@@ -47,18 +47,11 @@ linters:
     nestif:
       min-complexity: 6
     wrapcheck:
-      ignore-sigs:
-        - .Errorf(
-        - errors.New(
-        - errors.Unwrap(
-        - errors.Join(
-        - .Wrap(
-        - .Wrapf(
-        - .WithMessage(
-        - .WithMessagef(
-        - .WithStack(
-        - .WithTX(
+      extra-ignore-sigs:
         - elephantine.InvalidArgumentf(
+        - (context.Context).Err(
+        - github.com/ttab/elephantine/pg.WithTX(
+        - github.com/ttab/elephantine/pg.JobLock).RunWithContext(
   exclusions:
     generated: lax
     presets:

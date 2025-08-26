@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"github.com/ttab/elephant-repository/repository"
-	"github.com/ttab/elephantine"
 	"github.com/urfave/cli/v2"
 )
 
@@ -27,8 +26,9 @@ type BackendConfig struct {
 	JWTScopePrefix    string
 }
 
-func BackendConfigFromContext(c *cli.Context, src elephantine.ParameterSource) (BackendConfig, error) {
+func BackendConfigFromContext(c *cli.Context) (BackendConfig, error) {
 	cfg := BackendConfig{
+		DB:                c.String("db"),
 		Eventsink:         c.String("eventsink"),
 		ArchiveBucket:     c.String("archive-bucket"),
 		AssetBucket:       c.String("asset-bucket"),
@@ -44,13 +44,6 @@ func BackendConfigFromContext(c *cli.Context, src elephantine.ParameterSource) (
 			AccessKeySecret: c.String("s3-key-secret"),
 		},
 	}
-
-	db, err := elephantine.ResolveParameter(c.Context, c, src, "db")
-	if err != nil {
-		return BackendConfig{}, err //nolint: wrapcheck
-	}
-
-	cfg.DB = db
 
 	return cfg, nil
 }

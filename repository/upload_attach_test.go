@@ -89,7 +89,9 @@ func TestAssetUpload(t *testing.T) {
 
 	test.TestMessageAgainstGolden(t, regenerate, meta,
 		filepath.Join(dataDir, "meta-post-attach.json"),
-		test.IgnoreTimestamps{})
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("nonce"),
+	)
 
 	downloadLinks, err := client.GetAttachments(ctx,
 		&repository.GetAttachmentsRequest{
@@ -134,13 +136,16 @@ func TestAssetUpload(t *testing.T) {
 
 	test.TestMessageAgainstGolden(t, regenerate, meta,
 		filepath.Join(dataDir, "meta-post-detach.json"),
-		test.IgnoreTimestamps{})
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("nonce"))
 
 	log := collectEventlog(t, client, 3, 5*time.Second)
 
 	test.TestMessageAgainstGolden(t, regenerate, log,
 		filepath.Join(dataDir, "events.json"),
-		test.IgnoreTimestamps{})
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("document_nonce"),
+	)
 }
 
 func TestAssetRestore(t *testing.T) {
@@ -288,7 +293,8 @@ func TestAssetRestore(t *testing.T) {
 			Items: events,
 		},
 		filepath.Join(dataDir, "events.json"),
-		test.IgnoreTimestamps{})
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("document_nonce"))
 
 	downloadLinks, err := client.GetAttachments(ctx,
 		&repository.GetAttachmentsRequest{

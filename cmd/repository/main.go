@@ -178,7 +178,6 @@ func runServer(c *cli.Context) error {
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
 	grace := elephantine.NewGracefulShutdown(logger, 20*time.Second)
-	paramSource := elephantine.NewLazySSM()
 
 	stopCtx := grace.CancelOnStop(c.Context)
 
@@ -189,13 +188,13 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("invalid default language: %w", err)
 	}
 
-	conf, err := cmd.BackendConfigFromContext(c, paramSource)
+	conf, err := cmd.BackendConfigFromContext(c)
 	if err != nil {
 		return fmt.Errorf("failed to read configuration: %w", err)
 	}
 
 	auth, err := elephantine.AuthenticationConfigFromCLI(
-		c, paramSource, nil,
+		c, nil,
 	)
 	if err != nil {
 		return fmt.Errorf("set up authentication: %w", err)
@@ -379,28 +378,6 @@ func runServer(c *cli.Context) error {
 					elephantine.LogKeyError, err)
 			}
 		}()
-	}
-
-	if !conf.NoArchiver {
-		log := logger.With(elephantine.LogKeyComponent, "archiver")
-
-		logger.Debug("starting archiver")
-
-		group.Go(func() error {
-			archiver, err := startArchiver(c.Context, gCtx,
-				log, conf, dbpool)
-			if err != nil {
-				return err
-			}
-
-			go func() {
-				<-grace.ShouldStop()
-				archiver.Stop()
-				logger.Info("stopped archiver")
-			}()
-
-			return nil
-		})
 	}
 
 	if !conf.NoEventsink && conf.Eventsink != "" {
@@ -621,6 +598,24 @@ func runServer(c *cli.Context) error {
 
 	serverGroup, gCtx := errgroup.WithContext(grace.CancelOnQuit(c.Context))
 
+	if !conf.NoArchiver {
+		log := logger.With(elephantine.LogKeyComponent, "archiver")
+
+		logger.Debug("starting archiver")
+
+		serverGroup.Go(func() error {
+			err := startArchiver(
+				grace.CancelOnStop(gCtx),
+				log, conf, dbpool, store,
+			)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		})
+	}
+
 	serverGroup.Go(func() error {
 		logger.Debug("starting API server")
 
@@ -667,12 +662,12 @@ func runServer(c *cli.Context) error {
 }
 
 func startArchiver(
-	ctx context.Context, setupCtx context.Context, logger *slog.Logger,
-	conf cmd.BackendConfig, dbpool *pgxpool.Pool,
-) (*repository.Archiver, error) {
-	aS3, err := repository.S3Client(setupCtx, conf.S3Options)
+	ctx context.Context, logger *slog.Logger,
+	conf cmd.BackendConfig, dbpool *pgxpool.Pool, store *repository.PGDocStore,
+) error {
+	aS3, err := repository.S3Client(ctx, conf.S3Options)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create S3 client: %w", err)
+		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
 	archiver, err := repository.NewArchiver(repository.ArchiverOptions{
@@ -681,15 +676,16 @@ func startArchiver(
 		Bucket:      conf.ArchiveBucket,
 		AssetBucket: conf.AssetBucket,
 		DB:          dbpool,
+		Store:       store,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create archiver: %w", err)
+		return fmt.Errorf("failed to create archiver: %w", err)
 	}
 
 	err = archiver.Run(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to run archiver: %w", err)
+		return fmt.Errorf("failed to run archiver: %w", err)
 	}
 
-	return archiver, nil
+	return nil
 }

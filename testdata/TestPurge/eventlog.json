@@ -1,41 +1,46 @@
-[
-  {
-    "id": 1,
-    "event": "document",
-    "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
-    "timestamp": "2024-01-01T00:00:01Z",
-    "version": 1,
-    "updater_uri": "user://test/testpurge",
-    "type": "core/article",
-    "language": "en"
-  },
-  {
-    "id": 2,
-    "event": "acl",
-    "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
-    "timestamp": "2024-01-01T00:00:02Z",
-    "acl": [
-      {
-        "uri": "user://test/testpurge",
-        "permissions": [
-          "r",
-          "w"
-        ]
-      }
-    ],
-    "updater_uri": "user://test/testpurge",
-    "type": "core/article",
-    "language": "en"
-  },
-  {
-    "id": 3,
-    "event": "delete_document",
-    "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
-    "timestamp": "2024-01-01T00:00:03Z",
-    "version": 1,
-    "updater_uri": "user://test/testpurge",
-    "type": "core/article",
-    "language": "en",
-    "delete_record_id": 1
-  }
-]
+{
+  "items": [
+    {
+      "id": "1",
+      "event": "document",
+      "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
+      "updater_uri": "user://test/testpurge",
+      "type": "core/article",
+      "language": "en",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "2",
+      "event": "acl",
+      "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "acl": [
+        {
+          "uri": "user://test/testpurge",
+          "permissions": [
+            "r",
+            "w"
+          ]
+        }
+      ],
+      "updater_uri": "user://test/testpurge",
+      "type": "core/article",
+      "language": "en",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "3",
+      "event": "delete_document",
+      "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
+      "updater_uri": "user://test/testpurge",
+      "type": "core/article",
+      "language": "en",
+      "delete_record_id": "1",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}

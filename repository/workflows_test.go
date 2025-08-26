@@ -115,7 +115,8 @@ func TestIntegrationWorkflows(t *testing.T) {
 	eventsGolden := filepath.Join("testdata", t.Name(), "events.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, events, eventsGolden,
-		test.IgnoreTimestamps{})
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("document_nonce"))
 
 	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docUUID,
@@ -125,7 +126,8 @@ func TestIntegrationWorkflows(t *testing.T) {
 	metaGolden := filepath.Join("testdata", t.Name(), "meta.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, meta, metaGolden,
-		test.IgnoreTimestamps{})
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("nonce"))
 }
 
 func collectEventlog(

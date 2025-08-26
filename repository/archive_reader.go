@@ -50,6 +50,26 @@ func (a *ArchiveReader) ReadDeleteManifest(
 	return &obj, sigStr, nil
 }
 
+// ReadEvent reads and verifies a archived event from the archive. If
+// parentSignature is provided the read version will be verified against it.
+func (a *ArchiveReader) ReadEvent(
+	ctx context.Context,
+	id int64, parentSignature *string,
+) (_ *ArchivedEventlogItem, _ string, outErr error) {
+	var obj ArchivedEventlogItem
+
+	key := fmt.Sprintf("events/%020d.json", id)
+
+	sigStr, err := a.fetchAndVerify(
+		ctx, key, parentSignature, &obj,
+	)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return &obj, sigStr, nil
+}
+
 // ReadDocumentVersion reads and verifies a document version from the
 // archive. If parentSignature is provided the read version will be verified
 // against it.
@@ -63,7 +83,7 @@ func (a *ArchiveReader) ReadDocumentVersion(
 		ctx, key, parentSignature, &obj,
 	)
 	if err != nil {
-		return
+		return nil, "", err
 	}
 
 	return &obj, sigStr, nil
@@ -123,7 +143,7 @@ func (a *ArchiveReader) fetchAndVerify(
 
 	err = signature.Verify(signingKey)
 	if err != nil {
-		return "", fmt.Errorf("invalid signature: %w", err)
+		return "", fmt.Errorf("verify signature: %w", err)
 	}
 
 	hash := sha256.New()

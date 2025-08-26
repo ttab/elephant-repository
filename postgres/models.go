@@ -68,6 +68,7 @@ type DeleteRecord struct {
 	Purged        pgtype.Timestamptz
 	MainDocType   pgtype.Text
 	Attachments   []AttachedObject
+	Nonce         uuid.UUID
 }
 
 type Deprecation struct {
@@ -88,6 +89,12 @@ type Document struct {
 	Language       pgtype.Text
 	SystemState    pgtype.Text
 	MainDocType    pgtype.Text
+	Nonce          uuid.UUID
+}
+
+type DocumentArchiveCounter struct {
+	UUID       uuid.UUID
+	Unarchived int32
 }
 
 type DocumentLink struct {
@@ -163,6 +170,14 @@ type Eventlog struct {
 	WorkflowCheckpoint pgtype.Text
 	MainDocType        pgtype.Text
 	Extra              *EventlogExtra
+	Signature          pgtype.Text
+	Nonce              uuid.UUID
+}
+
+type EventlogArchiver struct {
+	Size          int64
+	Position      int64
+	LastSignature string
 }
 
 type Eventsink struct {
