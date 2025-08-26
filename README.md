@@ -22,7 +22,7 @@ In most workflows documents will be shared with a group of people, but this make
 
 ## Archiving
 
-All document statuses and versions are archived by a background process in the repository. Archiving is tightly integrated with the document lifecycle and a document cannot be deleted until it has been fully archived.
+All events, document statuses and versions are archived by a background process in the repository. Archiving is tightly integrated with the document lifecycle and a document cannot be deleted until it has been fully archived.
 
 As part of the archiving process the archive objects are signed with an archiving key, and as the signature of the previous version is included in the object we create a tamper-proof chain of updates. Statuses also include the signature of the document version they refer to.
 
@@ -316,25 +316,21 @@ ORDER BY vs.section, vs.newsvalue;
 
 ### Archiving data
 
-The repository has an archiving subsystem that records all document changes (versions and statuses) to a S3 compatible store.
+The repository has an archiving subsystem that records all eventlog events, and their associated document or status data, to a S3 compatible store.
+
+All archived objects (events, statuses, and documents) contain the signature of their parent, so the entire archive forms a narrow [merkle tree](https://en.wikipedia.org/wiki/Merkle_tree). This would for example allow for the publication of a transparency log, with which where a trusted third party could verify what was in the repository at any given time.
 
 #### Signing
 
-The repository maintains a set of ECDSA P-384 signing keys that are used to sign
-archived objects. The signature is an ASN1 signature of the sha256 hash of the
-marshalled data of the archive object. The format of a signature string looks
-like this:
+The repository maintains a set of ECDSA P-384 signing keys that are used to sign archived objects. The signature is an ASN1 signature of the sha256 hash of the marshalled data of the archive object. The format of a signature string looks like this:
 
 ```
 v1.[key ID].[sha256 hash as raw URL base64].[signature as raw URL base64]
 ```
 
-The signature is set as the metadata header "X-Amz-Meta-Elephant-Signature" on
-the S3 object itself. After the object has been archived the database row is
-updated with `archived=true` and the `signature`.
+The signature is set as the metadata header "X-Amz-Meta-Elephant-Signature" on the S3 object itself. After the object has been archived the corresponding database row is updated with the signature of the archived object.
 
-Status and version archive objects contain the signature of their parents to
-create a signature chain that can be verified.
+Event, status and document version archive objects contain the signature of their parents to create a signature chain that can be verified. That means that everything that gets written can be verified against the a log.
 
 The reason that signing has to be done during archiving is that the jsonb data type isn't guaranteed to be byte stable. Verifying signatures on the archive objects is straightforward, verifying signatures for the database would have to be done by verifying the signature for the archive signature, and then verifying that the data in the database is "logically" equivalent to the archive data.
 
