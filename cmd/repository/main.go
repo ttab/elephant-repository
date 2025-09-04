@@ -174,7 +174,7 @@ production is a BAD IDEA! Migrations can be expensive and need to be planned.`,
 	}
 }
 
-func runServer(c *cli.Context) (outErr error) {
+func runServer(c *cli.Context) error {
 	var (
 		addr            = c.String("addr")
 		profileAddr     = c.String("profile-addr")
