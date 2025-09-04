@@ -22,9 +22,11 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/ttab/elephant-repository/internal"
 	"github.com/ttab/elephant-repository/internal/cmd"
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephant-repository/repository"
+	"github.com/ttab/elephant-repository/schema"
 	"github.com/ttab/elephant-repository/sinks"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
@@ -147,6 +149,13 @@ func main() {
 				Usage:   "CORS hosts to allow, supports wildcards",
 				EnvVars: []string{"CORS_HOSTS"},
 			},
+			&cli.BoolFlag{
+				Name: "migrate-db",
+				Usage: `Perform database migrations.
+Intended for bootstrapping disposable environments. Having this always on in
+production is a BAD IDEA! Migrations can be expensive and need to be planned.`,
+				EnvVars: []string{"MIGRATE_DB"},
+			},
 		}, elephantine.AuthenticationCLIFlags()...),
 	}
 
@@ -174,6 +183,7 @@ func runServer(c *cli.Context) error {
 		defaultLanguage = c.String("default-language")
 		noCharCounter   = c.Bool("no-charcounter")
 		corsHosts       = c.StringSlice("cors-host")
+		migrateDB       = c.Bool("migrate-db")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -249,6 +259,15 @@ func runServer(c *cli.Context) error {
 	err = dbpool.Ping(c.Context)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	if migrateDB {
+		logger.Info("migrating database schema")
+
+		err = internal.Migrate(stopCtx, dbpool, schema.Migrations)
+		if err != nil {
+			return fmt.Errorf("migrate database: %w", err)
+		}
 	}
 
 	assets := repository.NewAssetBucket(
