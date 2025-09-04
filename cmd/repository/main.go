@@ -150,8 +150,10 @@ func main() {
 				EnvVars: []string{"CORS_HOSTS"},
 			},
 			&cli.BoolFlag{
-				Name:    "migrate-db",
-				Usage:   "Perform database migrations, intended for bootstrapping disposable environments. Having this always on in production is a BAD IDEA! Migrations can be expensive and need to be planned.",
+				Name: "migrate-db",
+				Usage: `Perform database migrations.
+Intended for bootstrapping disposable environments. Having this always on in
+production is a BAD IDEA! Migrations can be expensive and need to be planned.`,
 				EnvVars: []string{"MIGRATE_DB"},
 			},
 		}, elephantine.AuthenticationCLIFlags()...),
