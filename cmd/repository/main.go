@@ -114,6 +114,11 @@ func main() {
 				EnvVars: []string{"S3_ACCESS_KEY_SECRET"},
 			},
 			&cli.BoolFlag{
+				Name:    "tolerate-eventlog-gaps",
+				Usage:   "Tolerate eventlog gaps when archiving",
+				EnvVars: []string{"TOLERATE_EVENTLOG_GAPS"},
+			},
+			&cli.BoolFlag{
 				Name:    "no-core-schema",
 				Usage:   "Don't register the built in core schema",
 				EnvVars: []string{"NO_CORE_SCHEMA"},
@@ -690,12 +695,13 @@ func startArchiver(
 	}
 
 	archiver, err := repository.NewArchiver(repository.ArchiverOptions{
-		Logger:      logger,
-		S3:          aS3,
-		Bucket:      conf.ArchiveBucket,
-		AssetBucket: conf.AssetBucket,
-		DB:          dbpool,
-		Store:       store,
+		Logger:       logger,
+		S3:           aS3,
+		Bucket:       conf.ArchiveBucket,
+		AssetBucket:  conf.AssetBucket,
+		DB:           dbpool,
+		Store:        store,
+		TolerateGaps: conf.TolerateEventlogGaps,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create archiver: %w", err)

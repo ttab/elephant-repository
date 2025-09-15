@@ -24,6 +24,9 @@ type BackendConfig struct {
 	NoScheduler       bool
 	JWTAudience       string
 	JWTScopePrefix    string
+
+	// TolerateEventlogGaps to deal with old inconsistent data.
+	TolerateEventlogGaps bool
 }
 
 func BackendConfigFromContext(c *cli.Context) (BackendConfig, error) {
@@ -43,6 +46,7 @@ func BackendConfigFromContext(c *cli.Context) (BackendConfig, error) {
 			AccessKeyID:     c.String("s3-key-id"),
 			AccessKeySecret: c.String("s3-key-secret"),
 		},
+		TolerateEventlogGaps: c.Bool("tolerate-eventlog-gaps"),
 	}
 
 	return cfg, nil
