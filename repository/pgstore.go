@@ -1207,6 +1207,8 @@ func (s *PGDocStore) GetStatusOverview(
 	for _, v := range versions {
 		collected[v.UUID] = &StatusOverviewItem{
 			UUID:               v.UUID,
+			CreatorURI:         v.CreatorUri,
+			UpdaterURI:         v.UpdaterUri,
 			CurrentVersion:     v.CurrentVersion,
 			Updated:            v.Updated.Time,
 			WorkflowStep:       v.WorkflowStep.String,

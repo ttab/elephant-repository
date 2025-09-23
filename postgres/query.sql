@@ -47,6 +47,7 @@ SELECT uuid, uri, permissions FROM acl WHERE uuid = $1;
 
 -- name: GetCurrentDocumentVersions :many
 SELECT d.uuid, d.current_version, d.updated,
+       d.creator_uri, d.updater_uri,
        w.step AS workflow_step, w.checkpoint AS workflow_checkpoint
 FROM document AS d
      LEFT OUTER JOIN workflow_state AS w ON w.uuid = d.uuid

@@ -515,6 +515,8 @@ type StatusOverviewItem struct {
 	Heads              map[string]Status
 	WorkflowStep       string
 	WorkflowCheckpoint string
+	CreatorURI         string
+	UpdaterURI         string
 }
 
 type StatusUpdate struct {

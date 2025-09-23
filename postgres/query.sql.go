@@ -1020,6 +1020,7 @@ func (q *Queries) GetCompactedEventlog(ctx context.Context, arg GetCompactedEven
 
 const getCurrentDocumentVersions = `-- name: GetCurrentDocumentVersions :many
 SELECT d.uuid, d.current_version, d.updated,
+       d.creator_uri, d.updater_uri,
        w.step AS workflow_step, w.checkpoint AS workflow_checkpoint
 FROM document AS d
      LEFT OUTER JOIN workflow_state AS w ON w.uuid = d.uuid
@@ -1030,6 +1031,8 @@ type GetCurrentDocumentVersionsRow struct {
 	UUID               uuid.UUID
 	CurrentVersion     int64
 	Updated            pgtype.Timestamptz
+	CreatorUri         string
+	UpdaterUri         string
 	WorkflowStep       pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 }
@@ -1047,6 +1050,8 @@ func (q *Queries) GetCurrentDocumentVersions(ctx context.Context, uuids []uuid.U
 			&i.UUID,
 			&i.CurrentVersion,
 			&i.Updated,
+			&i.CreatorUri,
+			&i.UpdaterUri,
 			&i.WorkflowStep,
 			&i.WorkflowCheckpoint,
 		); err != nil {
