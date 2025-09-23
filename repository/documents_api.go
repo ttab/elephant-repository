@@ -223,6 +223,8 @@ func (a *DocumentsService) GetStatusOverview(
 	for _, di := range data {
 		ri := repository.StatusOverviewItem{
 			Uuid:               di.UUID.String(),
+			CreatorUri:         di.CreatorURI,
+			UpdaterUri:         di.UpdaterURI,
 			Version:            di.CurrentVersion,
 			Modified:           di.Updated.Format(time.RFC3339),
 			Heads:              make(map[string]*repository.Status, len(di.Heads)),

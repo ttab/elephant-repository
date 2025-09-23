@@ -11,7 +11,9 @@
           "creator": "user://test/testintegrationstatsoverview",
           "created": "2023-01-10T20:06:37+01:00"
         }
-      }
+      },
+      "creator_uri": "user://test/testintegrationstatsoverview",
+      "updater_uri": "user://test/testintegrationstatsoverview"
     },
     {
       "uuid": "93bd1a10-8136-4ace-8722-f4cc10bdb3e9",
@@ -24,7 +26,9 @@
           "creator": "user://test/testintegrationstatsoverview",
           "created": "2023-01-10T20:06:37+01:00"
         }
-      }
+      },
+      "creator_uri": "user://test/testintegrationstatsoverview",
+      "updater_uri": "user://test/testintegrationstatsoverview"
     }
   ]
 }
