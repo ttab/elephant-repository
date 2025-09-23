@@ -19,6 +19,7 @@ import (
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephant-repository/schema"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/test"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -37,9 +38,9 @@ type Environment struct {
 }
 
 type T interface {
+	test.TestingT
+
 	Name() string
-	Helper()
-	Fatalf(format string, args ...any)
 }
 
 func SetUpBackingServices(
@@ -52,28 +53,28 @@ func SetUpBackingServices(
 	ctx := context.Background()
 
 	bs, err := GetBackingServices()
-	must(t, err, "get backing services")
+	test.Must(t, err, "get backing services")
 
 	var client http.Client
 
 	err = instrument.Client("s3", &client)
-	must(t, err, "instrument s3 http client")
+	test.Must(t, err, "instrument s3 http client")
 
 	s3Client, err := bs.getS3Client(&client)
-	must(t, err, "get S3 client")
+	test.Must(t, err, "get S3 client")
 
 	bucket := strings.ToLower(t.Name())
 
 	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
 		Bucket: aws.String(bucket),
 	})
-	must(t, err, "create bucket")
+	test.Must(t, err, "create bucket")
 
 	assetBucket := bucket + "-assets"
 	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
 		Bucket: aws.String(assetBucket),
 	})
-	must(t, err, "create asset bucket")
+	test.Must(t, err, "create asset bucket")
 
 	_, err = s3Client.PutBucketVersioning(ctx, &s3.PutBucketVersioningInput{
 		Bucket: aws.String(assetBucket),
@@ -81,11 +82,11 @@ func SetUpBackingServices(
 			Status: types.BucketVersioningStatusEnabled,
 		},
 	})
-	must(t, err, "enable asset bucket versioning")
+	test.Must(t, err, "enable asset bucket versioning")
 
 	adminConn, err := pgx.Connect(ctx,
 		bs.getPostgresURI("elephant", "elephant"))
-	must(t, err, "open postgres admin connection")
+	test.Must(t, err, "open postgres admin connection")
 
 	defer adminConn.Close(ctx)
 
@@ -94,11 +95,11 @@ func SetUpBackingServices(
 	_, err = adminConn.Exec(ctx, fmt.Sprintf(`
 CREATE ROLE %s WITH LOGIN PASSWORD '%s'`,
 		ident, t.Name()))
-	must(t, err, "create user")
+	test.Must(t, err, "create user")
 
 	_, err = adminConn.Exec(ctx,
 		"CREATE DATABASE "+ident+" WITH OWNER "+ident)
-	must(t, err, "create database")
+	test.Must(t, err, "create database")
 
 	env := Environment{
 		S3:          s3Client,
@@ -108,32 +109,24 @@ CREATE ROLE %s WITH LOGIN PASSWORD '%s'`,
 	}
 
 	conn, err := pgx.Connect(ctx, env.PostgresURI)
-	must(t, err, "open postgres user connection")
+	test.Must(t, err, "open postgres user connection")
 
 	defer conn.Close(ctx)
 
 	m, err := migrate.NewMigrator(ctx, conn, "schema_vesion")
-	must(t, err, "create migrator")
+	test.Must(t, err, "create migrator")
 
 	err = m.LoadMigrations(schema.Migrations)
-	must(t, err, "create load migrations")
+	test.Must(t, err, "create load migrations")
 
 	if !skipMigrations {
 		err = m.Migrate(ctx)
-		must(t, err, "migrate to current DB schema")
+		test.Must(t, err, "migrate to current DB schema")
 	}
 
 	env.Migrator = m
 
 	return env
-}
-
-func must(t T, err error, action string) {
-	t.Helper()
-
-	if err != nil {
-		t.Fatalf("failed: %s: %v", action, err)
-	}
 }
 
 func PurgeBackingServices() error {
