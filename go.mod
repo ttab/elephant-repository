@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
-	github.com/aws/aws-sdk-go-v2 v1.39.0
+	github.com/aws/aws-sdk-go-v2 v1.39.2
 	github.com/aws/aws-sdk-go-v2/config v1.31.9
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.13
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.45.3
