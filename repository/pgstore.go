@@ -1533,6 +1533,11 @@ func (s *PGDocStore) Update(
 			return nil, err
 		}
 
+		if !info.Exists && state.Doc == nil {
+			return nil, DocStoreErrorf(ErrCodeNotFound,
+				"non-document update for document that doesn't exist")
+		}
+
 		state.Version = info.Info.CurrentVersion
 		state.Exists = info.Exists
 		state.Language = info.Language
