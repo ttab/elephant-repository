@@ -864,11 +864,11 @@ func (a *Archiver) processRestores(
 	}
 
 	nonce := req.Nonce
-	requestPrefix := fmt.Sprintf("deleted/%s/%019d/",
+	requestPrefix := fmt.Sprintf("deleted/%s/%019d",
 		req.UUID, req.DeleteRecordID)
-	manifestKey := requestPrefix + "manifest.json"
-	versionsPrefix := requestPrefix + "versions/"
-	statusesPrefix := requestPrefix + "statuses/"
+	manifestKey := requestPrefix + "/manifest.json"
+	versionsPrefix := requestPrefix + "/versions"
+	statusesPrefix := requestPrefix + "/statuses"
 
 	manifest, _, err := a.reader.ReadDeleteManifest(ctx, manifestKey)
 	if err != nil {
@@ -880,163 +880,44 @@ func (a *Archiver) processRestores(
 		spec.ACL = manifest.ACL
 	}
 
-	versionsPages := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
-		Bucket: aws.String(a.bucket),
-		Prefix: aws.String(versionsPrefix),
-	})
-
 	var (
 		parentSig    string
-		lastVersion  int64
 		lastAttached = map[string]int64{}
 	)
 
-	for versionsPages.HasMorePages() {
-		page, err := versionsPages.NextPage(ctx)
+	// Iterate through the versions we want to restore.
+	for version := int64(1); version <= manifest.LastVersion; version++ {
+		key := fmt.Sprintf("%s/%019d.json", versionsPrefix, version)
+
+		attached, sig, err := a.restoreDocumentVersion(
+			ctx, tx, parentSig, version, nonce, req, key)
 		if err != nil {
 			return false, fmt.Errorf(
-				"get s3 listing of document versions: %w", err)
+				"restore version %d: %w", version, err)
 		}
 
-		for _, o := range page.Contents {
-			if !strings.HasSuffix(*o.Key, ".json") {
-				continue
-			}
-
-			// Trim prefix and suffix so that we're left with the
-			// version number.
-			vStr := strings.TrimSuffix(
-				strings.TrimPrefix(*o.Key, versionsPrefix),
-				".json")
-
-			id, err := strconv.ParseInt(vStr, 10, 64)
-			if err != nil {
-				return false, fmt.Errorf(
-					"invalid version object name: %w", err)
-			}
-
-			if id != lastVersion+1 {
-				return false, fmt.Errorf(
-					"expected version %d, got %d",
-					lastVersion+1, id)
-			}
-
-			if id > manifest.LastVersion {
-				return false, fmt.Errorf(
-					"unexpected version %d, only want %d",
-					id, manifest.LastVersion)
-			}
-
-			attached, sig, err := a.restoreDocumentVersion(
-				ctx, tx, parentSig, id, nonce, req, *o.Key)
-			if err != nil {
-				return false, fmt.Errorf(
-					"restore version %d: %w", id, err)
-			}
-
-			for _, name := range attached {
-				lastAttached[name] = id
-			}
-
-			lastVersion = id
-			parentSig = sig
+		for _, name := range attached {
+			lastAttached[name] = version
 		}
+
+		parentSig = sig
 	}
 
-	if lastVersion != manifest.LastVersion {
-		return false, fmt.Errorf("expected %d versions, got %d",
-			manifest.LastVersion, lastVersion)
-	}
+	for name, lastID := range manifest.Heads {
+		parentSig = ""
 
-	statusesPages := s3.NewListObjectsV2Paginator(a.s3, &s3.ListObjectsV2Input{
-		Bucket: aws.String(a.bucket),
-		Prefix: aws.String(statusesPrefix),
-	})
+		for id := int64(1); id <= lastID; id++ {
+			key := fmt.Sprintf("%s/%s/%019d.json", statusesPrefix, name, id)
 
-	var (
-		lastStatus string
-		lastID     int64
-	)
-
-	observedHeads := make(map[string]*ArchivedDocumentStatus)
-
-	for statusesPages.HasMorePages() {
-		page, err := statusesPages.NextPage(ctx)
-		if err != nil {
-			return false, fmt.Errorf(
-				"get s3 listing of document statuses: %w", err)
-		}
-
-		for _, o := range page.Contents {
-			if !strings.HasSuffix(*o.Key, ".json") {
-				continue
-			}
-
-			// Trim prefix and suffix so that we're left with the
-			// status name and ID.
-			identStr := strings.TrimSuffix(
-				strings.TrimPrefix(*o.Key, statusesPrefix),
-				".json")
-
-			name, idStr, ok := strings.Cut(identStr, "/")
-			if !ok {
-				// We only want objects in subfolders.
-				continue
-			}
-
-			_, expected := manifest.Heads[name]
-			if !expected {
-				return false, fmt.Errorf(
-					"the status %q was not included in the delete manifest",
-					name)
-			}
-
-			// Reset the chain if we're on a new status.
-			if name != lastStatus {
-				lastID = 0
-				parentSig = ""
-				lastStatus = name
-			}
-
-			id, err := strconv.ParseInt(idStr, 10, 64)
-			if err != nil {
-				return false, fmt.Errorf(
-					"invalid status ID in object key: %w", err)
-			}
-
-			if id != lastID+1 {
-				return false, fmt.Errorf(
-					"expected version %d, got %d",
-					lastID+1, id)
-			}
-
-			sig, stat, err := a.restoreDocumentStatus(
-				ctx, tx, parentSig, id, *o.Key, nonce, req)
+			sig, _, err := a.restoreDocumentStatus(
+				ctx, tx, parentSig, id, key, nonce, req)
 			if err != nil {
 				return false, fmt.Errorf(
 					"restore status %q %d: %w", name, id, err)
 			}
 
-			lastID = id
 			parentSig = sig
-			observedHeads[name] = stat
 		}
-	}
-
-	// Verify the restored statuses against the manifest.
-	for name, head := range manifest.Heads {
-		observed, ok := observedHeads[name]
-		if !ok {
-			return false, fmt.Errorf(
-				"missing %q status in archive", name)
-		}
-
-		if observed.ID == head {
-			continue
-		}
-
-		return false, fmt.Errorf("expected %d %q statuses, got %d",
-			head, name, observed.ID)
 	}
 
 	attachedNames := make([]string, len(manifest.Attached))
@@ -1044,7 +925,7 @@ func (a *Archiver) processRestores(
 	// Adding the attached object at the end of the restore, but that's fine
 	// as it will become visible at the same time of commit.
 	for i, o := range manifest.Attached {
-		srcKey := fmt.Sprintf("%sattached/%s", requestPrefix, o.Name)
+		srcKey := fmt.Sprintf("%s/attached/%s", requestPrefix, o.Name)
 		key := fmt.Sprintf("objects/%s/%s", o.Name, o.Document)
 
 		res, err := a.s3.CopyObject(ctx, &s3.CopyObjectInput{
@@ -1180,7 +1061,7 @@ func (a *Archiver) processRestores(
 		UUID:      req.UUID,
 		Nonce:     nonce,
 		Timestamp: time.Now(),
-		Version:   lastVersion,
+		Version:   manifest.LastVersion,
 		Updater:   req.Creator,
 		Type:      docInfo.Type,
 		Language:  docInfo.Language.String,
@@ -1206,6 +1087,11 @@ func (a *Archiver) restoreDocumentVersion(
 	dv, sig, err := a.reader.ReadDocumentVersion(ctx, key, &parentSig)
 	if err != nil {
 		return nil, "", fmt.Errorf("read archived version: %w", err)
+	}
+
+	if dv.Version != id {
+		return nil, "", fmt.Errorf("expected document version %d, got %d",
+			id, dv.Version)
 	}
 
 	evt, _, err := a.reader.ReadEvent(ctx, dv.EventID, nil)
