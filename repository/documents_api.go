@@ -1594,6 +1594,8 @@ func twirpErrorFromDocumentUpdateError(err error) error {
 		return twirp.FailedPrecondition.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
 		return twirp.InvalidArgumentError("document", err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
+		return twirp.FailedPrecondition.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodePermissionDenied):
 		return twirp.PermissionDenied.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):

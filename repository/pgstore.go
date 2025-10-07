@@ -1657,7 +1657,13 @@ func (s *PGDocStore) Update(
 			}
 
 			err := createNewDocumentVersion(ctx, tx, q, props)
-			if err != nil {
+			if !state.Exists && pg.IsConstraintError(err, "document_version_pkey") {
+				// We can get collisions on document creation
+				// (as there is no row to lock on create),
+				// report a create conflict.
+				return nil, DocStoreErrorf(ErrCodeFailedPrecondition,
+					"create conflict")
+			} else if err != nil {
 				return nil, err
 			}
 
