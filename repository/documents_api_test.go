@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
+	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
@@ -351,6 +353,68 @@ func singleMetricResponse(uuid string, kind string, label string, value int64) *
 			},
 		},
 	}
+}
+
+// TestIntegrationCreateCollision was added as a regression test for the error:
+// 'failed to update document: failed to create version in database: ERROR:
+// duplicate key value violates unique constraint "document_version_pkey"
+// (SQLSTATE 23505)'. This error occurred when two clients attempted to create a
+// document with the same UUID at the same time. Document writes are serialised
+// by locking the document row, and when a document is created there is no row
+// to lock, so the collision is deferred to the document version insert.
+//
+// The bugfix detects when document version creation fails with a constraint
+// error on the primary key, and reports that as a create conflict (if the
+// document is being created) instead of an internal database error.
+func TestIntegrationCreateCollision(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write"))
+
+	ctx := t.Context()
+
+	const (
+		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI  = "article://test/123"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	// Create a signal channel that tells our eager workers to all go at the
+	// same time.
+	goGo := make(chan struct{})
+
+	var wg sync.WaitGroup
+
+	for range 3 {
+		wg.Go(func() {
+			<-goGo
+
+			_, err := client.Update(ctx,
+				&repository.UpdateRequest{
+					Uuid:     docUUID,
+					Document: doc,
+					IfMatch:  -1,
+				})
+			if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition) {
+				// The only acceptable error here is FailedPrecondition.
+				t.Errorf("failed to create document: %v", err)
+			}
+		})
+	}
+
+	close(goGo)
+
+	wg.Wait()
 }
 
 func TestIntegrationStatusPermissions(t *testing.T) {
