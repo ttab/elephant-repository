@@ -526,6 +526,34 @@ FROM document AS d
           AND @permissions::text[] && permissions
 WHERE d.uuid = ANY(@uuids::uuid[]);
 
+-- name: SelectDocumentsInTimeRange :many
+SELECT d.uuid
+FROM document AS d
+     INNER JOIN acl
+          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
+          AND acl.uri = ANY(@acl_uri::text[])
+          AND @permissions::text[] && permissions
+WHERE d.time && @range::tzrange
+      AND d.type = @type;
+
+-- name: SelectBoundedDocumentsWithType :many
+SELECT d.uuid
+FROM document_type AS dt
+     INNER JOIN document AS d ON d.type = dt.type
+     INNER JOIN acl
+          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
+          AND acl.uri = ANY(@acl_uri::text[])
+          AND @permissions::text[] && permissions
+WHERE dt.type = @type
+      AND dt.bounded_collection;
+
+-- name: GetDeliverableTimes :many
+SELECT a.starts, a.ends, a.start_date, a.end_date
+FROM planning_deliverable AS d
+INNER JOIN planning_assignment AS a
+ON a.uuid = d.assignment
+WHERE d.document = @uuid;
+
 -- name: InsertACLAuditEntry :exec
 INSERT INTO acl_audit(
        uuid, type, updated,

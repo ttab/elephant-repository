@@ -1,0 +1,72 @@
+{
+  "uuid": "f30a162e-5643-448f-80cf-55c0a7a66f1a",
+  "type": "core/planning-item",
+  "uri": "core://newscoverage/f30a162e-5643-448f-80cf-55c0a7a66f1a",
+  "title": "Vattenfall Forsmark",
+  "meta": [
+    {
+      "type": "core/planning-item",
+      "data": {
+        "end_date": "2025-10-21",
+        "public": "true",
+        "start_date": "2025-10-21",
+        "tentative": "false"
+      }
+    },
+    {
+      "type": "core/newsvalue",
+      "value": "3"
+    },
+    {
+      "type": "tt/slugline",
+      "value": "forsmark"
+    },
+    {
+      "id": "af48ac0b-7673-4e44-9ea6-45d5c67cb680",
+      "type": "core/assignment",
+      "title": "Forsmark",
+      "data": {
+        "end_date": "2025-10-21",
+        "full_day": "false",
+        "public": "false",
+        "start": "2025-10-21T07:15:00.000Z",
+        "start_date": "2025-10-21"
+      },
+      "links": [
+        {
+          "uuid": "63e75fe7-5ddb-4a25-b9c8-a18a427d5361",
+          "type": "core/author",
+          "title": "Johan Jeppsson",
+          "rel": "assignee",
+          "role": "primary"
+        }
+      ],
+      "meta": [
+        {
+          "type": "core/description",
+          "data": {
+            "text": "Här är uppdraget strukturerat enligt din mall:\nPlats: Forsmark, Forsmarks bruk\nTid: Tisdag 21 oktober 2025, 08:45–16:00\nReporter: Ingen angiven\nSkicka från kamera Skicka från dator\nDeadline: Samma dag 21 oktober\nBakgrund: Studiebesök och pressträff på Forsmark, Sveriges största kärnkraftverk och platsen där slutförvaret för använt kärnbränsle byggs. Fokus ligger på kärnkraftens framtida roll i energisystemet, drifttidsförlängning, kompetensförsörjning och systemtjänster. Forsmarks nye vd Jerry Westerstedt presenterar visionen för anläggningen tillsammans med experter från Vattenfall och Forsmark. Programmet innehåller rundvandring i reaktorn Forsmark 3, lunch, presentationer och guidad tur i slutförvarsområdet.\nKontaktuppgifter: Markus Fischer, pressekreterare Vattenfall\nE-post: markus.fischer@vattenfall.com Telefon: 070-377 96 44\n\nHitta till värdshuset i Forsmarks bruk: https://maps.app.goo.gl/QcsgrBTwx2HNTUbk6"
+          },
+          "role": "internal"
+        },
+        {
+          "type": "core/assignment-type",
+          "value": "picture"
+        },
+        {
+          "type": "core/assignment-type",
+          "value": "video"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "uuid": "c3e9fe11-6d84-4926-b0d2-8048fe163145",
+      "type": "core/section",
+      "title": "Ekonomi",
+      "rel": "section"
+    }
+  ],
+  "language": "sv-se"
+}

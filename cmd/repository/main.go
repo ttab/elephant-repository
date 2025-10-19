@@ -70,6 +70,11 @@ func main() {
 				EnvVars: []string{"DEFAULT_LANGUAGE"},
 				Value:   "sv-se",
 			},
+			&cli.StringFlag{
+				Name:    "default-timezone",
+				EnvVars: []string{"DEFAULT_TIMEZONE"},
+				Value:   "Europe/Stockholm",
+			},
 			&cli.StringSliceFlag{
 				Name:    "ensure-schema",
 				EnvVars: []string{"ENSURE_SCHEMA"},
@@ -186,6 +191,7 @@ func runServer(c *cli.Context) error {
 		logLevel        = c.String("log-level")
 		ensureSchemas   = c.StringSlice("ensure-schema")
 		defaultLanguage = c.String("default-language")
+		defaultTimezone = c.String("default-timezone")
 		noCharCounter   = c.Bool("no-charcounter")
 		corsHosts       = c.StringSlice("cors-host")
 		migrateDB       = c.Bool("migrate-db")
@@ -201,6 +207,11 @@ func runServer(c *cli.Context) error {
 	_, err := langos.GetLanguage(defaultLanguage)
 	if err != nil {
 		return fmt.Errorf("invalid default language: %w", err)
+	}
+
+	tz, err := time.LoadLocation(defaultTimezone)
+	if err != nil {
+		return fmt.Errorf("invalid default timezone: %w", err)
 	}
 
 	conf, err := cmd.BackendConfigFromContext(c)

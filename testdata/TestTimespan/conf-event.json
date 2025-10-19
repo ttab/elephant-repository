@@ -1,0 +1,7 @@
+{
+  "times": [
+    {
+      "exp": ".meta(type='core/event').data{start, end}"
+    }
+  ]
+}

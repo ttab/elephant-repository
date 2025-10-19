@@ -1261,6 +1261,46 @@ func (q *Queries) GetDeliverableInfo(ctx context.Context, argUuid uuid.UUID) (Ge
 	return i, err
 }
 
+const getDeliverableTimes = `-- name: GetDeliverableTimes :many
+SELECT a.starts, a.ends, a.start_date, a.end_date
+FROM planning_deliverable AS d
+INNER JOIN planning_assignment AS a
+ON a.uuid = d.assignment
+WHERE d.document = $1
+`
+
+type GetDeliverableTimesRow struct {
+	Starts    pgtype.Timestamptz
+	Ends      pgtype.Timestamptz
+	StartDate pgtype.Date
+	EndDate   pgtype.Date
+}
+
+func (q *Queries) GetDeliverableTimes(ctx context.Context, argUuid uuid.UUID) ([]GetDeliverableTimesRow, error) {
+	rows, err := q.db.Query(ctx, getDeliverableTimes, argUuid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDeliverableTimesRow
+	for rows.Next() {
+		var i GetDeliverableTimesRow
+		if err := rows.Scan(
+			&i.Starts,
+			&i.Ends,
+			&i.StartDate,
+			&i.EndDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDeprecations = `-- name: GetDeprecations :many
 SELECT label, enforced
 FROM deprecation
@@ -3883,6 +3923,87 @@ func (q *Queries) ReleaseJobLock(ctx context.Context, arg ReleaseJobLockParams) 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const selectBoundedDocumentsWithType = `-- name: SelectBoundedDocumentsWithType :many
+SELECT d.uuid
+FROM document_type AS dt
+     INNER JOIN document AS d ON d.type = dt.type
+     INNER JOIN acl
+          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
+          AND acl.uri = ANY($1::text[])
+          AND $2::text[] && permissions
+WHERE dt.type = $3
+      AND dt.bounded_collection
+`
+
+type SelectBoundedDocumentsWithTypeParams struct {
+	AclUri      []string
+	Permissions []string
+	Type        string
+}
+
+func (q *Queries) SelectBoundedDocumentsWithType(ctx context.Context, arg SelectBoundedDocumentsWithTypeParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, selectBoundedDocumentsWithType, arg.AclUri, arg.Permissions, arg.Type)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var uuid uuid.UUID
+		if err := rows.Scan(&uuid); err != nil {
+			return nil, err
+		}
+		items = append(items, uuid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const selectDocumentsInTimeRange = `-- name: SelectDocumentsInTimeRange :many
+SELECT d.uuid
+FROM document AS d
+     INNER JOIN acl
+          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
+          AND acl.uri = ANY($1::text[])
+          AND $2::text[] && permissions
+WHERE d.time && $3::tzrange
+      AND d.type = $4
+`
+
+type SelectDocumentsInTimeRangeParams struct {
+	AclUri      []string
+	Permissions []string
+	Range       interface{}
+	Type        string
+}
+
+func (q *Queries) SelectDocumentsInTimeRange(ctx context.Context, arg SelectDocumentsInTimeRangeParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, selectDocumentsInTimeRange,
+		arg.AclUri,
+		arg.Permissions,
+		arg.Range,
+		arg.Type,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var uuid uuid.UUID
+		if err := rows.Scan(&uuid); err != nil {
+			return nil, err
+		}
+		items = append(items, uuid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setCurrentAttachedObject = `-- name: SetCurrentAttachedObject :exec

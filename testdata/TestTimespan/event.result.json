@@ -1,0 +1,13 @@
+[
+  {
+    "config": {
+      "exp": ".meta(type='core/event').data{start, end}"
+    },
+    "timespans": [
+      {
+        "From": "2025-10-17T07:00:00Z",
+        "To": "2025-10-17T07:00:00Z"
+      }
+    ]
+  }
+]

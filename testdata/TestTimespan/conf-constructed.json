@@ -1,0 +1,18 @@
+{
+  "times": [
+    {
+      "exp": ".meta(type='example/collection').links(rel='item').data{date:date, tz=date_timezone}"
+    },
+    {
+      "exp": ".meta(type='example/collection').links(rel='item').data{start, end}"
+    },
+    {
+      "exp": ".content(type='example/oh-america---')@{value:date}",
+      "layout": "1/2/2006",
+      "timezone": "US/Mountain"
+    },
+    {
+      "exp": ".links(rel='point-in-time' type='example/pit').data{timestamp}"
+    }
+  ]
+}

@@ -90,19 +90,12 @@ type Document struct {
 	SystemState    pgtype.Text
 	MainDocType    pgtype.Text
 	Nonce          uuid.UUID
+	Time           pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
 }
 
 type DocumentArchiveCounter struct {
 	UUID       uuid.UUID
 	Unarchived int32
-}
-
-type DocumentLink struct {
-	FromDocument uuid.UUID
-	Version      int64
-	ToDocument   uuid.UUID
-	Rel          pgtype.Text
-	Type         pgtype.Text
 }
 
 type DocumentLock struct {
@@ -132,6 +125,12 @@ type DocumentStatus struct {
 	Archived       bool
 	Signature      pgtype.Text
 	MetaDocVersion pgtype.Int8
+}
+
+type DocumentType struct {
+	Type              string
+	BoundedCollection bool
+	Configuration     []byte
 }
 
 type DocumentVersion struct {
