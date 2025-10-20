@@ -1,6 +1,7 @@
 package repository_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,23 +17,22 @@ func TestTimespan(t *testing.T) {
 	dataDir := filepath.Join("..", "testdata", t.Name())
 
 	cases := map[string]timespanCase{
-		"constructed": {
-			Config:   "conf-constructed.json",
-			Document: "constructed.json",
-		},
-		"event": {
-			Config:   "conf-event.json",
-			Document: "event.json",
-		},
-		"planning-item": {
-			Config:   "conf-planning-item.json",
-			Document: "planning-item.json",
-		},
+		"constructed":   {},
+		"event":         {},
+		"planning-item": {},
 	}
 
 	defaultTZ := time.UTC
 
 	for name, tc := range cases {
+		if tc.Document == "" {
+			tc.Document = fmt.Sprintf("%s.json", name)
+		}
+
+		if tc.Config == "" {
+			tc.Config = fmt.Sprintf("%s-conf.json", name)
+		}
+
 		t.Run(name, func(t *testing.T) {
 			var (
 				doc  newsdoc.Document
