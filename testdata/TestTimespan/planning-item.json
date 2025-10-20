@@ -10,7 +10,8 @@
         "end_date": "2025-10-21",
         "public": "true",
         "start_date": "2025-10-21",
-        "tentative": "false"
+        "tentative": "false",
+        "date_tz": "Europe/Stockholm"
       }
     },
     {
@@ -30,7 +31,8 @@
         "full_day": "false",
         "public": "false",
         "start": "2025-10-21T07:15:00.000Z",
-        "start_date": "2025-10-21"
+        "start_date": "2025-10-21",
+        "date_tz": "Europe/Stockholm"
       },
       "links": [
         {

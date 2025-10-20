@@ -1,0 +1,35 @@
+[
+  {
+    "config": {
+      "exp": ".meta(type='core/planning-item').data{start_date:date, end_date:date, tz=date_tz?}"
+    },
+    "timespans": [
+      {
+        "From": "2025-10-21T00:00:00+02:00",
+        "To": "2025-10-21T23:59:59.999999+02:00"
+      }
+    ]
+  },
+  {
+    "config": {
+      "exp": ".meta(type='core/assignment').data{start_date:date, end_date:date, tz=date_tz?}"
+    },
+    "timespans": [
+      {
+        "From": "2025-10-21T00:00:00+02:00",
+        "To": "2025-10-21T23:59:59.999999+02:00"
+      }
+    ]
+  },
+  {
+    "config": {
+      "exp": ".meta(type='core/assignment').data{start?, publish?}"
+    },
+    "timespans": [
+      {
+        "From": "2025-10-21T07:15:00Z",
+        "To": "2025-10-21T07:15:00Z"
+      }
+    ]
+  }
+]

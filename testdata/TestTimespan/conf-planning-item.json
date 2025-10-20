@@ -1,15 +1,13 @@
 {
   "times": [
     {
-      "exp": "meta.(type='core/planning-item').data{start_date:date, end_date:date}",
-      "layout": "2006-01-02"
+      "exp": ".meta(type='core/planning-item').data{start_date:date, end_date:date, tz=date_tz?}"
     },
     {
-      "exp": "meta.(type='core/assignment').data{start_date:date, end_date:date}",
-      "layout": "2006-01-02"
+      "exp": ".meta(type='core/assignment').data{start_date:date, end_date:date, tz=date_tz?}"
     },
     {
-      "exp": "meta.(type='core/assignment').data{start, end, publish}"
+      "exp": ".meta(type='core/assignment').data{start?, publish?}"
     }
   ]
 }

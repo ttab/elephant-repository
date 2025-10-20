@@ -24,6 +24,10 @@ func TestTimespan(t *testing.T) {
 			Config:   "conf-event.json",
 			Document: "event.json",
 		},
+		"planning-item": {
+			Config:   "conf-planning-item.json",
+			Document: "planning-item.json",
+		},
 	}
 
 	defaultTZ := time.UTC
