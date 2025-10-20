@@ -14,7 +14,7 @@ type Timespan struct {
 	To   time.Time
 }
 
-func (ts *Timespan) Accomodate(t time.Time) {
+func (ts *Timespan) Accommodate(t time.Time) {
 	if ts.From.IsZero() || ts.From.After(t) {
 		ts.From = t
 	}
@@ -236,16 +236,16 @@ func (te *TimespanExtractor) Extract(
 				t = time.Date(t.Year(), t.Month(), t.Day(),
 					0, 0, 0, 0, t.Location())
 
-				span.Accomodate(t)
+				span.Accommodate(t)
 
 				// Postgres has a microsecond resolution for
 				// timestamps. The last instant of the day is is
 				// tomorrow - 1 microsecond.
 				lastInstant := t.AddDate(0, 0, 1).Add(-1 * time.Microsecond)
 
-				span.Accomodate(lastInstant)
+				span.Accommodate(lastInstant)
 			case false:
-				span.Accomodate(t)
+				span.Accommodate(t)
 			}
 		}
 
@@ -271,7 +271,9 @@ func loadTZ(name string) (*time.Location, error) {
 	})
 
 	tzM.RLock()
+
 	tz, ok := tzCache[name]
+
 	tzM.RUnlock()
 
 	switch {

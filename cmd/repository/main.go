@@ -209,7 +209,7 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("invalid default language: %w", err)
 	}
 
-	tz, err := time.LoadLocation(defaultTimezone)
+	defaultTZ, err := time.LoadLocation(defaultTimezone)
 	if err != nil {
 		return fmt.Errorf("invalid default timezone: %w", err)
 	}
@@ -300,6 +300,7 @@ func runServer(c *cli.Context) error {
 		stopCtx, logger, dbpool, assets,
 		repository.PGDocStoreOptions{
 			MetricsCalculators: inMet,
+			DefaultTimezone:    defaultTZ,
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)

@@ -32,6 +32,7 @@ const (
 type PGDocStoreOptions struct {
 	MetricsCalculators []MetricCalculator
 	DeleteTimeout      time.Duration
+	DefaultTimezone    *time.Location
 }
 
 // Interface guard.

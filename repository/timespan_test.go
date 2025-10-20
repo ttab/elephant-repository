@@ -96,14 +96,3 @@ type timespanResult struct {
 type tsTestConfigFile struct {
 	Times []repository.TimespanConfiguration `json:"times"`
 }
-
-func pT(t *testing.T, layout string, s string) time.Time {
-	t.Helper()
-
-	pt, err := time.Parse(layout, s)
-	if err != nil {
-		t.Fatalf("parse time %q: %v", s, err)
-	}
-
-	return pt
-}
