@@ -130,7 +130,7 @@ type DocumentStatus struct {
 type DocumentType struct {
 	Type              string
 	BoundedCollection bool
-	Configuration     []byte
+	Configuration     TypeConfiguration
 }
 
 type DocumentVersion struct {

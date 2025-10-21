@@ -32,7 +32,7 @@ const (
 type PGDocStoreOptions struct {
 	MetricsCalculators []MetricCalculator
 	DeleteTimeout      time.Duration
-	DefaultTimezone    *time.Location
+	TypeConfigurations *TypeConfigurations
 }
 
 // Interface guard.
@@ -52,6 +52,7 @@ type PGDocStore struct {
 
 	archived     *pg.FanOut[ArchivedEvent]
 	schemas      *pg.FanOut[SchemaEvent]
+	typeConf     *pg.FanOut[TypeConfiguredEvent]
 	deprecations *pg.FanOut[DeprecationEvent]
 	workflows    *pg.FanOut[WorkflowEvent]
 	eventOutbox  *pg.FanOut[int64]
@@ -77,6 +78,7 @@ func NewPGDocStore(
 		metr:         NewIntrinsicMetrics(logger, options.MetricsCalculators),
 		archived:     pg.NewFanOut[ArchivedEvent](NotifyArchived),
 		schemas:      pg.NewFanOut[SchemaEvent](NotifySchemasUpdated),
+		typeConf:     pg.NewFanOut[TypeConfiguredEvent](NotifyTypeConfigured),
 		deprecations: pg.NewFanOut[DeprecationEvent](NotifyDeprecationsUpdated),
 		workflows:    pg.NewFanOut[WorkflowEvent](NotifyWorkflowsUpdated),
 		eventOutbox:  pg.NewFanOut[int64](NotifyEventOutbox),
@@ -101,9 +103,7 @@ func NewPGDocStore(
 func (s *PGDocStore) OnArchivedUpdate(
 	ctx context.Context, ch chan ArchivedEvent,
 ) {
-	go s.archived.Listen(ctx, ch, func(_ ArchivedEvent) bool {
-		return true
-	})
+	go s.archived.ListenAll(ctx, ch)
 }
 
 // OnSchemaUpdate notifies the channel ch of all schema updates. Subscription is
@@ -115,9 +115,7 @@ func (s *PGDocStore) OnArchivedUpdate(
 func (s *PGDocStore) OnSchemaUpdate(
 	ctx context.Context, ch chan SchemaEvent,
 ) {
-	go s.schemas.Listen(ctx, ch, func(_ SchemaEvent) bool {
-		return true
-	})
+	go s.schemas.ListenAll(ctx, ch)
 }
 
 // OnSchemaUpdate notifies the channel ch of all schema updates. Subscription is
@@ -129,9 +127,7 @@ func (s *PGDocStore) OnSchemaUpdate(
 func (s *PGDocStore) OnDeprecationUpdate(
 	ctx context.Context, ch chan DeprecationEvent,
 ) {
-	go s.deprecations.Listen(ctx, ch, func(_ DeprecationEvent) bool {
-		return true
-	})
+	go s.deprecations.ListenAll(ctx, ch)
 }
 
 // OnWorkflowUpdate notifies the channel ch of all workflow updates.
@@ -143,9 +139,7 @@ func (s *PGDocStore) OnDeprecationUpdate(
 func (s *PGDocStore) OnWorkflowUpdate(
 	ctx context.Context, ch chan WorkflowEvent,
 ) {
-	go s.workflows.Listen(ctx, ch, func(_ WorkflowEvent) bool {
-		return true
-	})
+	go s.workflows.ListenAll(ctx, ch)
 }
 
 // OnEventOutbox notifies the channel ch of all new outbox events. Subscription
@@ -157,9 +151,19 @@ func (s *PGDocStore) OnWorkflowUpdate(
 func (s *PGDocStore) OnEventOutbox(
 	ctx context.Context, ch chan int64,
 ) {
-	go s.eventOutbox.Listen(ctx, ch, func(_ int64) bool {
-		return true
-	})
+	go s.eventOutbox.ListenAll(ctx, ch)
+}
+
+// OnTypeConfigured notifies the channel ch of all document type configuration
+// changes.
+//
+// Note that we don't provide any delivery guarantees for these events.
+// non-blocking send is used on ch, so if it's unbuffered events will be
+// discarded if the receiver is busy.
+func (s *PGDocStore) OnTypeConfigured(
+	ctx context.Context, ch chan TypeConfiguredEvent,
+) {
+	go s.typeConf.ListenAll(ctx, ch)
 }
 
 // OnEventlog notifies the channel ch of all new eventlog IDs. Subscription is
@@ -171,9 +175,7 @@ func (s *PGDocStore) OnEventOutbox(
 func (s *PGDocStore) OnEventlog(
 	ctx context.Context, ch chan int64,
 ) {
-	go s.eventlog.Listen(ctx, ch, func(_ int64) bool {
-		return true
-	})
+	go s.eventlog.ListenAll(ctx, ch)
 }
 
 // RunListener opens a connection to the database and subscribes to all store
@@ -186,6 +188,7 @@ func (s *PGDocStore) RunListener(ctx context.Context) {
 		s.workflows,
 		s.eventOutbox,
 		s.eventlog,
+		s.typeConf,
 	}
 
 	pg.Subscribe(ctx, s.logger, s.pool, fanOuts...)
@@ -845,6 +848,7 @@ func eventlogRowToEvent(r postgres.GetEventlogRow) (Event, error) {
 		SystemState:        r.SystemState.String,
 		WorkflowStep:       r.WorkflowState.String,
 		WorkflowCheckpoint: r.WorkflowCheckpoint.String,
+		Timespans:          r.Extra.Timespans,
 	}
 
 	extra := r.Extra
@@ -1405,6 +1409,76 @@ func (s *PGDocStore) getFullDocumentHeads(
 	return statuses, nil
 }
 
+// ConfigureType implements DocStore.
+func (s *PGDocStore) ConfigureType(
+	ctx context.Context,
+	docType string,
+	configuration TypeConfiguration,
+) error {
+	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.SetTypeConfiguration(ctx,
+			postgres.SetTypeConfigurationParams{
+				Type:          docType,
+				Configuration: typeConfigurationToDB(configuration),
+			})
+		if err != nil {
+			return fmt.Errorf("write configuration to database: %w", err)
+		}
+
+		err = s.typeConf.Publish(ctx, tx, TypeConfiguredEvent{
+			Type: docType,
+		})
+		if err != nil {
+			return fmt.Errorf("publish notification: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("transaction failed: %w", err)
+	}
+
+	return nil
+}
+
+// GetTypeConfiguration implements DocStore.
+func (s *PGDocStore) GetTypeConfiguration(
+	ctx context.Context,
+	docType string,
+) (*TypeConfiguration, error) {
+	res, err := s.reader.GetTypeConfiguration(ctx, docType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, DocStoreErrorf(ErrCodeNotFound,
+			"%q does not have a stored configuration", docType)
+	} else if err != nil {
+		return nil, fmt.Errorf("read from database: %w", err)
+	}
+
+	conf := typeConfigurationFromDB(res.Configuration)
+
+	return &conf, nil
+}
+
+// GetTypeConfigurations implements DocStore.
+func (s *PGDocStore) GetTypeConfigurations(
+	ctx context.Context,
+) (map[string]TypeConfiguration, error) {
+	res, err := s.reader.GetTypeConfigurations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read from database: %w", err)
+	}
+
+	confs := make(map[string]TypeConfiguration, len(res))
+
+	for i := range res {
+		confs[res[i].Type] = typeConfigurationFromDB(res[i].Configuration)
+	}
+
+	return confs, nil
+}
+
 // CheckPermission implements DocStore.
 func (s *PGDocStore) CheckPermissions(
 	ctx context.Context, req CheckPermissionRequest,
@@ -1637,6 +1711,15 @@ func (s *PGDocStore) Update(
 
 			state.Language = state.Doc.Language
 
+			timespans, err := s.opts.TypeConfigurations.TimespansForDocument(
+				ctx, *state.Doc)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"extract document timespans: %w", err)
+			}
+
+			state.Timespans = timespans
+
 			version := state.Version + 1
 
 			initialCreate = version == 1
@@ -1657,7 +1740,7 @@ func (s *PGDocStore) Update(
 				Document:         state.Doc,
 			}
 
-			err := createNewDocumentVersion(ctx, tx, q, props)
+			err = createNewDocumentVersion(ctx, tx, q, props)
 			if !state.Exists && pg.IsConstraintError(err, "document_version_pkey") {
 				// We can get collisions on document creation
 				// (as there is no row to lock on create),
@@ -1683,6 +1766,7 @@ func (s *PGDocStore) Update(
 				MainDocumentType: state.MainDocType,
 				Version:          state.Version,
 				SystemState:      state.SystemState,
+				Timespans:        TimespansAsTuples(state.Timespans),
 			}
 
 			// Add attaches and detaches to the event, we'll act on
@@ -2452,6 +2536,7 @@ type docUpdateState struct {
 
 	Type        string
 	Nonce       uuid.UUID
+	Timespans   []Timespan
 	Exists      bool
 	Language    string
 	OldLanguage string

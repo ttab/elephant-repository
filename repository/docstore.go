@@ -129,6 +129,11 @@ type DocStore interface {
 	) ([]AttachmentDetails, error)
 }
 
+type TypeConfiguration struct {
+	BoundedCollection bool
+	TimeExpressions   []TimespanConfiguration
+}
+
 type DeliverableInfo struct {
 	HasPlanningInfo bool
 	PlanningUUID    *uuid.UUID
@@ -191,6 +196,18 @@ type SchemaStore interface {
 	UpdateDeprecation(
 		ctx context.Context, deprecation Deprecation,
 	) error
+	ConfigureType(
+		ctx context.Context,
+		docType string,
+		configuration TypeConfiguration,
+	) error
+	GetTypeConfiguration(
+		ctx context.Context,
+		docType string,
+	) (*TypeConfiguration, error)
+	GetTypeConfigurations(
+		ctx context.Context,
+	) (map[string]TypeConfiguration, error)
 }
 
 type WorkflowStore interface {

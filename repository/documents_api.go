@@ -681,6 +681,12 @@ func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
 			"invalid timestamp for event: %w", err)
 	}
 
+	timespans, err := TimespanTuplesFromRPC(evt.Timespans)
+	if err != nil {
+		return Event{}, fmt.Errorf(
+			"invalid timespans for event: %w", err)
+	}
+
 	var mainDoc *uuid.UUID
 
 	if evt.MainDocument != "" {
@@ -711,6 +717,7 @@ func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
 		OldLanguage:      evt.OldLanguage,
 		AttachedObjects:  evt.AttachedObjects,
 		DetachedObjects:  evt.DetachedObjects,
+		Timespans:        timespans,
 	}, nil
 }
 
@@ -752,7 +759,53 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		AttachedObjects:    evt.AttachedObjects,
 		DetachedObjects:    evt.DetachedObjects,
 		DeleteRecordId:     evt.DeleteRecordID,
+		Timespans:          TimespanTuplesToRPC(evt.Timespans),
 	}
+}
+
+func TimespanTuplesToRPC(tuples [][2]time.Time) []*repository.Timespan {
+	if tuples == nil {
+		return nil
+	}
+
+	spans := make([]*repository.Timespan, len(tuples))
+
+	for i := range tuples {
+		spans[i] = &repository.Timespan{
+			From: tuples[i][0].Format(time.RFC3339),
+			To:   tuples[i][1].Format(time.RFC3339),
+		}
+	}
+
+	return spans
+}
+
+func TimespanTuplesFromRPC(spans []*repository.Timespan) ([][2]time.Time, error) {
+	if spans == nil {
+		return nil, nil
+	}
+
+	tuples := make([][2]time.Time, len(spans))
+
+	for i := range spans {
+		from, err := time.Parse(time.RFC3339, spans[i].From)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"invalid 'from' value %q for timespan %d: %w",
+				spans[i].From, i+1, err)
+		}
+
+		to, err := time.Parse(time.RFC3339, spans[i].To)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"invalid 'to' value %q for timespan %d: %w",
+				spans[i].To, i+1, err)
+		}
+
+		tuples[i] = [2]time.Time{from, to}
+	}
+
+	return tuples, nil
 }
 
 // Delete implements repository.Documents.

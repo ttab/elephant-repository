@@ -296,11 +296,13 @@ func runServer(c *cli.Context) error {
 		inMet = append(inMet, repository.NewCharCounter())
 	}
 
+	typeConfs := repository.NewTypeConfigurations(logger, defaultTZ)
+
 	store, err := repository.NewPGDocStore(
 		stopCtx, logger, dbpool, assets,
 		repository.PGDocStoreOptions{
 			MetricsCalculators: inMet,
-			DefaultTimezone:    defaultTZ,
+			TypeConfigurations: typeConfs,
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
@@ -651,6 +653,15 @@ func runServer(c *cli.Context) error {
 			return nil
 		})
 	}
+
+	serverGroup.Go(func() error {
+		err := typeConfs.Run(gCtx, store)
+		if err != nil {
+			return fmt.Errorf("run type configurations: %w", err)
+		}
+
+		return nil
+	})
 
 	serverGroup.Go(func() error {
 		logger.Debug("starting API server")

@@ -209,6 +209,8 @@ func testingAPIServer(
 		inMet = append(inMet, repository.NewCharCounter())
 	}
 
+	typeConf := repository.NewTypeConfigurations(logger, time.UTC)
+
 	store, err := repository.NewPGDocStore(
 		t.Context(),
 		logger, dbpool,
@@ -216,10 +218,16 @@ func testingAPIServer(
 		repository.PGDocStoreOptions{
 			DeleteTimeout:      1 * time.Second,
 			MetricsCalculators: inMet,
+			TypeConfigurations: typeConf,
 		})
 	test.Must(t, err, "create doc store")
 
 	go store.RunListener(ctx)
+
+	go func() {
+		err := typeConf.Run(ctx, store)
+		test.Must(t, err, "run type configurations")
+	}()
 
 	err = repository.EnsureCoreSchema(ctx, store)
 	test.Must(t, err, "ensure core schema")

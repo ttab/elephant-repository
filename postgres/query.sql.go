@@ -3033,6 +3033,44 @@ func (q *Queries) GetStatusesForVersions(ctx context.Context, arg GetStatusesFor
 	return items, nil
 }
 
+const getTypeConfiguration = `-- name: GetTypeConfiguration :one
+SELECT type, bounded_collection, configuration
+FROM document_type
+WHERE type = $1
+`
+
+func (q *Queries) GetTypeConfiguration(ctx context.Context, type_ string) (DocumentType, error) {
+	row := q.db.QueryRow(ctx, getTypeConfiguration, type_)
+	var i DocumentType
+	err := row.Scan(&i.Type, &i.BoundedCollection, &i.Configuration)
+	return i, err
+}
+
+const getTypeConfigurations = `-- name: GetTypeConfigurations :many
+SELECT type, bounded_collection, configuration
+FROM document_type
+`
+
+func (q *Queries) GetTypeConfigurations(ctx context.Context) ([]DocumentType, error) {
+	rows, err := q.db.Query(ctx, getTypeConfigurations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DocumentType
+	for rows.Next() {
+		var i DocumentType
+		if err := rows.Scan(&i.Type, &i.BoundedCollection, &i.Configuration); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTypeOfDocument = `-- name: GetTypeOfDocument :one
 SELECT type
 FROM document
@@ -4281,6 +4319,25 @@ type SetPlanningItemDeliverableParams struct {
 
 func (q *Queries) SetPlanningItemDeliverable(ctx context.Context, arg SetPlanningItemDeliverableParams) error {
 	_, err := q.db.Exec(ctx, setPlanningItemDeliverable, arg.Assignment, arg.Document, arg.Version)
+	return err
+}
+
+const setTypeConfiguration = `-- name: SetTypeConfiguration :exec
+INSERT INTO document_type(type, bounded_collection, configuration)
+VALUES ($1, $2, $3)
+ON CONFLICT (type) DO UPDATE
+   SET bounded_collection = excluded.bounded_collection,
+       configuration = excluded.configuration
+`
+
+type SetTypeConfigurationParams struct {
+	Type              string
+	BoundedCollection bool
+	Configuration     TypeConfiguration
+}
+
+func (q *Queries) SetTypeConfiguration(ctx context.Context, arg SetTypeConfigurationParams) error {
+	_, err := q.db.Exec(ctx, setTypeConfiguration, arg.Type, arg.BoundedCollection, arg.Configuration)
 	return err
 }
 

@@ -28,6 +28,10 @@ func (ts *Timespan) IsZero() bool {
 	return ts.From.IsZero() && ts.To.IsZero()
 }
 
+func (ts *Timespan) Tuple() [2]time.Time {
+	return [2]time.Time{ts.From, ts.To}
+}
+
 func (ts *Timespan) InLocation(tz *time.Location) Timespan {
 	return Timespan{
 		From: ts.From.In(tz),
@@ -86,6 +90,16 @@ func MergeTimespans(spans []Timespan, tolerance time.Duration) []Timespan {
 	}
 
 	return result
+}
+
+func TimespansAsTuples(s []Timespan) [][2]time.Time {
+	ts := make([][2]time.Time, len(s))
+
+	for i := range s {
+		ts[i] = s[i].Tuple()
+	}
+
+	return ts
 }
 
 func NewDocumentTimespanExtractor(

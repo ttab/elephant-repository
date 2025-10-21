@@ -554,6 +554,22 @@ INNER JOIN planning_assignment AS a
 ON a.uuid = d.assignment
 WHERE d.document = @uuid;
 
+-- name: SetTypeConfiguration :exec
+INSERT INTO document_type(type, bounded_collection, configuration)
+VALUES (@type, @bounded_collection, @configuration)
+ON CONFLICT (type) DO UPDATE
+   SET bounded_collection = excluded.bounded_collection,
+       configuration = excluded.configuration;
+
+-- name: GetTypeConfiguration :one
+SELECT type, bounded_collection, configuration
+FROM document_type
+WHERE type = @type;
+
+-- name: GetTypeConfigurations :many
+SELECT type, bounded_collection, configuration
+FROM document_type;
+
 -- name: InsertACLAuditEntry :exec
 INSERT INTO acl_audit(
        uuid, type, updated,
