@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/newsdoc"
 )
 
@@ -92,6 +94,30 @@ func MergeTimespans(spans []Timespan, tolerance time.Duration) []Timespan {
 	return result
 }
 
+// JoinTimespans into a single timespan encompassing all the given spans.
+func JoinTimespans(spans ...Timespan) Timespan {
+	switch len(spans) {
+	case 0:
+		return Timespan{}
+	case 1:
+		return spans[0]
+	}
+
+	span := spans[0]
+
+	for _, s := range spans[1:] {
+		if s.From.Before(span.From) {
+			span.From = s.From
+		}
+
+		if s.To.After(span.To) {
+			span.To = s.To
+		}
+	}
+
+	return span
+}
+
 func TimespansAsTuples(s []Timespan) [][2]time.Time {
 	ts := make([][2]time.Time, len(s))
 
@@ -100,6 +126,43 @@ func TimespansAsTuples(s []Timespan) [][2]time.Time {
 	}
 
 	return ts
+}
+
+func TimestampRangesAsTimespans(ranges []pgtype.Range[pgtype.Timestamptz]) []Timespan {
+	spans := make([]Timespan, 0, len(ranges))
+
+	for i := range ranges {
+		if !ranges[i].Valid {
+			continue
+		}
+
+		spans = append(spans, Timespan{
+			From: ranges[i].Lower.Time,
+			To:   ranges[i].Upper.Time,
+		})
+	}
+
+	return spans
+}
+
+func TimespansToTimestampMultiranges(spans []Timespan) pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]] {
+	if len(spans) == 0 {
+		return nil
+	}
+
+	ranges := make(pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]], len(spans))
+
+	for i := range spans {
+		ranges[i] = pgtype.Range[pgtype.Timestamptz]{
+			Valid:     true,
+			Lower:     pg.Time(spans[i].From),
+			LowerType: pgtype.Inclusive,
+			Upper:     pg.Time(spans[i].To),
+			UpperType: pgtype.Inclusive,
+		}
+	}
+
+	return ranges
 }
 
 func NewDocumentTimespanExtractor(

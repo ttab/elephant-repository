@@ -1261,8 +1261,36 @@ func (q *Queries) GetDeliverableInfo(ctx context.Context, argUuid uuid.UUID) (Ge
 	return i, err
 }
 
+const getDeliverableTimeranges = `-- name: GetDeliverableTimeranges :many
+SELECT a.timerange
+FROM planning_deliverable AS d
+INNER JOIN planning_assignment AS a
+ON a.uuid = d.assignment
+WHERE d.document = $1
+`
+
+func (q *Queries) GetDeliverableTimeranges(ctx context.Context, argUuid uuid.UUID) ([]pgtype.Range[pgtype.Timestamptz], error) {
+	rows, err := q.db.Query(ctx, getDeliverableTimeranges, argUuid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.Range[pgtype.Timestamptz]
+	for rows.Next() {
+		var timerange pgtype.Range[pgtype.Timestamptz]
+		if err := rows.Scan(&timerange); err != nil {
+			return nil, err
+		}
+		items = append(items, timerange)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDeliverableTimes = `-- name: GetDeliverableTimes :many
-SELECT a.starts, a.ends, a.start_date, a.end_date
+SELECT a.full_day, a.publish, a.starts, a.ends, a.start_date, a.end_date, a.timezone
 FROM planning_deliverable AS d
 INNER JOIN planning_assignment AS a
 ON a.uuid = d.assignment
@@ -1270,10 +1298,13 @@ WHERE d.document = $1
 `
 
 type GetDeliverableTimesRow struct {
+	FullDay   bool
+	Publish   pgtype.Timestamptz
 	Starts    pgtype.Timestamptz
 	Ends      pgtype.Timestamptz
 	StartDate pgtype.Date
 	EndDate   pgtype.Date
+	Timezone  pgtype.Text
 }
 
 func (q *Queries) GetDeliverableTimes(ctx context.Context, argUuid uuid.UUID) ([]GetDeliverableTimesRow, error) {
@@ -1286,10 +1317,13 @@ func (q *Queries) GetDeliverableTimes(ctx context.Context, argUuid uuid.UUID) ([
 	for rows.Next() {
 		var i GetDeliverableTimesRow
 		if err := rows.Scan(
+			&i.FullDay,
+			&i.Publish,
 			&i.Starts,
 			&i.Ends,
 			&i.StartDate,
 			&i.EndDate,
+			&i.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -2169,6 +2203,19 @@ func (q *Queries) GetFullVersion(ctx context.Context, arg GetFullVersionParams) 
 	return i, err
 }
 
+const getIntrinsicTime = `-- name: GetIntrinsicTime :one
+SELECT intrinsic_time
+FROM document
+WHERE uuid = $1
+`
+
+func (q *Queries) GetIntrinsicTime(ctx context.Context, argUuid uuid.UUID) (pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]], error) {
+	row := q.db.QueryRow(ctx, getIntrinsicTime, argUuid)
+	var intrinsic_time pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	err := row.Scan(&intrinsic_time)
+	return intrinsic_time, err
+}
+
 const getInvalidRestoreRequests = `-- name: GetInvalidRestoreRequests :many
 SELECT r.id
 FROM restore_request AS r
@@ -2614,7 +2661,8 @@ func (q *Queries) GetNilStatuses(ctx context.Context, arg GetNilStatusesParams) 
 
 const getPlanningAssignment = `-- name: GetPlanningAssignment :one
 SELECT uuid, version, planning_item, status, publish, publish_slot,
-       starts, ends, start_date, end_date, full_day, public, kind, description
+       starts, ends, start_date, end_date, full_day, public, kind, description,
+       timezone, timerange
 FROM planning_assignment
 WHERE uuid = $1
 `
@@ -2637,6 +2685,8 @@ func (q *Queries) GetPlanningAssignment(ctx context.Context, argUuid uuid.UUID) 
 		&i.Public,
 		&i.Kind,
 		&i.Description,
+		&i.Timezone,
+		&i.Timerange,
 	)
 	return i, err
 }
@@ -2648,15 +2698,32 @@ FROM planning_assignment
 WHERE planning_item = $1
 `
 
-func (q *Queries) GetPlanningAssignments(ctx context.Context, planningItem uuid.UUID) ([]PlanningAssignment, error) {
+type GetPlanningAssignmentsRow struct {
+	UUID         uuid.UUID
+	Version      int64
+	PlanningItem uuid.UUID
+	Status       pgtype.Text
+	Publish      pgtype.Timestamptz
+	PublishSlot  pgtype.Int2
+	Starts       pgtype.Timestamptz
+	Ends         pgtype.Timestamptz
+	StartDate    pgtype.Date
+	EndDate      pgtype.Date
+	FullDay      bool
+	Public       bool
+	Kind         []string
+	Description  string
+}
+
+func (q *Queries) GetPlanningAssignments(ctx context.Context, planningItem uuid.UUID) ([]GetPlanningAssignmentsRow, error) {
 	rows, err := q.db.Query(ctx, getPlanningAssignments, planningItem)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []PlanningAssignment
+	var items []GetPlanningAssignmentsRow
 	for rows.Next() {
-		var i PlanningAssignment
+		var i GetPlanningAssignmentsRow
 		if err := rows.Scan(
 			&i.UUID,
 			&i.Version,
@@ -2691,9 +2758,22 @@ FROM planning_item
 WHERE uuid = $1
 `
 
-func (q *Queries) GetPlanningItem(ctx context.Context, argUuid uuid.UUID) (PlanningItem, error) {
+type GetPlanningItemRow struct {
+	UUID        uuid.UUID
+	Version     int64
+	Title       string
+	Description string
+	Public      pgtype.Bool
+	Tentative   bool
+	StartDate   pgtype.Date
+	EndDate     pgtype.Date
+	Priority    pgtype.Int2
+	Event       pgtype.UUID
+}
+
+func (q *Queries) GetPlanningItem(ctx context.Context, argUuid uuid.UUID) (GetPlanningItemRow, error) {
 	row := q.db.QueryRow(ctx, getPlanningItem, argUuid)
-	var i PlanningItem
+	var i GetPlanningItemRow
 	err := row.Scan(
 		&i.UUID,
 		&i.Version,
@@ -4204,19 +4284,30 @@ func (q *Queries) SetPlanningAssignee(ctx context.Context, arg SetPlanningAssign
 const setPlanningAssignment = `-- name: SetPlanningAssignment :exec
 INSERT INTO planning_assignment(
        uuid, version, planning_item, status, publish, publish_slot,
-       starts, ends, start_date, end_date, full_day, public, kind, description
+       starts, ends, start_date, end_date, full_day, public, kind, description,
+       timezone, timerange
 ) VALUES (
        $1, $2, $3, $4, $5, $6,
        $7, $8, $9, $10, $11, $12, $13,
-       $14
+       $14, $15, $16
 )
 ON CONFLICT ON CONSTRAINT planning_assignment_pkey DO UPDATE
 SET
-   version = $2, planning_item = $3, status = $4,
-   publish = $5, publish_slot = $6, starts = $7,
-   ends = $8, start_date = $9, end_date = $10,
-   full_day = $11, public = $12, kind = $13,
-   description = $14
+   version = excluded.version,
+   planning_item = excluded.planning_item,
+   status = excluded.status,
+   publish = excluded.publish,
+   publish_slot = excluded.publish_slot,
+   starts = excluded.starts,
+   ends = excluded.ends,
+   start_date = excluded.start_date,
+   end_date = excluded.end_date,
+   full_day = excluded.full_day,
+   public = excluded.public,
+   kind = excluded.kind,
+   description = excluded.description,
+   timezone = excluded.timezone,
+   timerange = excluded.timerange
 `
 
 type SetPlanningAssignmentParams struct {
@@ -4234,6 +4325,8 @@ type SetPlanningAssignmentParams struct {
 	Public       bool
 	Kind         []string
 	Description  string
+	Timezone     pgtype.Text
+	Timerange    pgtype.Range[pgtype.Timestamptz]
 }
 
 func (q *Queries) SetPlanningAssignment(ctx context.Context, arg SetPlanningAssignmentParams) error {
@@ -4252,6 +4345,8 @@ func (q *Queries) SetPlanningAssignment(ctx context.Context, arg SetPlanningAssi
 		arg.Public,
 		arg.Kind,
 		arg.Description,
+		arg.Timezone,
+		arg.Timerange,
 	)
 	return err
 }
@@ -4404,6 +4499,22 @@ func (q *Queries) UpdateDocumentLock(ctx context.Context, arg UpdateDocumentLock
 	return err
 }
 
+const updateDocumentTime = `-- name: UpdateDocumentTime :exec
+UPDATE document
+SET time = $1
+WHERE uuid = $2
+`
+
+type UpdateDocumentTimeParams struct {
+	Time pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	UUID uuid.UUID
+}
+
+func (q *Queries) UpdateDocumentTime(ctx context.Context, arg UpdateDocumentTimeParams) error {
+	_, err := q.db.Exec(ctx, updateDocumentTime, arg.Time, arg.UUID)
+	return err
+}
+
 const updateDocumentUnarchivedCount = `-- name: UpdateDocumentUnarchivedCount :one
 INSERT INTO document_archive_counter AS dac (uuid, unarchived)
 VALUES ($1, GREATEST(0, $2::int))
@@ -4492,30 +4603,34 @@ const upsertDocument = `-- name: UpsertDocument :exec
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, main_doc_type, nonce
+       main_doc, language, main_doc_type, nonce, time, intrinsic_time
 ) VALUES (
        $1, $2, $3,
        $4, $5, $4, $5, $6,
-       $7, $8, $9, $10
+       $7, $8, $9, $10, $11, $12
 ) ON CONFLICT (uuid) DO UPDATE
-     SET uri = $2,
-         updated = $4,
-         updater_uri = $5,
-         current_version = $6,
-         language = $8
+     SET uri = excluded.uri,
+         updated = excluded.created,
+         updater_uri = excluded.creator_uri,
+         current_version = excluded.current_version,
+         language = excluded.language,
+         time = COALESCE(excluded.time, document.time),
+         intrinsic_time = COALESCE(excluded.intrinsic_time, document.intrinsic_time)
 `
 
 type UpsertDocumentParams struct {
-	UUID        uuid.UUID
-	URI         string
-	Type        string
-	Created     pgtype.Timestamptz
-	CreatorUri  string
-	Version     int64
-	MainDoc     pgtype.UUID
-	Language    pgtype.Text
-	MainDocType pgtype.Text
-	Nonce       uuid.UUID
+	UUID          uuid.UUID
+	URI           string
+	Type          string
+	Created       pgtype.Timestamptz
+	CreatorUri    string
+	Version       int64
+	MainDoc       pgtype.UUID
+	Language      pgtype.Text
+	MainDocType   pgtype.Text
+	Nonce         uuid.UUID
+	Time          pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	IntrinsicTime pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
 }
 
 func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) error {
@@ -4530,6 +4645,8 @@ func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) 
 		arg.Language,
 		arg.MainDocType,
 		arg.Nonce,
+		arg.Time,
+		arg.IntrinsicTime,
 	)
 	return err
 }

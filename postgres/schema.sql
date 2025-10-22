@@ -277,7 +277,8 @@ CREATE TABLE public.document (
     system_state text,
     main_doc_type text,
     nonce uuid NOT NULL,
-    "time" tstzmultirange
+    "time" tstzmultirange,
+    intrinsic_time tstzmultirange
 );
 
 
@@ -535,7 +536,9 @@ CREATE TABLE public.planning_assignment (
     full_day boolean NOT NULL,
     public boolean NOT NULL,
     kind text[] NOT NULL,
-    description text NOT NULL
+    description text NOT NULL,
+    timezone text,
+    timerange tstzrange
 );
 
 
@@ -564,7 +567,8 @@ CREATE TABLE public.planning_item (
     start_date date NOT NULL,
     end_date date NOT NULL,
     priority smallint,
-    event uuid
+    event uuid,
+    timezone text
 );
 
 

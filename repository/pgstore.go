@@ -33,6 +33,7 @@ type PGDocStoreOptions struct {
 	MetricsCalculators []MetricCalculator
 	DeleteTimeout      time.Duration
 	TypeConfigurations *TypeConfigurations
+	DefaultTZ          *time.Location
 }
 
 // Interface guard.
@@ -67,6 +68,12 @@ func NewPGDocStore(
 ) (*PGDocStore, error) {
 	if options.DeleteTimeout == 0 {
 		options.DeleteTimeout = 5 * time.Second
+	}
+
+	if options.DefaultTZ == nil {
+		logger.Warn("running pgstore with fallback to UTC as default timezone")
+
+		options.DefaultTZ = time.UTC
 	}
 
 	s := &PGDocStore{
@@ -1711,36 +1718,38 @@ func (s *PGDocStore) Update(
 
 			state.Language = state.Doc.Language
 
-			timespans, err := s.opts.TypeConfigurations.TimespansForDocument(
-				ctx, *state.Doc)
+			docSpans, intrinsicTimespans, err := s.timespansFromState(ctx, q, state)
 			if err != nil {
-				return nil, fmt.Errorf(
-					"extract document timespans: %w", err)
+				return nil, err
 			}
 
-			state.Timespans = timespans
+			state.Timespans = docSpans
 
 			version := state.Version + 1
 
 			initialCreate = version == 1
 
 			props := documentVersionProps{
-				UUID:             state.UUID,
-				Nonce:            state.Nonce,
-				Version:          version,
-				Type:             state.Type,
-				URI:              state.Doc.URI,
-				Language:         state.Language,
-				Created:          state.Created,
-				Creator:          state.Creator,
-				MainDocument:     state.Request.MainDocument,
-				MainDocumentType: state.MainDocType,
-				MetaJSON:         state.MetaJSON,
-				DocJSON:          state.DocJSON,
-				Document:         state.Doc,
+				UUID:               state.UUID,
+				Nonce:              state.Nonce,
+				Version:            version,
+				Type:               state.Type,
+				URI:                state.Doc.URI,
+				Language:           state.Language,
+				Created:            state.Created,
+				Creator:            state.Creator,
+				MainDocument:       state.Request.MainDocument,
+				MainDocumentType:   state.MainDocType,
+				MetaJSON:           state.MetaJSON,
+				DocJSON:            state.DocJSON,
+				Document:           state.Doc,
+				Timespans:          state.Timespans,
+				IntrinsicTimespans: intrinsicTimespans,
 			}
 
-			err = createNewDocumentVersion(ctx, tx, q, props)
+			err = createNewDocumentVersion(
+				ctx, tx, q, props, s.opts.DefaultTZ,
+			)
 			if !state.Exists && pg.IsConstraintError(err, "document_version_pkey") {
 				// We can get collisions on document creation
 				// (as there is no row to lock on create),
@@ -2006,6 +2015,7 @@ func (s *PGDocStore) Update(
 			})
 		}
 
+		//nolint: nestif
 		if !state.IsMetaDoc && hasWorkflow && (initialCreate || !wState.Equal(startWState)) {
 			err := q.ChangeWorkflowState(ctx,
 				postgres.ChangeWorkflowStateParams{
@@ -2024,6 +2034,25 @@ func (s *PGDocStore) Update(
 				return nil, fmt.Errorf("update workflow state: %w", err)
 			}
 
+			// If no document was present we need to constuct
+			// timespans using assignment and current intrinsic time.
+			if state.Doc == nil {
+				docSpans, _, err := s.timespansFromState(ctx, q, state)
+				if err != nil {
+					return nil, err
+				}
+
+				state.Timespans = docSpans
+
+				err = q.UpdateDocumentTime(ctx, postgres.UpdateDocumentTimeParams{
+					UUID: state.UUID,
+					Time: TimespansToTimestampMultiranges(state.Timespans),
+				})
+				if err != nil {
+					return nil, fmt.Errorf("update document time: %w", err)
+				}
+			}
+
 			// Queue up the event for the workflow update.
 			evts = append(evts, postgres.OutboxEvent{
 				Event:              string(TypeWorkflow),
@@ -2040,6 +2069,7 @@ func (s *PGDocStore) Update(
 				WorkflowCheckpoint: wState.LastCheckpoint,
 				// TODO: previous step?
 				SystemState: state.SystemState,
+				Timespans:   TimespansAsTuples(state.Timespans),
 			})
 		}
 	}
@@ -2236,6 +2266,47 @@ func (s *PGDocStore) processAttachments(
 	}
 
 	return rollback, nil
+}
+
+// Returns the total timespans for the document and the intinsic timespans.
+func (s *PGDocStore) timespansFromState(
+	ctx context.Context, q *postgres.Queries, state *docUpdateState,
+) (_ []Timespan, _intrinsic []Timespan, _ error) {
+	ranges, err := q.GetDeliverableTimeranges(ctx, state.UUID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get deliverable time ranges: %w", err)
+	}
+
+	docSpans := NormaliseTimespans(
+		TimestampRangesAsTimespans(ranges),
+		time.UTC)
+
+	var intrinsic []Timespan
+
+	if state.Doc != nil {
+		spans, err := s.opts.TypeConfigurations.TimespansForDocument(
+			ctx, *state.Doc)
+		if err != nil {
+			return nil, nil, fmt.Errorf(
+				"extract document timespans: %w", err)
+		}
+
+		intrinsic = spans
+	} else if state.Exists {
+		iRanges, err := q.GetIntrinsicTime(ctx, state.UUID)
+		if err != nil {
+			return nil, nil, fmt.Errorf(
+				"get intrinsic time from db: %w", err)
+		}
+
+		intrinsic = NormaliseTimespans(
+			TimestampRangesAsTimespans(iRanges),
+			time.UTC)
+	}
+
+	docSpans = append(docSpans, intrinsic...)
+
+	return MergeTimespans(docSpans, 1*time.Second), intrinsic, nil
 }
 
 // Attached objects that should be rolled back to previous version, or deleted.
@@ -2444,19 +2515,21 @@ func loadWorkflowState(
 }
 
 type documentVersionProps struct {
-	UUID             uuid.UUID
-	Nonce            uuid.UUID
-	Version          int64
-	Type             string
-	URI              string
-	Language         string
-	Created          time.Time
-	Creator          string
-	MainDocument     *uuid.UUID
-	MainDocumentType string
-	MetaJSON         []byte
-	DocJSON          []byte
-	Document         *newsdoc.Document
+	UUID               uuid.UUID
+	Nonce              uuid.UUID
+	Version            int64
+	Type               string
+	URI                string
+	Language           string
+	Created            time.Time
+	Creator            string
+	MainDocument       *uuid.UUID
+	MainDocumentType   string
+	MetaJSON           []byte
+	DocJSON            []byte
+	Document           *newsdoc.Document
+	Timespans          []Timespan
+	IntrinsicTimespans []Timespan
 }
 
 func createNewDocumentVersion(
@@ -2464,18 +2537,21 @@ func createNewDocumentVersion(
 	tx pgx.Tx,
 	q *postgres.Queries,
 	props documentVersionProps,
+	defaultTZ *time.Location,
 ) error {
 	err := q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
-		UUID:        props.UUID,
-		Nonce:       props.Nonce,
-		URI:         props.URI,
-		Type:        props.Type,
-		Version:     props.Version,
-		Created:     pg.Time(props.Created),
-		CreatorUri:  props.Creator,
-		Language:    pg.TextOrNull(props.Language),
-		MainDoc:     pg.PUUID(props.MainDocument),
-		MainDocType: pg.TextOrNull(props.MainDocumentType),
+		UUID:          props.UUID,
+		Nonce:         props.Nonce,
+		URI:           props.URI,
+		Type:          props.Type,
+		Version:       props.Version,
+		Created:       pg.Time(props.Created),
+		CreatorUri:    props.Creator,
+		Language:      pg.TextOrNull(props.Language),
+		MainDoc:       pg.PUUID(props.MainDocument),
+		MainDocType:   pg.TextOrNull(props.MainDocumentType),
+		Time:          TimespansToTimestampMultiranges(props.Timespans),
+		IntrinsicTime: TimespansToTimestampMultiranges(props.IntrinsicTimespans),
 	})
 	if pg.IsConstraintError(err, "document_uri_key") {
 		return DocStoreErrorf(ErrCodeDuplicateURI,
@@ -2500,7 +2576,9 @@ func createNewDocumentVersion(
 	}
 
 	// TODO: I'm a bit unsure about this now, was it a good idea to have a
-	// document type that gets special treatment?
+	// document type that gets special treatment? UPDATE: this was validated
+	// by the need for deliverables to be oriented in time according to
+	// their assignment.
 	if props.Type == "core/planning-item" {
 		doc := props.Document
 		if doc == nil {
@@ -2515,7 +2593,7 @@ func createNewDocumentVersion(
 		}
 
 		err = planning.UpdateDatabase(ctx, tx,
-			*doc, props.Version)
+			*doc, props.Version, loadTZ, defaultTZ)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to update planning data: %w", err)

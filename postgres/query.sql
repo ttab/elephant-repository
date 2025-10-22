@@ -256,17 +256,29 @@ WHERE id = @id;
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, main_doc_type, nonce
+       main_doc, language, main_doc_type, nonce, time, intrinsic_time
 ) VALUES (
        @uuid, @uri, @type,
        @created, @creator_uri, @created, @creator_uri, @version,
-       @main_doc, @language, @main_doc_type, @nonce
+       @main_doc, @language, @main_doc_type, @nonce, @time, @intrinsic_time
 ) ON CONFLICT (uuid) DO UPDATE
-     SET uri = @uri,
-         updated = @created,
-         updater_uri = @creator_uri,
-         current_version = @version,
-         language = @language;
+     SET uri = excluded.uri,
+         updated = excluded.created,
+         updater_uri = excluded.creator_uri,
+         current_version = excluded.current_version,
+         language = excluded.language,
+         time = COALESCE(excluded.time, document.time),
+         intrinsic_time = COALESCE(excluded.intrinsic_time, document.intrinsic_time);
+
+-- name: GetIntrinsicTime :one
+SELECT intrinsic_time
+FROM document
+WHERE uuid = @uuid;
+
+-- name: UpdateDocumentTime :exec
+UPDATE document
+SET time = @time
+WHERE uuid = @uuid;
 
 -- name: CreateDocumentVersion :exec
 INSERT INTO document_version(
@@ -548,7 +560,14 @@ WHERE dt.type = @type
       AND dt.bounded_collection;
 
 -- name: GetDeliverableTimes :many
-SELECT a.starts, a.ends, a.start_date, a.end_date
+SELECT a.full_day, a.publish, a.starts, a.ends, a.start_date, a.end_date, a.timezone
+FROM planning_deliverable AS d
+INNER JOIN planning_assignment AS a
+ON a.uuid = d.assignment
+WHERE d.document = @uuid;
+
+-- name: GetDeliverableTimeranges :many
+SELECT a.timerange
 FROM planning_deliverable AS d
 INNER JOIN planning_assignment AS a
 ON a.uuid = d.assignment
@@ -908,26 +927,38 @@ SET
 
 -- name: GetPlanningAssignment :one
 SELECT uuid, version, planning_item, status, publish, publish_slot,
-       starts, ends, start_date, end_date, full_day, public, kind, description
+       starts, ends, start_date, end_date, full_day, public, kind, description,
+       timezone, timerange
 FROM planning_assignment
 WHERE uuid = @uuid;
 
 -- name: SetPlanningAssignment :exec
 INSERT INTO planning_assignment(
        uuid, version, planning_item, status, publish, publish_slot,
-       starts, ends, start_date, end_date, full_day, public, kind, description
+       starts, ends, start_date, end_date, full_day, public, kind, description,
+       timezone, timerange
 ) VALUES (
        @uuid, @version, @planning_item, @status, @publish, @publish_slot,
        @starts, @ends, @start_date, @end_date, @full_day, @public, @kind,
-       @description
+       @description, @timezone, @timerange
 )
 ON CONFLICT ON CONSTRAINT planning_assignment_pkey DO UPDATE
 SET
-   version = @version, planning_item = @planning_item, status = @status,
-   publish = @publish, publish_slot = @publish_slot, starts = @starts,
-   ends = @ends, start_date = @start_date, end_date = @end_date,
-   full_day = @full_day, public = @public, kind = @kind,
-   description = @description;
+   version = excluded.version,
+   planning_item = excluded.planning_item,
+   status = excluded.status,
+   publish = excluded.publish,
+   publish_slot = excluded.publish_slot,
+   starts = excluded.starts,
+   ends = excluded.ends,
+   start_date = excluded.start_date,
+   end_date = excluded.end_date,
+   full_day = excluded.full_day,
+   public = excluded.public,
+   kind = excluded.kind,
+   description = excluded.description,
+   timezone = excluded.timezone,
+   timerange = excluded.timerange;
 
 -- name: GetPlanningAssignments :many
 SELECT uuid, version, planning_item, status, publish, publish_slot,

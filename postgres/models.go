@@ -91,6 +91,7 @@ type Document struct {
 	MainDocType    pgtype.Text
 	Nonce          uuid.UUID
 	Time           pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	IntrinsicTime  pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
 }
 
 type DocumentArchiveCounter struct {
@@ -236,6 +237,8 @@ type PlanningAssignment struct {
 	Public       bool
 	Kind         []string
 	Description  string
+	Timezone     pgtype.Text
+	Timerange    pgtype.Range[pgtype.Timestamptz]
 }
 
 type PlanningDeliverable struct {
@@ -255,6 +258,7 @@ type PlanningItem struct {
 	EndDate     pgtype.Date
 	Priority    pgtype.Int2
 	Event       pgtype.UUID
+	Timezone    pgtype.Text
 }
 
 type PurgeRequest struct {
