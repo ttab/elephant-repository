@@ -19,13 +19,13 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tmaxmax/go-sse"
+	"github.com/ttab/eleconf"
 	rpc "github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/elephantine/test"
-	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 )
 
@@ -170,9 +170,10 @@ type testingServerOptions struct {
 	RunArchiver        bool
 	RunEventlogBuilder bool
 	SharedSecret       string
-	ExtraSchemas       []string
-	NoStandardStatuses bool
 	NoCharcount        bool
+	ConfigDirectory    string
+	Schemas            []eleconf.LoadedSchema
+	NoCoreSchemas      bool
 }
 
 func testingAPIServer(
@@ -228,20 +229,6 @@ func testingAPIServer(
 		err := typeConf.Run(ctx, store)
 		test.Must(t, err, "run type configurations")
 	}()
-
-	err = repository.EnsureCoreSchema(ctx, store)
-	test.Must(t, err, "ensure core schema")
-
-	for _, name := range opts.ExtraSchemas {
-		var constraints revisor.ConstraintSet
-
-		err := elephantine.UnmarshalFile(name, &constraints)
-		test.Must(t, err, "decode schema in %q", name)
-
-		err = repository.EnsureSchema(ctx, store,
-			filepath.Base(name), "v0.0.0", constraints)
-		test.Must(t, err, "register the schema %q", name)
-	}
 
 	sse, err := repository.NewSSE(ctx, logger.With(
 		elephantine.LogKeyComponent, "sse",
@@ -321,7 +308,10 @@ func testingAPIServer(
 		workflows,
 		assetBucket,
 		"sv-se",
+		typeConf,
+		repository.NewDocCache(store, 1000),
 	)
+
 	schemaService := repository.NewSchemasService(logger, store)
 	workflowService := repository.NewWorkflowsService(store)
 	metricsService := repository.NewMetricsService(store)
@@ -366,28 +356,39 @@ func testingAPIServer(
 		Env:              env,
 	}
 
-	if !opts.NoStandardStatuses {
-		wf := tc.WorkflowsClient(t,
-			itest.StandardClaims(t, repository.ScopeWorkflowAdmin))
+	wf := tc.WorkflowsClient(t,
+		itest.StandardClaims(t, repository.ScopeWorkflowAdmin))
 
-		for _, status := range []string{"usable", "done", "approved"} {
-			_, err := wf.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
-				Type: "core/article",
-				Name: status,
-			})
-			test.Must(t, err, "create status %q", status)
-		}
+	if opts.ConfigDirectory == "" {
+		opts.ConfigDirectory = filepath.Join("..", "testdata", "config", "base")
+	}
 
-		workflowDeadline := time.After(1 * time.Second)
+	schemas := opts.Schemas
 
-		// Wait until the workflow provider notices the change.
-		for !tc.WorkflowProvider.HasStatus("core/article", "approved") {
-			select {
-			case <-workflowDeadline:
-				t.Fatal("workflow didn't get updated in time")
-			case <-time.After(1 * time.Millisecond):
-			}
-		}
+	if !opts.NoCoreSchemas {
+		core, err := repository.LoadEmbeddedSchemaSet("core", "core-metadoc", "core-planning")
+		test.Must(t, err, "load core schemas")
+
+		schemas = append(schemas, core...)
+	}
+
+	config, err := eleconf.ReadConfigFromDirectory(opts.ConfigDirectory)
+	test.Must(t, err, "read repository configuration")
+
+	clients := eleconf.StaticClients{
+		Workflows: wf,
+		Schemas: tc.SchemasClient(t,
+			itest.StandardClaims(t, repository.ScopeSchemaAdmin)),
+		Metrics: tc.MetricsClient(t,
+			itest.StandardClaims(t, repository.ScopeMetricsAdmin)),
+	}
+
+	changes, err := eleconf.GetChanges(ctx, &clients, config, schemas)
+	test.Must(t, err, "get changes")
+
+	for _, change := range changes {
+		err := change.Execute(ctx, &clients)
+		test.Must(t, err, "apply configuration")
 	}
 
 	return tc

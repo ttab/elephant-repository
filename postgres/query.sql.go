@@ -122,6 +122,64 @@ func (q *Queries) BulkCheckPermissions(ctx context.Context, arg BulkCheckPermiss
 	return items, nil
 }
 
+const bulkGetAttachments = `-- name: BulkGetAttachments :many
+SELECT document, name, version FROM attached_object_current
+WHERE document = ANY($1::uuid[])
+      AND deleted = false
+`
+
+type BulkGetAttachmentsRow struct {
+	Document uuid.UUID
+	Name     string
+	Version  int64
+}
+
+func (q *Queries) BulkGetAttachments(ctx context.Context, documents []uuid.UUID) ([]BulkGetAttachmentsRow, error) {
+	rows, err := q.db.Query(ctx, bulkGetAttachments, documents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkGetAttachmentsRow
+	for rows.Next() {
+		var i BulkGetAttachmentsRow
+		if err := rows.Scan(&i.Document, &i.Name, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const bulkGetDocumentACL = `-- name: BulkGetDocumentACL :many
+SELECT uuid, uri, permissions
+FROM acl
+WHERE uuid = ANY($1::uuid[])
+`
+
+func (q *Queries) BulkGetDocumentACL(ctx context.Context, uuids []uuid.UUID) ([]Acl, error) {
+	rows, err := q.db.Query(ctx, bulkGetDocumentACL, uuids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Acl
+	for rows.Next() {
+		var i Acl
+		if err := rows.Scan(&i.UUID, &i.URI, &i.Permissions); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const bulkGetDocumentData = `-- name: BulkGetDocumentData :many
 WITH refs AS (
      SELECT unnest($1::uuid[]) AS uuid,
@@ -158,6 +216,141 @@ func (q *Queries) BulkGetDocumentData(ctx context.Context, arg BulkGetDocumentDa
 	for rows.Next() {
 		var i BulkGetDocumentDataRow
 		if err := rows.Scan(&i.UUID, &i.Version, &i.DocumentData); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const bulkGetDocumentInfo = `-- name: BulkGetDocumentInfo :many
+SELECT
+        d.uuid, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
+        d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
+        l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
+        l.comment as lock_comment, l.token as lock_token,
+        ws.step as workflow_state, ws.checkpoint as workflow_checkpoint
+FROM document as d
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > $1
+LEFT JOIN workflow_state AS ws ON ws.uuid = d.uuid
+WHERE d.uuid = ANY($2::uuid[])
+`
+
+type BulkGetDocumentInfoParams struct {
+	Now   pgtype.Timestamptz
+	Uuids []uuid.UUID
+}
+
+type BulkGetDocumentInfoRow struct {
+	UUID               uuid.UUID
+	URI                string
+	Created            pgtype.Timestamptz
+	CreatorUri         string
+	Updated            pgtype.Timestamptz
+	UpdaterUri         string
+	CurrentVersion     int64
+	SystemState        pgtype.Text
+	MainDoc            pgtype.UUID
+	Nonce              uuid.UUID
+	LockUuid           pgtype.UUID
+	LockUri            pgtype.Text
+	LockCreated        pgtype.Timestamptz
+	LockExpires        pgtype.Timestamptz
+	LockApp            pgtype.Text
+	LockComment        pgtype.Text
+	LockToken          pgtype.Text
+	WorkflowState      pgtype.Text
+	WorkflowCheckpoint pgtype.Text
+}
+
+func (q *Queries) BulkGetDocumentInfo(ctx context.Context, arg BulkGetDocumentInfoParams) ([]BulkGetDocumentInfoRow, error) {
+	rows, err := q.db.Query(ctx, bulkGetDocumentInfo, arg.Now, arg.Uuids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkGetDocumentInfoRow
+	for rows.Next() {
+		var i BulkGetDocumentInfoRow
+		if err := rows.Scan(
+			&i.UUID,
+			&i.URI,
+			&i.Created,
+			&i.CreatorUri,
+			&i.Updated,
+			&i.UpdaterUri,
+			&i.CurrentVersion,
+			&i.SystemState,
+			&i.MainDoc,
+			&i.Nonce,
+			&i.LockUuid,
+			&i.LockUri,
+			&i.LockCreated,
+			&i.LockExpires,
+			&i.LockApp,
+			&i.LockComment,
+			&i.LockToken,
+			&i.WorkflowState,
+			&i.WorkflowCheckpoint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const bulkGetFullDocumentHeads = `-- name: BulkGetFullDocumentHeads :many
+SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
+       s.archived, s.signature, s.meta_doc_version, h.language
+FROM status_heads AS h
+     INNER JOIN document_status AS s ON
+           s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
+WHERE h.uuid = ANY($1::uuid[])
+`
+
+type BulkGetFullDocumentHeadsRow struct {
+	UUID           uuid.UUID
+	Name           string
+	ID             int64
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           map[string]string
+	Archived       bool
+	Signature      pgtype.Text
+	MetaDocVersion pgtype.Int8
+	Language       pgtype.Text
+}
+
+func (q *Queries) BulkGetFullDocumentHeads(ctx context.Context, uuids []uuid.UUID) ([]BulkGetFullDocumentHeadsRow, error) {
+	rows, err := q.db.Query(ctx, bulkGetFullDocumentHeads, uuids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkGetFullDocumentHeadsRow
+	for rows.Next() {
+		var i BulkGetFullDocumentHeadsRow
+		if err := rows.Scan(
+			&i.UUID,
+			&i.Name,
+			&i.ID,
+			&i.Version,
+			&i.Created,
+			&i.CreatorUri,
+			&i.Meta,
+			&i.Archived,
+			&i.Signature,
+			&i.MetaDocVersion,
+			&i.Language,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -4044,36 +4237,39 @@ func (q *Queries) ReleaseJobLock(ctx context.Context, arg ReleaseJobLockParams) 
 }
 
 const selectBoundedDocumentsWithType = `-- name: SelectBoundedDocumentsWithType :many
-SELECT d.uuid
+SELECT d.uuid, d.current_version, d.language
 FROM document_type AS dt
-     INNER JOIN document AS d ON d.type = dt.type
-     INNER JOIN acl
-          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
-          AND acl.uri = ANY($1::text[])
-          AND $2::text[] && permissions
-WHERE dt.type = $3
+     INNER JOIN document AS d
+           ON d.type = dt.type
+           AND ($1::text IS NULL OR d.language = $1)
+WHERE dt.type = $2
       AND dt.bounded_collection
 `
 
 type SelectBoundedDocumentsWithTypeParams struct {
-	AclUri      []string
-	Permissions []string
-	Type        string
+	Language pgtype.Text
+	Type     string
 }
 
-func (q *Queries) SelectBoundedDocumentsWithType(ctx context.Context, arg SelectBoundedDocumentsWithTypeParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, selectBoundedDocumentsWithType, arg.AclUri, arg.Permissions, arg.Type)
+type SelectBoundedDocumentsWithTypeRow struct {
+	UUID           uuid.UUID
+	CurrentVersion int64
+	Language       pgtype.Text
+}
+
+func (q *Queries) SelectBoundedDocumentsWithType(ctx context.Context, arg SelectBoundedDocumentsWithTypeParams) ([]SelectBoundedDocumentsWithTypeRow, error) {
+	rows, err := q.db.Query(ctx, selectBoundedDocumentsWithType, arg.Language, arg.Type)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []uuid.UUID
+	var items []SelectBoundedDocumentsWithTypeRow
 	for rows.Next() {
-		var uuid uuid.UUID
-		if err := rows.Scan(&uuid); err != nil {
+		var i SelectBoundedDocumentsWithTypeRow
+		if err := rows.Scan(&i.UUID, &i.CurrentVersion, &i.Language); err != nil {
 			return nil, err
 		}
-		items = append(items, uuid)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -4082,41 +4278,36 @@ func (q *Queries) SelectBoundedDocumentsWithType(ctx context.Context, arg Select
 }
 
 const selectDocumentsInTimeRange = `-- name: SelectDocumentsInTimeRange :many
-SELECT d.uuid
+SELECT d.uuid, d.current_version, d.language
 FROM document AS d
-     INNER JOIN acl
-          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
-          AND acl.uri = ANY($1::text[])
-          AND $2::text[] && permissions
-WHERE d.time && $3::tzrange
-      AND d.type = $4
+WHERE d.time && $1::tstzrange
+      AND d.type = $2
 `
 
 type SelectDocumentsInTimeRangeParams struct {
-	AclUri      []string
-	Permissions []string
-	Range       interface{}
-	Type        string
+	Range pgtype.Range[pgtype.Timestamptz]
+	Type  string
 }
 
-func (q *Queries) SelectDocumentsInTimeRange(ctx context.Context, arg SelectDocumentsInTimeRangeParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, selectDocumentsInTimeRange,
-		arg.AclUri,
-		arg.Permissions,
-		arg.Range,
-		arg.Type,
-	)
+type SelectDocumentsInTimeRangeRow struct {
+	UUID           uuid.UUID
+	CurrentVersion int64
+	Language       pgtype.Text
+}
+
+func (q *Queries) SelectDocumentsInTimeRange(ctx context.Context, arg SelectDocumentsInTimeRangeParams) ([]SelectDocumentsInTimeRangeRow, error) {
+	rows, err := q.db.Query(ctx, selectDocumentsInTimeRange, arg.Range, arg.Type)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []uuid.UUID
+	var items []SelectDocumentsInTimeRangeRow
 	for rows.Next() {
-		var uuid uuid.UUID
-		if err := rows.Scan(&uuid); err != nil {
+		var i SelectDocumentsInTimeRangeRow
+		if err := rows.Scan(&i.UUID, &i.CurrentVersion, &i.Language); err != nil {
 			return nil, err
 		}
-		items = append(items, uuid)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

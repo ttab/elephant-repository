@@ -3,8 +3,11 @@ package repository
 import (
 	"context"
 	"fmt"
+	"io/fs"
+	"os"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/ttab/eleconf"
 	"github.com/ttab/revisor"
 	"github.com/ttab/revisorschemas"
 )
@@ -27,6 +30,44 @@ func EnsureCoreSchema(ctx context.Context, store SchemaStore) error {
 	}
 
 	return nil
+}
+
+func LoadSchemasFromFS(
+	dir fs.FS, version string, names ...string,
+) ([]eleconf.LoadedSchema, error) {
+	schemas := make([]eleconf.LoadedSchema, len(names))
+
+	for i, name := range names {
+		data, err := fs.ReadFile(dir, name+".json")
+		if err != nil {
+			return nil, fmt.Errorf("read %q schema: %w", name, err)
+		}
+
+		loaded := eleconf.LoadedSchema{
+			Lock: eleconf.SchemaLock{
+				Name:    name,
+				Version: version,
+			},
+			Data: data,
+		}
+
+		schemas[i] = loaded
+	}
+
+	return schemas, nil
+}
+
+func LoadSchemasFromDir(
+	path string, version string, names ...string,
+) ([]eleconf.LoadedSchema, error) {
+	return LoadSchemasFromFS(os.DirFS(path), version, names...)
+}
+
+func LoadEmbeddedSchemaSet(names ...string) ([]eleconf.LoadedSchema, error) {
+	return LoadSchemasFromFS(
+		revisorschemas.Files(),
+		revisorschemas.Version(),
+		names...)
 }
 
 func EnsureSchema(

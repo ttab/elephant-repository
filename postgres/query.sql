@@ -112,6 +112,37 @@ LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
 LEFT JOIN workflow_state AS ws ON ws.uuid = d.uuid
 WHERE d.uuid = @uuid;
 
+-- name: BulkGetDocumentInfo :many
+SELECT
+        d.uuid, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
+        d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
+        l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
+        l.comment as lock_comment, l.token as lock_token,
+        ws.step as workflow_state, ws.checkpoint as workflow_checkpoint
+FROM document as d
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
+LEFT JOIN workflow_state AS ws ON ws.uuid = d.uuid
+WHERE d.uuid = ANY(@uuids::uuid[]);
+
+-- name: BulkGetFullDocumentHeads :many
+SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
+       s.archived, s.signature, s.meta_doc_version, h.language
+FROM status_heads AS h
+     INNER JOIN document_status AS s ON
+           s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
+WHERE h.uuid = ANY(@uuids::uuid[]);
+
+
+-- name: BulkGetAttachments :many
+SELECT document, name, version FROM attached_object_current
+WHERE document = ANY(@documents::uuid[])
+      AND deleted = false;
+
+-- name: BulkGetDocumentACL :many
+SELECT uuid, uri, permissions
+FROM acl
+WHERE uuid = ANY(@uuids::uuid[]);
+
 -- name: GetDocumentData :one
 SELECT v.document_data, v.version
 FROM document as d
@@ -539,23 +570,17 @@ FROM document AS d
 WHERE d.uuid = ANY(@uuids::uuid[]);
 
 -- name: SelectDocumentsInTimeRange :many
-SELECT d.uuid
+SELECT d.uuid, d.current_version, d.language
 FROM document AS d
-     INNER JOIN acl
-          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
-          AND acl.uri = ANY(@acl_uri::text[])
-          AND @permissions::text[] && permissions
-WHERE d.time && @range::tzrange
+WHERE d.time && @range::tstzrange
       AND d.type = @type;
 
 -- name: SelectBoundedDocumentsWithType :many
-SELECT d.uuid
+SELECT d.uuid, d.current_version, d.language
 FROM document_type AS dt
-     INNER JOIN document AS d ON d.type = dt.type
-     INNER JOIN acl
-          ON (acl.uuid = d.uuid OR acl.uuid = d.main_doc)
-          AND acl.uri = ANY(@acl_uri::text[])
-          AND @permissions::text[] && permissions
+     INNER JOIN document AS d
+           ON d.type = dt.type
+           AND (sqlc.narg('language')::text IS NULL OR d.language = @language)
 WHERE dt.type = @type
       AND dt.bounded_collection;
 

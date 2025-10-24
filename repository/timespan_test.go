@@ -3,10 +3,12 @@ package repository_test
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	rpc_newsdoc "github.com/ttab/elephant-api/newsdoc"
 	rpc "github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
@@ -102,6 +104,8 @@ type tsTestConfigFile struct {
 }
 
 func TestTimespanIntegration(t *testing.T) {
+	regenerate := regenerateTestFixtures()
+
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -110,53 +114,67 @@ func TestTimespanIntegration(t *testing.T) {
 
 	dataDir := filepath.Join("..", "testdata", t.Name())
 
+	outputDir := filepath.Join(dataDir, "golden")
+
+	err := os.MkdirAll(outputDir, 0o770)
+	test.Must(t, err, "create output dir")
+
 	var nvidia newsdoc.Document
 
-	err := elephantine.UnmarshalFile(
+	err = elephantine.UnmarshalFile(
 		filepath.Join(dataDir, "nvidia.json"), &nvidia)
 	test.Must(t, err, "unamrshal nvidia document")
 
 	ctx := t.Context()
 
-	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
+
+	schemas, err := repository.LoadEmbeddedSchemaSet(
+		"core", "core-metadoc", "core-planning")
+	test.Must(t, err, "load schemas")
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunEventlogBuilder: true,
+		ConfigDirectory:    dataDir,
+		Schemas:            schemas,
 	})
-
-	schemaClient := tc.SchemasClient(t,
-		itest.StandardClaims(t, "schema_admin"))
 
 	docClient := tc.DocumentsClient(t,
-		itest.StandardClaims(t, "doc_write eventlog_read"))
-
-	_, err = schemaClient.ConfigureType(ctx, &rpc.ConfigureTypeRequest{
-		Type: "core/event",
-		Configuration: &rpc.TypeConfiguration{
-			TimeExpressions: []*rpc.TypeTimeExpression{
-				{Expression: ".meta(type='core/event').data{start, end}"},
-			},
-		},
-	})
-	test.Must(t, err, "configure 'core/event'")
-
-	_, err = schemaClient.ConfigureType(ctx, &rpc.ConfigureTypeRequest{
-		Type: "core/planning-item",
-		Configuration: &rpc.TypeConfiguration{
-			TimeExpressions: []*rpc.TypeTimeExpression{
-				{Expression: ".meta(type='core/planning-item').data{start_date:date, end_date:date, tz=date_tz?}"},
-				{Expression: ".meta(type='core/assignment').data{start_date:date, end_date:date, tz=date_tz?}"},
-				{Expression: ".meta(type='core/assignment').data{start?, publish?}"},
-			},
-		},
-	})
-	test.Must(t, err, "configure 'core/planning-item'")
+		itest.StandardClaims(t, "doc_read doc_write eventlog_read"))
 
 	time.Sleep(1 * time.Second)
 
 	_, err = docClient.Update(ctx, &rpc.UpdateRequest{
 		Uuid:     nvidia.UUID,
 		Document: rpc_newsdoc.DocumentToRPC(nvidia),
+		Status: []*rpc.StatusUpdate{
+			{Name: "usable"},
+		},
 	})
 	test.Must(t, err, "write nvidia document")
+
+	getEvents, err := docClient.GetMatching(ctx, &rpc.GetMatchingRequest{
+		Type: "core/event",
+		Timespan: &rpc.Timespan{
+			From: "2025-10-28T00:00:00+02:00",
+			To:   "2025-10-28T23:59:59+02:00",
+		},
+		IncludeDocuments: true,
+		IncludeMeta:      true,
+	})
+	test.Must(t, err, "get matching events for 2025-10-28")
+
+	test.TestMessageAgainstGolden(t, regenerate, getEvents,
+		filepath.Join(outputDir, "2025-10-28.v1.json"),
+		test.IgnoreTimestamps{},
+		test.IgnoreField[string]{
+			Name:       "nonce",
+			DummyValue: "e380cbcd-f10c-4edb-911f-56986866a51b",
+			Validator: func(v string) error {
+				_, err := uuid.Parse(v)
+
+				return err //nolint: wrapcheck
+			},
+		},
+	)
 }

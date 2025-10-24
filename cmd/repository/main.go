@@ -380,6 +380,8 @@ func runServer(c *cli.Context) error {
 		workflows,
 		assets,
 		defaultLanguage,
+		typeConfs,
+		repository.NewDocCache(store, 1000),
 	)
 
 	setupCtx, cancel := context.WithTimeout(c.Context, 10*time.Second)

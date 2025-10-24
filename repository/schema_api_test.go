@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/ttab/elephant-api/newsdoc"
-	"github.com/ttab/elephant-api/repository"
+	rpc_repository "github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
+	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine/test"
 )
 
@@ -19,12 +20,18 @@ func TestDeprecations(t *testing.T) {
 
 	t.Parallel()
 
-	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
+
+	dataDir := filepath.Join("..", "testdata", t.Name())
+
+	schemas, err := repository.LoadSchemasFromDir(
+		dataDir, "v1.0.0", "deprecation")
+	test.Must(t, err, "load deprecation schema")
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		ExtraSchemas: []string{
-			filepath.Join("..", "testdata", "schemas", "deprecation.json"),
-		},
+		Schemas:         schemas,
+		ConfigDirectory: dataDir,
+		NoCoreSchemas:   true,
 	})
 
 	client := tc.SchemasClient(t, itest.StandardClaims(t, "schema_admin"))
@@ -48,24 +55,24 @@ func TestDeprecations(t *testing.T) {
 		Language: "en",
 	}
 
-	_, err := documentsClient.Update(ctx, &repository.UpdateRequest{
+	_, err = documentsClient.Update(ctx, &rpc_repository.UpdateRequest{
 		Uuid:     doc.Uuid,
 		Document: doc,
 	})
 	test.Must(t, err, "create a test document")
 
-	_, err = client.UpdateDeprecation(ctx, &repository.UpdateDeprecationRequest{
-		Deprecation: &repository.Deprecation{
+	_, err = client.UpdateDeprecation(ctx, &rpc_repository.UpdateDeprecationRequest{
+		Deprecation: &rpc_repository.Deprecation{
 			Label:    "data-value",
 			Enforced: true,
 		},
 	})
 	test.Must(t, err, "create a deprecation")
 
-	deprecations, err := client.GetDeprecations(ctx, &repository.GetDeprecationsRequest{})
+	deprecations, err := client.GetDeprecations(ctx, &rpc_repository.GetDeprecationsRequest{})
 	test.Must(t, err, "get deprecations")
-	test.EqualMessage(t, &repository.GetDeprecationsResponse{
-		Deprecations: []*repository.Deprecation{
+	test.EqualMessage(t, &rpc_repository.GetDeprecationsResponse{
+		Deprecations: []*rpc_repository.Deprecation{
 			{
 				Label:    "data-value",
 				Enforced: true,
@@ -78,7 +85,7 @@ func TestDeprecations(t *testing.T) {
 	succeeded := false
 
 	for !succeeded {
-		_, err = documentsClient.Update(ctx, &repository.UpdateRequest{
+		_, err = documentsClient.Update(ctx, &rpc_repository.UpdateRequest{
 			Uuid:     doc.Uuid,
 			Document: doc,
 		})
@@ -93,18 +100,18 @@ func TestDeprecations(t *testing.T) {
 		}
 	}
 
-	_, err = client.UpdateDeprecation(ctx, &repository.UpdateDeprecationRequest{
-		Deprecation: &repository.Deprecation{
+	_, err = client.UpdateDeprecation(ctx, &rpc_repository.UpdateDeprecationRequest{
+		Deprecation: &rpc_repository.Deprecation{
 			Label:    "data-value",
 			Enforced: false,
 		},
 	})
 	test.Must(t, err, "update a deprecation")
 
-	deprecations, err = client.GetDeprecations(ctx, &repository.GetDeprecationsRequest{})
+	deprecations, err = client.GetDeprecations(ctx, &rpc_repository.GetDeprecationsRequest{})
 	test.Must(t, err, "get deprecations")
-	test.EqualMessage(t, &repository.GetDeprecationsResponse{
-		Deprecations: []*repository.Deprecation{
+	test.EqualMessage(t, &rpc_repository.GetDeprecationsResponse{
+		Deprecations: []*rpc_repository.Deprecation{
 			{
 				Label:    "data-value",
 				Enforced: false,
@@ -117,7 +124,7 @@ func TestDeprecations(t *testing.T) {
 	succeeded = false
 
 	for !succeeded {
-		_, err = documentsClient.Update(ctx, &repository.UpdateRequest{
+		_, err = documentsClient.Update(ctx, &rpc_repository.UpdateRequest{
 			Uuid:     doc.Uuid,
 			Document: doc,
 		})

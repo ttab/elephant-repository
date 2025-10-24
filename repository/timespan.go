@@ -128,7 +128,7 @@ func TimespansAsTuples(s []Timespan) [][2]time.Time {
 	return ts
 }
 
-func TimestampRangesAsTimespans(ranges []pgtype.Range[pgtype.Timestamptz]) []Timespan {
+func TimestampRangesToTimespans(ranges []pgtype.Range[pgtype.Timestamptz]) []Timespan {
 	spans := make([]Timespan, 0, len(ranges))
 
 	for i := range ranges {
@@ -145,6 +145,16 @@ func TimestampRangesAsTimespans(ranges []pgtype.Range[pgtype.Timestamptz]) []Tim
 	return spans
 }
 
+func TimespanToRange(span Timespan) pgtype.Range[pgtype.Timestamptz] {
+	return pgtype.Range[pgtype.Timestamptz]{
+		Valid:     true,
+		Lower:     pg.Time(span.From),
+		LowerType: pgtype.Inclusive,
+		Upper:     pg.Time(span.To),
+		UpperType: pgtype.Inclusive,
+	}
+}
+
 func TimespansToTimestampMultiranges(spans []Timespan) pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]] {
 	if len(spans) == 0 {
 		return nil
@@ -153,13 +163,7 @@ func TimespansToTimestampMultiranges(spans []Timespan) pgtype.Multirange[pgtype.
 	ranges := make(pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]], len(spans))
 
 	for i := range spans {
-		ranges[i] = pgtype.Range[pgtype.Timestamptz]{
-			Valid:     true,
-			Lower:     pg.Time(spans[i].From),
-			LowerType: pgtype.Inclusive,
-			Upper:     pg.Time(spans[i].To),
-			UpperType: pgtype.Inclusive,
-		}
+		ranges[i] = TimespanToRange(spans[i])
 	}
 
 	return ranges

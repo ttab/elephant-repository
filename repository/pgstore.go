@@ -36,30 +36,6 @@ type PGDocStoreOptions struct {
 	DefaultTZ          *time.Location
 }
 
-// Interface guard.
-var (
-	_ DocStore    = &PGDocStore{}
-	_ MetricStore = &PGDocStore{}
-	_ SchemaStore = &PGDocStore{}
-)
-
-type PGDocStore struct {
-	logger *slog.Logger
-	pool   *pgxpool.Pool
-	reader *postgres.Queries
-	assets *AssetBucket
-	opts   PGDocStoreOptions
-	metr   *IntrinsicMetrics
-
-	archived     *pg.FanOut[ArchivedEvent]
-	schemas      *pg.FanOut[SchemaEvent]
-	typeConf     *pg.FanOut[TypeConfiguredEvent]
-	deprecations *pg.FanOut[DeprecationEvent]
-	workflows    *pg.FanOut[WorkflowEvent]
-	eventOutbox  *pg.FanOut[int64]
-	eventlog     *pg.FanOut[int64]
-}
-
 func NewPGDocStore(
 	ctx context.Context,
 	logger *slog.Logger, pool *pgxpool.Pool,
@@ -98,6 +74,83 @@ func NewPGDocStore(
 	}
 
 	return s, nil
+}
+
+// Interface guard.
+var (
+	_ DocStore    = &PGDocStore{}
+	_ MetricStore = &PGDocStore{}
+	_ SchemaStore = &PGDocStore{}
+)
+
+type PGDocStore struct {
+	logger *slog.Logger
+	pool   *pgxpool.Pool
+	reader *postgres.Queries
+	assets *AssetBucket
+	opts   PGDocStoreOptions
+	metr   *IntrinsicMetrics
+
+	archived     *pg.FanOut[ArchivedEvent]
+	schemas      *pg.FanOut[SchemaEvent]
+	typeConf     *pg.FanOut[TypeConfiguredEvent]
+	deprecations *pg.FanOut[DeprecationEvent]
+	workflows    *pg.FanOut[WorkflowEvent]
+	eventOutbox  *pg.FanOut[int64]
+	eventlog     *pg.FanOut[int64]
+}
+
+// ListDocumentsInTimeRange implements DocStore.
+func (s *PGDocStore) ListDocumentsInTimeRange(
+	ctx context.Context,
+	docType string, span Timespan,
+) ([]DocumentItem, error) {
+	rows, err := s.reader.SelectDocumentsInTimeRange(ctx,
+		postgres.SelectDocumentsInTimeRangeParams{
+			Range: TimespanToRange(span),
+			Type:  docType,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("list documents in db: %w", err)
+	}
+
+	items := make([]DocumentItem, len(rows))
+
+	for i := range rows {
+		items[i] = DocumentItem{
+			UUID:           rows[i].UUID,
+			CurrentVersion: rows[i].CurrentVersion,
+			Language:       rows[i].Language.String,
+		}
+	}
+
+	return items, nil
+}
+
+// ListDocumentsOfType implements DocStore.
+func (s *PGDocStore) ListDocumentsOfType(
+	ctx context.Context, docType string, language *string,
+) ([]DocumentItem, error) {
+	rows, err := s.reader.SelectBoundedDocumentsWithType(ctx,
+		postgres.SelectBoundedDocumentsWithTypeParams{
+			Type:     docType,
+			Language: pg.PText(language),
+		})
+	if err != nil {
+		return nil, fmt.Errorf("list documents in db: %w", err)
+	}
+
+	items := make([]DocumentItem, len(rows))
+
+	for i := range rows {
+		items[i] = DocumentItem{
+			UUID:           rows[i].UUID,
+			CurrentVersion: rows[i].CurrentVersion,
+			Language:       rows[i].Language.String,
+		}
+	}
+
+	return items, nil
 }
 
 // OnSchemaUpdate notifies the channel ch of all archived status
@@ -1369,6 +1422,117 @@ func (s *PGDocStore) GetDocumentMeta(
 	return &meta, nil
 }
 
+// GetDocumentMeta implements DocStore.
+func (s *PGDocStore) BulkGetDocumentMeta(
+	ctx context.Context, documents []uuid.UUID,
+) (map[uuid.UUID]*DocumentMeta, error) {
+	infoRows, err := s.reader.BulkGetDocumentInfo(ctx, postgres.BulkGetDocumentInfoParams{
+		Uuids: documents,
+		Now:   pg.Time(time.Now()),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch document info: %w", err)
+	}
+
+	result := make(map[uuid.UUID]*DocumentMeta, len(infoRows))
+	foundDocs := make([]uuid.UUID, 0, len(infoRows))
+
+	for _, info := range infoRows {
+		// If the document is in a system state lock just add that to
+		// the result and don't do any further processing.
+		if info.SystemState.Valid {
+			state := SystemState(info.SystemState.String)
+
+			switch state {
+			case SystemStateDeleting, SystemStateRestoring:
+				result[info.UUID] = &DocumentMeta{
+					SystemLock: state,
+				}
+			}
+
+			continue
+		}
+
+		var mainDoc string
+
+		if info.MainDoc.Valid {
+			mainDoc = uuid.UUID(info.MainDoc.Bytes).String()
+		}
+
+		meta := DocumentMeta{
+			Nonce:              info.Nonce,
+			Created:            info.Created.Time,
+			CreatorURI:         info.CreatorUri,
+			Modified:           info.Updated.Time,
+			UpdaterURI:         info.UpdaterUri,
+			CurrentVersion:     info.CurrentVersion,
+			Statuses:           make(map[string]StatusHead),
+			MainDocument:       mainDoc,
+			WorkflowState:      info.WorkflowState.String,
+			WorkflowCheckpoint: info.WorkflowCheckpoint.String,
+			Lock: Lock{
+				Token:   info.LockToken.String,
+				URI:     info.LockUri.String,
+				Created: info.LockCreated.Time,
+				Expires: info.LockExpires.Time,
+				App:     info.LockApp.String,
+				Comment: info.LockComment.String,
+			},
+		}
+
+		result[info.UUID] = &meta
+		foundDocs = append(foundDocs, info.UUID)
+	}
+
+	bulkHeads, err := s.bulkGetFullDocumentHeads(ctx, s.reader, foundDocs)
+	if err != nil {
+		return nil, err
+	}
+
+	for docID, heads := range bulkHeads {
+		meta, ok := result[docID]
+		if !ok {
+			continue
+		}
+
+		meta.Statuses = heads
+	}
+
+	attached, err := s.reader.BulkGetAttachments(ctx, foundDocs)
+	if err != nil {
+		return nil, fmt.Errorf("get attachment information: %w", err)
+	}
+
+	for _, item := range attached {
+		meta, ok := result[item.Document]
+		if !ok {
+			continue
+		}
+
+		meta.Attachments = append(meta.Attachments,
+			AttachmentRef{
+				Name:    item.Name,
+				Version: item.Version,
+			})
+	}
+
+	bulkACLs, err := s.BulkGetDocumentACL(ctx, foundDocs)
+	if err != nil {
+		return nil, err
+	}
+
+	for docID, acls := range bulkACLs {
+		meta, ok := result[docID]
+		if !ok {
+			continue
+		}
+
+		meta.ACL = acls
+	}
+
+	return result, nil
+}
+
 func (s *PGDocStore) GetDocumentACL(
 	ctx context.Context, uuid uuid.UUID,
 ) ([]ACLEntry, error) {
@@ -1387,6 +1551,30 @@ func (s *PGDocStore) GetDocumentACL(
 	}
 
 	return acl, nil
+}
+
+func (s *PGDocStore) BulkGetDocumentACL(
+	ctx context.Context, uuids []uuid.UUID,
+) (map[uuid.UUID][]ACLEntry, error) {
+	aclResult, err := s.reader.BulkGetDocumentACL(ctx, uuids)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch document ACLs: %w", err)
+	}
+
+	result := make(map[uuid.UUID][]ACLEntry, len(uuids))
+
+	for _, a := range aclResult {
+		acl := result[a.UUID]
+
+		acl = append(acl, ACLEntry{
+			URI:         a.URI,
+			Permissions: a.Permissions,
+		})
+
+		result[a.UUID] = acl
+	}
+
+	return result, nil
 }
 
 func (s *PGDocStore) getFullDocumentHeads(
@@ -1414,6 +1602,39 @@ func (s *PGDocStore) getFullDocumentHeads(
 	}
 
 	return statuses, nil
+}
+
+func (s *PGDocStore) bulkGetFullDocumentHeads(
+	ctx context.Context, q *postgres.Queries, docIDs []uuid.UUID,
+) (map[uuid.UUID]map[string]StatusHead, error) {
+	result := make(map[uuid.UUID]map[string]StatusHead, len(docIDs))
+
+	heads, err := q.BulkGetFullDocumentHeads(ctx, docIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch document heads: %w", err)
+	}
+
+	for _, head := range heads {
+		statuses, ok := result[head.UUID]
+		if !ok {
+			statuses = make(map[string]StatusHead)
+			result[head.UUID] = statuses
+		}
+
+		status := StatusHead{
+			ID:             head.ID,
+			Version:        head.Version,
+			Creator:        head.CreatorUri,
+			Created:        head.Created.Time,
+			MetaDocVersion: head.MetaDocVersion.Int64,
+			Meta:           head.Meta,
+			Language:       head.Language.String,
+		}
+
+		statuses[head.Name] = status
+	}
+
+	return result, nil
 }
 
 // ConfigureType implements DocStore.
@@ -2278,7 +2499,7 @@ func (s *PGDocStore) timespansFromState(
 	}
 
 	docSpans := NormaliseTimespans(
-		TimestampRangesAsTimespans(ranges),
+		TimestampRangesToTimespans(ranges),
 		time.UTC)
 
 	var intrinsic []Timespan
@@ -2300,7 +2521,7 @@ func (s *PGDocStore) timespansFromState(
 		}
 
 		intrinsic = NormaliseTimespans(
-			TimestampRangesAsTimespans(iRanges),
+			TimestampRangesToTimespans(iRanges),
 			time.UTC)
 	}
 
