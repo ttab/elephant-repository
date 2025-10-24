@@ -30,6 +30,7 @@ type DescriptionBlock struct {
 type ItemMeta struct {
 	StartDate time.Time `newsdoc:"data.start_date,format=2006-01-02"`
 	EndDate   time.Time `newsdoc:"data.end_date,format=2006-01-02"`
+	Timezone  *string   `newsdoc:"data.date_tz"`
 	Tentative bool      `newsdoc:"data.tentative"`
 	Priority  *int16    `newsdoc:"data.priority"`
 }
@@ -42,6 +43,7 @@ type AssignmentBlock struct {
 	Ends         *time.Time        `newsdoc:"data.end"`
 	StartDate    time.Time         `newsdoc:"data.start_date,format=2006-01-02"`
 	EndDate      time.Time         `newsdoc:"data.end_date,format=2006-01-02"`
+	Timezone     *string           `newsdoc:"data.date_tz"`
 	Status       *string           `newsdoc:"data.status"`
 	Public       bool              `newsdoc:"data.public"`
 	Kind         []AssignmentKind  `newsdoc:"meta,type=core/assignment-type"`
@@ -86,7 +88,11 @@ func NewItemFromDocument(doc newsdoc.Document) (*Item, error) {
 	return &p, nil
 }
 
-func (p *Item) ToRows(version int64) (*Rows, error) {
+func (p *Item) ToRows(
+	version int64,
+	tzLoadFn TimezoneLoadFunc,
+	defaultTZ *time.Location,
+) (*Rows, error) {
 	rows := Rows{
 		Item: postgres.SetPlanningItemParams{
 			UUID:      p.UUID,
@@ -128,11 +134,17 @@ func (p *Item) ToRows(version int64) (*Rows, error) {
 			Ends:         pg.PTime(a.Ends),
 			StartDate:    pg.Date(a.StartDate),
 			EndDate:      pg.Date(a.EndDate),
+			Timezone:     pg.PText(a.Timezone),
 			FullDay:      false,
 		}
 
 		for _, k := range a.Kind {
 			ar.Kind = append(ar.Kind, k.Value)
+		}
+
+		err := setAssignmentTimeRange(&ar, tzLoadFn, defaultTZ)
+		if err != nil {
+			return nil, fmt.Errorf("set assignment time range: %w", err)
 		}
 
 		rows.Assignments = append(rows.Assignments, ar)
@@ -162,6 +174,48 @@ func (p *Item) ToRows(version int64) (*Rows, error) {
 	return &rows, nil
 }
 
+func setAssignmentTimeRange(
+	ar *postgres.SetPlanningAssignmentParams,
+	tzLoadFn TimezoneLoadFunc,
+	defaultTZ *time.Location,
+) error {
+	if !ar.FullDay {
+		span := spanFromValidTimes(
+			ar.Starts, ar.Ends, ar.Publish,
+		)
+
+		if !span.Valid {
+			return nil
+		}
+
+		ar.Timerange = span
+
+		return nil
+	}
+
+	if !ar.StartDate.Valid || !ar.EndDate.Valid {
+		return nil
+	}
+
+	dateTZ := defaultTZ
+
+	if ar.Timezone.Valid {
+		tz, err := tzLoadFn(ar.Timezone.String)
+		if err != nil {
+			return fmt.Errorf("invalid date timezone: %w", err)
+		}
+
+		dateTZ = tz
+	}
+
+	ar.Timerange = joinTimeRanges(
+		localDate(ar.StartDate.Time, dateTZ),
+		localDate(ar.EndDate.Time, dateTZ),
+	)
+
+	return nil
+}
+
 func textAppend(separator string, a string, b string) string {
 	if a == "" {
 		return b
@@ -172,4 +226,84 @@ func textAppend(separator string, a string, b string) string {
 	}
 
 	return a + separator + b
+}
+
+func spanFromValidTimes(values ...pgtype.Timestamptz) pgtype.Range[pgtype.Timestamptz] {
+	var low, hi time.Time
+
+	for _, v := range values {
+		if !v.Valid {
+			continue
+		}
+
+		if low.IsZero() {
+			low = v.Time
+			hi = v.Time
+
+			continue
+		}
+
+		if v.Time.Before(low) {
+			low = v.Time
+		}
+
+		if v.Time.After(hi) {
+			hi = v.Time
+		}
+	}
+
+	if low.IsZero() {
+		return pgtype.Range[pgtype.Timestamptz]{}
+	}
+
+	return pgtype.Range[pgtype.Timestamptz]{
+		Valid:     true,
+		Lower:     pg.Time(low),
+		LowerType: pgtype.Inclusive,
+		Upper:     pg.Time(hi),
+		UpperType: pgtype.Inclusive,
+	}
+}
+
+func localDate(t time.Time, tz *time.Location) pgtype.Range[pgtype.Timestamptz] {
+	// Set to the beginning of the day of the
+	// timestamp.
+	t = time.Date(t.Year(), t.Month(), t.Day(),
+		0, 0, 0, 0, tz)
+
+	// Postgres has a microsecond resolution for
+	// timestamps. The last instant of the day is is
+	// tomorrow - 1 microsecond.
+	lastInstant := t.AddDate(0, 0, 1).Add(-1 * time.Microsecond)
+
+	return pgtype.Range[pgtype.Timestamptz]{
+		Valid:     true,
+		Lower:     pg.Time(t),
+		LowerType: pgtype.Inclusive,
+		Upper:     pg.Time(lastInstant),
+		UpperType: pgtype.Inclusive,
+	}
+}
+
+func joinTimeRanges(ranges ...pgtype.Range[pgtype.Timestamptz]) pgtype.Range[pgtype.Timestamptz] {
+	switch len(ranges) {
+	case 0:
+		return pgtype.Range[pgtype.Timestamptz]{}
+	case 1:
+		return ranges[0]
+	}
+
+	span := ranges[0]
+
+	for _, s := range ranges[1:] {
+		if s.Lower.Time.Before(span.Lower.Time) {
+			span.Lower.Time = s.Lower.Time
+		}
+
+		if s.Upper.Time.After(span.Upper.Time) {
+			span.Upper.Time = s.Upper.Time
+		}
+	}
+
+	return span
 }

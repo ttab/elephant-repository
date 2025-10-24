@@ -3,6 +3,7 @@ package planning_test
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ttab/elephant-repository/planning"
@@ -23,7 +24,7 @@ func TestItemToRows(t *testing.T) {
 	item, err := planning.NewItemFromDocument(doc)
 	test.Must(t, err, "create news item")
 
-	rows, err := item.ToRows(1)
+	rows, err := item.ToRows(1, time.LoadLocation, time.UTC)
 	test.Must(t, err, "convert item to rows")
 
 	goldenPath := "../testdata/planning_rows.json"

@@ -19,7 +19,11 @@ const (
 
 type DocStore interface {
 	GetDocumentMeta(
-		ctx context.Context, uuid uuid.UUID) (*DocumentMeta, error)
+		ctx context.Context, uuid uuid.UUID,
+	) (*DocumentMeta, error)
+	BulkGetDocumentMeta(
+		ctx context.Context, documents []uuid.UUID,
+	) (map[uuid.UUID]*DocumentMeta, error)
 	GetDocument(
 		ctx context.Context, uuid uuid.UUID, version int64,
 	) (*newsdoc.Document, int64, error)
@@ -127,6 +131,27 @@ type DocStore interface {
 		attachment string,
 		getDownloadLink bool,
 	) ([]AttachmentDetails, error)
+	ListDocumentsInTimeRange(
+		ctx context.Context,
+		docType string,
+		span Timespan,
+	) ([]DocumentItem, error)
+	ListDocumentsOfType(
+		ctx context.Context,
+		docType string,
+		language *string,
+	) ([]DocumentItem, error)
+}
+
+type DocumentItem struct {
+	UUID           uuid.UUID
+	CurrentVersion int64
+	Language       string
+}
+
+type TypeConfiguration struct {
+	BoundedCollection bool
+	TimeExpressions   []TimespanConfiguration
 }
 
 type DeliverableInfo struct {
@@ -191,6 +216,18 @@ type SchemaStore interface {
 	UpdateDeprecation(
 		ctx context.Context, deprecation Deprecation,
 	) error
+	ConfigureType(
+		ctx context.Context,
+		docType string,
+		configuration TypeConfiguration,
+	) error
+	GetTypeConfiguration(
+		ctx context.Context,
+		docType string,
+	) (*TypeConfiguration, error)
+	GetTypeConfigurations(
+		ctx context.Context,
+	) (map[string]TypeConfiguration, error)
 }
 
 type WorkflowStore interface {

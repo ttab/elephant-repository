@@ -124,9 +124,12 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
+	dataDir := filepath.Join("..", "testdata", t.Name())
+
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunArchiver:        true,
 		RunEventlogBuilder: true,
+		ConfigDirectory:    dataDir,
 	})
 
 	sseConn := tc.SSEConnect(t, []string{"firehose"},
@@ -405,8 +408,13 @@ func TestIntegrationCreateCollision(t *testing.T) {
 					Document: doc,
 					IfMatch:  -1,
 				})
-			if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition) {
-				// The only acceptable error here is FailedPrecondition.
+
+			switch {
+			case elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition):
+				t.Log("creation collision")
+			case elephantine.IsTwirpErrorCode(err, twirp.AlreadyExists):
+				t.Log("optimistic lock triggered")
+			case err != nil:
 				t.Errorf("failed to create document: %v", err)
 			}
 		})
@@ -663,7 +671,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 
 	regenerate := regenerateTestFixtures()
 
-	testData := filepath.Join("testdata", t.Name())
+	testData := filepath.Join("..", "testdata", t.Name())
 
 	err := os.MkdirAll(testData, 0o700)
 	test.Must(t, err, "ensure testdata dir")
@@ -673,6 +681,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunArchiver:        true,
 		RunEventlogBuilder: true,
+		ConfigDirectory:    testData,
 	})
 
 	ctx := t.Context()
@@ -2226,7 +2235,7 @@ func TestIntegrationStatsOverview(t *testing.T) {
 			ctx := t.Context()
 
 			res, err := c.Client.GetStatusOverview(ctx, c.Req)
-			test.Must(t, err, "fatech status overview")
+			test.Must(t, err, "fetch status overview")
 
 			test.TestMessageAgainstGolden(t, regenerate, res,
 				filepath.Join(dataDir, c.File),

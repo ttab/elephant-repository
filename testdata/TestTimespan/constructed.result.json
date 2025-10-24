@@ -1,0 +1,52 @@
+[
+  {
+    "config": {
+      "exp": ".meta(type='example/collection').links(rel='item').data{date:date, tz=date_timezone}"
+    },
+    "timespans": [
+      {
+        "From": "2025-10-19T00:00:00+08:00",
+        "To": "2025-10-19T23:59:59.999999+08:00"
+      }
+    ]
+  },
+  {
+    "config": {
+      "exp": ".meta(type='example/collection').links(rel='item').data{start, end}"
+    },
+    "timespans": [
+      {
+        "From": "2025-10-17T05:00:00Z",
+        "To": "2025-10-17T10:00:00Z"
+      },
+      {
+        "From": "2025-10-17T10:30:00Z",
+        "To": "2025-10-17T11:00:00Z"
+      }
+    ]
+  },
+  {
+    "config": {
+      "exp": ".content(type='example/oh-america---')@{value:date}",
+      "layout": "1/2/2006",
+      "timezone": "US/Mountain"
+    },
+    "timespans": [
+      {
+        "From": "2025-10-15T00:00:00-06:00",
+        "To": "2025-10-15T23:59:59.999999-06:00"
+      }
+    ]
+  },
+  {
+    "config": {
+      "exp": ".links(rel='point-in-time' type='example/pit').data{timestamp}"
+    },
+    "timespans": [
+      {
+        "From": "2025-10-17T08:34:35+02:00",
+        "To": "2025-10-17T08:34:35+02:00"
+      }
+    ]
+  }
+]

@@ -1,0 +1,49 @@
+{
+  "uuid": "20ed2798-d196-4f5b-b33a-3e09352617c6",
+  "type": "core/event",
+  "uri": "core://event/20ed2798-d196-4f5b-b33a-3e09352617c6",
+  "title": "Polisen har pressträff om gripanden utomlands kl 9",
+  "meta": [
+    {
+      "type": "core/event",
+      "data": {
+        "dateGranularity": "datetime",
+        "end": "2025-10-17T07:00:00.000Z",
+        "registration": "Anmälan: media@polisen.se, presslegitimation krävs\n",
+        "start": "2025-10-17T07:00:00.000Z"
+      }
+    },
+    {
+      "type": "core/newsvalue",
+      "value": "6"
+    },
+    {
+      "type": "core/description",
+      "data": {
+        "text": "Polismyndigheten har pressmöte om gripanden av svenska kriminella utomlands, med fokus på gripanden som skett i närtid. Niclas Andersson och Hanna Paradis från Utredningsenheten på Noa medverkar. \n\nPlats: Pressrummet, Polismyndigheten, Norra Agnegatan, 33-37\n\nTid: 09.00, på plats 08.45."
+      },
+      "role": "public"
+    }
+  ],
+  "links": [
+    {
+      "uuid": "956636ed-2687-4bc3-a45a-7e09d98c6eeb",
+      "type": "core/section",
+      "title": "Inrikes",
+      "rel": "section"
+    },
+    {
+      "uuid": "7f4ea480-f800-5b7a-bbd8-2bde519bbf29",
+      "type": "core/category",
+      "title": "Brott, lag och rätt",
+      "rel": "category"
+    },
+    {
+      "uuid": "3bfa6ec5-186c-4345-b9d2-8b338a3eea85",
+      "type": "core/organiser",
+      "title": "Polismyndigheten",
+      "rel": "organiser"
+    }
+  ],
+  "language": "sv-se"
+}

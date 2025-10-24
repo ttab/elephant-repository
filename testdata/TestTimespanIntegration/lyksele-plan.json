@@ -1,0 +1,106 @@
+{
+  "uuid": "a0f49a69-988a-4fa5-9f97-163946e56385",
+  "type": "core/planning-item",
+  "uri": "core://newscoverage/a0f49a69-988a-4fa5-9f97-163946e56385",
+  "title": "Hela Lycksele utan ström",
+  "meta": [
+    {
+      "type": "core/planning-item",
+      "data": {
+        "end_date": "2025-10-21",
+        "public": "true",
+        "start_date": "2025-10-21",
+        "tentative": "false"
+      }
+    },
+    {
+      "type": "core/newsvalue",
+      "value": "3"
+    },
+    {
+      "type": "tt/slugline",
+      "value": "lyckseleströmavbrott"
+    },
+    {
+      "id": "e2df8b44-77a6-4338-be9e-11ce7040014d",
+      "type": "core/assignment",
+      "title": "Notis. Uppdateras enligt nyhetsläge.",
+      "data": {
+        "end_date": "2025-10-21",
+        "full_day": "false",
+        "public": "true",
+        "publish_slot": "11",
+        "start": "2025-10-21T09:56:13.283Z",
+        "start_date": "2025-10-21"
+      },
+      "links": [
+        {
+          "uuid": "f44930d5-c71c-4bc2-93b9-68988b333522",
+          "type": "core/author",
+          "title": "Sofie Fogde",
+          "rel": "assignee",
+          "role": "primary"
+        },
+        {
+          "uuid": "a3025494-1576-4d08-884c-0b96f69442df",
+          "type": "core/article",
+          "rel": "deliverable"
+        }
+      ],
+      "meta": [
+        {
+          "type": "tt/slugline",
+          "value": "lyckseleströmavbrott"
+        },
+        {
+          "type": "core/assignment-type",
+          "value": "text"
+        }
+      ]
+    },
+    {
+      "id": "dcc4c13f-ed87-48fe-9ccf-b13a815b90da",
+      "type": "core/assignment",
+      "title": "Mörka bilder från Lycksele",
+      "data": {
+        "end_date": "2025-10-21",
+        "full_day": "false",
+        "public": "true",
+        "publish_slot": "14",
+        "start": "2025-10-21T12:17:35.289Z",
+        "start_date": "2025-10-21"
+      },
+      "links": [
+        {
+          "uuid": "ccaba8e1-e289-40db-8481-ae02f4822d51",
+          "type": "core/author",
+          "title": "Mats Schagerström/TT",
+          "rel": "assignee",
+          "role": "primary"
+        }
+      ],
+      "meta": [
+        {
+          "type": "core/description",
+          "data": {
+            "text": "Fotograf på plats på det stora strömavbrottet i Lycksele"
+          },
+          "role": "internal"
+        },
+        {
+          "type": "core/assignment-type",
+          "value": "picture"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "uuid": "956636ed-2687-4bc3-a45a-7e09d98c6eeb",
+      "type": "core/section",
+      "title": "Inrikes",
+      "rel": "section"
+    }
+  ],
+  "language": "sv-se"
+}

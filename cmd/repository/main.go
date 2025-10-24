@@ -70,6 +70,11 @@ func main() {
 				EnvVars: []string{"DEFAULT_LANGUAGE"},
 				Value:   "sv-se",
 			},
+			&cli.StringFlag{
+				Name:    "default-timezone",
+				EnvVars: []string{"DEFAULT_TIMEZONE"},
+				Value:   "Europe/Stockholm",
+			},
 			&cli.StringSliceFlag{
 				Name:    "ensure-schema",
 				EnvVars: []string{"ENSURE_SCHEMA"},
@@ -186,6 +191,7 @@ func runServer(c *cli.Context) error {
 		logLevel        = c.String("log-level")
 		ensureSchemas   = c.StringSlice("ensure-schema")
 		defaultLanguage = c.String("default-language")
+		defaultTimezone = c.String("default-timezone")
 		noCharCounter   = c.Bool("no-charcounter")
 		corsHosts       = c.StringSlice("cors-host")
 		migrateDB       = c.Bool("migrate-db")
@@ -201,6 +207,11 @@ func runServer(c *cli.Context) error {
 	_, err := langos.GetLanguage(defaultLanguage)
 	if err != nil {
 		return fmt.Errorf("invalid default language: %w", err)
+	}
+
+	defaultTZ, err := time.LoadLocation(defaultTimezone)
+	if err != nil {
+		return fmt.Errorf("invalid default timezone: %w", err)
 	}
 
 	conf, err := cmd.BackendConfigFromContext(c)
@@ -285,10 +296,13 @@ func runServer(c *cli.Context) error {
 		inMet = append(inMet, repository.NewCharCounter())
 	}
 
+	typeConfs := repository.NewTypeConfigurations(logger, defaultTZ)
+
 	store, err := repository.NewPGDocStore(
 		stopCtx, logger, dbpool, assets,
 		repository.PGDocStoreOptions{
 			MetricsCalculators: inMet,
+			TypeConfigurations: typeConfs,
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
@@ -366,6 +380,8 @@ func runServer(c *cli.Context) error {
 		workflows,
 		assets,
 		defaultLanguage,
+		typeConfs,
+		repository.NewDocCache(store, 1000),
 	)
 
 	setupCtx, cancel := context.WithTimeout(c.Context, 10*time.Second)
@@ -639,6 +655,15 @@ func runServer(c *cli.Context) error {
 			return nil
 		})
 	}
+
+	serverGroup.Go(func() error {
+		err := typeConfs.Run(gCtx, store)
+		if err != nil {
+			return fmt.Errorf("run type configurations: %w", err)
+		}
+
+		return nil
+	})
 
 	serverGroup.Go(func() error {
 		logger.Debug("starting API server")

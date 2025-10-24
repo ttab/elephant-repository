@@ -38,3 +38,6 @@ sql:
         - column: "delete_record.acl"
           go_type:
             type: "[]ACLEntry"
+        - column: "document_type.configuration"
+          go_type:
+            type: "TypeConfiguration"

@@ -1,0 +1,49 @@
+{
+  "uuid": "e9f0250d-1bf3-46d5-863f-9a878fa11635",
+  "type": "core/event",
+  "uri": "core://event/e9f0250d-1bf3-46d5-863f-9a878fa11635",
+  "title": "Nvidias vd Jensen Huang talar i Washington",
+  "meta": [
+    {
+      "type": "core/event",
+      "data": {
+        "dateGranularity": "datetime",
+        "end": "2025-10-28T19:00:00.000Z",
+        "registration": "",
+        "start": "2025-10-28T19:00:00.000Z"
+      }
+    },
+    {
+      "type": "core/newsvalue",
+      "value": "2"
+    },
+    {
+      "type": "core/description",
+      "data": {
+        "text": "USA: Nvidias vd Jensen Huang håller ett inledningsanförande på Nvidia GTC-konferensen i Washington."
+      },
+      "role": "public"
+    }
+  ],
+  "links": [
+    {
+      "uuid": "111932dc-99f3-4ba4-acf2-ed9d9f2f1c7c",
+      "type": "core/section",
+      "title": "Utrikes",
+      "rel": "section"
+    },
+    {
+      "uuid": "0cc646a0-f9a0-5aaf-9530-33783461e387",
+      "type": "core/category",
+      "title": "Ekonomi, affärer och finans",
+      "rel": "category"
+    },
+    {
+      "uuid": "1bd666d9-2d84-596a-b08b-a4c0be9698f2",
+      "type": "core/category",
+      "title": "Teknik och vetenskap",
+      "rel": "category"
+    }
+  ],
+  "language": "sv-se"
+}

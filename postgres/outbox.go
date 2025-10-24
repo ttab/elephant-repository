@@ -7,27 +7,28 @@ import (
 )
 
 type OutboxEvent struct {
-	Event              string     `json:"event"`
-	UUID               uuid.UUID  `json:"uuid"`
-	Timestamp          time.Time  `json:"timestamp"`
-	Updater            string     `json:"updater"`
-	Type               string     `json:"type"`
-	Language           string     `json:"language"`
-	OldLanguage        string     `json:"old_language,omitempty"`
-	MainDocument       *uuid.UUID `json:"main_document,omitempty"`
-	Version            int64      `json:"version,omitempty"`
-	StatusID           int64      `json:"status_id,omitempty"`
-	Status             string     `json:"status,omitempty"`
-	ACL                []ACLEntry `json:"acl,omitempty"`
-	SystemState        string     `json:"system_state,omitempty"`
-	WorkflowStep       string     `json:"workflow_step,omitempty"`
-	WorkflowCheckpoint string     `json:"workflow_checkpoint,omitempty"`
-	MainDocumentType   string     `json:"main_document_type,omitempty"`
-	MetaDocVersion     int64      `json:"meta_doc_version,omitempty"`
-	AttachedObjects    []string   `json:"attached_objects,omitempty"`
-	DetachedObjects    []string   `json:"detached_objects,omitempty"`
-	DeleteRecordID     int64      `json:"delete_record_id,omitempty"`
-	Nonce              uuid.UUID  `json:"nonce,omitempty"`
+	Event              string         `json:"event"`
+	UUID               uuid.UUID      `json:"uuid"`
+	Timestamp          time.Time      `json:"timestamp"`
+	Updater            string         `json:"updater"`
+	Type               string         `json:"type"`
+	Language           string         `json:"language"`
+	OldLanguage        string         `json:"old_language,omitempty"`
+	MainDocument       *uuid.UUID     `json:"main_document,omitempty"`
+	Version            int64          `json:"version,omitempty"`
+	StatusID           int64          `json:"status_id,omitempty"`
+	Status             string         `json:"status,omitempty"`
+	ACL                []ACLEntry     `json:"acl,omitempty"`
+	SystemState        string         `json:"system_state,omitempty"`
+	WorkflowStep       string         `json:"workflow_step,omitempty"`
+	WorkflowCheckpoint string         `json:"workflow_checkpoint,omitempty"`
+	MainDocumentType   string         `json:"main_document_type,omitempty"`
+	MetaDocVersion     int64          `json:"meta_doc_version,omitempty"`
+	AttachedObjects    []string       `json:"attached_objects,omitempty"`
+	DetachedObjects    []string       `json:"detached_objects,omitempty"`
+	DeleteRecordID     int64          `json:"delete_record_id,omitempty"`
+	Nonce              uuid.UUID      `json:"nonce,omitempty"`
+	Timespans          [][2]time.Time `json:"timespans,omitempty"`
 }
 
 type ACLEntry struct {
@@ -36,8 +37,9 @@ type ACLEntry struct {
 }
 
 type EventlogExtra struct {
-	AttachedObjects []string `json:"attached_objects,omitempty"`
-	DetachedObjects []string `json:"detached_objects,omitempty"`
-	DeleteRecordID  int64    `json:"delete_record_id,omitempty"`
-	MetaDocVersion  int64    `json:"metadoc_version,omitempty"`
+	AttachedObjects []string       `json:"attached_objects,omitempty"`
+	DetachedObjects []string       `json:"detached_objects,omitempty"`
+	DeleteRecordID  int64          `json:"delete_record_id,omitempty"`
+	MetaDocVersion  int64          `json:"metadoc_version,omitempty"`
+	Timespans       [][2]time.Time `json:"timespans,omitempty"`
 }
