@@ -119,39 +119,22 @@ func TestTimespanIntegration(t *testing.T) {
 	err := os.MkdirAll(outputDir, 0o770)
 	test.Must(t, err, "create output dir")
 
-	var nvidia newsdoc.Document
-
-	err = elephantine.UnmarshalFile(
-		filepath.Join(dataDir, "nvidia.json"), &nvidia)
-	test.Must(t, err, "unamrshal nvidia document")
-
 	ctx := t.Context()
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
 
-	schemas, err := repository.LoadEmbeddedSchemaSet(
-		"core", "core-metadoc", "core-planning")
-	test.Must(t, err, "load schemas")
-
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunEventlogBuilder: true,
 		ConfigDirectory:    dataDir,
-		Schemas:            schemas,
 	})
 
 	docClient := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write eventlog_read"))
 
-	time.Sleep(1 * time.Second)
-
-	_, err = docClient.Update(ctx, &rpc.UpdateRequest{
-		Uuid:     nvidia.UUID,
-		Document: rpc_newsdoc.DocumentToRPC(nvidia),
-		Status: []*rpc.StatusUpdate{
-			{Name: "usable"},
-		},
+	writeDoc(t, docClient, dataDir, "nvidia", []*rpc.StatusUpdate{
+		{Name: "usable"},
 	})
-	test.Must(t, err, "write nvidia document")
+	writeDoc(t, docClient, dataDir, "cars", nil)
 
 	getEvents, err := docClient.GetMatching(ctx, &rpc.GetMatchingRequest{
 		Type: "core/event",
@@ -177,4 +160,52 @@ func TestTimespanIntegration(t *testing.T) {
 			},
 		},
 	)
+
+	emptyDay, err := docClient.GetMatching(ctx, &rpc.GetMatchingRequest{
+		Type: "core/event",
+		Timespan: &rpc.Timespan{
+			From: "2025-10-21T00:00:00+02:00",
+			To:   "2025-10-21T23:59:59+02:00",
+		},
+		IncludeDocuments: true,
+		IncludeMeta:      true,
+	})
+	test.Must(t, err, "get matching events for 2025-10-21")
+
+	test.Equal(t, 0, len(emptyDay.Matches), "get no matches for 2025-10-21")
+
+	// Event that occurs on 2025-10-21
+	writeDoc(t, docClient, dataDir, "woodsy", nil)
+
+	popDay, err := docClient.GetMatching(ctx, &rpc.GetMatchingRequest{
+		Type: "core/event",
+		Timespan: &rpc.Timespan{
+			From: "2025-10-21T00:00:00+02:00",
+			To:   "2025-10-21T23:59:59+02:00",
+		},
+		IncludeDocuments: true,
+		IncludeMeta:      true,
+	})
+	test.Must(t, err, "get matching events for 2025-10-21")
+
+	test.Equal(t, 1, len(popDay.Matches), "get one match for 2025-10-21")
+}
+
+func writeDoc(
+	t *testing.T, docClient rpc.Documents,
+	dataDir string, name string,
+	status []*rpc.StatusUpdate,
+) {
+	var nvidia newsdoc.Document
+
+	err := elephantine.UnmarshalFile(
+		filepath.Join(dataDir, name+".json"), &nvidia)
+	test.Must(t, err, "unmarshal %s document", name)
+
+	_, err = docClient.Update(t.Context(), &rpc.UpdateRequest{
+		Uuid:     nvidia.UUID,
+		Document: rpc_newsdoc.DocumentToRPC(nvidia),
+		Status:   status,
+	})
+	test.Must(t, err, "write %s document", name)
 }
