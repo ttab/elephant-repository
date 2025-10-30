@@ -316,6 +316,11 @@ type StatusRule struct {
 	Expression  string
 }
 
+type SystemConfig struct {
+	Name  string
+	Value []byte
+}
+
 type Upload struct {
 	ID        uuid.UUID
 	CreatedBy string

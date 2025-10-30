@@ -691,6 +691,16 @@ CREATE TABLE public.status_rule (
 
 
 --
+-- Name: system_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.system_config (
+    name text NOT NULL,
+    value jsonb NOT NULL
+);
+
+
+--
 -- Name: upload; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1002,6 +1012,14 @@ ALTER TABLE ONLY public.status
 
 ALTER TABLE ONLY public.status_rule
     ADD CONSTRAINT status_rule_pkey PRIMARY KEY (type, name);
+
+
+--
+-- Name: system_config system_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.system_config
+    ADD CONSTRAINT system_config_pkey PRIMARY KEY (name);
 
 
 --

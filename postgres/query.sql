@@ -1214,3 +1214,15 @@ DELETE FROM event_outbox_item WHERE id = @id;
 SELECT id, event FROM event_outbox_item
 ORDER BY id ASC
 LIMIT sqlc.arg(count)::bigint;
+
+-- LockConfigTable :exec
+LOCK TABLE system_config IN ACCESS EXCLUSIVE MODE;
+
+-- SetSystemConfig :exec
+INSERT INTO system_config(name, value)
+       VALUES (@name, @value)
+ON CONFLICT (name) DO UPDATE SET
+   value = excluded.value;
+
+-- GetSystemConfig :one
+SELECT value FROM system_config WHERE name = @name;
