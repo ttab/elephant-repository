@@ -36,6 +36,8 @@ func regenerateTestFixtures() bool {
 const bearerPrefix = "Bearer "
 
 type TestContext struct {
+	client *http.Client
+
 	SigningKey       *ecdsa.PrivateKey
 	Server           *httptest.Server
 	WorkflowProvider repository.WorkflowProvider
@@ -67,7 +69,7 @@ func (tc *TestContext) SSEConnect(
 	req.Header.Set("Authorization", bearerPrefix+token)
 
 	client := sse.Client{
-		HTTPClient: tc.Server.Client(),
+		HTTPClient: tc.client,
 	}
 
 	conn := client.NewConnection(req.WithContext(t.Context()))
@@ -91,7 +93,7 @@ func (tc *TestContext) DocumentsClient(
 	test.Must(t, err, "create access key")
 
 	docClient := rpc.NewDocumentsProtobufClient(
-		tc.Server.URL, tc.Server.Client(),
+		tc.Server.URL, tc.client,
 		twirp.WithClientHooks(&twirp.ClientHooks{
 			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
 				r.Header.Set("Authorization", bearerPrefix+token)
@@ -112,7 +114,7 @@ func (tc *TestContext) WorkflowsClient(
 	test.Must(t, err, "create access key")
 
 	workflowsClient := rpc.NewWorkflowsProtobufClient(
-		tc.Server.URL, tc.Server.Client(),
+		tc.Server.URL, tc.client,
 		twirp.WithClientHooks(&twirp.ClientHooks{
 			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
 				r.Header.Set("Authorization", bearerPrefix+token)
@@ -154,7 +156,7 @@ func (tc *TestContext) MetricsClient(
 	test.Must(t, err, "create access key")
 
 	metricsClient := rpc.NewMetricsProtobufClient(
-		tc.Server.URL, tc.Server.Client(),
+		tc.Server.URL, tc.client,
 		twirp.WithClientHooks(&twirp.ClientHooks{
 			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
 				r.Header.Set("Authorization", bearerPrefix+token)
@@ -346,7 +348,12 @@ func testingAPIServer(
 
 	t.Cleanup(server.Close)
 
+	client := server.Client()
+
+	client.Timeout = 5 * time.Second
+
 	tc := TestContext{
+		client:           client,
 		SigningKey:       jwtKey,
 		Server:           server,
 		Documents:        docService,
