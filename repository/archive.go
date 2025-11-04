@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"maps"
 	mrand "math/rand"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -903,20 +904,35 @@ func (a *Archiver) processRestores(
 		parentSig = sig
 	}
 
+	var statuses []*ArchivedDocumentStatus
+
 	for name, lastID := range manifest.Heads {
 		parentSig = ""
 
 		for id := int64(1); id <= lastID; id++ {
 			key := fmt.Sprintf("%s/%s/%019d.json", statusesPrefix, name, id)
 
-			sig, _, err := a.restoreDocumentStatus(
-				ctx, tx, parentSig, id, key, nonce, req)
+			stat, sig, err := a.reader.ReadDocumentStatus(ctx, key, &parentSig)
 			if err != nil {
-				return false, fmt.Errorf(
-					"restore status %q %d: %w", name, id, err)
+				return false, fmt.Errorf("read archived status: %w", err)
 			}
 
+			statuses = append(statuses, stat)
+
 			parentSig = sig
+		}
+	}
+
+	slices.SortFunc(statuses, func(a, b *ArchivedDocumentStatus) int {
+		return int(a.EventID - b.EventID)
+	})
+
+	for _, stat := range statuses {
+		err = a.restoreDocumentStatus(
+			ctx, tx, stat.ID, stat, nonce, req)
+		if err != nil {
+			return false, fmt.Errorf(
+				"restore status %q %d: %w", stat.Name, stat.ID, err)
 		}
 	}
 
@@ -1184,18 +1200,13 @@ func annotateMeta(originalMeta []byte, add newsdoc.DataMap) ([]byte, error) {
 }
 
 func (a *Archiver) restoreDocumentStatus(
-	ctx context.Context, tx postgres.DBTX, parentSig string,
-	id int64, key string, nonce uuid.UUID,
+	ctx context.Context, tx postgres.DBTX,
+	id int64, stat *ArchivedDocumentStatus, nonce uuid.UUID,
 	req postgres.GetNextRestoreRequestRow,
-) (string, *ArchivedDocumentStatus, error) {
+) error {
 	q := postgres.New(tx)
 
-	stat, sig, err := a.reader.ReadDocumentStatus(ctx, key, &parentSig)
-	if err != nil {
-		return "", nil, fmt.Errorf("read archived status: %w", err)
-	}
-
-	err = q.CreateStatusHead(ctx, postgres.CreateStatusHeadParams{
+	err := q.CreateStatusHead(ctx, postgres.CreateStatusHeadParams{
 		UUID:        stat.UUID,
 		Name:        stat.Name,
 		Type:        stat.Type,
@@ -1207,7 +1218,7 @@ func (a *Archiver) restoreDocumentStatus(
 		SystemState: pg.TextOrNull(SystemStateRestoring),
 	})
 	if err != nil {
-		return "", nil, fmt.Errorf("create status head: %w", err)
+		return fmt.Errorf("create status head: %w", err)
 	}
 
 	meta := map[string]string{}
@@ -1215,7 +1226,7 @@ func (a *Archiver) restoreDocumentStatus(
 	if len(stat.Meta) > 0 {
 		err := json.Unmarshal(stat.Meta, &meta)
 		if err != nil {
-			return "", nil, fmt.Errorf("unmarshal status meta: %w", err)
+			return fmt.Errorf("unmarshal status meta: %w", err)
 		}
 	}
 
@@ -1233,7 +1244,7 @@ func (a *Archiver) restoreDocumentStatus(
 		MetaDocVersion: stat.MetaDocVersion,
 	})
 	if err != nil {
-		return "", nil, fmt.Errorf("insert document status: %w", err)
+		return fmt.Errorf("insert document status: %w", err)
 	}
 
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
@@ -1250,11 +1261,11 @@ func (a *Archiver) restoreDocumentStatus(
 		SystemState: SystemStateRestoring,
 	})
 	if err != nil {
-		return "", nil, fmt.Errorf(
+		return fmt.Errorf(
 			"status event to outbox: %w", err)
 	}
 
-	return sig, stat, nil
+	return nil
 }
 
 func (a *Archiver) processPurges(

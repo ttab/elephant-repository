@@ -157,13 +157,13 @@ func TestDeleteRestore(t *testing.T) {
 	})
 
 	// Create version 2 (gen B) with language changed to en-gb, and setting
-	// v2 as usable and v1 as done.
+	// v1 as done and v2 as usable.
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: docB2,
 		Status: []*repository.StatusUpdate{
-			{Name: "usable"},
 			{Name: "done", Version: 1},
+			{Name: "usable"},
 		},
 	})
 	test.Must(t, err, "update generation B")
