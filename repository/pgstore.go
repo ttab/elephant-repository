@@ -159,7 +159,7 @@ func (s *PGDocStore) EnsureSocketKey(ctx context.Context) (*ecdsa.PrivateKey, er
 func (s *PGDocStore) tryToParseECDSAKey(
 	curve elliptic.Curve, data []byte, failLogMsg string,
 ) *ecdsa.PrivateKey {
-	key, err := ecdsa.ParseRawPrivateKey(elliptic.P384(), data)
+	key, err := ecdsa.ParseRawPrivateKey(curve, data)
 	if err != nil {
 		s.logger.Error(failLogMsg,
 			elephantine.LogKeyError, err)

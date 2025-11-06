@@ -93,7 +93,7 @@ type DocumentsService struct {
 
 // GetSocketToken implements repository.Documents.
 func (a *DocumentsService) GetSocketToken(
-	ctx context.Context, req *repository.GetSocketTokenRequest,
+	ctx context.Context, _ *repository.GetSocketTokenRequest,
 ) (*repository.GetSocketTokenResponse, error) {
 	auth, err := RequireAnyScope(ctx,
 		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,

@@ -196,6 +196,8 @@ func writeDoc(
 	dataDir string, name string,
 	status []*rpc.StatusUpdate,
 ) {
+	t.Helper()
+
 	var nvidia newsdoc.Document
 
 	err := elephantine.UnmarshalFile(

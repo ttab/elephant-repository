@@ -60,7 +60,7 @@ func VerifySocketToken(
 
 	return &SocketToken{
 		SubjectHash: subjectHash,
-		Expires:     time.Unix(int64(ts), 0),
+		Expires:     time.Unix(int64(ts), 0), //nolint: gosec
 	}, nil
 }
 
@@ -95,7 +95,7 @@ func (t *SocketToken) Sign(key *ecdsa.PrivateKey) (string, error) {
 
 	off := copy(buf, t.SubjectHash[:])
 
-	binary.LittleEndian.PutUint64(buf[off:], uint64(ts))
+	binary.LittleEndian.PutUint64(buf[off:], uint64(ts)) //nolint: gosec
 
 	hasher := sha256.New()
 
@@ -109,7 +109,7 @@ func (t *SocketToken) Sign(key *ecdsa.PrivateKey) (string, error) {
 
 		keyBytes := curveBits / 8
 		if curveBits%8 > 0 {
-			keyBytes += 1
+			keyBytes++
 		}
 
 		// We serialize the outputs (r and s) into big-endian byte arrays
