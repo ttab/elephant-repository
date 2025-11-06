@@ -3306,6 +3306,17 @@ func (q *Queries) GetStatusesForVersions(ctx context.Context, arg GetStatusesFor
 	return items, nil
 }
 
+const getSystemConfig = `-- name: GetSystemConfig :one
+SELECT value FROM system_config WHERE name = $1
+`
+
+func (q *Queries) GetSystemConfig(ctx context.Context, name string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getSystemConfig, name)
+	var value []byte
+	err := row.Scan(&value)
+	return value, err
+}
+
 const getTypeConfiguration = `-- name: GetTypeConfiguration :one
 SELECT type, bounded_collection, configuration
 FROM document_type
@@ -4006,6 +4017,15 @@ func (q *Queries) ListDeleteRecords(ctx context.Context, arg ListDeleteRecordsPa
 	return items, nil
 }
 
+const lockConfigTable = `-- name: LockConfigTable :exec
+LOCK TABLE system_config IN ACCESS EXCLUSIVE MODE
+`
+
+func (q *Queries) LockConfigTable(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockConfigTable)
+	return err
+}
+
 const notify = `-- name: Notify :exec
 SELECT pg_notify($1::text, $2::text)
 `
@@ -4605,6 +4625,23 @@ type SetPlanningItemDeliverableParams struct {
 
 func (q *Queries) SetPlanningItemDeliverable(ctx context.Context, arg SetPlanningItemDeliverableParams) error {
 	_, err := q.db.Exec(ctx, setPlanningItemDeliverable, arg.Assignment, arg.Document, arg.Version)
+	return err
+}
+
+const setSystemConfig = `-- name: SetSystemConfig :exec
+INSERT INTO system_config(name, value)
+       VALUES ($1, $2)
+ON CONFLICT (name) DO UPDATE SET
+   value = excluded.value
+`
+
+type SetSystemConfigParams struct {
+	Name  string
+	Value []byte
+}
+
+func (q *Queries) SetSystemConfig(ctx context.Context, arg SetSystemConfigParams) error {
+	_, err := q.db.Exec(ctx, setSystemConfig, arg.Name, arg.Value)
 	return err
 }
 

@@ -373,7 +373,8 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to create workflows: %w", err)
 	}
 
-	docService := repository.NewDocumentsService(
+	docService, err := repository.NewDocumentsService(
+		c.Context,
 		store,
 		repository.NewSchedulePGStore(dbpool),
 		validator,
@@ -383,6 +384,9 @@ func runServer(c *cli.Context) error {
 		typeConfs,
 		repository.NewDocCache(store, 1000),
 	)
+	if err != nil {
+		return fmt.Errorf("create documents service: %w", err)
+	}
 
 	setupCtx, cancel := context.WithTimeout(c.Context, 10*time.Second)
 	defer cancel()

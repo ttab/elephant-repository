@@ -2,6 +2,9 @@ package repository
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -98,6 +101,73 @@ type PGDocStore struct {
 	workflows    *pg.FanOut[WorkflowEvent]
 	eventOutbox  *pg.FanOut[int64]
 	eventlog     *pg.FanOut[int64]
+}
+
+// EnsureSocketKey implements DocStore.
+func (s *PGDocStore) EnsureSocketKey(ctx context.Context) (*ecdsa.PrivateKey, error) {
+	var socketKey *ecdsa.PrivateKey
+
+	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.LockConfigTable(ctx)
+		if err != nil {
+			return fmt.Errorf("lock config table: %w", err)
+		}
+
+		conf, err := q.GetSystemConfig(ctx, "socket_key")
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("read socket key from db: %w", err)
+		}
+
+		if len(conf) != 0 {
+			socketKey = s.tryToParseECDSAKey(elliptic.P384(), conf,
+				"failed to parse stored socket key, regenerating")
+		}
+
+		if socketKey == nil {
+			key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+			if err != nil {
+				return fmt.Errorf("generate socket key: %w", err)
+			}
+
+			keyData, err := key.Bytes()
+			if err != nil {
+				return fmt.Errorf("encode socket key as integer: %w", err)
+			}
+
+			err = q.SetSystemConfig(ctx, postgres.SetSystemConfigParams{
+				Name:  "socket_key",
+				Value: keyData,
+			})
+			if err != nil {
+				return fmt.Errorf("store socket key in db: %w", err)
+			}
+
+			socketKey = key
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ensure key in transaction: %w", err)
+	}
+
+	return socketKey, nil
+}
+
+func (s *PGDocStore) tryToParseECDSAKey(
+	curve elliptic.Curve, data []byte, failLogMsg string,
+) *ecdsa.PrivateKey {
+	key, err := ecdsa.ParseRawPrivateKey(elliptic.P384(), data)
+	if err != nil {
+		s.logger.Error(failLogMsg,
+			elephantine.LogKeyError, err)
+
+		return nil
+	}
+
+	return key
 }
 
 // ListDocumentsInTimeRange implements DocStore.

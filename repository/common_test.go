@@ -303,7 +303,8 @@ func testingAPIServer(
 	workflows, err := repository.NewWorkflows(ctx, logger, store)
 	test.Must(t, err, "create workflows")
 
-	docService := repository.NewDocumentsService(
+	docService, err := repository.NewDocumentsService(
+		ctx,
 		store,
 		repository.NewSchedulePGStore(dbpool),
 		validator,
@@ -313,6 +314,7 @@ func testingAPIServer(
 		typeConf,
 		repository.NewDocCache(store, 1000),
 	)
+	test.Must(t, err, "create documents service")
 
 	schemaService := repository.NewSchemasService(logger, store)
 	workflowService := repository.NewWorkflowsService(store)

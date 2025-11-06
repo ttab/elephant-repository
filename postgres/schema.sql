@@ -696,7 +696,7 @@ CREATE TABLE public.status_rule (
 
 CREATE TABLE public.system_config (
     name text NOT NULL,
-    value jsonb NOT NULL
+    value bytea NOT NULL
 );
 
 

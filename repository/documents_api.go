@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"iter"
 	"maps"
@@ -47,6 +48,7 @@ type BulkDocCache interface {
 }
 
 func NewDocumentsService(
+	ctx context.Context,
 	store DocStore,
 	sched ScheduleStore,
 	validator DocumentValidator,
@@ -55,8 +57,14 @@ func NewDocumentsService(
 	defaultLanguage string,
 	docTypes *TypeConfigurations,
 	docCache BulkDocCache,
-) *DocumentsService {
+) (*DocumentsService, error) {
+	socketKey, err := store.EnsureSocketKey(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("ensure socket key: %w", err)
+	}
+
 	return &DocumentsService{
+		socketKey:       socketKey,
 		store:           store,
 		sched:           sched,
 		validator:       validator,
@@ -65,13 +73,14 @@ func NewDocumentsService(
 		defaultLanguage: defaultLanguage,
 		docTypes:        docTypes,
 		docCache:        docCache,
-	}
+	}, nil
 }
 
 // Interface guard.
 var _ repository.Documents = &DocumentsService{}
 
 type DocumentsService struct {
+	socketKey       *ecdsa.PrivateKey
 	store           DocStore
 	sched           ScheduleStore
 	validator       DocumentValidator
@@ -80,6 +89,31 @@ type DocumentsService struct {
 	defaultLanguage string
 	docTypes        *TypeConfigurations
 	docCache        BulkDocCache
+}
+
+// GetSocketToken implements repository.Documents.
+func (a *DocumentsService) GetSocketToken(
+	ctx context.Context, req *repository.GetSocketTokenRequest,
+) (*repository.GetSocketTokenResponse, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	token := NewSocketToken(auth.Claims.Subject,
+		time.Now().Add(24*time.Hour))
+
+	signedToken, err := token.Sign(a.socketKey)
+	if err != nil {
+		return nil, twirp.InternalErrorf("failed to create token: %v", err)
+	}
+
+	return &repository.GetSocketTokenResponse{
+		Token:   signedToken,
+		Expires: token.Expires.Format(time.RFC3339),
+	}, nil
 }
 
 type matchMethod int

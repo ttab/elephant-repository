@@ -1,6 +1,6 @@
 CREATE TABLE system_config(
        name text PRIMARY KEY,
-       value jsonb NOT NULL
+       value bytea NOT NULL
 );
 
 ---- create above / drop below ----

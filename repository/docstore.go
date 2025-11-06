@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"slices"
@@ -141,6 +142,7 @@ type DocStore interface {
 		docType string,
 		language *string,
 	) ([]DocumentItem, error)
+	EnsureSocketKey(ctx context.Context) (*ecdsa.PrivateKey, error)
 }
 
 type DocumentItem struct {

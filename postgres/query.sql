@@ -1215,14 +1215,14 @@ SELECT id, event FROM event_outbox_item
 ORDER BY id ASC
 LIMIT sqlc.arg(count)::bigint;
 
--- LockConfigTable :exec
+-- name: LockConfigTable :exec
 LOCK TABLE system_config IN ACCESS EXCLUSIVE MODE;
 
--- SetSystemConfig :exec
+-- name: SetSystemConfig :exec
 INSERT INTO system_config(name, value)
        VALUES (@name, @value)
 ON CONFLICT (name) DO UPDATE SET
    value = excluded.value;
 
--- GetSystemConfig :one
+-- name: GetSystemConfig :one
 SELECT value FROM system_config WHERE name = @name;
