@@ -13,7 +13,10 @@ import (
 	"time"
 )
 
-const p384Size = 384
+const (
+	p384Size   = 384
+	uint64size = 8
+)
 
 func VerifySocketToken(
 	token string, key *ecdsa.PublicKey,
@@ -32,7 +35,7 @@ func VerifySocketToken(
 		return nil, fmt.Errorf("invalid token payload: %w", err)
 	}
 
-	if len(data) != sha256.Size+8 {
+	if len(data) != sha256.Size+16 {
 		return nil, errors.New("invalid payload size")
 	}
 
@@ -55,10 +58,21 @@ func VerifySocketToken(
 		return nil, errors.New("invalid signature")
 	}
 
-	subjectHash := [sha256.Size]byte(data[0:sha256.Size])
-	ts := binary.LittleEndian.Uint64(data[sha256.Size:])
+	var off int
+
+	// Read ID.
+	id := binary.BigEndian.Uint64(data[off:])
+	off += uint64size
+
+	// Read expiry.
+	ts := binary.BigEndian.Uint64(data[off:])
+	off += uint64size
+
+	// Read the subject hash.
+	subjectHash := [sha256.Size]byte(data[off : off+sha256.Size])
 
 	return &SocketToken{
+		ID:          id,
 		SubjectHash: subjectHash,
 		Expires:     time.Unix(int64(ts), 0), //nolint: gosec
 	}, nil
@@ -67,13 +81,19 @@ func VerifySocketToken(
 func NewSocketToken(subject string, expiry time.Time) *SocketToken {
 	subHash := sha256.Sum256([]byte(subject))
 
+	nonce := make([]byte, 8)
+
+	_, _ = rand.Read(nonce)
+
 	return &SocketToken{
 		SubjectHash: subHash,
 		Expires:     expiry,
+		ID:          binary.BigEndian.Uint64(nonce),
 	}
 }
 
 type SocketToken struct {
+	ID          uint64
 	SubjectHash [sha256.Size]byte
 	Expires     time.Time
 }
@@ -91,11 +111,20 @@ func (t *SocketToken) Sign(key *ecdsa.PrivateKey) (string, error) {
 
 	ts := t.Expires.Unix()
 
-	buf := make([]byte, len(t.SubjectHash)+8)
+	buf := make([]byte, sha256.Size+16)
 
-	off := copy(buf, t.SubjectHash[:])
+	var off int
 
-	binary.LittleEndian.PutUint64(buf[off:], uint64(ts)) //nolint: gosec
+	// Write ID.
+	binary.BigEndian.PutUint64(buf[off:], t.ID)
+	off += uint64size
+
+	// Write the expiry.
+	binary.BigEndian.PutUint64(buf[off:], uint64(ts)) //nolint: gosec
+	off += uint64size
+
+	// Write the subject hash.
+	copy(buf[off:], t.SubjectHash[:])
 
 	hasher := sha256.New()
 

@@ -28,7 +28,7 @@ func TestSocketToken(t *testing.T) {
 	signedToken, err := token.Sign(keyA)
 	test.Must(t, err, "sign token")
 
-	test.Equal(t, 183, len(signedToken), "token must be 183 characters long")
+	test.Equal(t, 193, len(signedToken), "token must be 193 characters long")
 
 	verified, err := repository.VerifySocketToken(signedToken, &keyA.PublicKey)
 	test.Must(t, err, "verify socket token")
@@ -39,6 +39,8 @@ func TestSocketToken(t *testing.T) {
 	if !verified.Expires.Equal(token.Expires) {
 		t.Error("verified token expiry differs from original token")
 	}
+
+	test.Equal(t, token.ID, verified.ID, "id must match")
 
 	if !verified.ValidFor(subjectA) {
 		t.Error("verified token is not valid for subject A")
