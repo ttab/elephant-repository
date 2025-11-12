@@ -139,6 +139,10 @@ func (a *DocumentsService) GetMatching(
 		return nil, twirp.RequiredArgumentError("type")
 	}
 
+	if req.Filter != nil {
+		return nil, twirp.InvalidArgumentError("filter", "not implemented yet")
+	}
+
 	typeConf, _, err := a.docTypes.GetConfiguration(ctx, req.Type)
 	if err != nil {
 		return nil, twirp.InternalErrorf("get type configuration: %w", err)
@@ -171,7 +175,7 @@ func (a *DocumentsService) GetMatching(
 	switch method {
 	case matchByTimeRange:
 		hits, err := a.store.ListDocumentsInTimeRange(
-			ctx, req.Type, *timespan)
+			ctx, req.Type, *timespan, req.Labels)
 		if err != nil {
 			return nil, twirp.InternalErrorf(
 				"get documents for time range: %v", err)
@@ -179,7 +183,8 @@ func (a *DocumentsService) GetMatching(
 
 		items = hits
 	case matchByType:
-		hits, err := a.store.ListDocumentsOfType(ctx, req.Type, nil)
+		hits, err := a.store.ListDocumentsOfType(
+			ctx, req.Type, nil, req.Labels)
 		if err != nil {
 			return nil, twirp.InternalErrorf(
 				"get documents by type range: %v", err)
@@ -266,6 +271,8 @@ func (a *DocumentsService) GetMatching(
 	if err != nil {
 		return nil, twirp.InternalErrorf("get match data: %v", err)
 	}
+
+	// TODO: This is probably where we would apply filters.
 
 	for docID, m := range meta {
 		match, ok := matches[docID]

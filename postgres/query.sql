@@ -96,7 +96,8 @@ WHERE uuid = @UUID AND version = @version;
 
 -- name: GetDocumentRow :one
 SELECT uuid, uri, type, created, creator_uri, updated, updater_uri,
-       current_version, main_doc, language, system_state, nonce
+       current_version, main_doc, language, system_state, nonce,
+       time, labels
 FROM document
 WHERE uuid = @uuid;
 
@@ -287,11 +288,11 @@ WHERE id = @id;
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, main_doc_type, nonce, time, intrinsic_time
+       main_doc, language, main_doc_type, nonce, time, labels
 ) VALUES (
        @uuid, @uri, @type,
        @created, @creator_uri, @created, @creator_uri, @version,
-       @main_doc, @language, @main_doc_type, @nonce, @time, @intrinsic_time
+       @main_doc, @language, @main_doc_type, @nonce, @time, @labels
 ) ON CONFLICT (uuid) DO UPDATE
      SET uri = excluded.uri,
          updated = excluded.created,
@@ -299,12 +300,18 @@ INSERT INTO document(
          current_version = excluded.current_version,
          language = excluded.language,
          time = COALESCE(excluded.time, document.time),
-         intrinsic_time = COALESCE(excluded.intrinsic_time, document.intrinsic_time);
+         labels = COALESCE(excluded.labels, document.labels);
 
--- name: GetIntrinsicTime :one
-SELECT intrinsic_time
+-- name: GetDocumentSearchInfo :one
+SELECT time, labels
 FROM document
 WHERE uuid = @uuid;
+
+-- name: GetDocumentVersionSearchInfo :one
+SELECT time, labels
+FROM document_version
+WHERE uuid = @uuid AND version = @version;
+
 
 -- name: UpdateDocumentTime :exec
 UPDATE document
@@ -314,10 +321,12 @@ WHERE uuid = @uuid;
 -- name: CreateDocumentVersion :exec
 INSERT INTO document_version(
        uuid, version,
-       created, creator_uri, meta, document_data, archived, language
+       created, creator_uri, meta, document_data, archived, language,
+       time, labels
 ) VALUES (
        @uuid, @version,
-       @created, @creator_uri, @meta, @document_data, false, @language
+       @created, @creator_uri, @meta, @document_data, false, @language,
+       @time, @labels
 );
 
 -- name: CreateStatusHead :exec
@@ -573,6 +582,7 @@ WHERE d.uuid = ANY(@uuids::uuid[]);
 SELECT d.uuid, d.current_version, d.language
 FROM document AS d
 WHERE d.time && @range::tstzrange
+      AND (COALESCE(cardinality(@labels::text[]), 0) = 0 OR d.labels @> @labels)
       AND d.type = @type;
 
 -- name: SelectBoundedDocumentsWithType :many
@@ -582,6 +592,7 @@ FROM document_type AS dt
            ON d.type = dt.type
            AND (sqlc.narg('language')::text IS NULL OR d.language = @language)
 WHERE dt.type = @type
+      AND (COALESCE(cardinality(@labels::text[]), 0) = 0 OR d.labels @> @labels)
       AND dt.bounded_collection;
 
 -- name: GetDeliverableTimes :many
@@ -592,7 +603,7 @@ ON a.uuid = d.assignment
 WHERE d.document = @uuid;
 
 -- name: GetDeliverableTimeranges :many
-SELECT a.timerange
+SELECT a.uuid AS assignment, a.planning_item, a.timerange
 FROM planning_deliverable AS d
 INNER JOIN planning_assignment AS a
 ON a.uuid = d.assignment

@@ -173,12 +173,13 @@ func (s *PGDocStore) tryToParseECDSAKey(
 // ListDocumentsInTimeRange implements DocStore.
 func (s *PGDocStore) ListDocumentsInTimeRange(
 	ctx context.Context,
-	docType string, span Timespan,
+	docType string, span Timespan, labels []string,
 ) ([]DocumentItem, error) {
 	rows, err := s.reader.SelectDocumentsInTimeRange(ctx,
 		postgres.SelectDocumentsInTimeRangeParams{
-			Range: TimespanToRange(span),
-			Type:  docType,
+			Range:  TimespanToRange(span),
+			Type:   docType,
+			Labels: labels,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("list documents in db: %w", err)
@@ -199,12 +200,13 @@ func (s *PGDocStore) ListDocumentsInTimeRange(
 
 // ListDocumentsOfType implements DocStore.
 func (s *PGDocStore) ListDocumentsOfType(
-	ctx context.Context, docType string, language *string,
+	ctx context.Context, docType string, language *string, labels []string,
 ) ([]DocumentItem, error) {
 	rows, err := s.reader.SelectBoundedDocumentsWithType(ctx,
 		postgres.SelectBoundedDocumentsWithTypeParams{
 			Type:     docType,
 			Language: pg.PText(language),
+			Labels:   labels,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("list documents in db: %w", err)
@@ -847,6 +849,7 @@ type BulkGetReference struct {
 }
 
 type BulkGetItem struct {
+	UUID     uuid.UUID
 	Document newsdoc.Document
 	Version  int64
 }
@@ -887,6 +890,7 @@ func (s *PGDocStore) BulkGetDocuments(
 		}
 
 		result = append(result, BulkGetItem{
+			UUID:     row.UUID,
 			Document: d,
 			Version:  row.Version,
 		})
@@ -979,6 +983,7 @@ func eventlogRowToEvent(r postgres.GetEventlogRow) (Event, error) {
 		WorkflowStep:       r.WorkflowState.String,
 		WorkflowCheckpoint: r.WorkflowCheckpoint.String,
 		Timespans:          r.Extra.Timespans,
+		Labels:             r.Extra.Labels,
 	}
 
 	extra := r.Extra
@@ -1049,6 +1054,8 @@ func (s *PGDocStore) GetCompactedEventlog(
 			e.AttachedObjects = extra.AttachedObjects
 			e.DetachedObjects = extra.DetachedObjects
 			e.DeleteRecordID = extra.DeleteRecordID
+			e.Timespans = extra.Timespans
+			e.Labels = extra.Labels
 		}
 
 		if res[i].Acl != nil {
@@ -1912,6 +1919,7 @@ func (s *PGDocStore) Update(
 		}
 
 		state.Version = info.Info.CurrentVersion
+		state.CurrentVersion = info.Info.CurrentVersion
 		state.Exists = info.Exists
 		state.Language = info.Language
 		state.IsMetaDoc = info.MainDoc != nil
@@ -2002,19 +2010,20 @@ func (s *PGDocStore) Update(
 			startWState = s
 		}
 
+		extr, err := s.extractsFromState(ctx, q, state)
+		if err != nil {
+			return nil, err
+		}
+
+		state.Timespans = extr.Timespans
+		state.Labels = extr.Labels
+
 		if state.Doc != nil {
 			if state.Exists && state.Language != state.Doc.Language {
 				state.OldLanguage = state.Language
 			}
 
 			state.Language = state.Doc.Language
-
-			docSpans, intrinsicTimespans, err := s.timespansFromState(ctx, q, state)
-			if err != nil {
-				return nil, err
-			}
-
-			state.Timespans = docSpans
 
 			version := state.Version + 1
 
@@ -2035,7 +2044,8 @@ func (s *PGDocStore) Update(
 				DocJSON:            state.DocJSON,
 				Document:           state.Doc,
 				Timespans:          state.Timespans,
-				IntrinsicTimespans: intrinsicTimespans,
+				IntrinsicTimespans: extr.IntrinsicTimespans,
+				Labels:             state.Labels,
 			}
 
 			err = createNewDocumentVersion(
@@ -2067,6 +2077,7 @@ func (s *PGDocStore) Update(
 				Version:          state.Version,
 				SystemState:      state.SystemState,
 				Timespans:        TimespansAsTuples(state.Timespans),
+				Labels:           state.Labels,
 			}
 
 			// Add attaches and detaches to the event, we'll act on
@@ -2251,6 +2262,8 @@ func (s *PGDocStore) Update(
 				Version:          status.Version,
 				MetaDocVersion:   metaDocVersion,
 				SystemState:      state.SystemState,
+				Timespans:        TimespansAsTuples(state.Timespans),
+				Labels:           state.Labels,
 			})
 
 			// Progress workflow state
@@ -2294,6 +2307,7 @@ func (s *PGDocStore) Update(
 			evts = append(evts, postgres.OutboxEvent{
 				Event:            string(TypeACLUpdate),
 				UUID:             state.Request.UUID,
+				Version:          state.Version,
 				Nonce:            state.Nonce,
 				Timestamp:        state.Created,
 				Updater:          state.Creator,
@@ -2303,10 +2317,11 @@ func (s *PGDocStore) Update(
 				MainDocument:     state.Request.MainDocument,
 				MainDocumentType: state.MainDocType,
 				SystemState:      state.SystemState,
+				Timespans:        TimespansAsTuples(state.Timespans),
+				Labels:           state.Labels,
 			})
 		}
 
-		//nolint: nestif
 		if !state.IsMetaDoc && hasWorkflow && (initialCreate || !wState.Equal(startWState)) {
 			err := q.ChangeWorkflowState(ctx,
 				postgres.ChangeWorkflowStateParams{
@@ -2323,25 +2338,6 @@ func (s *PGDocStore) Update(
 				})
 			if err != nil {
 				return nil, fmt.Errorf("update workflow state: %w", err)
-			}
-
-			// If no document was present we need to constuct
-			// timespans using assignment and current intrinsic time.
-			if state.Doc == nil {
-				docSpans, _, err := s.timespansFromState(ctx, q, state)
-				if err != nil {
-					return nil, err
-				}
-
-				state.Timespans = docSpans
-
-				err = q.UpdateDocumentTime(ctx, postgres.UpdateDocumentTimeParams{
-					UUID: state.UUID,
-					Time: TimespansToTimestampMultiranges(state.Timespans),
-				})
-				if err != nil {
-					return nil, fmt.Errorf("update document time: %w", err)
-				}
 			}
 
 			// Queue up the event for the workflow update.
@@ -2361,6 +2357,7 @@ func (s *PGDocStore) Update(
 				// TODO: previous step?
 				SystemState: state.SystemState,
 				Timespans:   TimespansAsTuples(state.Timespans),
+				Labels:      state.Labels,
 			})
 		}
 	}
@@ -2559,45 +2556,81 @@ func (s *PGDocStore) processAttachments(
 	return rollback, nil
 }
 
-// Returns the total timespans for the document and the intinsic timespans.
-func (s *PGDocStore) timespansFromState(
+type DocumentExtracts struct {
+	Timespans          []Timespan
+	IntrinsicTimespans []Timespan
+	Labels             []string
+}
+
+// Returns the total timespans for the document and the intrinsic timespans.
+func (s *PGDocStore) extractsFromState(
 	ctx context.Context, q *postgres.Queries, state *docUpdateState,
-) (_ []Timespan, _intrinsic []Timespan, _ error) {
-	ranges, err := q.GetDeliverableTimeranges(ctx, state.UUID)
+) (*DocumentExtracts, error) {
+	rows, err := q.GetDeliverableTimeranges(ctx, state.UUID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("get deliverable time ranges: %w", err)
+		return nil, fmt.Errorf("get deliverable time ranges: %w", err)
+	}
+
+	ranges := make([]pgtype.Range[pgtype.Timestamptz], len(rows))
+
+	for i := range rows {
+		ranges[i] = rows[i].Timerange
 	}
 
 	docSpans := NormaliseTimespans(
 		TimestampRangesToTimespans(ranges),
 		time.UTC)
 
-	var intrinsic []Timespan
+	var (
+		intrinsicTS  []Timespan
+		intrinsicLbl []string
+	)
 
 	if state.Doc != nil {
 		spans, err := s.opts.TypeConfigurations.TimespansForDocument(
 			ctx, *state.Doc)
 		if err != nil {
-			return nil, nil, fmt.Errorf(
+			return nil, fmt.Errorf(
 				"extract document timespans: %w", err)
 		}
 
-		intrinsic = spans
-	} else if state.Exists {
-		iRanges, err := q.GetIntrinsicTime(ctx, state.UUID)
+		intrinsicTS = spans
+
+		lbls, err := s.opts.TypeConfigurations.LabelsForDocument(
+			ctx, *state.Doc)
 		if err != nil {
-			return nil, nil, fmt.Errorf(
+			return nil, fmt.Errorf(
+				"extract document labels: %w", err)
+		}
+
+		intrinsicLbl = append(intrinsicLbl, lbls...)
+	} else if state.Exists {
+		info, err := q.GetDocumentVersionSearchInfo(ctx,
+			postgres.GetDocumentVersionSearchInfoParams{
+				UUID:    state.UUID,
+				Version: state.CurrentVersion,
+			})
+		if err != nil {
+			return nil, fmt.Errorf(
 				"get intrinsic time from db: %w", err)
 		}
 
-		intrinsic = NormaliseTimespans(
-			TimestampRangesToTimespans(iRanges),
+		intrinsicTS = NormaliseTimespans(
+			TimestampRangesToTimespans(info.Time),
 			time.UTC)
+
+		intrinsicLbl = append(intrinsicLbl, info.Labels...)
 	}
 
-	docSpans = append(docSpans, intrinsic...)
+	docSpans = append(docSpans, intrinsicTS...)
 
-	return MergeTimespans(docSpans, 1*time.Second), intrinsic, nil
+	slices.Sort(intrinsicLbl)
+
+	return &DocumentExtracts{
+		Timespans:          MergeTimespans(docSpans, 1*time.Second),
+		IntrinsicTimespans: intrinsicTS,
+		Labels:             slices.Compact(intrinsicLbl),
+	}, nil
 }
 
 // Attached objects that should be rolled back to previous version, or deleted.
@@ -2821,6 +2854,7 @@ type documentVersionProps struct {
 	Document           *newsdoc.Document
 	Timespans          []Timespan
 	IntrinsicTimespans []Timespan
+	Labels             []string
 }
 
 func createNewDocumentVersion(
@@ -2831,18 +2865,18 @@ func createNewDocumentVersion(
 	defaultTZ *time.Location,
 ) error {
 	err := q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
-		UUID:          props.UUID,
-		Nonce:         props.Nonce,
-		URI:           props.URI,
-		Type:          props.Type,
-		Version:       props.Version,
-		Created:       pg.Time(props.Created),
-		CreatorUri:    props.Creator,
-		Language:      pg.TextOrNull(props.Language),
-		MainDoc:       pg.PUUID(props.MainDocument),
-		MainDocType:   pg.TextOrNull(props.MainDocumentType),
-		Time:          TimespansToTimestampMultiranges(props.Timespans),
-		IntrinsicTime: TimespansToTimestampMultiranges(props.IntrinsicTimespans),
+		UUID:        props.UUID,
+		Nonce:       props.Nonce,
+		URI:         props.URI,
+		Type:        props.Type,
+		Version:     props.Version,
+		Created:     pg.Time(props.Created),
+		CreatorUri:  props.Creator,
+		Language:    pg.TextOrNull(props.Language),
+		MainDoc:     pg.PUUID(props.MainDocument),
+		MainDocType: pg.TextOrNull(props.MainDocumentType),
+		Time:        TimespansToTimestampMultiranges(props.Timespans),
+		Labels:      props.Labels,
 	})
 	if pg.IsConstraintError(err, "document_uri_key") {
 		return DocStoreErrorf(ErrCodeDuplicateURI,
@@ -2860,6 +2894,8 @@ func createNewDocumentVersion(
 		Meta:         props.MetaJSON,
 		Language:     pg.Text(props.Language),
 		DocumentData: props.DocJSON,
+		Time:         TimespansToTimestampMultiranges(props.IntrinsicTimespans),
+		Labels:       props.Labels,
 	})
 	if err != nil {
 		return fmt.Errorf(
@@ -2869,7 +2905,7 @@ func createNewDocumentVersion(
 	// TODO: I'm a bit unsure about this now, was it a good idea to have a
 	// document type that gets special treatment? UPDATE: this was validated
 	// by the need for deliverables to be oriented in time according to
-	// their assignment.
+	// their assignment ...I think. Still not 100% happy with this.
 	if props.Type == "core/planning-item" {
 		doc := props.Document
 		if doc == nil {
@@ -2906,6 +2942,7 @@ type docUpdateState struct {
 	Type        string
 	Nonce       uuid.UUID
 	Timespans   []Timespan
+	Labels      []string
 	Exists      bool
 	Language    string
 	OldLanguage string
@@ -4086,6 +4123,8 @@ type UpdatePrefligthInfo struct {
 	MainDoc     *uuid.UUID
 	MainDocType string
 	Language    string
+	Timespans   []Timespan
+	Labels      []string
 }
 
 // UpdatePreflight must always be called before any information related to a

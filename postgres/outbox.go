@@ -29,6 +29,7 @@ type OutboxEvent struct {
 	DeleteRecordID     int64          `json:"delete_record_id,omitempty"`
 	Nonce              uuid.UUID      `json:"nonce,omitempty"`
 	Timespans          [][2]time.Time `json:"timespans,omitempty"`
+	Labels             []string       `json:"labels,omitempty"`
 }
 
 type ACLEntry struct {
@@ -42,4 +43,5 @@ type EventlogExtra struct {
 	DeleteRecordID  int64          `json:"delete_record_id,omitempty"`
 	MetaDocVersion  int64          `json:"metadoc_version,omitempty"`
 	Timespans       [][2]time.Time `json:"timespans,omitempty"`
+	Labels          []string       `json:"labels,omitempty"`
 }

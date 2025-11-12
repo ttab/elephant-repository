@@ -39,14 +39,15 @@ type RestoreSpec struct {
 }
 
 type ArchiverOptions struct {
-	Logger            *slog.Logger
-	S3                *s3.Client
-	Bucket            string
-	AssetBucket       string
-	DB                *pgxpool.Pool
-	MetricsRegisterer prometheus.Registerer
-	Store             DocStore
-	TolerateGaps      bool
+	Logger             *slog.Logger
+	S3                 *s3.Client
+	Bucket             string
+	AssetBucket        string
+	DB                 *pgxpool.Pool
+	MetricsRegisterer  prometheus.Registerer
+	Store              DocStore
+	TypeConfigurations *TypeConfigurations
+	TolerateGaps       bool
 }
 
 // Archiver reads unarchived document versions, and statuses and writes a copy
@@ -61,6 +62,7 @@ type Archiver struct {
 	signingKeysChecked time.Time
 	reader             *ArchiveReader
 	store              DocStore
+	types              *TypeConfigurations
 	tolerateGaps       bool
 
 	eventsArchiver    prometheus.Gauge
@@ -78,6 +80,10 @@ type Archiver struct {
 func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 	if opts.MetricsRegisterer == nil {
 		opts.MetricsRegisterer = prometheus.DefaultRegisterer
+	}
+
+	if opts.TypeConfigurations == nil {
+		return nil, errors.New("missing required type configurations")
 	}
 
 	if opts.AssetBucket == "" {
@@ -164,6 +170,7 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		s3:                opts.S3,
 		pool:              opts.DB,
 		store:             opts.Store,
+		types:             opts.TypeConfigurations,
 		bucket:            opts.Bucket,
 		assetBucket:       opts.AssetBucket,
 		eventsArchiver:    eventsArchiver,
@@ -1019,6 +1026,8 @@ func (a *Archiver) processRestores(
 			"read document information after restore: %w", err)
 	}
 
+	timespans := TimespansAsTuples(TimestampRangesToTimespans(docInfo.Time))
+
 	var aclErrors []error
 
 	q.ACLUpdate(ctx, acls).Exec(func(_ int, err error) {
@@ -1060,6 +1069,7 @@ func (a *Archiver) processRestores(
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
 		Event:       string(TypeACLUpdate),
 		UUID:        req.UUID,
+		Version:     manifest.LastVersion,
 		Nonce:       nonce,
 		Timestamp:   time.Now(),
 		Updater:     req.Creator,
@@ -1067,6 +1077,8 @@ func (a *Archiver) processRestores(
 		Type:        docInfo.Type,
 		Language:    docInfo.Language.String,
 		SystemState: SystemStateRestoring,
+		Labels:      docInfo.Labels,
+		Timespans:   timespans,
 	})
 	if err != nil {
 		return false, fmt.Errorf("add restore finished event to outbox: %w", err)
@@ -1081,6 +1093,8 @@ func (a *Archiver) processRestores(
 		Updater:   req.Creator,
 		Type:      docInfo.Type,
 		Language:  docInfo.Language.String,
+		Labels:    docInfo.Labels,
+		Timespans: timespans,
 	})
 	if err != nil {
 		return false, fmt.Errorf("add restore finished event to outbox: %w", err)
@@ -1110,6 +1124,41 @@ func (a *Archiver) restoreDocumentVersion(
 			id, dv.Version)
 	}
 
+	var doc newsdoc.Document
+
+	err = json.Unmarshal(dv.DocumentData, &doc)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid document data: %w", err)
+	}
+
+	// Run type extractors, we don't fail the restore on extract failure.
+	var (
+		timespans []Timespan
+		labels    []string
+	)
+
+	tConf, configured, err := a.types.GetConfiguration(ctx, doc.Type)
+
+	if configured && len(tConf.TimeExpressions) > 0 {
+		ts, err := a.types.TimespansForDocument(ctx, doc)
+		if err != nil {
+			a.logger.Error("failed to extract timespans on document restore",
+				elephantine.LogKeyError, err)
+		}
+
+		timespans = ts
+	}
+
+	if configured && len(tConf.LabelExpressions) > 0 {
+		lbl, err := a.types.LabelsForDocument(ctx, doc)
+		if err != nil {
+			a.logger.Error("failed to extract labels on document restore",
+				elephantine.LogKeyError, err)
+		}
+
+		labels = lbl
+	}
+
 	evt, _, err := a.reader.ReadEvent(ctx, dv.EventID, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("read event information for version: %w", err)
@@ -1136,6 +1185,8 @@ func (a *Archiver) restoreDocumentVersion(
 		CreatorUri:   dv.CreatorURI,
 		Meta:         updatedMetaData,
 		DocumentData: dv.DocumentData,
+		Time:         TimespansToTimestampMultiranges(timespans),
+		Labels:       labels,
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("create document version: %w", err)
@@ -1151,6 +1202,8 @@ func (a *Archiver) restoreDocumentVersion(
 		Version:    id,
 		MainDoc:    pg.PUUID(dv.MainDocument),
 		Language:   pg.Text(dv.Language),
+		Time:       TimespansToTimestampMultiranges(timespans),
+		Labels:     labels,
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("update document row: %w", err)
@@ -1168,6 +1221,8 @@ func (a *Archiver) restoreDocumentVersion(
 		SystemState:     SystemStateRestoring,
 		AttachedObjects: evt.Event.AttachedObjects,
 		DetachedObjects: evt.Event.DetachedObjects,
+		Timespans:       TimespansAsTuples(timespans),
+		Labels:          labels,
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("add last version event to outbox: %w", err)

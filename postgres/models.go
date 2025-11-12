@@ -91,7 +91,7 @@ type Document struct {
 	MainDocType    pgtype.Text
 	Nonce          uuid.UUID
 	Time           pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
-	IntrinsicTime  pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels         []string
 }
 
 type DocumentArchiveCounter struct {
@@ -144,6 +144,8 @@ type DocumentVersion struct {
 	Archived     bool
 	Signature    pgtype.Text
 	Language     pgtype.Text
+	Time         pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels       []string
 }
 
 type EventOutboxItem struct {

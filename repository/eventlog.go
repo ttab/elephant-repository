@@ -52,6 +52,7 @@ type Event struct {
 	DetachedObjects    []string       `json:"detached_objects,omitempty"`
 	DeleteRecordID     int64          `json:"delete_record_id,omitempty"`
 	Timespans          [][2]time.Time `json:"timespans,omitempty"`
+	Labels             []string       `json:"labels"`
 }
 
 func NewEventlogBuilder(
@@ -160,6 +161,7 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 					DetachedObjects: evt.DetachedObjects,
 					DeleteRecordID:  evt.DeleteRecordID,
 					Timespans:       evt.Timespans,
+					Labels:          evt.Labels,
 				},
 			}
 

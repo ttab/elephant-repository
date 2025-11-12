@@ -33,9 +33,10 @@ type TypeConfigurations struct {
 	initialised bool
 	initWait    chan struct{}
 
-	m            sync.RWMutex
-	confs        map[string]TypeConfiguration
-	tsExtractors map[string]*DocumentTimespanExtractor
+	m             sync.RWMutex
+	confs         map[string]TypeConfiguration
+	tsExtractors  map[string]*DocumentTimespanExtractor
+	lblExtractors map[string]*LabelsExtractor
 }
 
 // Run initialises the configurations and listens for updates. Blocks until the
@@ -89,6 +90,7 @@ func (th *TypeConfigurations) refreshConfig(
 	}
 
 	tsEx := make(map[string]*DocumentTimespanExtractor, len(configs))
+	lblEx := make(map[string]*LabelsExtractor, len(configs))
 	confs := make(map[string]TypeConfiguration, len(configs))
 
 	for t, c := range configs {
@@ -104,10 +106,21 @@ func (th *TypeConfigurations) refreshConfig(
 			tsEx[t] = te
 		}
 
+		if len(c.LabelExpressions) > 0 {
+			le, err := NewLabelsExtractor(c.LabelExpressions)
+			if err != nil {
+				return fmt.Errorf("create labels extractor for %q: %w",
+					t, err)
+			}
+
+			lblEx[t] = le
+		}
+
 		confs[t] = c
 	}
 
 	th.tsExtractors = tsEx
+	th.lblExtractors = lblEx
 	th.confs = confs
 
 	return nil
@@ -137,6 +150,32 @@ func (th *TypeConfigurations) TimespansForDocument(
 	}
 
 	return spans, nil
+}
+
+// LabelsForDocument calculates the timespans for a given document.
+func (th *TypeConfigurations) LabelsForDocument(
+	ctx context.Context, doc newsdoc.Document,
+) ([]string, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-th.initWait:
+	}
+
+	th.m.RLock()
+	ex, ok := th.lblExtractors[doc.Type]
+	th.m.RUnlock()
+
+	if !ok {
+		return nil, nil
+	}
+
+	labels, err := ex.Extract(doc)
+	if err != nil {
+		return nil, err
+	}
+
+	return labels, nil
 }
 
 // GetConfiguration returns the current configuration for a type.

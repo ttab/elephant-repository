@@ -14,6 +14,10 @@ func typeConfigurationToRPC(
 			[]*repository.TypeTimeExpression,
 			len(conf.TimeExpressions),
 		),
+		LabelExpressions: make(
+			[]*repository.LabelExpression,
+			len(conf.LabelExpressions),
+		),
 	}
 
 	for i, e := range conf.TimeExpressions {
@@ -21,6 +25,13 @@ func typeConfigurationToRPC(
 			Expression: e.Expression,
 			Layout:     e.Layout,
 			Timezone:   e.Timezone,
+		}
+	}
+
+	for i, e := range conf.LabelExpressions {
+		c.LabelExpressions[i] = &repository.LabelExpression{
+			Expression: e.Expression,
+			Template:   e.Template,
 		}
 	}
 
@@ -33,6 +44,7 @@ func typeConfigurationFromRPC(
 	c := TypeConfiguration{
 		BoundedCollection: conf.BoundedCollection,
 		TimeExpressions:   make([]TimespanConfiguration, len(conf.TimeExpressions)),
+		LabelExpressions:  make([]LabelConfiguration, len(conf.LabelExpressions)),
 	}
 
 	for i, e := range conf.TimeExpressions {
@@ -40,6 +52,13 @@ func typeConfigurationFromRPC(
 			Expression: e.Expression,
 			Layout:     e.Layout,
 			Timezone:   e.Timezone,
+		}
+	}
+
+	for i, e := range conf.LabelExpressions {
+		c.LabelExpressions[i] = LabelConfiguration{
+			Expression: e.Expression,
+			Template:   e.Template,
 		}
 	}
 
@@ -53,6 +72,10 @@ func typeConfigurationToDB(conf TypeConfiguration) postgres.TypeConfiguration {
 			[]postgres.TypeTimeExpression,
 			len(conf.TimeExpressions),
 		),
+		LabelExpressions: make(
+			[]postgres.TypeLabelExpression,
+			len(conf.LabelExpressions),
+		),
 	}
 
 	for i, e := range conf.TimeExpressions {
@@ -60,6 +83,13 @@ func typeConfigurationToDB(conf TypeConfiguration) postgres.TypeConfiguration {
 			Expression: e.Expression,
 			Layout:     e.Layout,
 			Timezone:   e.Timezone,
+		}
+	}
+
+	for i, e := range conf.LabelExpressions {
+		c.LabelExpressions[i] = postgres.TypeLabelExpression{
+			Expression: e.Expression,
+			Template:   e.Template,
 		}
 	}
 
@@ -73,6 +103,10 @@ func typeConfigurationFromDB(conf postgres.TypeConfiguration) TypeConfiguration 
 			[]TimespanConfiguration,
 			len(conf.TimeExpressions),
 		),
+		LabelExpressions: make(
+			[]LabelConfiguration,
+			len(conf.LabelExpressions),
+		),
 	}
 
 	for i, e := range conf.TimeExpressions {
@@ -80,6 +114,13 @@ func typeConfigurationFromDB(conf postgres.TypeConfiguration) TypeConfiguration 
 			Expression: e.Expression,
 			Layout:     e.Layout,
 			Timezone:   e.Timezone,
+		}
+	}
+
+	for i, e := range conf.LabelExpressions {
+		c.LabelExpressions[i] = LabelConfiguration{
+			Expression: e.Expression,
+			Template:   e.Template,
 		}
 	}
 

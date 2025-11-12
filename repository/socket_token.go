@@ -81,14 +81,14 @@ func VerifySocketToken(
 func NewSocketToken(subject string, expiry time.Time) *SocketToken {
 	subHash := sha256.Sum256([]byte(subject))
 
-	nonce := make([]byte, 8)
+	id := make([]byte, 8)
 
-	_, _ = rand.Read(nonce)
+	_, _ = rand.Read(id)
 
 	return &SocketToken{
+		ID:          binary.BigEndian.Uint64(id),
 		SubjectHash: subHash,
 		Expires:     expiry,
-		ID:          binary.BigEndian.Uint64(nonce),
 	}
 }
 

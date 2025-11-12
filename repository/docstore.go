@@ -136,11 +136,13 @@ type DocStore interface {
 		ctx context.Context,
 		docType string,
 		span Timespan,
+		labels []string,
 	) ([]DocumentItem, error)
 	ListDocumentsOfType(
 		ctx context.Context,
 		docType string,
 		language *string,
+		labels []string,
 	) ([]DocumentItem, error)
 	EnsureSocketKey(ctx context.Context) (*ecdsa.PrivateKey, error)
 }
@@ -154,6 +156,7 @@ type DocumentItem struct {
 type TypeConfiguration struct {
 	BoundedCollection bool
 	TimeExpressions   []TimespanConfiguration
+	LabelExpressions  []LabelConfiguration
 }
 
 type DeliverableInfo struct {
@@ -512,11 +515,12 @@ type UpdateLockRequest struct {
 }
 
 type DocumentUpdate struct {
-	UUID    uuid.UUID
-	Version int64
-	Creator string
-	Created time.Time
-	Meta    newsdoc.DataMap
+	UUID           uuid.UUID
+	Version        int64
+	CurrentVersion int64
+	Creator        string
+	Created        time.Time
+	Meta           newsdoc.DataMap
 }
 
 type DocumentHistoryItem struct {

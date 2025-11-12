@@ -278,7 +278,7 @@ CREATE TABLE public.document (
     main_doc_type text,
     nonce uuid NOT NULL,
     "time" tstzmultirange,
-    intrinsic_time tstzmultirange
+    labels text[]
 );
 
 
@@ -360,7 +360,9 @@ CREATE TABLE public.document_version (
     document_data jsonb,
     archived boolean DEFAULT false NOT NULL,
     signature text,
-    language text
+    language text,
+    "time" tstzmultirange,
+    labels text[]
 );
 
 
@@ -1072,6 +1074,13 @@ CREATE INDEX document_status_archived ON public.document_status USING btree (cre
 --
 
 CREATE INDEX document_version_archived ON public.document_version USING btree (created) WHERE (archived = false);
+
+
+--
+-- Name: idx_doc_labels; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_doc_labels ON public.document USING gin (labels);
 
 
 --

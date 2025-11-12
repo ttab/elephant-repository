@@ -569,10 +569,12 @@ func (q *Queries) ConfigureEventsink(ctx context.Context, arg ConfigureEventsink
 const createDocumentVersion = `-- name: CreateDocumentVersion :exec
 INSERT INTO document_version(
        uuid, version,
-       created, creator_uri, meta, document_data, archived, language
+       created, creator_uri, meta, document_data, archived, language,
+       time, labels
 ) VALUES (
        $1, $2,
-       $3, $4, $5, $6, false, $7
+       $3, $4, $5, $6, false, $7,
+       $8, $9
 )
 `
 
@@ -584,6 +586,8 @@ type CreateDocumentVersionParams struct {
 	Meta         []byte
 	DocumentData []byte
 	Language     pgtype.Text
+	Time         pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels       []string
 }
 
 func (q *Queries) CreateDocumentVersion(ctx context.Context, arg CreateDocumentVersionParams) error {
@@ -595,6 +599,8 @@ func (q *Queries) CreateDocumentVersion(ctx context.Context, arg CreateDocumentV
 		arg.Meta,
 		arg.DocumentData,
 		arg.Language,
+		arg.Time,
+		arg.Labels,
 	)
 	return err
 }
@@ -1455,26 +1461,32 @@ func (q *Queries) GetDeliverableInfo(ctx context.Context, argUuid uuid.UUID) (Ge
 }
 
 const getDeliverableTimeranges = `-- name: GetDeliverableTimeranges :many
-SELECT a.timerange
+SELECT a.uuid AS assignment, a.planning_item, a.timerange
 FROM planning_deliverable AS d
 INNER JOIN planning_assignment AS a
 ON a.uuid = d.assignment
 WHERE d.document = $1
 `
 
-func (q *Queries) GetDeliverableTimeranges(ctx context.Context, argUuid uuid.UUID) ([]pgtype.Range[pgtype.Timestamptz], error) {
+type GetDeliverableTimerangesRow struct {
+	Assignment   uuid.UUID
+	PlanningItem uuid.UUID
+	Timerange    pgtype.Range[pgtype.Timestamptz]
+}
+
+func (q *Queries) GetDeliverableTimeranges(ctx context.Context, argUuid uuid.UUID) ([]GetDeliverableTimerangesRow, error) {
 	rows, err := q.db.Query(ctx, getDeliverableTimeranges, argUuid)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []pgtype.Range[pgtype.Timestamptz]
+	var items []GetDeliverableTimerangesRow
 	for rows.Next() {
-		var timerange pgtype.Range[pgtype.Timestamptz]
-		if err := rows.Scan(&timerange); err != nil {
+		var i GetDeliverableTimerangesRow
+		if err := rows.Scan(&i.Assignment, &i.PlanningItem, &i.Timerange); err != nil {
 			return nil, err
 		}
-		items = append(items, timerange)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1920,7 +1932,8 @@ func (q *Queries) GetDocumentLog(ctx context.Context, arg GetDocumentLogParams) 
 
 const getDocumentRow = `-- name: GetDocumentRow :one
 SELECT uuid, uri, type, created, creator_uri, updated, updater_uri,
-       current_version, main_doc, language, system_state, nonce
+       current_version, main_doc, language, system_state, nonce,
+       time, labels
 FROM document
 WHERE uuid = $1
 `
@@ -1938,6 +1951,8 @@ type GetDocumentRowRow struct {
 	Language       pgtype.Text
 	SystemState    pgtype.Text
 	Nonce          uuid.UUID
+	Time           pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels         []string
 }
 
 func (q *Queries) GetDocumentRow(ctx context.Context, argUuid uuid.UUID) (GetDocumentRowRow, error) {
@@ -1956,7 +1971,27 @@ func (q *Queries) GetDocumentRow(ctx context.Context, argUuid uuid.UUID) (GetDoc
 		&i.Language,
 		&i.SystemState,
 		&i.Nonce,
+		&i.Time,
+		&i.Labels,
 	)
+	return i, err
+}
+
+const getDocumentSearchInfo = `-- name: GetDocumentSearchInfo :one
+SELECT time, labels
+FROM document
+WHERE uuid = $1
+`
+
+type GetDocumentSearchInfoRow struct {
+	Time   pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels []string
+}
+
+func (q *Queries) GetDocumentSearchInfo(ctx context.Context, argUuid uuid.UUID) (GetDocumentSearchInfoRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentSearchInfo, argUuid)
+	var i GetDocumentSearchInfoRow
+	err := row.Scan(&i.Time, &i.Labels)
 	return i, err
 }
 
@@ -2089,6 +2124,29 @@ func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context, arg GetDoc
 		&i.Language,
 		&i.Nonce,
 	)
+	return i, err
+}
+
+const getDocumentVersionSearchInfo = `-- name: GetDocumentVersionSearchInfo :one
+SELECT time, labels
+FROM document_version
+WHERE uuid = $1 AND version = $2
+`
+
+type GetDocumentVersionSearchInfoParams struct {
+	UUID    uuid.UUID
+	Version int64
+}
+
+type GetDocumentVersionSearchInfoRow struct {
+	Time   pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels []string
+}
+
+func (q *Queries) GetDocumentVersionSearchInfo(ctx context.Context, arg GetDocumentVersionSearchInfoParams) (GetDocumentVersionSearchInfoRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentVersionSearchInfo, arg.UUID, arg.Version)
+	var i GetDocumentVersionSearchInfoRow
+	err := row.Scan(&i.Time, &i.Labels)
 	return i, err
 }
 
@@ -2394,19 +2452,6 @@ func (q *Queries) GetFullVersion(ctx context.Context, arg GetFullVersionParams) 
 		&i.Signature,
 	)
 	return i, err
-}
-
-const getIntrinsicTime = `-- name: GetIntrinsicTime :one
-SELECT intrinsic_time
-FROM document
-WHERE uuid = $1
-`
-
-func (q *Queries) GetIntrinsicTime(ctx context.Context, argUuid uuid.UUID) (pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]], error) {
-	row := q.db.QueryRow(ctx, getIntrinsicTime, argUuid)
-	var intrinsic_time pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
-	err := row.Scan(&intrinsic_time)
-	return intrinsic_time, err
 }
 
 const getInvalidRestoreRequests = `-- name: GetInvalidRestoreRequests :many
@@ -4263,12 +4308,14 @@ FROM document_type AS dt
            ON d.type = dt.type
            AND ($1::text IS NULL OR d.language = $1)
 WHERE dt.type = $2
+      AND (COALESCE(cardinality($3::text[]), 0) = 0 OR d.labels @> $3)
       AND dt.bounded_collection
 `
 
 type SelectBoundedDocumentsWithTypeParams struct {
 	Language pgtype.Text
 	Type     string
+	Labels   []string
 }
 
 type SelectBoundedDocumentsWithTypeRow struct {
@@ -4278,7 +4325,7 @@ type SelectBoundedDocumentsWithTypeRow struct {
 }
 
 func (q *Queries) SelectBoundedDocumentsWithType(ctx context.Context, arg SelectBoundedDocumentsWithTypeParams) ([]SelectBoundedDocumentsWithTypeRow, error) {
-	rows, err := q.db.Query(ctx, selectBoundedDocumentsWithType, arg.Language, arg.Type)
+	rows, err := q.db.Query(ctx, selectBoundedDocumentsWithType, arg.Language, arg.Type, arg.Labels)
 	if err != nil {
 		return nil, err
 	}
@@ -4301,12 +4348,14 @@ const selectDocumentsInTimeRange = `-- name: SelectDocumentsInTimeRange :many
 SELECT d.uuid, d.current_version, d.language
 FROM document AS d
 WHERE d.time && $1::tstzrange
-      AND d.type = $2
+      AND (COALESCE(cardinality($2::text[]), 0) = 0 OR d.labels @> $2)
+      AND d.type = $3
 `
 
 type SelectDocumentsInTimeRangeParams struct {
-	Range pgtype.Range[pgtype.Timestamptz]
-	Type  string
+	Range  pgtype.Range[pgtype.Timestamptz]
+	Labels []string
+	Type   string
 }
 
 type SelectDocumentsInTimeRangeRow struct {
@@ -4316,7 +4365,7 @@ type SelectDocumentsInTimeRangeRow struct {
 }
 
 func (q *Queries) SelectDocumentsInTimeRange(ctx context.Context, arg SelectDocumentsInTimeRangeParams) ([]SelectDocumentsInTimeRangeRow, error) {
-	rows, err := q.db.Query(ctx, selectDocumentsInTimeRange, arg.Range, arg.Type)
+	rows, err := q.db.Query(ctx, selectDocumentsInTimeRange, arg.Range, arg.Labels, arg.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -4831,7 +4880,7 @@ const upsertDocument = `-- name: UpsertDocument :exec
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, main_doc_type, nonce, time, intrinsic_time
+       main_doc, language, main_doc_type, nonce, time, labels
 ) VALUES (
        $1, $2, $3,
        $4, $5, $4, $5, $6,
@@ -4843,22 +4892,22 @@ INSERT INTO document(
          current_version = excluded.current_version,
          language = excluded.language,
          time = COALESCE(excluded.time, document.time),
-         intrinsic_time = COALESCE(excluded.intrinsic_time, document.intrinsic_time)
+         labels = COALESCE(excluded.labels, document.labels)
 `
 
 type UpsertDocumentParams struct {
-	UUID          uuid.UUID
-	URI           string
-	Type          string
-	Created       pgtype.Timestamptz
-	CreatorUri    string
-	Version       int64
-	MainDoc       pgtype.UUID
-	Language      pgtype.Text
-	MainDocType   pgtype.Text
-	Nonce         uuid.UUID
-	Time          pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
-	IntrinsicTime pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	UUID        uuid.UUID
+	URI         string
+	Type        string
+	Created     pgtype.Timestamptz
+	CreatorUri  string
+	Version     int64
+	MainDoc     pgtype.UUID
+	Language    pgtype.Text
+	MainDocType pgtype.Text
+	Nonce       uuid.UUID
+	Time        pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels      []string
 }
 
 func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) error {
@@ -4874,7 +4923,7 @@ func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) 
 		arg.MainDocType,
 		arg.Nonce,
 		arg.Time,
-		arg.IntrinsicTime,
+		arg.Labels,
 	)
 	return err
 }

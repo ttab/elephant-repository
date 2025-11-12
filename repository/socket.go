@@ -39,6 +39,10 @@ func NewSocketHandler(
 	store DocStore,
 	auth elephantine.AuthInfoParser,
 ) *SocketHandler {
+	events := make(chan int64, 128)
+
+	go store.OnEventlog(ctx, events)
+
 	h := SocketHandler{
 		runCtx: ctx,
 		upgrader: websocket.Upgrader{
@@ -92,6 +96,7 @@ func NewSocketSession(
 		authParser: authParser,
 		calls:      make(chan *CallHandle, 8),
 		responses:  make(chan *responseHandle, 16),
+		sets:       make(map[string]*documentSet),
 	}
 }
 
@@ -107,6 +112,8 @@ type SocketSession struct {
 
 	calls     chan *CallHandle
 	responses chan *responseHandle
+
+	sets map[string]*documentSet
 }
 
 func (s *SocketSession) setAuth(auth *elephantine.AuthInfo) {

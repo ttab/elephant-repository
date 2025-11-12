@@ -41,6 +41,25 @@ func (ts *Timespan) InLocation(tz *time.Location) Timespan {
 	}
 }
 
+func (ts *Timespan) Overlaps(b Timespan, tolerance time.Duration) bool {
+	a := *ts
+
+	// Sort the spans we are comparing by start time
+	if b.From.Before(a.From) {
+		a, b = b, a
+	}
+
+	// Overlap: `b.From` is before `a.To`, so the subtraction results in a
+	// negative duration, which is less than tolerance.
+	//
+	// Adjacency: `b.From` equals a.To, resulting
+	// in 0s, which is less than tolerance.
+	//
+	// Nearness: The gap is a positive duration but still less than
+	// tolerance.
+	return b.From.Sub(a.To) < tolerance
+}
+
 // NormaliseTimespans so that all spans are in the given timezone.
 func NormaliseTimespans(spans []Timespan, tz *time.Location) []Timespan {
 	norm := make([]Timespan, len(spans))
@@ -123,6 +142,19 @@ func TimespansAsTuples(s []Timespan) [][2]time.Time {
 
 	for i := range s {
 		ts[i] = s[i].Tuple()
+	}
+
+	return ts
+}
+
+func TimespansFromTuples(s [][2]time.Time) []Timespan {
+	ts := make([]Timespan, len(s))
+
+	for i := range s {
+		ts[i] = Timespan{
+			From: s[i][0],
+			To:   s[i][1],
+		}
 	}
 
 	return ts
