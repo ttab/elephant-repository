@@ -3,26 +3,32 @@ package repository
 import (
 	"context"
 	"fmt"
+	"iter"
 	"slices"
+	"sync"
 
 	"github.com/google/uuid"
 	rpc_newsdoc "github.com/ttab/elephant-api/newsdoc"
-	"github.com/ttab/elephant-api/repositorysocket"
 	rsock "github.com/ttab/elephant-api/repositorysocket"
 	"github.com/ttab/newsdoc"
+	"golang.org/x/sync/errgroup"
 )
 
 type DocumentSetEmitter interface {
+	DocumentBatch(ctx context.Context, msg *rsock.DocumentBatch)
 	Update(ctx context.Context, msg *rsock.DocumentUpdate)
 	InclusionBatch(ctx context.Context, msg *rsock.InclusionBatch)
 	Remove(ctx context.Context, msg *rsock.DocumentRemoved)
+	Error(ctx context.Context, msg *rsock.Error)
 }
 
 func newDocumentSet(
+	docType string,
 	name string,
 	timespan *Timespan,
 	labels []string,
 	includeExtractors []*newsdoc.ValueExtractor,
+	identity []string,
 	cache *DocCache,
 	store DocStore,
 	emitter DocumentSetEmitter,
@@ -30,6 +36,7 @@ func newDocumentSet(
 	slices.Sort(labels)
 
 	ds := documentSet{
+		docType:           docType,
 		name:              name,
 		timespan:          timespan,
 		labels:            slices.Compact(labels),
@@ -37,6 +44,8 @@ func newDocumentSet(
 		included:          make(map[uuid.UUID]*incDocument),
 		includeExtractors: includeExtractors,
 		process:           make(chan DocumentStreamItem, 128),
+		oosErr:            make(chan struct{}),
+		identity:          identity,
 		cache:             cache,
 		store:             store,
 		emitter:           emitter,
@@ -47,9 +56,13 @@ func newDocumentSet(
 
 // documentSet tracks documents that are included in a set. See SocketSession.
 type documentSet struct {
+	docType  string
 	name     string
 	timespan *Timespan
 	labels   []string
+
+	identMutex sync.RWMutex
+	identity   []string
 
 	cache   *DocCache
 	store   DocStore
@@ -61,15 +74,212 @@ type documentSet struct {
 	includeExtractors []*newsdoc.ValueExtractor
 
 	process chan DocumentStreamItem
-	oosErr  bool
+
+	oosErr  chan struct{}
+	oosOnce sync.Once
+}
+
+func (ds *documentSet) IdentityUpdated(uris []string) {
+	ds.identMutex.Lock()
+	ds.identity = uris
+	ds.identMutex.Unlock()
+}
+
+func (ds *documentSet) getIdentity() []string {
+	ds.identMutex.RLock()
+	identity := ds.identity
+	ds.identMutex.RUnlock()
+
+	return identity
 }
 
 func (ds *documentSet) HandleDocStreamItem(item DocumentStreamItem) {
 	select {
+	case <-ds.oosErr:
 	case ds.process <- item:
 	default:
-		ds.oosErr = true
+		ds.oosOnce.Do(func() {
+			close(ds.oosErr)
+		})
 	}
+}
+
+func (ds *documentSet) Initialise(ctx context.Context) error {
+	method := matchByType
+
+	if ds.timespan != nil {
+		method = matchByTimeRange
+	}
+	var items []DocumentItem
+
+	switch method {
+	case matchByTimeRange:
+		hits, err := ds.store.ListDocumentsInTimeRange(
+			ctx, ds.docType, *ds.timespan, ds.labels)
+		if err != nil {
+			return fmt.Errorf(
+				"get documents for time range: %w", err)
+		}
+
+		items = hits
+	case matchByType:
+		hits, err := ds.store.ListDocumentsOfType(
+			ctx, ds.docType, nil, ds.labels)
+		if err != nil {
+			return fmt.Errorf(
+				"get documents by type and labels: %w", err)
+		}
+
+		items = hits
+	default:
+		return fmt.Errorf("unexpected match method: %#v", method)
+	}
+
+	permReq := BulkCheckPermissionRequest{
+		UUIDs:       make([]uuid.UUID, len(items)),
+		GranteeURIs: ds.getIdentity(),
+		Permissions: []Permission{ReadPermission},
+	}
+
+	versions := make(map[uuid.UUID]int64, len(items))
+
+	for i := range items {
+		versions[items[i].UUID] = items[i].CurrentVersion
+		permReq.UUIDs[i] = items[i].UUID
+	}
+
+	allowedDocs, err := ds.store.BulkCheckPermissions(ctx, permReq)
+	if err != nil {
+		return fmt.Errorf("perform pernissions check: %w", err)
+	}
+
+	if len(allowedDocs) == 0 {
+		return nil
+	}
+
+	getRefs := make([]BulkGetReference, len(allowedDocs))
+
+	matches := make(map[uuid.UUID]*DocumentStreamData)
+
+	for i := range allowedDocs {
+		matches[allowedDocs[i]] = &DocumentStreamData{}
+
+		getRefs[i] = BulkGetReference{
+			UUID:    allowedDocs[i],
+			Version: versions[allowedDocs[i]],
+		}
+	}
+
+	var (
+		meta      map[uuid.UUID]*DocumentMeta
+		documents iter.Seq[BulkGetItem]
+	)
+
+	grp, gCtx := errgroup.WithContext(ctx)
+
+	grp.Go(func() error {
+		iter, err := ds.cache.GetDocuments(gCtx, getRefs)
+		if err != nil {
+			return fmt.Errorf("get documents: %w", err)
+		}
+
+		documents = iter
+
+		return nil
+	})
+
+	grp.Go(func() error {
+		m, err := ds.store.BulkGetDocumentMeta(gCtx, allowedDocs)
+		if err != nil {
+			return fmt.Errorf("get document meta: %w", err)
+		}
+
+		meta = m
+
+		return nil
+	})
+
+	err = grp.Wait()
+	if err != nil {
+		return fmt.Errorf("get match data: %w", err)
+	}
+
+	// TODO: This is probably where we would apply filters.
+
+	for docID, m := range meta {
+		match := matches[docID]
+		if match == nil {
+			continue
+		}
+
+		match.Meta = *m
+	}
+
+	for doc := range documents {
+		docID, err := uuid.Parse(doc.Document.UUID)
+		if err != nil {
+			return fmt.Errorf(
+				"invalid document UUID: %w", err)
+		}
+
+		match, ok := matches[docID]
+		if !ok {
+			continue
+		}
+
+		match.Document = doc.Document
+		match.DocumentVersion = doc.Version
+	}
+
+	var (
+		batch       rsock.DocumentBatch
+		inclChanges []inclusionChange
+	)
+
+	for docUUID, m := range matches {
+		batch.Documents = append(batch.Documents,
+			&rsock.DocumentState{
+				Meta:     DocumentMetaToRPC(&m.Meta),
+				Document: rpc_newsdoc.DocumentToRPC(m.Document),
+			})
+
+		incCh := ds.AddDocument(docUUID, m.Document)
+
+		inclChanges = append(inclChanges, incCh...)
+
+		if len(batch.Documents) == 20 {
+			err := ds.emitBatch(ctx, &batch, inclChanges)
+			if err != nil {
+				return fmt.Errorf("emit document batch: %w", err)
+			}
+
+			batch = rsock.DocumentBatch{}
+		}
+	}
+
+	batch.FinalBatch = true
+
+	err = ds.emitBatch(ctx, &batch, inclChanges)
+	if err != nil {
+		return fmt.Errorf("emit final document batch: %w", err)
+	}
+
+	return nil
+}
+
+func (ds *documentSet) emitBatch(
+	ctx context.Context,
+	batch *rsock.DocumentBatch,
+	inclusionChanges []inclusionChange,
+) error {
+	ds.emitter.DocumentBatch(ctx, batch)
+
+	err := ds.handleInclusionChanges(ctx, inclusionChanges)
+	if err != nil {
+		return fmt.Errorf("failed to handle inclusions: %w", err)
+	}
+
+	return nil
 }
 
 func (ds *documentSet) ProcessingLoop(ctx context.Context) {
@@ -77,12 +287,35 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-ds.oosErr:
+			ds.emitErrorf(ctx, "oos", "processing buffer overflow")
 		case item := <-ds.process:
 			isDelete := item.Event.Event == TypeDeleteDocument
 			isDocVersion := item.Event.Event == TypeDocumentVersion
-			matchesSet := ds.EvaluateDocument(item.Timespans, item.Event.Labels)
-			// Deletes always exit the set.
-			shouldBeInSet := !isDelete && matchesSet
+			hasAccess := true
+
+			// Don't do access checks for delete events.
+			if !isDelete {
+				acc, err := ds.store.CheckPermissions(ctx,
+					CheckPermissionRequest{
+						UUID:        item.Event.UUID,
+						GranteeURIs: ds.getIdentity(),
+						Permissions: []Permission{ReadPermission},
+					})
+				if err != nil {
+					ds.emitErrorf(ctx, "processing",
+						"failed to check permissions: %v", err)
+
+					return
+				}
+
+				hasAccess = acc == PermissionCheckAllowed
+			}
+
+			// Deletes and documents that we dont't have access to
+			// always exit the set.
+			shouldBeInSet := !isDelete && hasAccess &&
+				ds.EvaluateDocument(item.Timespans, item.Event.Labels)
 			isInSet := ds.set[item.Event.UUID] != nil
 			isRemove := !shouldBeInSet && isInSet
 			// Is an add if it's a new document version or if the
@@ -109,9 +342,27 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 				ds.emitRemove(ctx, item.Event.UUID)
 			}
 
-			ds.handleInclusionChanges(ctx, inclusionChanges)
+			err := ds.handleInclusionChanges(ctx, inclusionChanges)
+			if err != nil {
+				ds.emitErrorf(ctx, "processing",
+					"failed to handle inclusions: %v", err)
+
+				return
+			}
 		}
 	}
+}
+
+func (ds *documentSet) emitErrorf(
+	ctx context.Context,
+	code string, format string, a ...any,
+) {
+	message := fmt.Sprintf(format, a...)
+
+	ds.emitter.Error(ctx, &rsock.Error{
+		ErrorCode:    code,
+		ErrorMessage: message,
+	})
 }
 
 func (ds *documentSet) emitItem(
@@ -200,7 +451,7 @@ func (ds *documentSet) handleInclusionChanges(
 		}
 	}
 
-	batch := repositorysocket.InclusionBatch{
+	batch := rsock.InclusionBatch{
 		SetName: ds.name,
 	}
 
@@ -211,7 +462,7 @@ func (ds *documentSet) handleInclusionChanges(
 			continue
 		}
 
-		state := repositorysocket.DocumentState{
+		state := rsock.DocumentState{
 			Meta: DocumentMetaToRPC(meta[change.UUID]),
 		}
 

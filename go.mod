@@ -27,7 +27,7 @@ require (
 	github.com/ttab/darknut v0.1.1
 	github.com/ttab/eleconf v0.0.0-20251024090232-0833d46b2190
 	github.com/ttab/elephant-api v0.18.3-0.20251111122920-8726749f7a91
-	github.com/ttab/elephantine v0.21.5-0.20251110122626-63ea544b2962
+	github.com/ttab/elephantine v0.22.0
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.8.3
 	github.com/ttab/newsdoc v0.7.5-0.20251107202832-4fbc8bd29e01
@@ -37,7 +37,7 @@ require (
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/viccon/sturdyc v1.1.5
 	golang.org/x/mod v0.28.0
-	golang.org/x/sync v0.17.0
+	golang.org/x/sync v0.18.0
 	google.golang.org/protobuf v1.36.10
 )
 
@@ -161,7 +161,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/net v0.43.0 // indirect
-	golang.org/x/oauth2 v0.32.0 // indirect
+	golang.org/x/oauth2 v0.33.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
