@@ -16,6 +16,7 @@
       "event": "acl",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
       "acl": [
         {
           "uri": "user://test/testintegrationbasiccrud",
@@ -57,6 +58,7 @@
       "event": "acl",
       "uuid": "88040be2-2e30-4f34-8a9e-3f4802bab8cd",
       "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
       "acl": [
         {
           "uri": "user://test/testintegrationbasiccrud",

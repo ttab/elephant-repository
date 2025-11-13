@@ -16,6 +16,7 @@
       "event": "acl",
       "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
       "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
       "acl": [
         {
           "uri": "user://test/testpurge",

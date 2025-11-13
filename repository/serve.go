@@ -166,6 +166,22 @@ func WithSSE(
 	}
 }
 
+func WithWebsocket(
+	handler http.Handler,
+) RouterOption {
+	return func(router *httprouter.Router) error {
+		router.GET("/websocket/:token", internal.RHandleFunc(func(
+			w http.ResponseWriter, r *http.Request, _ httprouter.Params,
+		) error {
+			handler.ServeHTTP(w, r)
+
+			return nil
+		}))
+
+		return nil
+	}
+}
+
 func WithMetricsAPI(
 	service repository.Metrics,
 	opts ServerOptions,

@@ -154,6 +154,16 @@ func main() {
 				Usage:   "Disable built in character counter",
 				EnvVars: []string{"NO_CHARCOUNTER"},
 			},
+			&cli.BoolFlag{
+				Name:    "no-websocket",
+				Usage:   "Disable websocket API",
+				EnvVars: []string{"NO_WEBSOCKET"},
+			},
+			&cli.BoolFlag{
+				Name:    "no-sse",
+				Usage:   "Disable SSE API",
+				EnvVars: []string{"NO_SSE"},
+			},
 			&cli.StringSliceFlag{
 				Name:    "cors-host",
 				Usage:   "CORS hosts to allow, supports wildcards",
@@ -193,6 +203,8 @@ func runServer(c *cli.Context) error {
 		defaultLanguage = c.String("default-language")
 		defaultTimezone = c.String("default-timezone")
 		noCharCounter   = c.Bool("no-charcounter")
+		noWebsocket     = c.Bool("no-websocket")
+		noSSE           = c.Bool("no-sse")
 		corsHosts       = c.StringSlice("cors-host")
 		migrateDB       = c.Bool("migrate-db")
 	)
@@ -373,6 +385,13 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to create workflows: %w", err)
 	}
 
+	docCache := repository.NewDocCache(store, 1000)
+
+	socketKey, err := store.EnsureSocketKey(c.Context)
+	if err != nil {
+		return fmt.Errorf("ensure socket key: %w", err)
+	}
+
 	docService, err := repository.NewDocumentsService(
 		c.Context,
 		store,
@@ -382,7 +401,8 @@ func runServer(c *cli.Context) error {
 		assets,
 		defaultLanguage,
 		typeConfs,
-		repository.NewDocCache(store, 1000),
+		docCache,
+		socketKey,
 	)
 	if err != nil {
 		return fmt.Errorf("create documents service: %w", err)
@@ -531,20 +551,39 @@ func runServer(c *cli.Context) error {
 		metrics,
 	)
 
-	sse, err := repository.NewSSE(setupCtx, logger.With(
-		elephantine.LogKeyComponent, "sse",
-	), store)
-	if err != nil {
-		return fmt.Errorf("failed to set up SSE server: %w", err)
-	}
-
-	err = repository.SetUpRouter(router,
+	routerOpts := []repository.RouterOption{
 		repository.WithDocumentsAPI(docService, opts),
 		repository.WithSchemasAPI(schemaService, opts),
 		repository.WithWorkflowsAPI(workflowService, opts),
 		repository.WithMetricsAPI(metricsService, opts),
-		repository.WithSSE(sse.HTTPHandler(), opts),
-	)
+	}
+
+	var sseSubsystem *repository.SSE
+
+	if !noSSE {
+		sse, err := repository.NewSSE(setupCtx, logger.With(
+			elephantine.LogKeyComponent, "sse",
+		), store)
+		if err != nil {
+			return fmt.Errorf("failed to set up SSE server: %w", err)
+		}
+
+		routerOpts = append(routerOpts,
+			repository.WithSSE(sse.HTTPHandler(), opts))
+
+		sseSubsystem = sse
+	}
+
+	if !noWebsocket {
+		socket := repository.NewSocketHandler(
+			grace.CancelOnQuit(c.Context), logger,
+			store, docCache, auth.AuthParser, &socketKey.PublicKey)
+
+		routerOpts = append(routerOpts,
+			repository.WithWebsocket(socket))
+	}
+
+	err = repository.SetUpRouter(router, routerOpts...)
 	if err != nil {
 		return fmt.Errorf("failed to set up router: %w", err)
 	}
@@ -681,14 +720,18 @@ func runServer(c *cli.Context) error {
 	})
 
 	serverGroup.Go(func() error {
+		if sseSubsystem == nil {
+			return nil
+		}
+
 		logger.Debug("starting SSE server")
 
 		go func() {
 			<-grace.ShouldStop()
-			sse.Stop()
+			sseSubsystem.Stop()
 		}()
 
-		sse.Run(gCtx)
+		sseSubsystem.Run(gCtx)
 
 		return nil
 	})

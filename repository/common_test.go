@@ -243,13 +243,14 @@ func testingAPIServer(
 
 	if opts.RunArchiver {
 		archiver, err := repository.NewArchiver(repository.ArchiverOptions{
-			Logger:            logger,
-			S3:                env.S3,
-			Bucket:            env.Bucket,
-			AssetBucket:       env.AssetBucket,
-			DB:                dbpool,
-			MetricsRegisterer: reg,
-			Store:             store,
+			Logger:             logger,
+			S3:                 env.S3,
+			Bucket:             env.Bucket,
+			AssetBucket:        env.AssetBucket,
+			DB:                 dbpool,
+			MetricsRegisterer:  reg,
+			Store:              store,
+			TypeConfigurations: typeConf,
 		})
 		test.Must(t, err, "create archiver")
 
@@ -303,6 +304,11 @@ func testingAPIServer(
 	workflows, err := repository.NewWorkflows(ctx, logger, store)
 	test.Must(t, err, "create workflows")
 
+	socketKey, err := store.EnsureSocketKey(ctx)
+	test.Must(t, err, "ensure socket key")
+
+	docCache := repository.NewDocCache(store, 1000)
+
 	docService, err := repository.NewDocumentsService(
 		ctx,
 		store,
@@ -312,7 +318,8 @@ func testingAPIServer(
 		assetBucket,
 		"sv-se",
 		typeConf,
-		repository.NewDocCache(store, 1000),
+		docCache,
+		socketKey,
 	)
 	test.Must(t, err, "create documents service")
 
@@ -329,13 +336,18 @@ func testingAPIServer(
 
 	srvOpts.Hooks = elephantine.LoggingHooks(logger)
 
-	srvOpts.SetJWTValidation(
-		elephantine.NewStaticAuthInfoParser(
-			t.Context(),
-			jwtKey.PublicKey,
-			elephantine.JWTAuthInfoParserOptions{
-				Issuer: "test",
-			}))
+	authParser := elephantine.NewStaticAuthInfoParser(
+		t.Context(),
+		jwtKey.PublicKey,
+		elephantine.JWTAuthInfoParserOptions{
+			Issuer: "test",
+		})
+
+	srvOpts.SetJWTValidation(authParser)
+
+	socket := repository.NewSocketHandler(
+		ctx, logger,
+		store, docCache, authParser, &socketKey.PublicKey)
 
 	err = repository.SetUpRouter(router,
 		repository.WithDocumentsAPI(docService, srvOpts),
@@ -343,6 +355,7 @@ func testingAPIServer(
 		repository.WithWorkflowsAPI(workflowService, srvOpts),
 		repository.WithMetricsAPI(metricsService, srvOpts),
 		repository.WithSSE(sse.HTTPHandler(), srvOpts),
+		repository.WithWebsocket(socket),
 	)
 	test.Must(t, err, "set up router")
 

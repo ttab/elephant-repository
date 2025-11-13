@@ -57,12 +57,8 @@ func NewDocumentsService(
 	defaultLanguage string,
 	docTypes *TypeConfigurations,
 	docCache BulkDocCache,
+	socketKey *ecdsa.PrivateKey,
 ) (*DocumentsService, error) {
-	socketKey, err := store.EnsureSocketKey(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("ensure socket key: %w", err)
-	}
-
 	return &DocumentsService{
 		socketKey:       socketKey,
 		store:           store,

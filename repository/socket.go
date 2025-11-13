@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,13 +41,10 @@ func NewSocketHandler(
 	logger *slog.Logger,
 	store DocStore,
 	cache *DocCache,
-	stream *DocumentStream,
 	auth elephantine.AuthInfoParser,
-	docStream *DocumentStream,
+	socketKey *ecdsa.PublicKey,
 ) *SocketHandler {
-	events := make(chan int64, 128)
-
-	go store.OnEventlog(ctx, events)
+	docStream := NewDocumentStream(ctx, logger, store)
 
 	h := SocketHandler{
 		runCtx: ctx,
@@ -56,9 +55,9 @@ func NewSocketHandler(
 		log:       logger,
 		store:     store,
 		cache:     cache,
-		stream:    stream,
+		stream:    docStream,
 		auth:      auth,
-		docStream: docStream,
+		socketKey: socketKey,
 	}
 
 	return &h
@@ -72,10 +71,30 @@ type SocketHandler struct {
 	cache     *DocCache
 	stream    *DocumentStream
 	auth      elephantine.AuthInfoParser
-	docStream *DocumentStream
+	socketKey *ecdsa.PublicKey
 }
 
 func (h *SocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	token, ok := strings.CutPrefix(r.URL.Path, "/websocket/")
+	if !ok {
+		http.Error(w, "no socket token", http.StatusUnauthorized)
+
+		return
+	}
+
+	tok, err := VerifySocketToken(token, h.socketKey)
+	if err != nil {
+		http.Error(w, "invalid socket token", http.StatusUnauthorized)
+
+		return
+	}
+
+	if tok.Expires.Before(time.Now()) {
+		http.Error(w, "expired socket token", http.StatusUnauthorized)
+
+		return
+	}
+
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		// An error response has already been sent to the client by the
@@ -90,7 +109,7 @@ func (h *SocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	sess := NewSocketSession(conn, h.log, h.store, h.cache, h.stream, h.auth)
 
-	go sess.Run(h.runCtx)
+	sess.Run(r.Context())
 }
 
 func NewSocketSession(

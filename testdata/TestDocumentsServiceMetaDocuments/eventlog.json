@@ -16,6 +16,7 @@
       "event": "acl",
       "uuid": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
       "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
       "acl": [
         {
           "uri": "user://test/testdocumentsservicemetadocuments",
@@ -46,6 +47,7 @@
       "event": "acl",
       "uuid": "92ebfc38-5a1e-40c3-b316-3d06f488526e",
       "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
       "acl": [
         {
           "uri": "user://test/testdocumentsservicemetadocuments",
