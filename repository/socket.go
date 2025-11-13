@@ -276,7 +276,7 @@ func (s *SocketSession) readLoop(ctx context.Context) (outErr error) {
 				},
 			}, true)
 
-			return
+			return nil
 		}
 
 		s.calls <- callHandle
@@ -421,7 +421,7 @@ func (s *SocketSession) handleGetDocuments(
 
 func (s *SocketSession) handleCloseDocumentSet(
 	_ context.Context, _ *CallHandle, req *rsock.CloseDocumentSet,
-) (*rsock.Response, *rsock.Error) {
+) (*rsock.Response, *rsock.Error) { //nolint: unparam
 	set, ok := s.sets[req.SetName]
 	if ok {
 		set.Close()

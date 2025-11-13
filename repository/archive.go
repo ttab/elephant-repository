@@ -1138,6 +1138,9 @@ func (a *Archiver) restoreDocumentVersion(
 	)
 
 	tConf, configured, err := a.types.GetConfiguration(ctx, doc.Type)
+	if err != nil {
+		return nil, "", fmt.Errorf("get type configuration: %w", err)
+	}
 
 	if configured && len(tConf.TimeExpressions) > 0 {
 		ts, err := a.types.TimespansForDocument(ctx, doc)

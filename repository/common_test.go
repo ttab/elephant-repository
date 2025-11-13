@@ -310,7 +310,6 @@ func testingAPIServer(
 	docCache := repository.NewDocCache(store, 1000)
 
 	docService, err := repository.NewDocumentsService(
-		ctx,
 		store,
 		repository.NewSchedulePGStore(dbpool),
 		validator,

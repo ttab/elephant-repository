@@ -48,7 +48,6 @@ type BulkDocCache interface {
 }
 
 func NewDocumentsService(
-	ctx context.Context,
 	store DocStore,
 	sched ScheduleStore,
 	validator DocumentValidator,

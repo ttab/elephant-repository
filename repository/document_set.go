@@ -68,8 +68,10 @@ type documentSet struct {
 	store   DocStore
 	emitter DocumentSetEmitter
 
-	set          map[uuid.UUID]*setDocument
-	included     map[uuid.UUID]*incDocument
+	set      map[uuid.UUID]*setDocument
+	included map[uuid.UUID]*incDocument
+	// TODO: track the document types that we've included so that we can
+	// reject events for types that aren't tracked by the set.
 	includeTypes map[string]int
 
 	includeExtractors []*newsdoc.ValueExtractor
@@ -120,6 +122,7 @@ func (ds *documentSet) Initialise(
 	if ds.timespan != nil {
 		method = matchByTimeRange
 	}
+
 	var items []DocumentItem
 
 	switch method {

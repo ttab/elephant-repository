@@ -393,7 +393,6 @@ func runServer(c *cli.Context) error {
 	}
 
 	docService, err := repository.NewDocumentsService(
-		c.Context,
 		store,
 		repository.NewSchedulePGStore(dbpool),
 		validator,
