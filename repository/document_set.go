@@ -68,8 +68,9 @@ type documentSet struct {
 	store   DocStore
 	emitter DocumentSetEmitter
 
-	set      map[uuid.UUID]*setDocument
-	included map[uuid.UUID]*incDocument
+	set          map[uuid.UUID]*setDocument
+	included     map[uuid.UUID]*incDocument
+	includeTypes map[string]int
 
 	includeExtractors []*newsdoc.ValueExtractor
 
@@ -93,18 +94,27 @@ func (ds *documentSet) getIdentity() []string {
 	return identity
 }
 
-func (ds *documentSet) HandleDocStreamItem(item DocumentStreamItem) {
+func (ds *documentSet) handleDocStreamItem(item DocumentStreamItem) {
 	select {
 	case <-ds.oosErr:
 	case ds.process <- item:
 	default:
+		// If the processing buffer is full we will lose events and get
+		// out of sync with the actual state of things. This will cause
+		// the processing loop to emit an "oos" error and exit on the
+		// next iteration.
 		ds.oosOnce.Do(func() {
 			close(ds.oosErr)
 		})
 	}
 }
 
-func (ds *documentSet) Initialise(ctx context.Context) error {
+func (ds *documentSet) Initialise(
+	ctx context.Context,
+	stream *DocumentStream,
+) error {
+	go stream.Subscribe(ctx, ds.handleDocStreamItem)
+
 	method := matchByType
 
 	if ds.timespan != nil {
@@ -118,7 +128,7 @@ func (ds *documentSet) Initialise(ctx context.Context) error {
 			ctx, ds.docType, *ds.timespan, ds.labels)
 		if err != nil {
 			return fmt.Errorf(
-				"get documents for time range: %w", err)
+				"get documents for type and time range: %w", err)
 		}
 
 		items = hits
@@ -257,6 +267,8 @@ func (ds *documentSet) Initialise(ctx context.Context) error {
 		}
 	}
 
+	// We always emit a final batch, even if it happens to be zero length,
+	// so not checking len(Documents) before emit.
 	batch.FinalBatch = true
 
 	err = ds.emitBatch(ctx, &batch, inclChanges)
@@ -289,6 +301,8 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 			return
 		case <-ds.oosErr:
 			ds.emitErrorf(ctx, "oos", "processing buffer overflow")
+
+			return
 		case item := <-ds.process:
 			isDelete := item.Event.Event == TypeDeleteDocument
 			isDocVersion := item.Event.Event == TypeDocumentVersion
@@ -312,18 +326,30 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 				hasAccess = acc == PermissionCheckAllowed
 			}
 
+			// Being a bit verbose with the booleans here to
+			// document the reasoning and avoid complex boolean
+			// expressions in the actual flow control statements.
+
 			// Deletes and documents that we dont't have access to
 			// always exit the set.
 			shouldBeInSet := !isDelete && hasAccess &&
-				ds.EvaluateDocument(item.Timespans, item.Event.Labels)
+				ds.EvaluateDocument(
+					item.Event.Type,
+					item.Timespans,
+					item.Event.Labels)
 			isInSet := ds.set[item.Event.UUID] != nil
+			// The update caused the document to exit the set.
 			isRemove := !shouldBeInSet && isInSet
 			// Is an add if it's a new document version or if the
 			// document is new to the set.
-			isAdd := shouldBeInSet && (isDocVersion || !isInSet)
+			isAdd := !isRemove && (isDocVersion || !isInSet)
+			// Included documents are not part of the core set (and
+			// are therefore not Added), but they are part of an
+			// extended "inclusion set", and emitted as a service to
+			// the client.
 			isIncluded := ds.included[item.Event.UUID].IncludeCount > 0
-			// Update to a document that either should be in the
-			// set, or is included by a document.
+			// Is an update affecting a document that either should
+			// be in the set, or is included by a document.
 			isUpdate := shouldBeInSet || isIncluded
 
 			var inclusionChanges []inclusionChange
@@ -342,6 +368,12 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 				ds.emitRemove(ctx, item.Event.UUID)
 			}
 
+			// This is where we emit information about included
+			// document when they enter or leave the extended
+			// inclusion set. Inclusion changes are not tied to the
+			// event triggering the inclusion change. But subsequent
+			// changes to the included document will be treated as
+			// normal isUpdate:s.
 			err := ds.handleInclusionChanges(ctx, inclusionChanges)
 			if err != nil {
 				ds.emitErrorf(ctx, "processing",
@@ -397,15 +429,42 @@ func (ds *documentSet) handleInclusionChanges(
 	ctx context.Context,
 	changes []inclusionChange,
 ) error {
+	// No changes, bail early.
+	if len(changes) == 0 {
+		return nil
+	}
+
 	var (
 		metaUUIDS []uuid.UUID
-		loadDocs  = make(map[uuid.UUID]*newsdoc.Document)
+		bulkPerm  = BulkCheckPermissionRequest{
+			GranteeURIs: ds.getIdentity(),
+			Permissions: []Permission{ReadPermission},
+		}
+		canRead  = make(map[uuid.UUID]bool, len(changes))
+		loadDocs = make(map[uuid.UUID]*newsdoc.Document)
 	)
 
 	for _, change := range changes {
 		if change.Change == changeRemoved {
 			ds.emitRemove(ctx, change.UUID)
 
+			continue
+		}
+
+		bulkPerm.UUIDs = append(bulkPerm.UUIDs, change.UUID)
+	}
+
+	access, err := ds.store.BulkCheckPermissions(ctx, bulkPerm)
+	if err != nil {
+		return fmt.Errorf("permissions check: %w", err)
+	}
+
+	for _, docUUID := range access {
+		canRead[docUUID] = true
+	}
+
+	for _, change := range changes {
+		if !canRead[change.UUID] {
 			continue
 		}
 
@@ -417,6 +476,11 @@ func (ds *documentSet) handleInclusionChanges(
 			// populate it with a non nil value after load.
 			loadDocs[change.UUID] = nil
 		}
+	}
+
+	// No access to the added documents.
+	if len(metaUUIDS) == 0 {
+		return nil
 	}
 
 	// Load meta info for all added documents.
@@ -481,7 +545,15 @@ func (ds *documentSet) handleInclusionChanges(
 
 // EvaluateDocument checks if the document matches the timespan and labels
 // defined for the set.
-func (ds *documentSet) EvaluateDocument(timespans []Timespan, labels []string) bool {
+func (ds *documentSet) EvaluateDocument(
+	docType string,
+	timespans []Timespan,
+	labels []string,
+) bool {
+	if docType != ds.docType {
+		return false
+	}
+
 	// If the document has fewer labels that what is required by the set,
 	// the document labels can never have the required labels.
 	if len(labels) < len(ds.labels) {
@@ -695,4 +767,80 @@ func (ds *documentSet) RemoveDocument(docUUID uuid.UUID) []inclusionChange {
 	}
 
 	return changed
+}
+
+type SocketResponder interface {
+	Respond(
+		ctx context.Context,
+		handle *CallHandle,
+		resp *rsock.Response,
+		final bool,
+	)
+}
+
+func newDocumentSetHandle(
+	ctx context.Context,
+	call *CallHandle,
+	responder SocketResponder,
+) *documentSetHandle {
+	ctx, cancel := context.WithCancel(ctx)
+
+	return &documentSetHandle{
+		call:      call,
+		ctx:       ctx,
+		cancel:    cancel,
+		responder: responder,
+	}
+}
+
+var _ DocumentSetEmitter = &documentSetHandle{}
+
+type documentSetHandle struct {
+	call      *CallHandle
+	ctx       context.Context
+	cancel    func()
+	responder SocketResponder
+
+	Set *documentSet
+}
+
+func (d *documentSetHandle) Close() {
+	d.cancel()
+}
+
+// DocumentBatch implements DocumentSetEmitter.
+func (d *documentSetHandle) DocumentBatch(ctx context.Context, msg *rsock.DocumentBatch) {
+	d.responder.Respond(ctx, d.call, &rsock.Response{
+		DocumentBatch: msg,
+	}, false)
+}
+
+// Error implements DocumentSetEmitter.
+func (d *documentSetHandle) Error(ctx context.Context, msg *rsock.Error) {
+	d.responder.Respond(ctx, d.call, &rsock.Response{
+		Error: msg,
+	}, false)
+
+	d.Close()
+}
+
+// InclusionBatch implements DocumentSetEmitter.
+func (d *documentSetHandle) InclusionBatch(ctx context.Context, msg *rsock.InclusionBatch) {
+	d.responder.Respond(ctx, d.call, &rsock.Response{
+		InclusionBatch: msg,
+	}, false)
+}
+
+// Remove implements DocumentSetEmitter.
+func (d *documentSetHandle) Remove(ctx context.Context, msg *rsock.DocumentRemoved) {
+	d.responder.Respond(ctx, d.call, &rsock.Response{
+		Removed: msg,
+	}, false)
+}
+
+// Update implements DocumentSetEmitter.
+func (d *documentSetHandle) Update(ctx context.Context, msg *rsock.DocumentUpdate) {
+	d.responder.Respond(ctx, d.call, &rsock.Response{
+		DocumentUpdate: msg,
+	}, false)
 }

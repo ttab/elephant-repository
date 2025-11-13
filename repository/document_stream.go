@@ -29,9 +29,9 @@ type DocumentStreamItem struct {
 	Data      *DocumentStreamData
 }
 
-// DocumentStreamHandler handles a entry in the document stream. A handler
+// DocumentStreamHandlerFunc handles a entry in the document stream. A handler
 // should never block as as handlers are processed serially.
-type DocumentStreamHandler func(item DocumentStreamItem)
+type DocumentStreamHandlerFunc func(item DocumentStreamItem)
 
 func NewDocumentStream(
 	ctx context.Context,
@@ -47,7 +47,7 @@ func NewDocumentStream(
 	s := DocumentStream{
 		ctx:       ctx,
 		log:       log,
-		consumers: make(map[int64]DocumentStreamHandler),
+		consumers: make(map[int64]DocumentStreamHandlerFunc),
 		lastID:    -1, // Start from last event.
 		eventChan: ch,
 		store:     store,
@@ -63,7 +63,7 @@ type DocumentStream struct {
 	log       *slog.Logger
 	m         sync.RWMutex
 	serial    int64
-	consumers map[int64]DocumentStreamHandler
+	consumers map[int64]DocumentStreamHandlerFunc
 
 	// No mutex needed for these as they're only touched from the event
 	// handling loop.
@@ -217,7 +217,7 @@ func (s *DocumentStream) emitEvents(ctx context.Context, observed int64) error {
 
 // Subscribe calls handler with new items until the subscription context is
 // cancelled or the document stream is stopped.
-func (s *DocumentStream) Subscribe(ctx context.Context, handler DocumentStreamHandler) {
+func (s *DocumentStream) Subscribe(ctx context.Context, handler DocumentStreamHandlerFunc) {
 	s.m.Lock()
 
 	s.serial++
