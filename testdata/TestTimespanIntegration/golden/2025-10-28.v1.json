@@ -1,6 +1,76 @@
 {
   "matches": [
     {
+      "uuid": "6f0ddabc-a2f6-417f-af4a-715f7b61f97e",
+      "version": "1",
+      "document": {
+        "uuid": "6f0ddabc-a2f6-417f-af4a-715f7b61f97e",
+        "type": "core/event",
+        "uri": "core://event/6f0ddabc-a2f6-417f-af4a-715f7b61f97e",
+        "title": "Acea: Europeiska bilregistreringar",
+        "meta": [
+          {
+            "type": "core/newsvalue",
+            "value": "3"
+          },
+          {
+            "type": "core/description",
+            "data": {
+              "text": "Branschorganisationen Acea publicerar nya personbilsregistreringar i Europa, föregående månad."
+            },
+            "role": "public"
+          },
+          {
+            "type": "core/event",
+            "data": {
+              "dateGranularity": "date",
+              "end": "2025-10-28T22:59:59.999Z",
+              "registration": "Mer information: https://www.acea.auto/press-release-calendar/",
+              "start": "2025-10-27T23:00:00.000Z"
+            }
+          },
+          {
+            "uuid": "4514a5bf-df1b-4e6d-9f42-a175c8ebbf37",
+            "type": "core/copy-group"
+          }
+        ],
+        "links": [
+          {
+            "uuid": "c3e9fe11-6d84-4926-b0d2-8048fe163145",
+            "type": "core/section",
+            "title": "Ekonomi",
+            "rel": "section"
+          },
+          {
+            "uuid": "0cc646a0-f9a0-5aaf-9530-33783461e387",
+            "type": "core/category",
+            "title": "Ekonomi, affärer och finans",
+            "rel": "category"
+          }
+        ],
+        "language": "sv-se"
+      },
+      "meta": {
+        "created": "2023-01-10T20:06:37+01:00",
+        "modified": "2023-01-10T20:06:37+01:00",
+        "current_version": "1",
+        "acl": [
+          {
+            "uri": "user://test/testtimespanintegration",
+            "permissions": [
+              "r",
+              "w"
+            ]
+          }
+        ],
+        "workflow_state": "draft",
+        "creator_uri": "user://test/testtimespanintegration",
+        "updater_uri": "user://test/testtimespanintegration",
+        "nonce": "e380cbcd-f10c-4edb-911f-56986866a51b",
+        "type": "core/event"
+      }
+    },
+    {
       "uuid": "e9f0250d-1bf3-46d5-863f-9a878fa11635",
       "version": "1",
       "document": {
@@ -75,76 +145,6 @@
         ],
         "workflow_state": "usable",
         "workflow_checkpoint": "usable",
-        "creator_uri": "user://test/testtimespanintegration",
-        "updater_uri": "user://test/testtimespanintegration",
-        "nonce": "e380cbcd-f10c-4edb-911f-56986866a51b",
-        "type": "core/event"
-      }
-    },
-    {
-      "uuid": "6f0ddabc-a2f6-417f-af4a-715f7b61f97e",
-      "version": "1",
-      "document": {
-        "uuid": "6f0ddabc-a2f6-417f-af4a-715f7b61f97e",
-        "type": "core/event",
-        "uri": "core://event/6f0ddabc-a2f6-417f-af4a-715f7b61f97e",
-        "title": "Acea: Europeiska bilregistreringar",
-        "meta": [
-          {
-            "type": "core/newsvalue",
-            "value": "3"
-          },
-          {
-            "type": "core/description",
-            "data": {
-              "text": "Branschorganisationen Acea publicerar nya personbilsregistreringar i Europa, föregående månad."
-            },
-            "role": "public"
-          },
-          {
-            "type": "core/event",
-            "data": {
-              "dateGranularity": "date",
-              "end": "2025-10-28T22:59:59.999Z",
-              "registration": "Mer information: https://www.acea.auto/press-release-calendar/",
-              "start": "2025-10-27T23:00:00.000Z"
-            }
-          },
-          {
-            "uuid": "4514a5bf-df1b-4e6d-9f42-a175c8ebbf37",
-            "type": "core/copy-group"
-          }
-        ],
-        "links": [
-          {
-            "uuid": "c3e9fe11-6d84-4926-b0d2-8048fe163145",
-            "type": "core/section",
-            "title": "Ekonomi",
-            "rel": "section"
-          },
-          {
-            "uuid": "0cc646a0-f9a0-5aaf-9530-33783461e387",
-            "type": "core/category",
-            "title": "Ekonomi, affärer och finans",
-            "rel": "category"
-          }
-        ],
-        "language": "sv-se"
-      },
-      "meta": {
-        "created": "2023-01-10T20:06:37+01:00",
-        "modified": "2023-01-10T20:06:37+01:00",
-        "current_version": "1",
-        "acl": [
-          {
-            "uri": "user://test/testtimespanintegration",
-            "permissions": [
-              "r",
-              "w"
-            ]
-          }
-        ],
-        "workflow_state": "draft",
         "creator_uri": "user://test/testtimespanintegration",
         "updater_uri": "user://test/testtimespanintegration",
         "nonce": "e380cbcd-f10c-4edb-911f-56986866a51b",

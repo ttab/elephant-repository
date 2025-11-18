@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -146,6 +148,11 @@ func TestTimespanIntegration(t *testing.T) {
 		IncludeMeta:      true,
 	})
 	test.Must(t, err, "get matching events for 2025-10-28")
+
+	// The order is not defined, sort by UUID for consistency.
+	slices.SortFunc(getEvents.Matches, func(a, b *rpc.DocumentMatch) int {
+		return strings.Compare(a.Uuid, b.Uuid)
+	})
 
 	test.TestMessageAgainstGolden(t, regenerate, getEvents,
 		filepath.Join(outputDir, "2025-10-28.v1.json"),
