@@ -40,7 +40,6 @@
                 "type": "core/planning-item",
                 "data": {
                   "end_date": "2025-11-14",
-                  "public": "true",
                   "start_date": "2025-11-14",
                   "tentative": "false"
                 }
@@ -246,7 +245,6 @@
             "type": "core/planning-item",
             "data": {
               "end_date": "2025-11-14",
-              "public": "true",
               "start_date": "2025-11-14",
               "tentative": "false"
             }
@@ -361,7 +359,6 @@
             "type": "core/planning-item",
             "data": {
               "end_date": "2025-11-14",
-              "public": "true",
               "start_date": "2025-11-14",
               "tentative": "false"
             }
