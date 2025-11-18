@@ -101,9 +101,12 @@ func (h *SocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	rate, err := h.rate.GetOrFetch(
 		r.Context(), strconv.FormatUint(tok.ID, 10),
-		func(ctx context.Context) (*rate.Limiter, error) {
+		func(_ context.Context) (*rate.Limiter, error) {
 			return rate.NewLimiter(rate.Every(5*time.Second), 1), nil
 		})
+	if err != nil {
+		http.Error(w, "internal error: rate limiting", http.StatusInternalServerError)
+	}
 
 	if !rate.Allow() {
 		http.Error(w, "rate limited", http.StatusTooManyRequests)

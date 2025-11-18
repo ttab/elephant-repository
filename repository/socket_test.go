@@ -82,6 +82,8 @@ func TestIntegrationSocket(t *testing.T) {
 	res, err := http.Get(wsURL.String())
 	test.Must(t, err, "make throttling check request")
 
+	_ = res.Body.Close()
+
 	test.Equal(t, http.StatusTooManyRequests, res.StatusCode,
 		"get a too many requests response")
 
