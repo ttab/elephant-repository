@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,7 +18,9 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
 	"github.com/twitchtv/twirp"
+	"github.com/viccon/sturdyc"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -46,6 +49,11 @@ func NewSocketHandler(
 ) *SocketHandler {
 	docStream := NewDocumentStream(ctx, logger, store)
 
+	rateLimiterCache := sturdyc.New[*rate.Limiter](
+		5000, 1,
+		1*time.Minute, 10,
+		sturdyc.WithEvictionInterval(30*time.Second))
+
 	h := SocketHandler{
 		runCtx: ctx,
 		upgrader: websocket.Upgrader{
@@ -58,6 +66,7 @@ func NewSocketHandler(
 		stream:    docStream,
 		auth:      auth,
 		socketKey: socketKey,
+		rate:      rateLimiterCache,
 	}
 
 	return &h
@@ -72,6 +81,7 @@ type SocketHandler struct {
 	stream    *DocumentStream
 	auth      elephantine.AuthInfoParser
 	socketKey *ecdsa.PublicKey
+	rate      *sturdyc.Client[*rate.Limiter]
 }
 
 func (h *SocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +95,18 @@ func (h *SocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tok, err := VerifySocketToken(token, h.socketKey)
 	if err != nil {
 		http.Error(w, "invalid socket token", http.StatusUnauthorized)
+
+		return
+	}
+
+	rate, err := h.rate.GetOrFetch(
+		r.Context(), strconv.FormatUint(tok.ID, 10),
+		func(ctx context.Context) (*rate.Limiter, error) {
+			return rate.NewLimiter(rate.Every(5*time.Second), 1), nil
+		})
+
+	if !rate.Allow() {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
 
 		return
 	}

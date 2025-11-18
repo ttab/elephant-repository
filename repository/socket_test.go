@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -62,11 +63,10 @@ func TestIntegrationSocket(t *testing.T) {
 	serverURL, err := url.Parse(tc.Server.URL)
 	test.Must(t, err, "parse server URL")
 
-	serverURL.Scheme = "ws"
+	wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
+	wsURL.Scheme = "ws"
 
-	wsURL := serverURL.JoinPath("websocket", tokenResp.Token).String()
-
-	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
 	test.Must(t, err, "dial websocket")
 
 	t.Cleanup(func() {
@@ -75,6 +75,15 @@ func TestIntegrationSocket(t *testing.T) {
 			t.Errorf("close websocket response body: %v", err)
 		}
 	})
+
+	wsURL.Scheme = "http"
+
+	// Immediately make a request with the same token to trigger rate limit.
+	res, err := http.Get(wsURL.String())
+	test.Must(t, err, "make throttling check request")
+
+	test.Equal(t, http.StatusTooManyRequests, res.StatusCode,
+		"get a too many requests response")
 
 	callID := makeCall(t, conn, &repositorysocket.Call{
 		Authenticate: &repositorysocket.Authenticate{
