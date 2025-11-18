@@ -73,9 +73,6 @@ type documentSet struct {
 
 	set      map[uuid.UUID]*setDocument
 	included map[uuid.UUID]*incDocument
-	// TODO: track the document types that we've included so that we can
-	// reject events for types that aren't tracked by the set.
-	includeTypes map[string]int
 
 	includeExtractors []*newsdoc.ValueExtractor
 
@@ -314,6 +311,18 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 
 			return
 		case item := <-ds.process:
+			// Included documents are not part of the core set (and
+			// are therefore not Added), but they are part of an
+			// extended "inclusion set", and emitted as a service to
+			// the client.
+			isIncluded, includeDoc := ds.isIncluded(item.Event.UUID)
+
+			// Only process events for documents that have been
+			// included or have the core set type.
+			if item.Event.Type != ds.docType && !isIncluded {
+				continue
+			}
+
 			isDelete := item.Event.Event == TypeDeleteDocument
 			isDocVersion := item.Event.Event == TypeDocumentVersion
 			hasAccess := true
@@ -343,6 +352,7 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 			// Deletes and documents that we dont't have access to
 			// always exit the set.
 			shouldBeInSet := !isDelete && hasAccess &&
+				item.Event.Type == ds.docType &&
 				ds.EvaluateDocument(
 					item.Event.Type,
 					item.Timespans,
@@ -353,11 +363,6 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 			// Is an add if it's a new document version or if the
 			// document is new to the set.
 			isAdd := !isRemove && shouldBeInSet && (isDocVersion || !isInSet)
-			// Included documents are not part of the core set (and
-			// are therefore not Added), but they are part of an
-			// extended "inclusion set", and emitted as a service to
-			// the client.
-			isIncluded, includeDoc := ds.isIncluded(item.Event.UUID)
 			// Should the document state be included.
 			withState := isAdd || (includeDoc && isDocVersion)
 			// Is an update affecting a document that either should
@@ -375,7 +380,7 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 
 			switch {
 			case isUpdate:
-				ds.emitItem(ctx, item, withState)
+				ds.emitItem(ctx, item, withState, shouldBeInSet)
 			case isRemove:
 				ds.emitRemove(ctx, item.Event.UUID)
 			}
@@ -422,10 +427,12 @@ func (ds *documentSet) emitItem(
 	ctx context.Context,
 	item DocumentStreamItem,
 	withState bool,
+	inSet bool,
 ) {
 	update := rsock.DocumentUpdate{
-		SetName: ds.name,
-		Event:   EventToRPC(item.Event),
+		SetName:  ds.name,
+		Event:    EventToRPC(item.Event),
+		Included: !inSet,
 	}
 
 	if withState {

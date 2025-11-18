@@ -347,6 +347,8 @@ github.com/ttab/elephant-api v0.18.3-0.20251117132105-baff7bec911d h1:sPk1nYtbn4
 github.com/ttab/elephant-api v0.18.3-0.20251117132105-baff7bec911d/go.mod h1:2sd48dqSKazXhiPEpZyw648PWah0CUjDaQZ6MT48S4A=
 github.com/ttab/elephant-api v0.18.3-0.20251117134152-3e4e75e0a016 h1:6JC552KGerQ+f5L5rsTKxNzTUmaCQB/9pnLsTsBH8MU=
 github.com/ttab/elephant-api v0.18.3-0.20251117134152-3e4e75e0a016/go.mod h1:2sd48dqSKazXhiPEpZyw648PWah0CUjDaQZ6MT48S4A=
+github.com/ttab/elephant-api v0.18.3-0.20251118072339-43bb225f1844 h1:OEhlV9AAetCL18Y2nueZPBf3zuCN+fD02UYFN8pv/Gc=
+github.com/ttab/elephant-api v0.18.3-0.20251118072339-43bb225f1844/go.mod h1:2sd48dqSKazXhiPEpZyw648PWah0CUjDaQZ6MT48S4A=
 github.com/ttab/elephantine v0.22.0 h1:7qURGWu+rNreTpjpagDAdTGs2LJsdhhAqEbKbl5xkz4=
 github.com/ttab/elephantine v0.22.0/go.mod h1:yPPPD+H5yVZ9QHCd054znsh7s3DsZRx9LR9gUi+6rXo=
 github.com/ttab/elephantine v0.22.1-0.20251117112946-8bcbfbff7ed2 h1:P6I5BZNVqYo4lY24SFe/MR+rbj6R3j+11bcBpLzdG8k=
