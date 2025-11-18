@@ -103,7 +103,7 @@ WHERE uuid = @uuid;
 
 -- name: GetDocumentInfo :one
 SELECT
-        d.uuid, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
+        d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
         d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
@@ -115,7 +115,7 @@ WHERE d.uuid = @uuid;
 
 -- name: BulkGetDocumentInfo :many
 SELECT
-        d.uuid, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
+        d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
         d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,

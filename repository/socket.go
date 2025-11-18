@@ -252,8 +252,15 @@ func (s *SocketSession) readLoop(ctx context.Context) (outErr error) {
 		default:
 		}
 
+		var (
+			fatal  errSockFatal
+			closed *websocket.CloseError
+		)
+
 		callHandle, err := s.readCall()
-		if errors.Is(err, errSockFatal{}) {
+		if errors.As(err, &closed) {
+			return nil
+		} else if errors.As(err, &fatal) {
 			return err
 		} else if err != nil {
 			s.log.Warn("failed to read message from websocket",
@@ -262,9 +269,20 @@ func (s *SocketSession) readLoop(ctx context.Context) (outErr error) {
 			continue
 		}
 
+		if callHandle.Call.CallId == "" {
+			s.Respond(ctx, callHandle, &rsock.Response{
+				Error: &rsock.Error{
+					ErrorCode:    string(twirp.InvalidArgument),
+					ErrorMessage: "call_id is required",
+				},
+			}, true)
+
+			return nil
+		}
+
 		auth, _ := s.getAuth()
 
-		if auth.Claims.ExpiresAt.Before(time.Now()) {
+		if auth != nil && auth.Claims.ExpiresAt.Before(time.Now()) {
 			auth = nil
 		}
 
@@ -324,6 +342,8 @@ func (s *SocketSession) runHandler(ctx context.Context, call *CallHandle) bool {
 
 		return final
 	}
+
+	resp.Handled = true
 
 	s.Respond(ctx, call, resp, false)
 
@@ -399,7 +419,7 @@ func (s *SocketSession) handleGetDocuments(
 	_, identity := s.getAuth()
 
 	docSet := newDocumentSet(
-		req.Type, req.SetName,
+		req.Type, req.IncludeAcls, req.SetName,
 		timespan, req.Labels,
 		includeExtractors,
 		identity, s.cache, s.store, handle)
@@ -413,6 +433,8 @@ func (s *SocketSession) handleGetDocuments(
 		return nil, SockErrorf(string(twirp.Internal),
 			"initialise document set: %v", err)
 	}
+
+	go docSet.ProcessingLoop(handle.ctx)
 
 	s.sets[req.SetName] = handle
 
@@ -458,12 +480,6 @@ func (s *SocketSession) writeLoop(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			err := s.writeMessage(websocket.CloseMessage, nil)
-			if err != nil {
-				s.log.Warn("failed to write close message",
-					elephantine.LogKeyError, err)
-			}
-
 			return ctx.Err()
 		case <-s.authExpired.C:
 			// If the current authentication expires we immediately
@@ -571,17 +587,19 @@ type responseHandle struct {
 func (s *SocketSession) writeResponse(
 	r *responseHandle,
 ) error {
+	useProtobuf := false
 	msgType := websocket.TextMessage
 
 	resp := r.Response
 
 	if r.CallHandle != nil {
+		useProtobuf = r.CallHandle.Protobuf
 		resp.CallId = r.CallHandle.Call.CallId
 	}
 
 	var data []byte
 
-	switch r.CallHandle.Protobuf {
+	switch useProtobuf {
 	case true:
 		msgType = websocket.BinaryMessage
 

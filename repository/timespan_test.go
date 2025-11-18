@@ -195,19 +195,21 @@ func writeDoc(
 	t *testing.T, docClient rpc.Documents,
 	dataDir string, name string,
 	status []*rpc.StatusUpdate,
-) {
+) string {
 	t.Helper()
 
-	var nvidia newsdoc.Document
+	var doc newsdoc.Document
 
 	err := elephantine.UnmarshalFile(
-		filepath.Join(dataDir, name+".json"), &nvidia)
+		filepath.Join(dataDir, name+".json"), &doc)
 	test.Must(t, err, "unmarshal %s document", name)
 
 	_, err = docClient.Update(t.Context(), &rpc.UpdateRequest{
-		Uuid:     nvidia.UUID,
-		Document: rpc_newsdoc.DocumentToRPC(nvidia),
+		Uuid:     doc.UUID,
+		Document: rpc_newsdoc.DocumentToRPC(doc),
 		Status:   status,
 	})
 	test.Must(t, err, "write %s document", name)
+
+	return doc.UUID
 }

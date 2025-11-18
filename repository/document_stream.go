@@ -208,6 +208,8 @@ func (s *DocumentStream) emitEvents(ctx context.Context, observed int64) error {
 		for _, h := range s.consumers {
 			h(item)
 		}
+
+		s.lastID = evt.ID
 	}
 
 	s.m.RUnlock()

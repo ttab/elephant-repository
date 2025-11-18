@@ -24,6 +24,7 @@ type DocumentSetEmitter interface {
 
 func newDocumentSet(
 	docType string,
+	includeACL bool,
 	name string,
 	timespan *Timespan,
 	labels []string,
@@ -37,6 +38,7 @@ func newDocumentSet(
 
 	ds := documentSet{
 		docType:           docType,
+		includeACL:        includeACL,
 		name:              name,
 		timespan:          timespan,
 		labels:            slices.Compact(labels),
@@ -56,10 +58,11 @@ func newDocumentSet(
 
 // documentSet tracks documents that are included in a set. See SocketSession.
 type documentSet struct {
-	docType  string
-	name     string
-	timespan *Timespan
-	labels   []string
+	docType    string
+	includeACL bool
+	name       string
+	timespan   *Timespan
+	labels     []string
 
 	identMutex sync.RWMutex
 	identity   []string
@@ -97,6 +100,10 @@ func (ds *documentSet) getIdentity() []string {
 }
 
 func (ds *documentSet) handleDocStreamItem(item DocumentStreamItem) {
+	if item.Event.Event == TypeACLUpdate && !ds.includeACL {
+		return
+	}
+
 	select {
 	case <-ds.oosErr:
 	case ds.process <- item:
@@ -345,12 +352,14 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 			isRemove := !shouldBeInSet && isInSet
 			// Is an add if it's a new document version or if the
 			// document is new to the set.
-			isAdd := !isRemove && (isDocVersion || !isInSet)
+			isAdd := !isRemove && shouldBeInSet && (isDocVersion || !isInSet)
 			// Included documents are not part of the core set (and
 			// are therefore not Added), but they are part of an
 			// extended "inclusion set", and emitted as a service to
 			// the client.
-			isIncluded := ds.included[item.Event.UUID].IncludeCount > 0
+			isIncluded, includeDoc := ds.isIncluded(item.Event.UUID)
+			// Should the document state be included.
+			withState := isAdd || (includeDoc && isDocVersion)
 			// Is an update affecting a document that either should
 			// be in the set, or is included by a document.
 			isUpdate := shouldBeInSet || isIncluded
@@ -366,7 +375,7 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 
 			switch {
 			case isUpdate:
-				ds.emitItem(ctx, item, isAdd)
+				ds.emitItem(ctx, item, withState)
 			case isRemove:
 				ds.emitRemove(ctx, item.Event.UUID)
 			}
@@ -386,6 +395,15 @@ func (ds *documentSet) ProcessingLoop(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (ds *documentSet) isIncluded(docUUID uuid.UUID) (bool, bool) {
+	inc := ds.included[docUUID]
+	if inc == nil {
+		return false, false
+	}
+
+	return inc.IncludeCount > 0, inc.GetDocCount > 0
 }
 
 func (ds *documentSet) emitErrorf(
@@ -538,7 +556,10 @@ func (ds *documentSet) handleInclusionChanges(
 			state.Document = rpc_newsdoc.DocumentToRPC(*doc)
 		}
 
-		batch.Documents = append(batch.Documents, &state)
+		batch.Documents = append(batch.Documents, &rsock.InclusionDocument{
+			Uuid:  change.UUID.String(),
+			State: &state,
+		})
 	}
 
 	ds.emitter.InclusionBatch(ctx, &batch)

@@ -228,7 +228,7 @@ func (q *Queries) BulkGetDocumentData(ctx context.Context, arg BulkGetDocumentDa
 
 const bulkGetDocumentInfo = `-- name: BulkGetDocumentInfo :many
 SELECT
-        d.uuid, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
+        d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
         d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
@@ -246,6 +246,7 @@ type BulkGetDocumentInfoParams struct {
 
 type BulkGetDocumentInfoRow struct {
 	UUID               uuid.UUID
+	Type               string
 	URI                string
 	Created            pgtype.Timestamptz
 	CreatorUri         string
@@ -277,6 +278,7 @@ func (q *Queries) BulkGetDocumentInfo(ctx context.Context, arg BulkGetDocumentIn
 		var i BulkGetDocumentInfoRow
 		if err := rows.Scan(
 			&i.UUID,
+			&i.Type,
 			&i.URI,
 			&i.Created,
 			&i.CreatorUri,
@@ -1781,7 +1783,7 @@ func (q *Queries) GetDocumentHeads(ctx context.Context, argUuid uuid.UUID) ([]Ge
 
 const getDocumentInfo = `-- name: GetDocumentInfo :one
 SELECT
-        d.uuid, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
+        d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
         d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
@@ -1799,6 +1801,7 @@ type GetDocumentInfoParams struct {
 
 type GetDocumentInfoRow struct {
 	UUID               uuid.UUID
+	Type               string
 	URI                string
 	Created            pgtype.Timestamptz
 	CreatorUri         string
@@ -1824,6 +1827,7 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, arg GetDocumentInfoParams
 	var i GetDocumentInfoRow
 	err := row.Scan(
 		&i.UUID,
+		&i.Type,
 		&i.URI,
 		&i.Created,
 		&i.CreatorUri,

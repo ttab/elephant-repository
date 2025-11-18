@@ -848,6 +848,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		CurrentVersion: 1,
 		IsMetaDocument: true,
 		MainDocument:   docA.Uuid,
+		Type:           "test/metadata",
 		CreatorUri:     "user://test/testdocumentsservicemetadocuments",
 		UpdaterUri:     "user://test/testdocumentsservicemetadocuments",
 	}
@@ -1170,6 +1171,7 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	test.Must(t, err, "be able to load document A metadata")
 
 	wantMetaA := repository.DocumentMeta{
+		Type: "core/article",
 		Acl: []*repository.ACLEntry{
 			{
 				Uri:         testUserURI,
@@ -1195,6 +1197,7 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	test.Must(t, err, "be able to load document B metadata")
 
 	wantMetaB := repository.DocumentMeta{
+		Type: "core/article",
 		Acl: []*repository.ACLEntry{
 			{
 				Uri:         testUserURI,

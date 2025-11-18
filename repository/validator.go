@@ -27,6 +27,8 @@ type Validator struct {
 	docsWithDeprecationsCounter prometheus.CounterVec
 	stopChannel                 chan struct{}
 	cancel                      func()
+
+	refreshChan chan chan struct{}
 }
 
 type ValidatorStore interface {
@@ -46,6 +48,7 @@ func NewValidator(
 		logger:      logger,
 		stopChannel: make(chan struct{}),
 		cancel:      cancel,
+		refreshChan: make(chan chan struct{}),
 	}
 
 	v.deprecationsCounter = *prometheus.NewCounterVec(
@@ -81,6 +84,27 @@ func NewValidator(
 	return &v, nil
 }
 
+func (v *Validator) RefreshSchemas(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	ch := make(chan struct{})
+
+	select {
+	case v.refreshChan <- ch:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	select {
+	case <-ch:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	return nil
+}
+
 func (v *Validator) reloadLoop(
 	ctx context.Context, logger *slog.Logger, loader ValidatorStore,
 ) {
@@ -95,12 +119,15 @@ func (v *Validator) reloadLoop(
 	loader.OnDeprecationUpdate(ctx, deprecationSub)
 
 	for {
+		var refreshChan chan struct{}
+
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(recheckInterval):
 		case <-schemaSub:
 		case <-deprecationSub:
+		case refreshChan = <-v.refreshChan:
 		}
 
 		err := v.loadSchemas(ctx, loader)
@@ -117,6 +144,10 @@ func (v *Validator) reloadLoop(
 			logger.ErrorContext(ctx, "failed to refresh deprecations",
 				elephantine.LogKeyError, err,
 				elephantine.LogKeyCountMetric, "elephant_deprecation_refresh_failure_count")
+		}
+
+		if refreshChan != nil {
+			close(refreshChan)
 		}
 	}
 }

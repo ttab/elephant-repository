@@ -36,6 +36,7 @@
     "workflow_checkpoint": "usable",
     "creator_uri": "user://test/testintegrationworkflows",
     "updater_uri": "user://test/testintegrationworkflows",
-    "nonce": "00000000-0000-0000-0000-000000000000"
+    "nonce": "00000000-0000-0000-0000-000000000000",
+    "type": "core/article"
   }
 }

@@ -1448,6 +1448,7 @@ func (s *PGDocStore) GetDocumentMeta(
 	}
 
 	meta := DocumentMeta{
+		Type:               info.Type,
 		Nonce:              info.Nonce,
 		Created:            info.Created.Time,
 		CreatorURI:         info.CreatorUri,
@@ -1537,6 +1538,7 @@ func (s *PGDocStore) BulkGetDocumentMeta(
 		}
 
 		meta := DocumentMeta{
+			Type:               info.Type,
 			Nonce:              info.Nonce,
 			Created:            info.Created.Time,
 			CreatorURI:         info.CreatorUri,

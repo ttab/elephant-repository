@@ -39,7 +39,7 @@ func VerifySocketToken(
 		return nil, errors.New("invalid payload size")
 	}
 
-	sigData, err := base64.RawStdEncoding.DecodeString(sig)
+	sigData, err := base64.RawURLEncoding.DecodeString(sig)
 	if err != nil {
 		return nil, fmt.Errorf("invalid signature data: %w", err)
 	}
@@ -152,5 +152,5 @@ func (t *SocketToken) Sign(key *ecdsa.PrivateKey) (string, error) {
 	}
 
 	return base64.RawURLEncoding.EncodeToString(buf) + "." +
-		base64.RawStdEncoding.EncodeToString(sig), nil
+		base64.RawURLEncoding.EncodeToString(sig), nil
 }

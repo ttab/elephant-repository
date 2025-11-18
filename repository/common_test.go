@@ -52,8 +52,8 @@ func (tc *TestContext) SSEConnect(
 ) *sse.Connection {
 	t.Helper()
 
-	token, err := itest.AccessKey(tc.SigningKey, claims)
-	test.Must(t, err, "create access key")
+	token, err := itest.AccessToken(tc.SigningKey, claims)
+	test.Must(t, err, "create access token")
 
 	u, err := url.Parse(tc.Server.URL)
 	test.Must(t, err, "parse server URL")
@@ -89,8 +89,8 @@ func (tc *TestContext) DocumentsClient(
 ) rpc.Documents {
 	t.Helper()
 
-	token, err := itest.AccessKey(tc.SigningKey, claims)
-	test.Must(t, err, "create access key")
+	token, err := itest.AccessToken(tc.SigningKey, claims)
+	test.Must(t, err, "create access token")
 
 	docClient := rpc.NewDocumentsProtobufClient(
 		tc.Server.URL, tc.client,
@@ -110,8 +110,8 @@ func (tc *TestContext) WorkflowsClient(
 ) rpc.Workflows {
 	t.Helper()
 
-	token, err := itest.AccessKey(tc.SigningKey, claims)
-	test.Must(t, err, "create access key")
+	token, err := itest.AccessToken(tc.SigningKey, claims)
+	test.Must(t, err, "create access token")
 
 	workflowsClient := rpc.NewWorkflowsProtobufClient(
 		tc.Server.URL, tc.client,
@@ -131,8 +131,8 @@ func (tc *TestContext) SchemasClient(
 ) rpc.Schemas {
 	t.Helper()
 
-	token, err := itest.AccessKey(tc.SigningKey, claims)
-	test.Must(t, err, "create access key")
+	token, err := itest.AccessToken(tc.SigningKey, claims)
+	test.Must(t, err, "create access token")
 
 	schemasClient := rpc.NewSchemasProtobufClient(
 		tc.Server.URL, tc.Server.Client(),
@@ -152,8 +152,8 @@ func (tc *TestContext) MetricsClient(
 ) rpc.Metrics {
 	t.Helper()
 
-	token, err := itest.AccessKey(tc.SigningKey, claims)
-	test.Must(t, err, "create access key")
+	token, err := itest.AccessToken(tc.SigningKey, claims)
+	test.Must(t, err, "create access token")
 
 	metricsClient := rpc.NewMetricsProtobufClient(
 		tc.Server.URL, tc.client,
@@ -235,7 +235,7 @@ func testingAPIServer(
 	sse, err := repository.NewSSE(ctx, logger.With(
 		elephantine.LogKeyComponent, "sse",
 	), store)
-	test.Must(t, err, "failed to set up SSE server")
+	test.Must(t, err, "set up SSE server")
 
 	go sse.Run(ctx)
 
@@ -411,6 +411,9 @@ func testingAPIServer(
 		err := change.Execute(ctx, &clients)
 		test.Must(t, err, "apply configuration")
 	}
+
+	err = validator.RefreshSchemas(ctx)
+	test.Must(t, err, "refresh validator")
 
 	return tc
 }

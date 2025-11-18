@@ -689,6 +689,7 @@ func runServer(c *cli.Context) error {
 			err := startArchiver(
 				grace.CancelOnStop(gCtx),
 				log, conf, dbpool, store,
+				typeConfs,
 			)
 			if err != nil {
 				return err
@@ -758,7 +759,8 @@ func runServer(c *cli.Context) error {
 
 func startArchiver(
 	ctx context.Context, logger *slog.Logger,
-	conf cmd.BackendConfig, dbpool *pgxpool.Pool, store *repository.PGDocStore,
+	conf cmd.BackendConfig, dbpool *pgxpool.Pool,
+	store *repository.PGDocStore, typeConf *repository.TypeConfigurations,
 ) error {
 	aS3, err := repository.S3Client(ctx, conf.S3Options)
 	if err != nil {
@@ -766,13 +768,14 @@ func startArchiver(
 	}
 
 	archiver, err := repository.NewArchiver(repository.ArchiverOptions{
-		Logger:       logger,
-		S3:           aS3,
-		Bucket:       conf.ArchiveBucket,
-		AssetBucket:  conf.AssetBucket,
-		DB:           dbpool,
-		Store:        store,
-		TolerateGaps: conf.TolerateEventlogGaps,
+		Logger:             logger,
+		S3:                 aS3,
+		Bucket:             conf.ArchiveBucket,
+		AssetBucket:        conf.AssetBucket,
+		DB:                 dbpool,
+		Store:              store,
+		TolerateGaps:       conf.TolerateEventlogGaps,
+		TypeConfigurations: typeConf,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create archiver: %w", err)

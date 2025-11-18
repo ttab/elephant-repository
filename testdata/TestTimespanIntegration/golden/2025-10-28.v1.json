@@ -77,7 +77,8 @@
         "workflow_checkpoint": "usable",
         "creator_uri": "user://test/testtimespanintegration",
         "updater_uri": "user://test/testtimespanintegration",
-        "nonce": "e380cbcd-f10c-4edb-911f-56986866a51b"
+        "nonce": "e380cbcd-f10c-4edb-911f-56986866a51b",
+        "type": "core/event"
       }
     },
     {
@@ -146,7 +147,8 @@
         "workflow_state": "draft",
         "creator_uri": "user://test/testtimespanintegration",
         "updater_uri": "user://test/testtimespanintegration",
-        "nonce": "e380cbcd-f10c-4edb-911f-56986866a51b"
+        "nonce": "e380cbcd-f10c-4edb-911f-56986866a51b",
+        "type": "core/event"
       }
     }
   ]

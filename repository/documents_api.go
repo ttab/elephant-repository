@@ -311,6 +311,7 @@ func DocumentMetaToRPC(meta *DocumentMeta) *repository.DocumentMeta {
 	}
 
 	resp := repository.DocumentMeta{
+		Type:               meta.Type,
 		Nonce:              meta.Nonce.String(),
 		Created:            meta.Created.Format(time.RFC3339),
 		CreatorUri:         meta.CreatorURI,
@@ -1052,6 +1053,7 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		DetachedObjects:    evt.DetachedObjects,
 		DeleteRecordId:     evt.DeleteRecordID,
 		Timespans:          TimespanTuplesToRPC(evt.Timespans),
+		Labels:             evt.Labels,
 	}
 }
 
