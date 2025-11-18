@@ -66,8 +66,15 @@ func TestIntegrationSocket(t *testing.T) {
 
 	wsURL := serverURL.JoinPath("websocket", tokenResp.Token).String()
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	test.Must(t, err, "dial websocket")
+
+	t.Cleanup(func() {
+		err := wsResp.Body.Close()
+		if err != nil && !errors.Is(err, os.ErrClosed) {
+			t.Errorf("close websocket response body: %v", err)
+		}
+	})
 
 	callID := makeCall(t, conn, &repositorysocket.Call{
 		Authenticate: &repositorysocket.Authenticate{
@@ -197,6 +204,7 @@ func TestIntegrationSocket(t *testing.T) {
 
 		return planRem && artRem
 	}, 2*time.Second)
+	test.Must(t, err, "get remove messages")
 
 	_, err = client.Update(ctx, &rpc.UpdateRequest{
 		Uuid: beachUUID,
@@ -294,7 +302,7 @@ func (rc *responseCollection) AwaitDocumentBatch(
 ) (*repositorysocket.Response, error) {
 	resp, err := rc.AwaitResponse(callID, func(resp *repositorysocket.Response) bool {
 		return resp.DocumentBatch != nil
-	}, 2*time.Second)
+	}, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +316,7 @@ func (rc *responseCollection) AwaitInclusionBatch(
 ) (*repositorysocket.Response, error) {
 	resp, err := rc.AwaitResponse(callID, func(resp *repositorysocket.Response) bool {
 		return resp.InclusionBatch != nil
-	}, 2*time.Second)
+	}, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -328,8 +336,9 @@ func (rc *responseCollection) AwaitDocumentStatus(
 
 		evt := resp.DocumentUpdate.Event
 
-		return evt.Event == "status" && evt.Uuid == docUUID && evt.Status == status
-	}, 2*time.Second)
+		return evt.Event == "status" && evt.Uuid == docUUID &&
+			evt.Status == status && evt.StatusId == id
+	}, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +359,7 @@ func (rc *responseCollection) AwaitWorkflowState(
 		evt := resp.DocumentUpdate.Event
 
 		return evt.Event == "workflow" && evt.Uuid == docUUID && evt.WorkflowState == state
-	}, 2*time.Second)
+	}, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -371,7 +380,7 @@ func (rc *responseCollection) AwaitDocumentUpdate(
 		evt := resp.DocumentUpdate.Event
 
 		return evt.Event == "document" && evt.Uuid == docUUID
-	}, 2*time.Second)
+	}, timeout)
 	if err != nil {
 		return nil, err
 	}

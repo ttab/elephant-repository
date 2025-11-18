@@ -258,11 +258,13 @@ func (s *SocketSession) readLoop(ctx context.Context) (outErr error) {
 		)
 
 		callHandle, err := s.readCall()
-		if errors.As(err, &closed) {
+
+		switch {
+		case errors.As(err, &closed):
 			return nil
-		} else if errors.As(err, &fatal) {
+		case errors.As(err, &fatal):
 			return err
-		} else if err != nil {
+		case err != nil:
 			s.log.Warn("failed to read message from websocket",
 				elephantine.LogKeyError, err)
 
