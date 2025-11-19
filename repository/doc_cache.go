@@ -117,7 +117,7 @@ func keysToBulk(keys []string) []BulkGetReference {
 
 		version, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
-			panic(fmt.Errorf("invalid documentversion in cache key: %w", err))
+			panic(fmt.Errorf("invalid document version in cache key: %w", err))
 		}
 
 		refs[i] = BulkGetReference{
