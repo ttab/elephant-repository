@@ -1,0 +1,73 @@
+{
+  "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437",
+  "type": "core/article",
+  "uri": "core://article/85428a43-963e-443b-9700-9fdb5dfcb437",
+  "title": "Svenska talangerna vann i VM-debuten",
+  "content": [
+    {
+      "id": "c6c8aa43-0243-4875-b442-6cb13f236b67",
+      "type": "core/text",
+      "data": {
+        "text": "Svenska talangerna vann i VM-debuten"
+      },
+      "role": "heading-1"
+    },
+    {
+      "id": "04b45886-cda2-43c2-9865-9ef0b8a2c4e7",
+      "type": "core/text",
+      "data": {
+        "text": "De svenska beachvolleybolltalangerna Jacob Hölting Nilsson och Elmer Andersson vann övertygande sin allra första VM-match på seniornivå."
+      },
+      "role": "preamble"
+    },
+    {
+      "id": "0fccedeb-e8ee-43ba-8a99-816dcaea251f",
+      "type": "core/text",
+      "data": {
+        "text": "De besegrade de australiska hemmaspelarna Ben Hood och Oliver Merritt med 21–15, 21–8."
+      }
+    },
+    {
+      "id": "fcca849a-890c-457b-b8dc-48ab0d371bba",
+      "type": "core/text",
+      "data": {
+        "text": "Men första set blev inte alldeles enkelt då australierna ledde med ett par bollar."
+      }
+    },
+    {
+      "id": "2d017c1e-9df6-4ac2-a241-da89cde2d86c",
+      "type": "core/text",
+      "data": {
+        "text": "– De drar iväg ett par riktigt bra servar där som skapar lite problem och så lite dumma misstag på det. Vi försöker inte stressa upp oss även om vi gör lite misstag. Nästa boll är lika mycket värd, och det är bara att tugga på och hålla tålamodet upp, så vet man att det kommer om man fokuserar ordentligt, säger Jon"
+      }
+    }
+  ],
+  "meta": [
+    {
+      "type": "core/newsvalue",
+      "value": "4"
+    },
+    {
+      "type": "core/note",
+      "data": {
+        "text": "Med bild. Uppdateras"
+      },
+      "role": "public"
+    }
+  ],
+  "links": [
+    {
+      "uuid": "0730efa9-43f2-468d-979a-aaffc74d7582",
+      "type": "core/section",
+      "title": "Sport",
+      "rel": "section"
+    },
+    {
+      "uri": "tt://content-source/tt",
+      "type": "core/content-source",
+      "title": "TT",
+      "rel": "source"
+    }
+  ],
+  "language": "sv-se"
+}

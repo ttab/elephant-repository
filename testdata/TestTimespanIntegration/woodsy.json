@@ -1,0 +1,47 @@
+{
+  "uuid": "fe560eb8-b315-4e65-9274-3c2dc29503ac",
+  "type": "core/event",
+  "uri": "core://event/fe560eb8-b315-4e65-9274-3c2dc29503ac",
+  "title": "EU-parlamentet röstar om A-traktorer",
+  "meta": [
+    {
+      "type": "core/newsvalue",
+      "value": "2"
+    },
+    {
+      "type": "core/description",
+      "data": {
+        "text": "EU: Parlamentet röstar om uppdaterade körkortsregler, inklusive för framtida A-traktorer, samt förslag om skogsövervakning. "
+      },
+      "role": "public"
+    },
+    {
+      "uuid": "2245966b-6770-4033-a250-ac926fdb4d3c",
+      "type": "core/copy-group"
+    },
+    {
+      "type": "core/event",
+      "data": {
+        "dateGranularity": "datetime",
+        "end": "2025-10-21T10:00:00.000Z",
+        "registration": "",
+        "start": "2025-10-21T10:00:00.000Z"
+      }
+    }
+  ],
+  "links": [
+    {
+      "uuid": "111932dc-99f3-4ba4-acf2-ed9d9f2f1c7c",
+      "type": "core/section",
+      "title": "Utrikes",
+      "rel": "section"
+    },
+    {
+      "uuid": "df76e035-7b92-5d1d-a3b0-77e2fb56b9df",
+      "type": "core/category",
+      "title": "Politik",
+      "rel": "category"
+    }
+  ],
+  "language": "sv-se"
+}

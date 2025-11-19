@@ -19,6 +19,7 @@
       "event": "acl",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
       "acl": [
         {
           "uri": "user://test/testassetrestore",
@@ -65,6 +66,7 @@
       "event": "acl",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
       "acl": [
         {
           "uri": "user://test/testassetrestore",

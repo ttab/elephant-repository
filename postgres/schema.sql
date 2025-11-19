@@ -276,7 +276,9 @@ CREATE TABLE public.document (
     language text,
     system_state text,
     main_doc_type text,
-    nonce uuid NOT NULL
+    nonce uuid NOT NULL,
+    "time" tstzmultirange,
+    labels text[]
 );
 
 
@@ -287,19 +289,6 @@ CREATE TABLE public.document (
 CREATE TABLE public.document_archive_counter (
     uuid uuid NOT NULL,
     unarchived integer NOT NULL
-);
-
-
---
--- Name: document_link; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.document_link (
-    from_document uuid NOT NULL,
-    version bigint NOT NULL,
-    to_document uuid NOT NULL,
-    rel text,
-    type text
 );
 
 
@@ -348,6 +337,17 @@ CREATE TABLE public.document_status (
 
 
 --
+-- Name: document_type; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.document_type (
+    type text NOT NULL,
+    bounded_collection boolean DEFAULT false NOT NULL,
+    configuration jsonb NOT NULL
+);
+
+
+--
 -- Name: document_version; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -360,7 +360,9 @@ CREATE TABLE public.document_version (
     document_data jsonb,
     archived boolean DEFAULT false NOT NULL,
     signature text,
-    language text
+    language text,
+    "time" tstzmultirange,
+    labels text[]
 );
 
 
@@ -536,7 +538,9 @@ CREATE TABLE public.planning_assignment (
     full_day boolean NOT NULL,
     public boolean NOT NULL,
     kind text[] NOT NULL,
-    description text NOT NULL
+    description text NOT NULL,
+    timezone text,
+    timerange tstzrange
 );
 
 
@@ -565,7 +569,8 @@ CREATE TABLE public.planning_item (
     start_date date NOT NULL,
     end_date date NOT NULL,
     priority smallint,
-    event uuid
+    event uuid,
+    timezone text
 );
 
 
@@ -688,6 +693,16 @@ CREATE TABLE public.status_rule (
 
 
 --
+-- Name: system_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.system_config (
+    name text NOT NULL,
+    value bytea NOT NULL
+);
+
+
+--
 -- Name: upload; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -794,14 +809,6 @@ ALTER TABLE ONLY public.document_archive_counter
 
 
 --
--- Name: document_link document_link_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.document_link
-    ADD CONSTRAINT document_link_pkey PRIMARY KEY (from_document, to_document);
-
-
---
 -- Name: document_lock document_lock_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -831,6 +838,14 @@ ALTER TABLE ONLY public.document_schema
 
 ALTER TABLE ONLY public.document_status
     ADD CONSTRAINT document_status_pkey PRIMARY KEY (uuid, name, id);
+
+
+--
+-- Name: document_type document_type_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.document_type
+    ADD CONSTRAINT document_type_pkey PRIMARY KEY (type);
 
 
 --
@@ -1002,6 +1017,14 @@ ALTER TABLE ONLY public.status_rule
 
 
 --
+-- Name: system_config system_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.system_config
+    ADD CONSTRAINT system_config_pkey PRIMARY KEY (name);
+
+
+--
 -- Name: upload upload_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1040,13 +1063,6 @@ CREATE INDEX deletes_to_finalise ON public.delete_record USING btree (created) W
 
 
 --
--- Name: document_link_rel_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX document_link_rel_idx ON public.document_link USING btree (rel, to_document);
-
-
---
 -- Name: document_status_archived; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1058,6 +1074,27 @@ CREATE INDEX document_status_archived ON public.document_status USING btree (cre
 --
 
 CREATE INDEX document_version_archived ON public.document_version USING btree (created) WHERE (archived = false);
+
+
+--
+-- Name: idx_doc_labels; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_doc_labels ON public.document USING gin (labels);
+
+
+--
+-- Name: idx_doc_time; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_doc_time ON public.document USING gist ("time");
+
+
+--
+-- Name: idx_doc_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_doc_type ON public.document USING btree (type, language);
 
 
 --
@@ -1191,22 +1228,6 @@ ALTER TABLE ONLY public.attached_object
 
 ALTER TABLE ONLY public.document_archive_counter
     ADD CONSTRAINT document_archive_counter_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
-
-
---
--- Name: document_link document_link_from_document_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.document_link
-    ADD CONSTRAINT document_link_from_document_fkey FOREIGN KEY (from_document) REFERENCES public.document(uuid) ON DELETE CASCADE;
-
-
---
--- Name: document_link document_link_to_document_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.document_link
-    ADD CONSTRAINT document_link_to_document_fkey FOREIGN KEY (to_document) REFERENCES public.document(uuid) ON DELETE RESTRICT;
 
 
 --

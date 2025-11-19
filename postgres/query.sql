@@ -96,13 +96,14 @@ WHERE uuid = @UUID AND version = @version;
 
 -- name: GetDocumentRow :one
 SELECT uuid, uri, type, created, creator_uri, updated, updater_uri,
-       current_version, main_doc, language, system_state, nonce
+       current_version, main_doc, language, system_state, nonce,
+       time, labels
 FROM document
 WHERE uuid = @uuid;
 
 -- name: GetDocumentInfo :one
 SELECT
-        d.uuid, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
+        d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
         d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
@@ -111,6 +112,37 @@ FROM document as d
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
 LEFT JOIN workflow_state AS ws ON ws.uuid = d.uuid
 WHERE d.uuid = @uuid;
+
+-- name: BulkGetDocumentInfo :many
+SELECT
+        d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
+        d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
+        l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
+        l.comment as lock_comment, l.token as lock_token,
+        ws.step as workflow_state, ws.checkpoint as workflow_checkpoint
+FROM document as d
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
+LEFT JOIN workflow_state AS ws ON ws.uuid = d.uuid
+WHERE d.uuid = ANY(@uuids::uuid[]);
+
+-- name: BulkGetFullDocumentHeads :many
+SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
+       s.archived, s.signature, s.meta_doc_version, h.language
+FROM status_heads AS h
+     INNER JOIN document_status AS s ON
+           s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
+WHERE h.uuid = ANY(@uuids::uuid[]);
+
+
+-- name: BulkGetAttachments :many
+SELECT document, name, version FROM attached_object_current
+WHERE document = ANY(@documents::uuid[])
+      AND deleted = false;
+
+-- name: BulkGetDocumentACL :many
+SELECT uuid, uri, permissions
+FROM acl
+WHERE uuid = ANY(@uuids::uuid[]);
 
 -- name: GetDocumentData :one
 SELECT v.document_data, v.version
@@ -256,25 +288,45 @@ WHERE id = @id;
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, main_doc_type, nonce
+       main_doc, language, main_doc_type, nonce, time, labels
 ) VALUES (
        @uuid, @uri, @type,
        @created, @creator_uri, @created, @creator_uri, @version,
-       @main_doc, @language, @main_doc_type, @nonce
+       @main_doc, @language, @main_doc_type, @nonce, @time, @labels
 ) ON CONFLICT (uuid) DO UPDATE
-     SET uri = @uri,
-         updated = @created,
-         updater_uri = @creator_uri,
-         current_version = @version,
-         language = @language;
+     SET uri = excluded.uri,
+         updated = excluded.created,
+         updater_uri = excluded.creator_uri,
+         current_version = excluded.current_version,
+         language = excluded.language,
+         time = COALESCE(excluded.time, document.time),
+         labels = COALESCE(excluded.labels, document.labels);
+
+-- name: GetDocumentSearchInfo :one
+SELECT time, labels
+FROM document
+WHERE uuid = @uuid;
+
+-- name: GetDocumentVersionSearchInfo :one
+SELECT time, labels
+FROM document_version
+WHERE uuid = @uuid AND version = @version;
+
+
+-- name: UpdateDocumentTime :exec
+UPDATE document
+SET time = @time
+WHERE uuid = @uuid;
 
 -- name: CreateDocumentVersion :exec
 INSERT INTO document_version(
        uuid, version,
-       created, creator_uri, meta, document_data, archived, language
+       created, creator_uri, meta, document_data, archived, language,
+       time, labels
 ) VALUES (
        @uuid, @version,
-       @created, @creator_uri, @meta, @document_data, false, @language
+       @created, @creator_uri, @meta, @document_data, false, @language,
+       @time, @labels
 );
 
 -- name: CreateStatusHead :exec
@@ -525,6 +577,53 @@ FROM document AS d
           AND acl.uri = ANY(@uri::text[])
           AND @permissions::text[] && permissions
 WHERE d.uuid = ANY(@uuids::uuid[]);
+
+-- name: SelectDocumentsInTimeRange :many
+SELECT d.uuid, d.current_version, d.language
+FROM document AS d
+WHERE d.time && @range::tstzrange
+      AND (COALESCE(cardinality(@labels::text[]), 0) = 0 OR d.labels @> @labels)
+      AND d.type = @type;
+
+-- name: SelectBoundedDocumentsWithType :many
+SELECT d.uuid, d.current_version, d.language
+FROM document_type AS dt
+     INNER JOIN document AS d
+           ON d.type = dt.type
+           AND (sqlc.narg('language')::text IS NULL OR d.language = @language)
+WHERE dt.type = @type
+      AND (COALESCE(cardinality(@labels::text[]), 0) = 0 OR d.labels @> @labels)
+      AND dt.bounded_collection;
+
+-- name: GetDeliverableTimes :many
+SELECT a.full_day, a.publish, a.starts, a.ends, a.start_date, a.end_date, a.timezone
+FROM planning_deliverable AS d
+INNER JOIN planning_assignment AS a
+ON a.uuid = d.assignment
+WHERE d.document = @uuid;
+
+-- name: GetDeliverableTimeranges :many
+SELECT a.uuid AS assignment, a.planning_item, a.timerange
+FROM planning_deliverable AS d
+INNER JOIN planning_assignment AS a
+ON a.uuid = d.assignment
+WHERE d.document = @uuid;
+
+-- name: SetTypeConfiguration :exec
+INSERT INTO document_type(type, bounded_collection, configuration)
+VALUES (@type, @bounded_collection, @configuration)
+ON CONFLICT (type) DO UPDATE
+   SET bounded_collection = excluded.bounded_collection,
+       configuration = excluded.configuration;
+
+-- name: GetTypeConfiguration :one
+SELECT type, bounded_collection, configuration
+FROM document_type
+WHERE type = @type;
+
+-- name: GetTypeConfigurations :many
+SELECT type, bounded_collection, configuration
+FROM document_type;
 
 -- name: InsertACLAuditEntry :exec
 INSERT INTO acl_audit(
@@ -864,26 +963,38 @@ SET
 
 -- name: GetPlanningAssignment :one
 SELECT uuid, version, planning_item, status, publish, publish_slot,
-       starts, ends, start_date, end_date, full_day, public, kind, description
+       starts, ends, start_date, end_date, full_day, public, kind, description,
+       timezone, timerange
 FROM planning_assignment
 WHERE uuid = @uuid;
 
 -- name: SetPlanningAssignment :exec
 INSERT INTO planning_assignment(
        uuid, version, planning_item, status, publish, publish_slot,
-       starts, ends, start_date, end_date, full_day, public, kind, description
+       starts, ends, start_date, end_date, full_day, public, kind, description,
+       timezone, timerange
 ) VALUES (
        @uuid, @version, @planning_item, @status, @publish, @publish_slot,
        @starts, @ends, @start_date, @end_date, @full_day, @public, @kind,
-       @description
+       @description, @timezone, @timerange
 )
 ON CONFLICT ON CONSTRAINT planning_assignment_pkey DO UPDATE
 SET
-   version = @version, planning_item = @planning_item, status = @status,
-   publish = @publish, publish_slot = @publish_slot, starts = @starts,
-   ends = @ends, start_date = @start_date, end_date = @end_date,
-   full_day = @full_day, public = @public, kind = @kind,
-   description = @description;
+   version = excluded.version,
+   planning_item = excluded.planning_item,
+   status = excluded.status,
+   publish = excluded.publish,
+   publish_slot = excluded.publish_slot,
+   starts = excluded.starts,
+   ends = excluded.ends,
+   start_date = excluded.start_date,
+   end_date = excluded.end_date,
+   full_day = excluded.full_day,
+   public = excluded.public,
+   kind = excluded.kind,
+   description = excluded.description,
+   timezone = excluded.timezone,
+   timerange = excluded.timerange;
 
 -- name: GetPlanningAssignments :many
 SELECT uuid, version, planning_item, status, publish, publish_slot,
@@ -1114,3 +1225,15 @@ DELETE FROM event_outbox_item WHERE id = @id;
 SELECT id, event FROM event_outbox_item
 ORDER BY id ASC
 LIMIT sqlc.arg(count)::bigint;
+
+-- name: LockConfigTable :exec
+LOCK TABLE system_config IN ACCESS EXCLUSIVE MODE;
+
+-- name: SetSystemConfig :exec
+INSERT INTO system_config(name, value)
+       VALUES (@name, @value)
+ON CONFLICT (name) DO UPDATE SET
+   value = excluded.value;
+
+-- name: GetSystemConfig :one
+SELECT value FROM system_config WHERE name = @name;

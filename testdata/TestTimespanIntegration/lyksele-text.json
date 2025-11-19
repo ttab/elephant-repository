@@ -1,0 +1,63 @@
+{
+  "uuid": "a3025494-1576-4d08-884c-0b96f69442df",
+  "type": "core/article",
+  "uri": "core://article/a3025494-1576-4d08-884c-0b96f69442df",
+  "title": "Lycksele utan ström ",
+  "content": [
+    {
+      "id": "fd06d66d-e37d-4c81-9805-59949bbe7fbd",
+      "type": "core/text",
+      "data": {
+        "text": "Lycksele utan ström "
+      },
+      "role": "heading-1"
+    },
+    {
+      "id": "33a1b408-a426-4d4d-a1d1-47baa15d42d6",
+      "type": "core/text",
+      "data": {
+        "text": "Samhälle"
+      },
+      "role": "vignette"
+    },
+    {
+      "id": "6a6c2762-5139-4908-8ff2-dcb46bccd2ef",
+      "type": "core/text",
+      "data": {
+        "text": "Hela Lycksele tätort har drabbats av strömavbrott, rapporterar SVT Nyheter Västerbotten."
+      }
+    },
+    {
+      "id": "afc650f5-bd27-4241-b901-b6c56abe171b",
+      "type": "core/text",
+      "data": {
+        "text": ""
+      }
+    }
+  ],
+  "meta": [
+    {
+      "type": "tt/slugline",
+      "value": "lyckseleströmavbrott"
+    },
+    {
+      "type": "core/newsvalue",
+      "value": "3"
+    }
+  ],
+  "links": [
+    {
+      "uuid": "956636ed-2687-4bc3-a45a-7e09d98c6eeb",
+      "type": "core/section",
+      "title": "Inrikes",
+      "rel": "section"
+    },
+    {
+      "uri": "tt://content-source/tt",
+      "type": "core/content-source",
+      "title": "TT",
+      "rel": "source"
+    }
+  ],
+  "language": "sv-se"
+}

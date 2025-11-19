@@ -14,6 +14,7 @@
       "id": "2",
       "event": "acl",
       "uuid": "1d450529-fd98-4e4e-80c2-f70f9194737a",
+      "version": "1",
       "acl": [
         {
           "uri": "user://test/testintegrationdocumentlanguage",
@@ -42,6 +43,7 @@
       "id": "4",
       "event": "acl",
       "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
+      "version": "1",
       "acl": [
         {
           "uri": "user://test/testintegrationdocumentlanguage",

@@ -28,7 +28,15 @@
       "Kind": [
         "text"
       ],
-      "Description": ""
+      "Description": "",
+      "Timezone": null,
+      "Timerange": {
+        "Lower": "2023-09-10T22:00:00Z",
+        "Upper": "2023-09-11T21:59:59Z",
+        "LowerType": 105,
+        "UpperType": 105,
+        "Valid": true
+      }
     }
   ],
   "Assignees": [

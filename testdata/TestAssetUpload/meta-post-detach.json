@@ -14,6 +14,7 @@
     ],
     "creator_uri": "user://test/testassetupload",
     "updater_uri": "user://test/testassetupload",
-    "nonce": "00000000-0000-0000-0000-000000000000"
+    "nonce": "00000000-0000-0000-0000-000000000000",
+    "type": "core/article"
   }
 }

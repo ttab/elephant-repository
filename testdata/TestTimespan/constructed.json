@@ -1,0 +1,58 @@
+{
+  "meta": [
+    {
+      "type": "example/collection",
+      "links": [
+        {
+          "rel": "item",
+          "data": {
+            "end": "2025-10-17T05:00:00.000Z",
+            "start": "2025-10-17T07:00:00.000Z"
+          }
+        },
+        {
+          "rel": "item",
+          "data": {
+            "end": "2025-10-17T10:00:00.000Z",
+            "start": "2025-10-17T07:00:00.000Z"
+          }
+        },
+                {
+          "rel": "item",
+          "data": {
+            "end": "2025-10-17T11:00:00.000Z",
+            "start": "2025-10-17T10:30:00.000Z"
+          }
+        },
+        {
+          "rel": "item",
+          "data": {
+            "date": "2025-10-19",
+            "date_timezone": "Asia/Shanghai"
+          }
+        },
+        {
+          "rel": "item",
+          "data": {
+            "date": "2025-10-21"
+          }
+        }
+      ]
+    }
+  ],
+  "content": [
+    {
+      "type": "example/oh-america---",
+      "value": "10/15/2025"
+    }    
+  ],
+  "links": [
+    {
+      "rel": "point-in-time",
+      "type": "example/pit",
+      "data": {
+        "timestamp": "2025-10-17T08:34:35+02:00"
+      }
+    }
+  ]
+}

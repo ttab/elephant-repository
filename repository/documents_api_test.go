@@ -120,13 +120,14 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		t.SkipNow()
 	}
 
-	t.Parallel()
-
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	dataDir := filepath.Join("..", "testdata", t.Name())
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunArchiver:        true,
 		RunEventlogBuilder: true,
+		ConfigDirectory:    dataDir,
 	})
 
 	sseConn := tc.SSEConnect(t, []string{"firehose"},
@@ -371,8 +372,6 @@ func TestIntegrationCreateCollision(t *testing.T) {
 		t.SkipNow()
 	}
 
-	t.Parallel()
-
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{})
@@ -405,8 +404,13 @@ func TestIntegrationCreateCollision(t *testing.T) {
 					Document: doc,
 					IfMatch:  -1,
 				})
-			if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition) {
-				// The only acceptable error here is FailedPrecondition.
+
+			switch {
+			case elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition):
+				t.Log("creation collision")
+			case elephantine.IsTwirpErrorCode(err, twirp.AlreadyExists):
+				t.Log("optimistic lock triggered")
+			case err != nil:
 				t.Errorf("failed to create document: %v", err)
 			}
 		})
@@ -421,8 +425,6 @@ func TestIntegrationStatusPermissions(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-
-	t.Parallel()
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
@@ -509,7 +511,6 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 		t.SkipNow()
 	}
 
-	t.Parallel()
 	ctx := t.Context()
 
 	regenerate := regenerateTestFixtures()
@@ -659,11 +660,9 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		t.SkipNow()
 	}
 
-	t.Parallel()
-
 	regenerate := regenerateTestFixtures()
 
-	testData := filepath.Join("testdata", t.Name())
+	testData := filepath.Join("..", "testdata", t.Name())
 
 	err := os.MkdirAll(testData, 0o700)
 	test.Must(t, err, "ensure testdata dir")
@@ -673,6 +672,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		RunArchiver:        true,
 		RunEventlogBuilder: true,
+		ConfigDirectory:    testData,
 	})
 
 	ctx := t.Context()
@@ -848,6 +848,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		CurrentVersion: 1,
 		IsMetaDocument: true,
 		MainDocument:   docA.Uuid,
+		Type:           "test/metadata",
 		CreatorUri:     "user://test/testdocumentsservicemetadocuments",
 		UpdaterUri:     "user://test/testdocumentsservicemetadocuments",
 	}
@@ -1081,8 +1082,6 @@ func TestIntegrationBulkCrud(t *testing.T) {
 		t.SkipNow()
 	}
 
-	t.Parallel()
-
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
@@ -1172,6 +1171,7 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	test.Must(t, err, "be able to load document A metadata")
 
 	wantMetaA := repository.DocumentMeta{
+		Type: "core/article",
 		Acl: []*repository.ACLEntry{
 			{
 				Uri:         testUserURI,
@@ -1197,6 +1197,7 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	test.Must(t, err, "be able to load document B metadata")
 
 	wantMetaB := repository.DocumentMeta{
+		Type: "core/article",
 		Acl: []*repository.ACLEntry{
 			{
 				Uri:         testUserURI,
@@ -1228,8 +1229,6 @@ func TestIntegrationStatus(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-
-	t.Parallel()
 
 	regenerate := regenerateTestFixtures()
 
@@ -1406,8 +1405,6 @@ func TestIntegrationDeleteTimeout(t *testing.T) {
 		t.SkipNow()
 	}
 
-	t.Parallel()
-
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
 	tc := testingAPIServer(t, logger, testingServerOptions{})
@@ -1442,8 +1439,6 @@ func TestIntegrationStatuses(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-
-	t.Parallel()
 
 	ctx := t.Context()
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
@@ -1570,8 +1565,6 @@ func TestIntegrationStatusRules(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-
-	t.Parallel()
 
 	ctx := t.Context()
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
@@ -1784,8 +1777,6 @@ func TestIntegrationACL(t *testing.T) {
 		t.SkipNow()
 	}
 
-	t.Parallel()
-
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	ctx := t.Context()
 	tc := testingAPIServer(t, logger, testingServerOptions{})
@@ -1937,8 +1928,6 @@ func TestDocumentLocking(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-
-	t.Parallel()
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 	ctx := t.Context()
@@ -2107,8 +2096,6 @@ func TestIntegrationStatsOverview(t *testing.T) {
 		t.SkipNow()
 	}
 
-	t.Parallel()
-
 	regenerate := regenerateTestFixtures()
 	dataDir := filepath.Join(
 		"..", "testdata", "TestIntegrationStatsOverview")
@@ -2226,7 +2213,7 @@ func TestIntegrationStatsOverview(t *testing.T) {
 			ctx := t.Context()
 
 			res, err := c.Client.GetStatusOverview(ctx, c.Req)
-			test.Must(t, err, "fatech status overview")
+			test.Must(t, err, "fetch status overview")
 
 			test.TestMessageAgainstGolden(t, regenerate, res,
 				filepath.Join(dataDir, c.File),
@@ -2268,8 +2255,6 @@ func TestUUIDNormalisation(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-
-	t.Parallel()
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 

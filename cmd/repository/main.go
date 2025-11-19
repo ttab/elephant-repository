@@ -70,6 +70,11 @@ func main() {
 				EnvVars: []string{"DEFAULT_LANGUAGE"},
 				Value:   "sv-se",
 			},
+			&cli.StringFlag{
+				Name:    "default-timezone",
+				EnvVars: []string{"DEFAULT_TIMEZONE"},
+				Value:   "Europe/Stockholm",
+			},
 			&cli.StringSliceFlag{
 				Name:    "ensure-schema",
 				EnvVars: []string{"ENSURE_SCHEMA"},
@@ -149,6 +154,16 @@ func main() {
 				Usage:   "Disable built in character counter",
 				EnvVars: []string{"NO_CHARCOUNTER"},
 			},
+			&cli.BoolFlag{
+				Name:    "no-websocket",
+				Usage:   "Disable websocket API",
+				EnvVars: []string{"NO_WEBSOCKET"},
+			},
+			&cli.BoolFlag{
+				Name:    "no-sse",
+				Usage:   "Disable SSE API",
+				EnvVars: []string{"NO_SSE"},
+			},
 			&cli.StringSliceFlag{
 				Name:    "cors-host",
 				Usage:   "CORS hosts to allow, supports wildcards",
@@ -186,7 +201,10 @@ func runServer(c *cli.Context) error {
 		logLevel        = c.String("log-level")
 		ensureSchemas   = c.StringSlice("ensure-schema")
 		defaultLanguage = c.String("default-language")
+		defaultTimezone = c.String("default-timezone")
 		noCharCounter   = c.Bool("no-charcounter")
+		noWebsocket     = c.Bool("no-websocket")
+		noSSE           = c.Bool("no-sse")
 		corsHosts       = c.StringSlice("cors-host")
 		migrateDB       = c.Bool("migrate-db")
 	)
@@ -201,6 +219,11 @@ func runServer(c *cli.Context) error {
 	_, err := langos.GetLanguage(defaultLanguage)
 	if err != nil {
 		return fmt.Errorf("invalid default language: %w", err)
+	}
+
+	defaultTZ, err := time.LoadLocation(defaultTimezone)
+	if err != nil {
+		return fmt.Errorf("invalid default timezone: %w", err)
 	}
 
 	conf, err := cmd.BackendConfigFromContext(c)
@@ -285,10 +308,13 @@ func runServer(c *cli.Context) error {
 		inMet = append(inMet, repository.NewCharCounter())
 	}
 
+	typeConfs := repository.NewTypeConfigurations(logger, defaultTZ)
+
 	store, err := repository.NewPGDocStore(
 		stopCtx, logger, dbpool, assets,
 		repository.PGDocStoreOptions{
 			MetricsCalculators: inMet,
+			TypeConfigurations: typeConfs,
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
@@ -359,14 +385,27 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("failed to create workflows: %w", err)
 	}
 
-	docService := repository.NewDocumentsService(
+	docCache := repository.NewDocCache(store, 1000)
+
+	socketKey, err := store.EnsureSocketKey(c.Context)
+	if err != nil {
+		return fmt.Errorf("ensure socket key: %w", err)
+	}
+
+	docService, err := repository.NewDocumentsService(
 		store,
 		repository.NewSchedulePGStore(dbpool),
 		validator,
 		workflows,
 		assets,
 		defaultLanguage,
+		typeConfs,
+		docCache,
+		socketKey,
 	)
+	if err != nil {
+		return fmt.Errorf("create documents service: %w", err)
+	}
 
 	setupCtx, cancel := context.WithTimeout(c.Context, 10*time.Second)
 	defer cancel()
@@ -511,20 +550,39 @@ func runServer(c *cli.Context) error {
 		metrics,
 	)
 
-	sse, err := repository.NewSSE(setupCtx, logger.With(
-		elephantine.LogKeyComponent, "sse",
-	), store)
-	if err != nil {
-		return fmt.Errorf("failed to set up SSE server: %w", err)
-	}
-
-	err = repository.SetUpRouter(router,
+	routerOpts := []repository.RouterOption{
 		repository.WithDocumentsAPI(docService, opts),
 		repository.WithSchemasAPI(schemaService, opts),
 		repository.WithWorkflowsAPI(workflowService, opts),
 		repository.WithMetricsAPI(metricsService, opts),
-		repository.WithSSE(sse.HTTPHandler(), opts),
-	)
+	}
+
+	var sseSubsystem *repository.SSE
+
+	if !noSSE {
+		sse, err := repository.NewSSE(setupCtx, logger.With(
+			elephantine.LogKeyComponent, "sse",
+		), store)
+		if err != nil {
+			return fmt.Errorf("failed to set up SSE server: %w", err)
+		}
+
+		routerOpts = append(routerOpts,
+			repository.WithSSE(sse.HTTPHandler(), opts))
+
+		sseSubsystem = sse
+	}
+
+	if !noWebsocket {
+		socket := repository.NewSocketHandler(
+			grace.CancelOnQuit(c.Context), logger,
+			store, docCache, auth.AuthParser, &socketKey.PublicKey)
+
+		routerOpts = append(routerOpts,
+			repository.WithWebsocket(socket))
+	}
+
+	err = repository.SetUpRouter(router, routerOpts...)
 	if err != nil {
 		return fmt.Errorf("failed to set up router: %w", err)
 	}
@@ -631,6 +689,7 @@ func runServer(c *cli.Context) error {
 			err := startArchiver(
 				grace.CancelOnStop(gCtx),
 				log, conf, dbpool, store,
+				typeConfs,
 			)
 			if err != nil {
 				return err
@@ -639,6 +698,15 @@ func runServer(c *cli.Context) error {
 			return nil
 		})
 	}
+
+	serverGroup.Go(func() error {
+		err := typeConfs.Run(gCtx, store)
+		if err != nil {
+			return fmt.Errorf("run type configurations: %w", err)
+		}
+
+		return nil
+	})
 
 	serverGroup.Go(func() error {
 		logger.Debug("starting API server")
@@ -652,14 +720,18 @@ func runServer(c *cli.Context) error {
 	})
 
 	serverGroup.Go(func() error {
+		if sseSubsystem == nil {
+			return nil
+		}
+
 		logger.Debug("starting SSE server")
 
 		go func() {
 			<-grace.ShouldStop()
-			sse.Stop()
+			sseSubsystem.Stop()
 		}()
 
-		sse.Run(gCtx)
+		sseSubsystem.Run(gCtx)
 
 		return nil
 	})
@@ -687,7 +759,8 @@ func runServer(c *cli.Context) error {
 
 func startArchiver(
 	ctx context.Context, logger *slog.Logger,
-	conf cmd.BackendConfig, dbpool *pgxpool.Pool, store *repository.PGDocStore,
+	conf cmd.BackendConfig, dbpool *pgxpool.Pool,
+	store *repository.PGDocStore, typeConf *repository.TypeConfigurations,
 ) error {
 	aS3, err := repository.S3Client(ctx, conf.S3Options)
 	if err != nil {
@@ -695,13 +768,14 @@ func startArchiver(
 	}
 
 	archiver, err := repository.NewArchiver(repository.ArchiverOptions{
-		Logger:       logger,
-		S3:           aS3,
-		Bucket:       conf.ArchiveBucket,
-		AssetBucket:  conf.AssetBucket,
-		DB:           dbpool,
-		Store:        store,
-		TolerateGaps: conf.TolerateEventlogGaps,
+		Logger:             logger,
+		S3:                 aS3,
+		Bucket:             conf.ArchiveBucket,
+		AssetBucket:        conf.AssetBucket,
+		DB:                 dbpool,
+		Store:              store,
+		TolerateGaps:       conf.TolerateEventlogGaps,
+		TypeConfigurations: typeConf,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create archiver: %w", err)

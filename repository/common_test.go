@@ -19,13 +19,13 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tmaxmax/go-sse"
+	"github.com/ttab/eleconf"
 	rpc "github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/elephantine/test"
-	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 )
 
@@ -36,6 +36,8 @@ func regenerateTestFixtures() bool {
 const bearerPrefix = "Bearer "
 
 type TestContext struct {
+	client *http.Client
+
 	SigningKey       *ecdsa.PrivateKey
 	Server           *httptest.Server
 	WorkflowProvider repository.WorkflowProvider
@@ -50,8 +52,8 @@ func (tc *TestContext) SSEConnect(
 ) *sse.Connection {
 	t.Helper()
 
-	token, err := itest.AccessKey(tc.SigningKey, claims)
-	test.Must(t, err, "create access key")
+	token, err := itest.AccessToken(tc.SigningKey, claims)
+	test.Must(t, err, "create access token")
 
 	u, err := url.Parse(tc.Server.URL)
 	test.Must(t, err, "parse server URL")
@@ -67,7 +69,7 @@ func (tc *TestContext) SSEConnect(
 	req.Header.Set("Authorization", bearerPrefix+token)
 
 	client := sse.Client{
-		HTTPClient: tc.Server.Client(),
+		HTTPClient: tc.client,
 	}
 
 	conn := client.NewConnection(req.WithContext(t.Context()))
@@ -87,11 +89,11 @@ func (tc *TestContext) DocumentsClient(
 ) rpc.Documents {
 	t.Helper()
 
-	token, err := itest.AccessKey(tc.SigningKey, claims)
-	test.Must(t, err, "create access key")
+	token, err := itest.AccessToken(tc.SigningKey, claims)
+	test.Must(t, err, "create access token")
 
 	docClient := rpc.NewDocumentsProtobufClient(
-		tc.Server.URL, tc.Server.Client(),
+		tc.Server.URL, tc.client,
 		twirp.WithClientHooks(&twirp.ClientHooks{
 			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
 				r.Header.Set("Authorization", bearerPrefix+token)
@@ -108,11 +110,11 @@ func (tc *TestContext) WorkflowsClient(
 ) rpc.Workflows {
 	t.Helper()
 
-	token, err := itest.AccessKey(tc.SigningKey, claims)
-	test.Must(t, err, "create access key")
+	token, err := itest.AccessToken(tc.SigningKey, claims)
+	test.Must(t, err, "create access token")
 
 	workflowsClient := rpc.NewWorkflowsProtobufClient(
-		tc.Server.URL, tc.Server.Client(),
+		tc.Server.URL, tc.client,
 		twirp.WithClientHooks(&twirp.ClientHooks{
 			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
 				r.Header.Set("Authorization", bearerPrefix+token)
@@ -129,8 +131,8 @@ func (tc *TestContext) SchemasClient(
 ) rpc.Schemas {
 	t.Helper()
 
-	token, err := itest.AccessKey(tc.SigningKey, claims)
-	test.Must(t, err, "create access key")
+	token, err := itest.AccessToken(tc.SigningKey, claims)
+	test.Must(t, err, "create access token")
 
 	schemasClient := rpc.NewSchemasProtobufClient(
 		tc.Server.URL, tc.Server.Client(),
@@ -150,11 +152,11 @@ func (tc *TestContext) MetricsClient(
 ) rpc.Metrics {
 	t.Helper()
 
-	token, err := itest.AccessKey(tc.SigningKey, claims)
-	test.Must(t, err, "create access key")
+	token, err := itest.AccessToken(tc.SigningKey, claims)
+	test.Must(t, err, "create access token")
 
 	metricsClient := rpc.NewMetricsProtobufClient(
-		tc.Server.URL, tc.Server.Client(),
+		tc.Server.URL, tc.client,
 		twirp.WithClientHooks(&twirp.ClientHooks{
 			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
 				r.Header.Set("Authorization", bearerPrefix+token)
@@ -170,9 +172,10 @@ type testingServerOptions struct {
 	RunArchiver        bool
 	RunEventlogBuilder bool
 	SharedSecret       string
-	ExtraSchemas       []string
-	NoStandardStatuses bool
 	NoCharcount        bool
+	ConfigDirectory    string
+	Schemas            []eleconf.LoadedSchema
+	NoCoreSchemas      bool
 }
 
 func testingAPIServer(
@@ -209,6 +212,8 @@ func testingAPIServer(
 		inMet = append(inMet, repository.NewCharCounter())
 	}
 
+	typeConf := repository.NewTypeConfigurations(logger, time.UTC)
+
 	store, err := repository.NewPGDocStore(
 		t.Context(),
 		logger, dbpool,
@@ -216,29 +221,21 @@ func testingAPIServer(
 		repository.PGDocStoreOptions{
 			DeleteTimeout:      1 * time.Second,
 			MetricsCalculators: inMet,
+			TypeConfigurations: typeConf,
 		})
 	test.Must(t, err, "create doc store")
 
 	go store.RunListener(ctx)
 
-	err = repository.EnsureCoreSchema(ctx, store)
-	test.Must(t, err, "ensure core schema")
-
-	for _, name := range opts.ExtraSchemas {
-		var constraints revisor.ConstraintSet
-
-		err := elephantine.UnmarshalFile(name, &constraints)
-		test.Must(t, err, "decode schema in %q", name)
-
-		err = repository.EnsureSchema(ctx, store,
-			filepath.Base(name), "v0.0.0", constraints)
-		test.Must(t, err, "register the schema %q", name)
-	}
+	go func() {
+		err := typeConf.Run(ctx, store)
+		test.Must(t, err, "run type configurations")
+	}()
 
 	sse, err := repository.NewSSE(ctx, logger.With(
 		elephantine.LogKeyComponent, "sse",
 	), store)
-	test.Must(t, err, "failed to set up SSE server")
+	test.Must(t, err, "set up SSE server")
 
 	go sse.Run(ctx)
 
@@ -246,13 +243,14 @@ func testingAPIServer(
 
 	if opts.RunArchiver {
 		archiver, err := repository.NewArchiver(repository.ArchiverOptions{
-			Logger:            logger,
-			S3:                env.S3,
-			Bucket:            env.Bucket,
-			AssetBucket:       env.AssetBucket,
-			DB:                dbpool,
-			MetricsRegisterer: reg,
-			Store:             store,
+			Logger:             logger,
+			S3:                 env.S3,
+			Bucket:             env.Bucket,
+			AssetBucket:        env.AssetBucket,
+			DB:                 dbpool,
+			MetricsRegisterer:  reg,
+			Store:              store,
+			TypeConfigurations: typeConf,
 		})
 		test.Must(t, err, "create archiver")
 
@@ -306,14 +304,24 @@ func testingAPIServer(
 	workflows, err := repository.NewWorkflows(ctx, logger, store)
 	test.Must(t, err, "create workflows")
 
-	docService := repository.NewDocumentsService(
+	socketKey, err := store.EnsureSocketKey(ctx)
+	test.Must(t, err, "ensure socket key")
+
+	docCache := repository.NewDocCache(store, 1000)
+
+	docService, err := repository.NewDocumentsService(
 		store,
 		repository.NewSchedulePGStore(dbpool),
 		validator,
 		workflows,
 		assetBucket,
 		"sv-se",
+		typeConf,
+		docCache,
+		socketKey,
 	)
+	test.Must(t, err, "create documents service")
+
 	schemaService := repository.NewSchemasService(logger, store)
 	workflowService := repository.NewWorkflowsService(store)
 	metricsService := repository.NewMetricsService(store)
@@ -327,13 +335,18 @@ func testingAPIServer(
 
 	srvOpts.Hooks = elephantine.LoggingHooks(logger)
 
-	srvOpts.SetJWTValidation(
-		elephantine.NewStaticAuthInfoParser(
-			t.Context(),
-			jwtKey.PublicKey,
-			elephantine.JWTAuthInfoParserOptions{
-				Issuer: "test",
-			}))
+	authParser := elephantine.NewStaticAuthInfoParser(
+		t.Context(),
+		jwtKey.PublicKey,
+		elephantine.JWTAuthInfoParserOptions{
+			Issuer: "test",
+		})
+
+	srvOpts.SetJWTValidation(authParser)
+
+	socket := repository.NewSocketHandler(
+		ctx, logger,
+		store, docCache, authParser, &socketKey.PublicKey)
 
 	err = repository.SetUpRouter(router,
 		repository.WithDocumentsAPI(docService, srvOpts),
@@ -341,6 +354,7 @@ func testingAPIServer(
 		repository.WithWorkflowsAPI(workflowService, srvOpts),
 		repository.WithMetricsAPI(metricsService, srvOpts),
 		repository.WithSSE(sse.HTTPHandler(), srvOpts),
+		repository.WithWebsocket(socket),
 	)
 	test.Must(t, err, "set up router")
 
@@ -348,7 +362,12 @@ func testingAPIServer(
 
 	t.Cleanup(server.Close)
 
+	client := server.Client()
+
+	client.Timeout = 5 * time.Second
+
 	tc := TestContext{
+		client:           client,
 		SigningKey:       jwtKey,
 		Server:           server,
 		Documents:        docService,
@@ -358,29 +377,43 @@ func testingAPIServer(
 		Env:              env,
 	}
 
-	if !opts.NoStandardStatuses {
-		wf := tc.WorkflowsClient(t,
-			itest.StandardClaims(t, repository.ScopeWorkflowAdmin))
+	wf := tc.WorkflowsClient(t,
+		itest.StandardClaims(t, repository.ScopeWorkflowAdmin))
 
-		for _, status := range []string{"usable", "done", "approved"} {
-			_, err := wf.UpdateStatus(ctx, &rpc.UpdateStatusRequest{
-				Type: "core/article",
-				Name: status,
-			})
-			test.Must(t, err, "create status %q", status)
-		}
-
-		workflowDeadline := time.After(1 * time.Second)
-
-		// Wait until the workflow provider notices the change.
-		for !tc.WorkflowProvider.HasStatus("core/article", "approved") {
-			select {
-			case <-workflowDeadline:
-				t.Fatal("workflow didn't get updated in time")
-			case <-time.After(1 * time.Millisecond):
-			}
-		}
+	if opts.ConfigDirectory == "" {
+		opts.ConfigDirectory = filepath.Join("..", "testdata", "config", "base")
 	}
+
+	schemas := opts.Schemas
+
+	if !opts.NoCoreSchemas {
+		core, err := repository.LoadEmbeddedSchemaSet("core", "core-metadoc", "core-planning")
+		test.Must(t, err, "load core schemas")
+
+		schemas = append(schemas, core...)
+	}
+
+	config, err := eleconf.ReadConfigFromDirectory(opts.ConfigDirectory)
+	test.Must(t, err, "read repository configuration")
+
+	clients := eleconf.StaticClients{
+		Workflows: wf,
+		Schemas: tc.SchemasClient(t,
+			itest.StandardClaims(t, repository.ScopeSchemaAdmin)),
+		Metrics: tc.MetricsClient(t,
+			itest.StandardClaims(t, repository.ScopeMetricsAdmin)),
+	}
+
+	changes, err := eleconf.GetChanges(ctx, &clients, config, schemas)
+	test.Must(t, err, "get changes")
+
+	for _, change := range changes {
+		err := change.Execute(ctx, &clients)
+		test.Must(t, err, "apply configuration")
+	}
+
+	err = validator.RefreshSchemas(ctx)
+	test.Must(t, err, "refresh validator")
 
 	return tc
 }

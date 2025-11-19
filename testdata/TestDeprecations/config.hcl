@@ -1,0 +1,2 @@
+document "test/deprecation" {
+}

@@ -3,16 +3,21 @@ package planning
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/newsdoc"
 )
+
+type TimezoneLoadFunc func(name string) (*time.Location, error)
 
 func UpdateDatabase(
 	ctx context.Context,
 	tx postgres.DBTX,
 	doc newsdoc.Document,
 	version int64,
+	tzLoadFn TimezoneLoadFunc,
+	defaultTZ *time.Location,
 ) error {
 	q := postgres.New(tx)
 
@@ -21,7 +26,7 @@ func UpdateDatabase(
 		return fmt.Errorf("failed to extract planning information from document: %w", err)
 	}
 
-	rows, err := item.ToRows(version)
+	rows, err := item.ToRows(version, tzLoadFn, defaultTZ)
 	if err != nil {
 		return fmt.Errorf("failed to create row updates from planning item: %w", err)
 	}

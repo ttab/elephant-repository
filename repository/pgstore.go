@@ -2,6 +2,9 @@ package repository
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,6 +35,48 @@ const (
 type PGDocStoreOptions struct {
 	MetricsCalculators []MetricCalculator
 	DeleteTimeout      time.Duration
+	TypeConfigurations *TypeConfigurations
+	DefaultTZ          *time.Location
+}
+
+func NewPGDocStore(
+	ctx context.Context,
+	logger *slog.Logger, pool *pgxpool.Pool,
+	assets *AssetBucket,
+	options PGDocStoreOptions,
+) (*PGDocStore, error) {
+	if options.DeleteTimeout == 0 {
+		options.DeleteTimeout = 5 * time.Second
+	}
+
+	if options.DefaultTZ == nil {
+		logger.Warn("running pgstore with fallback to UTC as default timezone")
+
+		options.DefaultTZ = time.UTC
+	}
+
+	s := &PGDocStore{
+		logger:       logger,
+		pool:         pool,
+		reader:       postgres.New(pool),
+		assets:       assets,
+		opts:         options,
+		metr:         NewIntrinsicMetrics(logger, options.MetricsCalculators),
+		archived:     pg.NewFanOut[ArchivedEvent](NotifyArchived),
+		schemas:      pg.NewFanOut[SchemaEvent](NotifySchemasUpdated),
+		typeConf:     pg.NewFanOut[TypeConfiguredEvent](NotifyTypeConfigured),
+		deprecations: pg.NewFanOut[DeprecationEvent](NotifyDeprecationsUpdated),
+		workflows:    pg.NewFanOut[WorkflowEvent](NotifyWorkflowsUpdated),
+		eventOutbox:  pg.NewFanOut[int64](NotifyEventOutbox),
+		eventlog:     pg.NewFanOut[int64](NotifyEventlog),
+	}
+
+	err := s.metr.Setup(ctx, s)
+	if err != nil {
+		return nil, fmt.Errorf("set up intrinsic metrics: %w", err)
+	}
+
+	return s, nil
 }
 
 // Interface guard.
@@ -51,43 +96,133 @@ type PGDocStore struct {
 
 	archived     *pg.FanOut[ArchivedEvent]
 	schemas      *pg.FanOut[SchemaEvent]
+	typeConf     *pg.FanOut[TypeConfiguredEvent]
 	deprecations *pg.FanOut[DeprecationEvent]
 	workflows    *pg.FanOut[WorkflowEvent]
 	eventOutbox  *pg.FanOut[int64]
 	eventlog     *pg.FanOut[int64]
 }
 
-func NewPGDocStore(
-	ctx context.Context,
-	logger *slog.Logger, pool *pgxpool.Pool,
-	assets *AssetBucket,
-	options PGDocStoreOptions,
-) (*PGDocStore, error) {
-	if options.DeleteTimeout == 0 {
-		options.DeleteTimeout = 5 * time.Second
-	}
+// EnsureSocketKey implements DocStore.
+func (s *PGDocStore) EnsureSocketKey(ctx context.Context) (*ecdsa.PrivateKey, error) {
+	var socketKey *ecdsa.PrivateKey
 
-	s := &PGDocStore{
-		logger:       logger,
-		pool:         pool,
-		reader:       postgres.New(pool),
-		assets:       assets,
-		opts:         options,
-		metr:         NewIntrinsicMetrics(logger, options.MetricsCalculators),
-		archived:     pg.NewFanOut[ArchivedEvent](NotifyArchived),
-		schemas:      pg.NewFanOut[SchemaEvent](NotifySchemasUpdated),
-		deprecations: pg.NewFanOut[DeprecationEvent](NotifyDeprecationsUpdated),
-		workflows:    pg.NewFanOut[WorkflowEvent](NotifyWorkflowsUpdated),
-		eventOutbox:  pg.NewFanOut[int64](NotifyEventOutbox),
-		eventlog:     pg.NewFanOut[int64](NotifyEventlog),
-	}
+	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
+		q := postgres.New(tx)
 
-	err := s.metr.Setup(ctx, s)
+		err := q.LockConfigTable(ctx)
+		if err != nil {
+			return fmt.Errorf("lock config table: %w", err)
+		}
+
+		conf, err := q.GetSystemConfig(ctx, "socket_key")
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("read socket key from db: %w", err)
+		}
+
+		if len(conf) != 0 {
+			socketKey = s.tryToParseECDSAKey(elliptic.P384(), conf,
+				"failed to parse stored socket key, regenerating")
+		}
+
+		if socketKey == nil {
+			key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+			if err != nil {
+				return fmt.Errorf("generate socket key: %w", err)
+			}
+
+			keyData, err := key.Bytes()
+			if err != nil {
+				return fmt.Errorf("encode socket key as integer: %w", err)
+			}
+
+			err = q.SetSystemConfig(ctx, postgres.SetSystemConfigParams{
+				Name:  "socket_key",
+				Value: keyData,
+			})
+			if err != nil {
+				return fmt.Errorf("store socket key in db: %w", err)
+			}
+
+			socketKey = key
+		}
+
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("set up intrinsic metrics: %w", err)
+		return nil, fmt.Errorf("ensure key in transaction: %w", err)
 	}
 
-	return s, nil
+	return socketKey, nil
+}
+
+func (s *PGDocStore) tryToParseECDSAKey(
+	curve elliptic.Curve, data []byte, failLogMsg string,
+) *ecdsa.PrivateKey {
+	key, err := ecdsa.ParseRawPrivateKey(curve, data)
+	if err != nil {
+		s.logger.Error(failLogMsg,
+			elephantine.LogKeyError, err)
+
+		return nil
+	}
+
+	return key
+}
+
+// ListDocumentsInTimeRange implements DocStore.
+func (s *PGDocStore) ListDocumentsInTimeRange(
+	ctx context.Context,
+	docType string, span Timespan, labels []string,
+) ([]DocumentItem, error) {
+	rows, err := s.reader.SelectDocumentsInTimeRange(ctx,
+		postgres.SelectDocumentsInTimeRangeParams{
+			Range:  TimespanToRange(span),
+			Type:   docType,
+			Labels: labels,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("list documents in db: %w", err)
+	}
+
+	items := make([]DocumentItem, len(rows))
+
+	for i := range rows {
+		items[i] = DocumentItem{
+			UUID:           rows[i].UUID,
+			CurrentVersion: rows[i].CurrentVersion,
+			Language:       rows[i].Language.String,
+		}
+	}
+
+	return items, nil
+}
+
+// ListDocumentsOfType implements DocStore.
+func (s *PGDocStore) ListDocumentsOfType(
+	ctx context.Context, docType string, language *string, labels []string,
+) ([]DocumentItem, error) {
+	rows, err := s.reader.SelectBoundedDocumentsWithType(ctx,
+		postgres.SelectBoundedDocumentsWithTypeParams{
+			Type:     docType,
+			Language: pg.PText(language),
+			Labels:   labels,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("list documents in db: %w", err)
+	}
+
+	items := make([]DocumentItem, len(rows))
+
+	for i := range rows {
+		items[i] = DocumentItem{
+			UUID:           rows[i].UUID,
+			CurrentVersion: rows[i].CurrentVersion,
+			Language:       rows[i].Language.String,
+		}
+	}
+
+	return items, nil
 }
 
 // OnSchemaUpdate notifies the channel ch of all archived status
@@ -100,9 +235,7 @@ func NewPGDocStore(
 func (s *PGDocStore) OnArchivedUpdate(
 	ctx context.Context, ch chan ArchivedEvent,
 ) {
-	go s.archived.Listen(ctx, ch, func(_ ArchivedEvent) bool {
-		return true
-	})
+	go s.archived.ListenAll(ctx, ch)
 }
 
 // OnSchemaUpdate notifies the channel ch of all schema updates. Subscription is
@@ -114,9 +247,7 @@ func (s *PGDocStore) OnArchivedUpdate(
 func (s *PGDocStore) OnSchemaUpdate(
 	ctx context.Context, ch chan SchemaEvent,
 ) {
-	go s.schemas.Listen(ctx, ch, func(_ SchemaEvent) bool {
-		return true
-	})
+	go s.schemas.ListenAll(ctx, ch)
 }
 
 // OnSchemaUpdate notifies the channel ch of all schema updates. Subscription is
@@ -128,9 +259,7 @@ func (s *PGDocStore) OnSchemaUpdate(
 func (s *PGDocStore) OnDeprecationUpdate(
 	ctx context.Context, ch chan DeprecationEvent,
 ) {
-	go s.deprecations.Listen(ctx, ch, func(_ DeprecationEvent) bool {
-		return true
-	})
+	go s.deprecations.ListenAll(ctx, ch)
 }
 
 // OnWorkflowUpdate notifies the channel ch of all workflow updates.
@@ -142,9 +271,7 @@ func (s *PGDocStore) OnDeprecationUpdate(
 func (s *PGDocStore) OnWorkflowUpdate(
 	ctx context.Context, ch chan WorkflowEvent,
 ) {
-	go s.workflows.Listen(ctx, ch, func(_ WorkflowEvent) bool {
-		return true
-	})
+	go s.workflows.ListenAll(ctx, ch)
 }
 
 // OnEventOutbox notifies the channel ch of all new outbox events. Subscription
@@ -156,9 +283,19 @@ func (s *PGDocStore) OnWorkflowUpdate(
 func (s *PGDocStore) OnEventOutbox(
 	ctx context.Context, ch chan int64,
 ) {
-	go s.eventOutbox.Listen(ctx, ch, func(_ int64) bool {
-		return true
-	})
+	go s.eventOutbox.ListenAll(ctx, ch)
+}
+
+// OnTypeConfigured notifies the channel ch of all document type configuration
+// changes.
+//
+// Note that we don't provide any delivery guarantees for these events.
+// non-blocking send is used on ch, so if it's unbuffered events will be
+// discarded if the receiver is busy.
+func (s *PGDocStore) OnTypeConfigured(
+	ctx context.Context, ch chan TypeConfiguredEvent,
+) {
+	go s.typeConf.ListenAll(ctx, ch)
 }
 
 // OnEventlog notifies the channel ch of all new eventlog IDs. Subscription is
@@ -170,9 +307,7 @@ func (s *PGDocStore) OnEventOutbox(
 func (s *PGDocStore) OnEventlog(
 	ctx context.Context, ch chan int64,
 ) {
-	go s.eventlog.Listen(ctx, ch, func(_ int64) bool {
-		return true
-	})
+	go s.eventlog.ListenAll(ctx, ch)
 }
 
 // RunListener opens a connection to the database and subscribes to all store
@@ -185,6 +320,7 @@ func (s *PGDocStore) RunListener(ctx context.Context) {
 		s.workflows,
 		s.eventOutbox,
 		s.eventlog,
+		s.typeConf,
 	}
 
 	pg.Subscribe(ctx, s.logger, s.pool, fanOuts...)
@@ -713,6 +849,7 @@ type BulkGetReference struct {
 }
 
 type BulkGetItem struct {
+	UUID     uuid.UUID
 	Document newsdoc.Document
 	Version  int64
 }
@@ -753,6 +890,7 @@ func (s *PGDocStore) BulkGetDocuments(
 		}
 
 		result = append(result, BulkGetItem{
+			UUID:     row.UUID,
 			Document: d,
 			Version:  row.Version,
 		})
@@ -844,6 +982,8 @@ func eventlogRowToEvent(r postgres.GetEventlogRow) (Event, error) {
 		SystemState:        r.SystemState.String,
 		WorkflowStep:       r.WorkflowState.String,
 		WorkflowCheckpoint: r.WorkflowCheckpoint.String,
+		Timespans:          r.Extra.Timespans,
+		Labels:             r.Extra.Labels,
 	}
 
 	extra := r.Extra
@@ -914,6 +1054,8 @@ func (s *PGDocStore) GetCompactedEventlog(
 			e.AttachedObjects = extra.AttachedObjects
 			e.DetachedObjects = extra.DetachedObjects
 			e.DeleteRecordID = extra.DeleteRecordID
+			e.Timespans = extra.Timespans
+			e.Labels = extra.Labels
 		}
 
 		if res[i].Acl != nil {
@@ -1306,6 +1448,7 @@ func (s *PGDocStore) GetDocumentMeta(
 	}
 
 	meta := DocumentMeta{
+		Type:               info.Type,
 		Nonce:              info.Nonce,
 		Created:            info.Created.Time,
 		CreatorURI:         info.CreatorUri,
@@ -1357,6 +1500,118 @@ func (s *PGDocStore) GetDocumentMeta(
 	return &meta, nil
 }
 
+// GetDocumentMeta implements DocStore.
+func (s *PGDocStore) BulkGetDocumentMeta(
+	ctx context.Context, documents []uuid.UUID,
+) (map[uuid.UUID]*DocumentMeta, error) {
+	infoRows, err := s.reader.BulkGetDocumentInfo(ctx, postgres.BulkGetDocumentInfoParams{
+		Uuids: documents,
+		Now:   pg.Time(time.Now()),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch document info: %w", err)
+	}
+
+	result := make(map[uuid.UUID]*DocumentMeta, len(infoRows))
+	foundDocs := make([]uuid.UUID, 0, len(infoRows))
+
+	for _, info := range infoRows {
+		// If the document is in a system state lock just add that to
+		// the result and don't do any further processing.
+		if info.SystemState.Valid {
+			state := SystemState(info.SystemState.String)
+
+			switch state {
+			case SystemStateDeleting, SystemStateRestoring:
+				result[info.UUID] = &DocumentMeta{
+					SystemLock: state,
+				}
+			}
+
+			continue
+		}
+
+		var mainDoc string
+
+		if info.MainDoc.Valid {
+			mainDoc = uuid.UUID(info.MainDoc.Bytes).String()
+		}
+
+		meta := DocumentMeta{
+			Type:               info.Type,
+			Nonce:              info.Nonce,
+			Created:            info.Created.Time,
+			CreatorURI:         info.CreatorUri,
+			Modified:           info.Updated.Time,
+			UpdaterURI:         info.UpdaterUri,
+			CurrentVersion:     info.CurrentVersion,
+			Statuses:           make(map[string]StatusHead),
+			MainDocument:       mainDoc,
+			WorkflowState:      info.WorkflowState.String,
+			WorkflowCheckpoint: info.WorkflowCheckpoint.String,
+			Lock: Lock{
+				Token:   info.LockToken.String,
+				URI:     info.LockUri.String,
+				Created: info.LockCreated.Time,
+				Expires: info.LockExpires.Time,
+				App:     info.LockApp.String,
+				Comment: info.LockComment.String,
+			},
+		}
+
+		result[info.UUID] = &meta
+		foundDocs = append(foundDocs, info.UUID)
+	}
+
+	bulkHeads, err := s.bulkGetFullDocumentHeads(ctx, s.reader, foundDocs)
+	if err != nil {
+		return nil, err
+	}
+
+	for docID, heads := range bulkHeads {
+		meta, ok := result[docID]
+		if !ok {
+			continue
+		}
+
+		meta.Statuses = heads
+	}
+
+	attached, err := s.reader.BulkGetAttachments(ctx, foundDocs)
+	if err != nil {
+		return nil, fmt.Errorf("get attachment information: %w", err)
+	}
+
+	for _, item := range attached {
+		meta, ok := result[item.Document]
+		if !ok {
+			continue
+		}
+
+		meta.Attachments = append(meta.Attachments,
+			AttachmentRef{
+				Name:    item.Name,
+				Version: item.Version,
+			})
+	}
+
+	bulkACLs, err := s.BulkGetDocumentACL(ctx, foundDocs)
+	if err != nil {
+		return nil, err
+	}
+
+	for docID, acls := range bulkACLs {
+		meta, ok := result[docID]
+		if !ok {
+			continue
+		}
+
+		meta.ACL = acls
+	}
+
+	return result, nil
+}
+
 func (s *PGDocStore) GetDocumentACL(
 	ctx context.Context, uuid uuid.UUID,
 ) ([]ACLEntry, error) {
@@ -1375,6 +1630,30 @@ func (s *PGDocStore) GetDocumentACL(
 	}
 
 	return acl, nil
+}
+
+func (s *PGDocStore) BulkGetDocumentACL(
+	ctx context.Context, uuids []uuid.UUID,
+) (map[uuid.UUID][]ACLEntry, error) {
+	aclResult, err := s.reader.BulkGetDocumentACL(ctx, uuids)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch document ACLs: %w", err)
+	}
+
+	result := make(map[uuid.UUID][]ACLEntry, len(uuids))
+
+	for _, a := range aclResult {
+		acl := result[a.UUID]
+
+		acl = append(acl, ACLEntry{
+			URI:         a.URI,
+			Permissions: a.Permissions,
+		})
+
+		result[a.UUID] = acl
+	}
+
+	return result, nil
 }
 
 func (s *PGDocStore) getFullDocumentHeads(
@@ -1402,6 +1681,109 @@ func (s *PGDocStore) getFullDocumentHeads(
 	}
 
 	return statuses, nil
+}
+
+func (s *PGDocStore) bulkGetFullDocumentHeads(
+	ctx context.Context, q *postgres.Queries, docIDs []uuid.UUID,
+) (map[uuid.UUID]map[string]StatusHead, error) {
+	result := make(map[uuid.UUID]map[string]StatusHead, len(docIDs))
+
+	heads, err := q.BulkGetFullDocumentHeads(ctx, docIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch document heads: %w", err)
+	}
+
+	for _, head := range heads {
+		statuses, ok := result[head.UUID]
+		if !ok {
+			statuses = make(map[string]StatusHead)
+			result[head.UUID] = statuses
+		}
+
+		status := StatusHead{
+			ID:             head.ID,
+			Version:        head.Version,
+			Creator:        head.CreatorUri,
+			Created:        head.Created.Time,
+			MetaDocVersion: head.MetaDocVersion.Int64,
+			Meta:           head.Meta,
+			Language:       head.Language.String,
+		}
+
+		statuses[head.Name] = status
+	}
+
+	return result, nil
+}
+
+// ConfigureType implements DocStore.
+func (s *PGDocStore) ConfigureType(
+	ctx context.Context,
+	docType string,
+	configuration TypeConfiguration,
+) error {
+	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.SetTypeConfiguration(ctx,
+			postgres.SetTypeConfigurationParams{
+				Type:          docType,
+				Configuration: typeConfigurationToDB(configuration),
+			})
+		if err != nil {
+			return fmt.Errorf("write configuration to database: %w", err)
+		}
+
+		err = s.typeConf.Publish(ctx, tx, TypeConfiguredEvent{
+			Type: docType,
+		})
+		if err != nil {
+			return fmt.Errorf("publish notification: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("transaction failed: %w", err)
+	}
+
+	return nil
+}
+
+// GetTypeConfiguration implements DocStore.
+func (s *PGDocStore) GetTypeConfiguration(
+	ctx context.Context,
+	docType string,
+) (*TypeConfiguration, error) {
+	res, err := s.reader.GetTypeConfiguration(ctx, docType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, DocStoreErrorf(ErrCodeNotFound,
+			"%q does not have a stored configuration", docType)
+	} else if err != nil {
+		return nil, fmt.Errorf("read from database: %w", err)
+	}
+
+	conf := typeConfigurationFromDB(res.Configuration)
+
+	return &conf, nil
+}
+
+// GetTypeConfigurations implements DocStore.
+func (s *PGDocStore) GetTypeConfigurations(
+	ctx context.Context,
+) (map[string]TypeConfiguration, error) {
+	res, err := s.reader.GetTypeConfigurations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read from database: %w", err)
+	}
+
+	confs := make(map[string]TypeConfiguration, len(res))
+
+	for i := range res {
+		confs[res[i].Type] = typeConfigurationFromDB(res[i].Configuration)
+	}
+
+	return confs, nil
 }
 
 // CheckPermission implements DocStore.
@@ -1539,6 +1921,7 @@ func (s *PGDocStore) Update(
 		}
 
 		state.Version = info.Info.CurrentVersion
+		state.CurrentVersion = info.Info.CurrentVersion
 		state.Exists = info.Exists
 		state.Language = info.Language
 		state.IsMetaDoc = info.MainDoc != nil
@@ -1629,6 +2012,14 @@ func (s *PGDocStore) Update(
 			startWState = s
 		}
 
+		extr, err := s.extractsFromState(ctx, q, state)
+		if err != nil {
+			return nil, err
+		}
+
+		state.Timespans = extr.Timespans
+		state.Labels = extr.Labels
+
 		if state.Doc != nil {
 			if state.Exists && state.Language != state.Doc.Language {
 				state.OldLanguage = state.Language
@@ -1641,22 +2032,27 @@ func (s *PGDocStore) Update(
 			initialCreate = version == 1
 
 			props := documentVersionProps{
-				UUID:             state.UUID,
-				Nonce:            state.Nonce,
-				Version:          version,
-				Type:             state.Type,
-				URI:              state.Doc.URI,
-				Language:         state.Language,
-				Created:          state.Created,
-				Creator:          state.Creator,
-				MainDocument:     state.Request.MainDocument,
-				MainDocumentType: state.MainDocType,
-				MetaJSON:         state.MetaJSON,
-				DocJSON:          state.DocJSON,
-				Document:         state.Doc,
+				UUID:               state.UUID,
+				Nonce:              state.Nonce,
+				Version:            version,
+				Type:               state.Type,
+				URI:                state.Doc.URI,
+				Language:           state.Language,
+				Created:            state.Created,
+				Creator:            state.Creator,
+				MainDocument:       state.Request.MainDocument,
+				MainDocumentType:   state.MainDocType,
+				MetaJSON:           state.MetaJSON,
+				DocJSON:            state.DocJSON,
+				Document:           state.Doc,
+				Timespans:          state.Timespans,
+				IntrinsicTimespans: extr.IntrinsicTimespans,
+				Labels:             state.Labels,
 			}
 
-			err := createNewDocumentVersion(ctx, tx, q, props)
+			err = createNewDocumentVersion(
+				ctx, tx, q, props, s.opts.DefaultTZ,
+			)
 			if !state.Exists && pg.IsConstraintError(err, "document_version_pkey") {
 				// We can get collisions on document creation
 				// (as there is no row to lock on create),
@@ -1682,6 +2078,8 @@ func (s *PGDocStore) Update(
 				MainDocumentType: state.MainDocType,
 				Version:          state.Version,
 				SystemState:      state.SystemState,
+				Timespans:        TimespansAsTuples(state.Timespans),
+				Labels:           state.Labels,
 			}
 
 			// Add attaches and detaches to the event, we'll act on
@@ -1866,6 +2264,8 @@ func (s *PGDocStore) Update(
 				Version:          status.Version,
 				MetaDocVersion:   metaDocVersion,
 				SystemState:      state.SystemState,
+				Timespans:        TimespansAsTuples(state.Timespans),
+				Labels:           state.Labels,
 			})
 
 			// Progress workflow state
@@ -1909,6 +2309,7 @@ func (s *PGDocStore) Update(
 			evts = append(evts, postgres.OutboxEvent{
 				Event:            string(TypeACLUpdate),
 				UUID:             state.Request.UUID,
+				Version:          state.Version,
 				Nonce:            state.Nonce,
 				Timestamp:        state.Created,
 				Updater:          state.Creator,
@@ -1918,6 +2319,8 @@ func (s *PGDocStore) Update(
 				MainDocument:     state.Request.MainDocument,
 				MainDocumentType: state.MainDocType,
 				SystemState:      state.SystemState,
+				Timespans:        TimespansAsTuples(state.Timespans),
+				Labels:           state.Labels,
 			})
 		}
 
@@ -1955,6 +2358,8 @@ func (s *PGDocStore) Update(
 				WorkflowCheckpoint: wState.LastCheckpoint,
 				// TODO: previous step?
 				SystemState: state.SystemState,
+				Timespans:   TimespansAsTuples(state.Timespans),
+				Labels:      state.Labels,
 			})
 		}
 	}
@@ -2151,6 +2556,83 @@ func (s *PGDocStore) processAttachments(
 	}
 
 	return rollback, nil
+}
+
+type DocumentExtracts struct {
+	Timespans          []Timespan
+	IntrinsicTimespans []Timespan
+	Labels             []string
+}
+
+// Returns the total timespans for the document and the intrinsic timespans.
+func (s *PGDocStore) extractsFromState(
+	ctx context.Context, q *postgres.Queries, state *docUpdateState,
+) (*DocumentExtracts, error) {
+	rows, err := q.GetDeliverableTimeranges(ctx, state.UUID)
+	if err != nil {
+		return nil, fmt.Errorf("get deliverable time ranges: %w", err)
+	}
+
+	ranges := make([]pgtype.Range[pgtype.Timestamptz], len(rows))
+
+	for i := range rows {
+		ranges[i] = rows[i].Timerange
+	}
+
+	docSpans := NormaliseTimespans(
+		TimestampRangesToTimespans(ranges),
+		time.UTC)
+
+	var (
+		intrinsicTS  []Timespan
+		intrinsicLbl []string
+	)
+
+	if state.Doc != nil {
+		spans, err := s.opts.TypeConfigurations.TimespansForDocument(
+			ctx, *state.Doc)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"extract document timespans: %w", err)
+		}
+
+		intrinsicTS = spans
+
+		lbls, err := s.opts.TypeConfigurations.LabelsForDocument(
+			ctx, *state.Doc)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"extract document labels: %w", err)
+		}
+
+		intrinsicLbl = append(intrinsicLbl, lbls...)
+	} else if state.Exists {
+		info, err := q.GetDocumentVersionSearchInfo(ctx,
+			postgres.GetDocumentVersionSearchInfoParams{
+				UUID:    state.UUID,
+				Version: state.CurrentVersion,
+			})
+		if err != nil {
+			return nil, fmt.Errorf(
+				"get intrinsic time from db: %w", err)
+		}
+
+		intrinsicTS = NormaliseTimespans(
+			TimestampRangesToTimespans(info.Time),
+			time.UTC)
+
+		intrinsicLbl = append(intrinsicLbl, info.Labels...)
+	}
+
+	docSpans = append(docSpans, intrinsicTS...)
+
+	slices.Sort(intrinsicLbl)
+
+	return &DocumentExtracts{
+		Timespans:          MergeTimespans(docSpans, 1*time.Second),
+		IntrinsicTimespans: intrinsicTS,
+		Labels:             slices.Compact(intrinsicLbl),
+	}, nil
 }
 
 // Attached objects that should be rolled back to previous version, or deleted.
@@ -2359,19 +2841,22 @@ func loadWorkflowState(
 }
 
 type documentVersionProps struct {
-	UUID             uuid.UUID
-	Nonce            uuid.UUID
-	Version          int64
-	Type             string
-	URI              string
-	Language         string
-	Created          time.Time
-	Creator          string
-	MainDocument     *uuid.UUID
-	MainDocumentType string
-	MetaJSON         []byte
-	DocJSON          []byte
-	Document         *newsdoc.Document
+	UUID               uuid.UUID
+	Nonce              uuid.UUID
+	Version            int64
+	Type               string
+	URI                string
+	Language           string
+	Created            time.Time
+	Creator            string
+	MainDocument       *uuid.UUID
+	MainDocumentType   string
+	MetaJSON           []byte
+	DocJSON            []byte
+	Document           *newsdoc.Document
+	Timespans          []Timespan
+	IntrinsicTimespans []Timespan
+	Labels             []string
 }
 
 func createNewDocumentVersion(
@@ -2379,6 +2864,7 @@ func createNewDocumentVersion(
 	tx pgx.Tx,
 	q *postgres.Queries,
 	props documentVersionProps,
+	defaultTZ *time.Location,
 ) error {
 	err := q.UpsertDocument(ctx, postgres.UpsertDocumentParams{
 		UUID:        props.UUID,
@@ -2391,6 +2877,8 @@ func createNewDocumentVersion(
 		Language:    pg.TextOrNull(props.Language),
 		MainDoc:     pg.PUUID(props.MainDocument),
 		MainDocType: pg.TextOrNull(props.MainDocumentType),
+		Time:        TimespansToTimestampMultiranges(props.Timespans),
+		Labels:      props.Labels,
 	})
 	if pg.IsConstraintError(err, "document_uri_key") {
 		return DocStoreErrorf(ErrCodeDuplicateURI,
@@ -2408,6 +2896,8 @@ func createNewDocumentVersion(
 		Meta:         props.MetaJSON,
 		Language:     pg.Text(props.Language),
 		DocumentData: props.DocJSON,
+		Time:         TimespansToTimestampMultiranges(props.IntrinsicTimespans),
+		Labels:       props.Labels,
 	})
 	if err != nil {
 		return fmt.Errorf(
@@ -2415,7 +2905,9 @@ func createNewDocumentVersion(
 	}
 
 	// TODO: I'm a bit unsure about this now, was it a good idea to have a
-	// document type that gets special treatment?
+	// document type that gets special treatment? UPDATE: this was validated
+	// by the need for deliverables to be oriented in time according to
+	// their assignment ...I think. Still not 100% happy with this.
 	if props.Type == "core/planning-item" {
 		doc := props.Document
 		if doc == nil {
@@ -2430,7 +2922,7 @@ func createNewDocumentVersion(
 		}
 
 		err = planning.UpdateDatabase(ctx, tx,
-			*doc, props.Version)
+			*doc, props.Version, loadTZ, defaultTZ)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to update planning data: %w", err)
@@ -2451,6 +2943,8 @@ type docUpdateState struct {
 
 	Type        string
 	Nonce       uuid.UUID
+	Timespans   []Timespan
+	Labels      []string
 	Exists      bool
 	Language    string
 	OldLanguage string
@@ -3631,6 +4125,8 @@ type UpdatePrefligthInfo struct {
 	MainDoc     *uuid.UUID
 	MainDocType string
 	Language    string
+	Timespans   []Timespan
+	Labels      []string
 }
 
 // UpdatePreflight must always be called before any information related to a

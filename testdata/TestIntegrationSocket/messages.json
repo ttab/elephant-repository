@@ -1,0 +1,522 @@
+[
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "document_batch": {
+      "documents": [
+        {
+          "meta": {
+            "created": "2023-01-10T20:06:37+01:00",
+            "modified": "2023-01-10T20:06:37+01:00",
+            "current_version": "1",
+            "heads": {
+              "usable": {
+                "id": "1",
+                "version": "1",
+                "creator": "user://test/testintegrationsocket",
+                "created": "2023-01-10T20:06:37+01:00"
+              }
+            },
+            "acl": [
+              {
+                "uri": "user://test/testintegrationsocket",
+                "permissions": [
+                  "r",
+                  "w"
+                ]
+              }
+            ],
+            "creator_uri": "user://test/testintegrationsocket",
+            "updater_uri": "user://test/testintegrationsocket",
+            "nonce": "00000000-0000-0000-0000-000000000000",
+            "type": "core/planning-item"
+          },
+          "document": {
+            "uuid": "382c0aad-7410-4daa-a9f2-347aa17e315e",
+            "type": "core/planning-item",
+            "uri": "core://newscoverage/382c0aad-7410-4daa-a9f2-347aa17e315e",
+            "title": "Reklam för viktminskningsläkemedel kan vara olaglig",
+            "meta": [
+              {
+                "type": "core/planning-item",
+                "data": {
+                  "end_date": "2025-11-14",
+                  "start_date": "2025-11-14",
+                  "tentative": "false"
+                }
+              },
+              {
+                "type": "core/newsvalue",
+                "value": "3"
+              },
+              {
+                "id": "a46bae54-276d-4715-9c7f-cedfc169fa41",
+                "type": "core/assignment",
+                "title": "Reklam för viktminskningsläkemedel kan vara olagligt",
+                "data": {
+                  "end_date": "2025-11-14",
+                  "full_day": "false",
+                  "public": "true",
+                  "publish_slot": "6",
+                  "start": "2025-11-14T05:53:05.947Z",
+                  "start_date": "2025-11-14"
+                },
+                "links": [
+                  {
+                    "uuid": "c383e8fd-a3e8-4bf2-9ec3-322930601017",
+                    "type": "core/author",
+                    "title": "Vera Leijonklo",
+                    "rel": "assignee",
+                    "role": "primary"
+                  },
+                  {
+                    "uuid": "f7eb1d2d-0814-4027-b857-fa21d2f16805",
+                    "type": "core/article",
+                    "rel": "deliverable"
+                  }
+                ],
+                "meta": [
+                  {
+                    "type": "core/assignment-type",
+                    "value": "text"
+                  }
+                ]
+              }
+            ],
+            "links": [
+              {
+                "uuid": "956636ed-2687-4bc3-a45a-7e09d98c6eeb",
+                "type": "core/section",
+                "title": "Inrikes",
+                "rel": "section"
+              }
+            ],
+            "language": "sv-se"
+          }
+        }
+      ],
+      "final_batch": true
+    }
+  },
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "inclusion_batch": {
+      "set_name": "planning",
+      "documents": [
+        {
+          "uuid": "f7eb1d2d-0814-4027-b857-fa21d2f16805",
+          "state": {
+            "meta": {
+              "created": "2023-01-10T20:06:37+01:00",
+              "modified": "2023-01-10T20:06:37+01:00",
+              "current_version": "1",
+              "heads": {
+                "done": {
+                  "id": "1",
+                  "version": "1",
+                  "creator": "user://test/testintegrationsocket",
+                  "created": "2023-01-10T20:06:37+01:00"
+                }
+              },
+              "acl": [
+                {
+                  "uri": "user://test/testintegrationsocket",
+                  "permissions": [
+                    "r",
+                    "w"
+                  ]
+                }
+              ],
+              "workflow_state": "done",
+              "creator_uri": "user://test/testintegrationsocket",
+              "updater_uri": "user://test/testintegrationsocket",
+              "nonce": "00000000-0000-0000-0000-000000000000",
+              "type": "core/article"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "handled": true
+  },
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "document_update": {
+      "set_name": "planning",
+      "event": {
+        "id": "8",
+        "event": "status",
+        "uuid": "f7eb1d2d-0814-4027-b857-fa21d2f16805",
+        "timestamp": "2023-01-10T20:06:37+01:00",
+        "version": "1",
+        "status": "usable",
+        "status_id": "1",
+        "updater_uri": "user://test/testintegrationsocket",
+        "type": "core/article",
+        "language": "sv-se",
+        "document_nonce": "00000000-0000-0000-0000-000000000000",
+        "timespans": [
+          {
+            "from": "2025-11-14T05:53:05Z",
+            "to": "2025-11-14T05:53:05Z"
+          }
+        ]
+      },
+      "included": true
+    }
+  },
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "document_update": {
+      "set_name": "planning",
+      "event": {
+        "id": "9",
+        "event": "workflow",
+        "uuid": "f7eb1d2d-0814-4027-b857-fa21d2f16805",
+        "timestamp": "2023-01-10T20:06:37+01:00",
+        "version": "1",
+        "updater_uri": "user://test/testintegrationsocket",
+        "type": "core/article",
+        "language": "sv-se",
+        "workflow_state": "usable",
+        "workflow_checkpoint": "usable",
+        "document_nonce": "00000000-0000-0000-0000-000000000000",
+        "timespans": [
+          {
+            "from": "2025-11-14T05:53:05Z",
+            "to": "2025-11-14T05:53:05Z"
+          }
+        ]
+      },
+      "included": true
+    }
+  },
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "document_update": {
+      "set_name": "planning",
+      "event": {
+        "id": "10",
+        "event": "document",
+        "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
+        "timestamp": "2023-01-10T20:06:37+01:00",
+        "version": "1",
+        "updater_uri": "user://test/testintegrationsocket",
+        "type": "core/planning-item",
+        "language": "sv-se",
+        "document_nonce": "00000000-0000-0000-0000-000000000000",
+        "timespans": [
+          {
+            "from": "2025-11-14T00:00:00Z",
+            "to": "2025-11-14T23:59:59Z"
+          }
+        ],
+        "labels": [
+          "section:0730efa9-43f2-468d-979a-aaffc74d7582"
+        ]
+      },
+      "meta": {
+        "created": "2023-01-10T20:06:37+01:00",
+        "modified": "2023-01-10T20:06:37+01:00",
+        "current_version": "1",
+        "acl": [
+          {
+            "uri": "user://test/testintegrationsocket",
+            "permissions": [
+              "r",
+              "w"
+            ]
+          }
+        ],
+        "creator_uri": "user://test/testintegrationsocket",
+        "updater_uri": "user://test/testintegrationsocket",
+        "nonce": "00000000-0000-0000-0000-000000000000",
+        "type": "core/planning-item"
+      },
+      "document": {
+        "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
+        "type": "core/planning-item",
+        "uri": "core://newscoverage/a9791252-6e7a-40b2-bc0b-129d25df17b8",
+        "title": "Premiär i beachvolleyboll-VM med dubbla svenska medaljhopp",
+        "meta": [
+          {
+            "type": "core/planning-item",
+            "data": {
+              "end_date": "2025-11-14",
+              "start_date": "2025-11-14",
+              "tentative": "false"
+            }
+          },
+          {
+            "type": "core/newsvalue",
+            "value": "3"
+          },
+          {
+            "type": "core/description",
+            "data": {
+              "text": "Hölting Nilsson/Andersson-Hood/Merritt, Australien, kl 06.30\nÅhman/Hellvig-Burnett/Hodges, Australien, kl 11.30\n"
+            },
+            "role": "public"
+          },
+          {
+            "id": "e7bc39de-e965-44aa-aa69-159dcf1e36f4",
+            "type": "core/assignment",
+            "title": "löpande rapportering",
+            "data": {
+              "end_date": "2025-11-14",
+              "full_day": "false",
+              "public": "true",
+              "publish_slot": "13",
+              "start": "2025-11-14T12:34:52.431Z",
+              "start_date": "2025-11-14"
+            },
+            "links": [
+              {
+                "uuid": "575c079e-aa27-471a-8d00-4f714a4b227e",
+                "type": "core/author",
+                "title": "Petter Nilsson",
+                "rel": "assignee",
+                "role": "primary"
+              }
+            ],
+            "meta": [
+              {
+                "type": "core/assignment-type",
+                "value": "text"
+              }
+            ]
+          }
+        ],
+        "links": [
+          {
+            "uuid": "62f1bd22-0c25-402c-85b5-c5a8f12d821e",
+            "type": "core/event",
+            "title": "BEACHVOLLEY: VM (herrar/damer)",
+            "rel": "event"
+          },
+          {
+            "uuid": "0730efa9-43f2-468d-979a-aaffc74d7582",
+            "type": "core/section",
+            "title": "Sport",
+            "rel": "section"
+          }
+        ],
+        "language": "sv-se"
+      }
+    }
+  },
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "document_update": {
+      "set_name": "planning",
+      "event": {
+        "id": "10",
+        "event": "document",
+        "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
+        "timestamp": "2023-01-10T20:06:37+01:00",
+        "version": "1",
+        "updater_uri": "user://test/testintegrationsocket",
+        "type": "core/planning-item",
+        "language": "sv-se",
+        "document_nonce": "00000000-0000-0000-0000-000000000000",
+        "timespans": [
+          {
+            "from": "2025-11-14T00:00:00Z",
+            "to": "2025-11-14T23:59:59Z"
+          }
+        ],
+        "labels": [
+          "section:0730efa9-43f2-468d-979a-aaffc74d7582"
+        ]
+      },
+      "meta": {
+        "created": "2023-01-10T20:06:37+01:00",
+        "modified": "2023-01-10T20:06:37+01:00",
+        "current_version": "1",
+        "acl": [
+          {
+            "uri": "user://test/testintegrationsocket",
+            "permissions": [
+              "r",
+              "w"
+            ]
+          }
+        ],
+        "creator_uri": "user://test/testintegrationsocket",
+        "updater_uri": "user://test/testintegrationsocket",
+        "nonce": "00000000-0000-0000-0000-000000000000",
+        "type": "core/planning-item"
+      },
+      "document": {
+        "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
+        "type": "core/planning-item",
+        "uri": "core://newscoverage/a9791252-6e7a-40b2-bc0b-129d25df17b8",
+        "title": "Premiär i beachvolleyboll-VM med dubbla svenska medaljhopp",
+        "meta": [
+          {
+            "type": "core/planning-item",
+            "data": {
+              "end_date": "2025-11-14",
+              "start_date": "2025-11-14",
+              "tentative": "false"
+            }
+          },
+          {
+            "type": "core/newsvalue",
+            "value": "3"
+          },
+          {
+            "type": "core/description",
+            "data": {
+              "text": "Hölting Nilsson/Andersson-Hood/Merritt, Australien, kl 06.30\nÅhman/Hellvig-Burnett/Hodges, Australien, kl 11.30\n"
+            },
+            "role": "public"
+          },
+          {
+            "id": "e7bc39de-e965-44aa-aa69-159dcf1e36f4",
+            "type": "core/assignment",
+            "title": "löpande rapportering",
+            "data": {
+              "end_date": "2025-11-14",
+              "full_day": "false",
+              "public": "true",
+              "publish_slot": "13",
+              "start": "2025-11-14T12:34:52.431Z",
+              "start_date": "2025-11-14"
+            },
+            "links": [
+              {
+                "uuid": "575c079e-aa27-471a-8d00-4f714a4b227e",
+                "type": "core/author",
+                "title": "Petter Nilsson",
+                "rel": "assignee",
+                "role": "primary"
+              }
+            ],
+            "meta": [
+              {
+                "type": "core/assignment-type",
+                "value": "text"
+              }
+            ]
+          }
+        ],
+        "links": [
+          {
+            "uuid": "62f1bd22-0c25-402c-85b5-c5a8f12d821e",
+            "type": "core/event",
+            "title": "BEACHVOLLEY: VM (herrar/damer)",
+            "rel": "event"
+          },
+          {
+            "uuid": "0730efa9-43f2-468d-979a-aaffc74d7582",
+            "type": "core/section",
+            "title": "Sport",
+            "rel": "section"
+          }
+        ],
+        "language": "sv-se"
+      }
+    }
+  },
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "inclusion_batch": {
+      "set_name": "planning",
+      "documents": [
+        {
+          "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437",
+          "state": {
+            "meta": {
+              "created": "2023-01-10T20:06:37+01:00",
+              "modified": "2023-01-10T20:06:37+01:00",
+              "current_version": "1",
+              "acl": [
+                {
+                  "uri": "user://test/testintegrationsocket",
+                  "permissions": [
+                    "r",
+                    "w"
+                  ]
+                }
+              ],
+              "workflow_state": "draft",
+              "creator_uri": "user://test/testintegrationsocket",
+              "updater_uri": "user://test/testintegrationsocket",
+              "nonce": "00000000-0000-0000-0000-000000000000",
+              "type": "core/article"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "document_update": {
+      "set_name": "planning",
+      "event": {
+        "id": "16",
+        "event": "status",
+        "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437",
+        "timestamp": "2023-01-10T20:06:37+01:00",
+        "version": "1",
+        "status": "usable",
+        "status_id": "1",
+        "updater_uri": "user://test/testintegrationsocket",
+        "type": "core/article",
+        "language": "sv-se",
+        "document_nonce": "00000000-0000-0000-0000-000000000000",
+        "timespans": [
+          {
+            "from": "2025-11-14T12:34:52Z",
+            "to": "2025-11-14T12:34:52Z"
+          }
+        ]
+      },
+      "included": true
+    }
+  },
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "document_update": {
+      "set_name": "planning",
+      "event": {
+        "id": "17",
+        "event": "workflow",
+        "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437",
+        "timestamp": "2023-01-10T20:06:37+01:00",
+        "version": "1",
+        "updater_uri": "user://test/testintegrationsocket",
+        "type": "core/article",
+        "language": "sv-se",
+        "workflow_state": "usable",
+        "workflow_checkpoint": "usable",
+        "document_nonce": "00000000-0000-0000-0000-000000000000",
+        "timespans": [
+          {
+            "from": "2025-11-14T12:34:52Z",
+            "to": "2025-11-14T12:34:52Z"
+          }
+        ]
+      },
+      "included": true
+    }
+  },
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "removed": {
+      "set_name": "planning",
+      "document_uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8"
+    }
+  },
+  {
+    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
+    "removed": {
+      "set_name": "planning",
+      "document_uuid": "85428a43-963e-443b-9700-9fdb5dfcb437"
+    }
+  }
+]

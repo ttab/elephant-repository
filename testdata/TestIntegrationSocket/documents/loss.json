@@ -1,0 +1,79 @@
+{
+  "uuid": "f7eb1d2d-0814-4027-b857-fa21d2f16805",
+  "type": "core/article",
+  "uri": "core://article/f7eb1d2d-0814-4027-b857-fa21d2f16805",
+  "title": "Reklam för viktminskningsläkemedel kan vara olagligt",
+  "content": [
+    {
+      "id": "b0bab9c7-788c-4c9e-aa86-2b3c0d205130",
+      "type": "core/text",
+      "data": {
+        "text": "Reklam för viktminskningsläkemedel kan vara olagligt"
+      },
+      "role": "heading-1"
+    },
+    {
+      "id": "80df2c35-e574-43e8-bb6f-1973ddc53435",
+      "type": "core/text",
+      "data": {
+        "text": "Flertal vårdföretag i Sverige säljer abonnemang där läkemedel för viktminskning skrivs ut och företagen annonserar om sina abonnemang på sociala medier, rapporterar Ekot. "
+      }
+    },
+    {
+      "id": "bb8b1d5e-dc6e-40c2-97a9-3b49abdad5a5",
+      "type": "core/text",
+      "data": {
+        "text": "– Det är förbjudet att marknadsföra receptbelagda läkemedel förutom vissa undantag för vacciner, så då är det helt ostridigt att det är olagligt att marknadsföra preparaten, säger Claes Granmar, docent i Europarätt vid Stockholms universitet, till Ekot."
+      }
+    },
+    {
+      "id": "4e404e9b-3470-4bb4-bb3d-6628c7b74f47",
+      "type": "core/text",
+      "data": {
+        "text": "Enligt läkemedelslagen är det olagligt att som läkare marknadsföra receptbelagda läkemedel. Ekot har undersökt 15 företag som erbjuder abo"
+      }
+    },
+    {
+      "id": "cf591f6f-b22b-4bf2-b11b-892aa140924b",
+      "type": "core/text",
+      "data": {
+        "text": "Ekot har kontrollerat 15 företag  som erbjuder abonnemang där läkarna skriver ut recept på viktminskningläkemdel och även listar vilka läkemdel dem skriver ut."
+      }
+    },
+    {
+      "id": "28abca1f-de75-4f16-b4e2-ec9805efb937",
+      "type": "core/text",
+      "data": {
+        "text": "–I och med att de här abonnemangen baseras på de här läkemedlen, så är det problematiskt för du får inte som läkare marknadsföra läkemdel helt enkelt, säger Claes Granmar."
+      }
+    },
+    {
+      "id": "9cd8092a-7b28-426a-b02b-43ac43d28cf8",
+      "type": "core/text",
+      "data": {
+        "text": ""
+      }
+    }
+  ],
+  "meta": [
+    {
+      "type": "core/newsvalue",
+      "value": "3"
+    }
+  ],
+  "links": [
+    {
+      "uuid": "956636ed-2687-4bc3-a45a-7e09d98c6eeb",
+      "type": "core/section",
+      "title": "Inrikes",
+      "rel": "section"
+    },
+    {
+      "uri": "tt://content-source/tt",
+      "type": "core/content-source",
+      "title": "TT",
+      "rel": "source"
+    }
+  ],
+  "language": "sv-se"
+}

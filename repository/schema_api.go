@@ -64,6 +64,60 @@ func (a *SchemasService) GetDocumentTypes(
 	}, nil
 }
 
+// ConfigureType implements repository.Schemas.
+func (a *SchemasService) ConfigureType(
+	ctx context.Context, req *repository.ConfigureTypeRequest,
+) (*repository.ConfigureTypeResponse, error) {
+	_, err := RequireAnyScope(ctx,
+		ScopeSchemaAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Type == "" {
+		return nil, twirp.RequiredArgumentError("type")
+	}
+
+	if req.Configuration == nil {
+		return nil, twirp.RequiredArgumentError("configuration")
+	}
+
+	err = a.store.ConfigureType(ctx, req.Type,
+		typeConfigurationFromRPC(req.Configuration))
+	if err != nil {
+		return nil, twirp.InternalErrorf("store type configuration: %v", err)
+	}
+
+	return &repository.ConfigureTypeResponse{}, nil
+}
+
+// GetTypeConfiguration implements repository.Schemas.
+func (a *SchemasService) GetTypeConfiguration(
+	ctx context.Context, req *repository.GetTypeConfigurationRequest,
+) (*repository.GetTypeConfigurationResponse, error) {
+	_, err := RequireAnyScope(ctx,
+		ScopeSchemaAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Type == "" {
+		return nil, twirp.RequiredArgumentError("type")
+	}
+
+	conf, err := a.store.GetTypeConfiguration(ctx, req.Type)
+	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+		return nil, twirp.NewErrorf(twirp.NotFound,
+			"could not find type configuration: %v", err)
+	}
+
+	return &repository.GetTypeConfigurationResponse{
+		Configuration: typeConfigurationToRPC(conf),
+	}, nil
+}
+
 // GetMetaTypes implements repository.Schemas.
 func (a *SchemasService) GetMetaTypes(
 	ctx context.Context, _ *repository.GetMetaTypesRequest,

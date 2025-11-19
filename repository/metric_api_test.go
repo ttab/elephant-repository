@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,8 +33,11 @@ func TestIntegrationMetrics(t *testing.T) {
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
+	dataDir := filepath.Join("..", "testdata", t.Name())
+
 	tc := testingAPIServer(t, logger, testingServerOptions{
-		NoCharcount: true,
+		NoCharcount:     true,
+		ConfigDirectory: dataDir,
 	})
 
 	clientAdmin := tc.MetricsClient(t,

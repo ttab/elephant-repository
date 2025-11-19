@@ -90,19 +90,13 @@ type Document struct {
 	SystemState    pgtype.Text
 	MainDocType    pgtype.Text
 	Nonce          uuid.UUID
+	Time           pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels         []string
 }
 
 type DocumentArchiveCounter struct {
 	UUID       uuid.UUID
 	Unarchived int32
-}
-
-type DocumentLink struct {
-	FromDocument uuid.UUID
-	Version      int64
-	ToDocument   uuid.UUID
-	Rel          pgtype.Text
-	Type         pgtype.Text
 }
 
 type DocumentLock struct {
@@ -134,6 +128,12 @@ type DocumentStatus struct {
 	MetaDocVersion pgtype.Int8
 }
 
+type DocumentType struct {
+	Type              string
+	BoundedCollection bool
+	Configuration     TypeConfiguration
+}
+
 type DocumentVersion struct {
 	UUID         uuid.UUID
 	Version      int64
@@ -144,6 +144,8 @@ type DocumentVersion struct {
 	Archived     bool
 	Signature    pgtype.Text
 	Language     pgtype.Text
+	Time         pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels       []string
 }
 
 type EventOutboxItem struct {
@@ -237,6 +239,8 @@ type PlanningAssignment struct {
 	Public       bool
 	Kind         []string
 	Description  string
+	Timezone     pgtype.Text
+	Timerange    pgtype.Range[pgtype.Timestamptz]
 }
 
 type PlanningDeliverable struct {
@@ -256,6 +260,7 @@ type PlanningItem struct {
 	EndDate     pgtype.Date
 	Priority    pgtype.Int2
 	Event       pgtype.UUID
+	Timezone    pgtype.Text
 }
 
 type PurgeRequest struct {
@@ -311,6 +316,11 @@ type StatusRule struct {
 	AccessRule  bool
 	AppliesTo   []string
 	Expression  string
+}
+
+type SystemConfig struct {
+	Name  string
+	Value []byte
 }
 
 type Upload struct {

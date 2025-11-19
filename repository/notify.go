@@ -11,6 +11,7 @@ const (
 	NotifyWorkflowsUpdated    = "workflows"
 	NotifyEventOutbox         = "event_outbox"
 	NotifyEventlog            = "eventlog"
+	NotifyTypeConfigured      = "type_configured"
 )
 
 type ArchiveEventType int
@@ -40,6 +41,10 @@ const (
 type SchemaEvent struct {
 	Type SchemaEventType `json:"type"`
 	Name string          `json:"name"`
+}
+
+type TypeConfiguredEvent struct {
+	Type string `json:"type"`
 }
 
 type DeprecationEvent struct {

@@ -44,7 +44,7 @@ func StandardClaims(t *testing.T, scope string, units ...string) elephantine.JWT
 	return Claims(t, strings.ToLower(t.Name()), scope, units...)
 }
 
-func AccessKey(key *ecdsa.PrivateKey, claims elephantine.JWTClaims) (string, error) {
+func AccessToken(key *ecdsa.PrivateKey, claims elephantine.JWTClaims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodES384, claims)
 
 	ss, err := token.SignedString(key)

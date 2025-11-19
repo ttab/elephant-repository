@@ -30,27 +30,29 @@ const (
 )
 
 type Event struct {
-	ID                 int64      `json:"id"`
-	Event              EventType  `json:"event"`
-	UUID               uuid.UUID  `json:"uuid"`
-	Nonce              uuid.UUID  `json:"nonce"`
-	Timestamp          time.Time  `json:"timestamp"`
-	Updater            string     `json:"updater"`
-	Type               string     `json:"type"`
-	Language           string     `json:"language"`
-	OldLanguage        string     `json:"old_language,omitempty"`
-	MainDocument       *uuid.UUID `json:"main_document,omitempty"`
-	Version            int64      `json:"version,omitempty"`
-	StatusID           int64      `json:"status_id,omitempty"`
-	Status             string     `json:"status,omitempty"`
-	ACL                []ACLEntry `json:"acl,omitempty"`
-	SystemState        string     `json:"system_state,omitempty"`
-	WorkflowStep       string     `json:"workflow_step,omitempty"`
-	WorkflowCheckpoint string     `json:"workflow_checkpoint,omitempty"`
-	MainDocumentType   string     `json:"main_document_type,omitempty"`
-	AttachedObjects    []string   `json:"attached_objects,omitempty"`
-	DetachedObjects    []string   `json:"detached_objects,omitempty"`
-	DeleteRecordID     int64      `json:"delete_record_id,omitempty"`
+	ID                 int64          `json:"id"`
+	Event              EventType      `json:"event"`
+	UUID               uuid.UUID      `json:"uuid"`
+	Nonce              uuid.UUID      `json:"nonce"`
+	Timestamp          time.Time      `json:"timestamp"`
+	Updater            string         `json:"updater"`
+	Type               string         `json:"type"`
+	Language           string         `json:"language"`
+	OldLanguage        string         `json:"old_language,omitempty"`
+	MainDocument       *uuid.UUID     `json:"main_document,omitempty"`
+	Version            int64          `json:"version,omitempty"`
+	StatusID           int64          `json:"status_id,omitempty"`
+	Status             string         `json:"status,omitempty"`
+	ACL                []ACLEntry     `json:"acl,omitempty"`
+	SystemState        string         `json:"system_state,omitempty"`
+	WorkflowStep       string         `json:"workflow_step,omitempty"`
+	WorkflowCheckpoint string         `json:"workflow_checkpoint,omitempty"`
+	MainDocumentType   string         `json:"main_document_type,omitempty"`
+	AttachedObjects    []string       `json:"attached_objects,omitempty"`
+	DetachedObjects    []string       `json:"detached_objects,omitempty"`
+	DeleteRecordID     int64          `json:"delete_record_id,omitempty"`
+	Timespans          [][2]time.Time `json:"timespans,omitempty"`
+	Labels             []string       `json:"labels"`
 }
 
 func NewEventlogBuilder(
@@ -158,6 +160,8 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 					AttachedObjects: evt.AttachedObjects,
 					DetachedObjects: evt.DetachedObjects,
 					DeleteRecordID:  evt.DeleteRecordID,
+					Timespans:       evt.Timespans,
+					Labels:          evt.Labels,
 				},
 			}
 

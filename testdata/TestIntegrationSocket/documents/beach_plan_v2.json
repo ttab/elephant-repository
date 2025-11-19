@@ -1,0 +1,75 @@
+{
+  "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
+  "type": "core/planning-item",
+  "uri": "core://newscoverage/a9791252-6e7a-40b2-bc0b-129d25df17b8",
+  "title": "Premiär i beachvolleyboll-VM med dubbla svenska medaljhopp",
+  "meta": [
+    {
+      "type": "core/planning-item",
+      "data": {
+        "end_date": "2025-11-14",
+        "start_date": "2025-11-14",
+        "tentative": "false"
+      }
+    },
+    {
+      "type": "core/newsvalue",
+      "value": "3"
+    },
+    {
+      "type": "core/description",
+      "data": {
+        "text": "Hölting Nilsson/Andersson-Hood/Merritt, Australien, kl 06.30\nÅhman/Hellvig-Burnett/Hodges, Australien, kl 11.30\n"
+      },
+      "role": "public"
+    },
+    {
+      "id": "e7bc39de-e965-44aa-aa69-159dcf1e36f4",
+      "type": "core/assignment",
+      "title": "löpande rapportering",
+      "data": {
+        "end_date": "2025-11-14",
+        "full_day": "false",
+        "public": "true",
+        "publish_slot": "13",
+        "start": "2025-11-14T12:34:52.431Z",
+        "start_date": "2025-11-14"
+      },
+      "links": [
+        {
+          "uuid": "575c079e-aa27-471a-8d00-4f714a4b227e",
+          "type": "core/author",
+          "title": "Petter Nilsson",
+          "rel": "assignee",
+          "role": "primary"
+        },
+        {
+          "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437",
+          "type": "core/article",
+          "rel": "deliverable"
+        }
+      ],
+      "meta": [
+        {
+          "type": "core/assignment-type",
+          "value": "text"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "uuid": "62f1bd22-0c25-402c-85b5-c5a8f12d821e",
+      "type": "core/event",
+      "title": "BEACHVOLLEY: VM (herrar/damer)",
+      "rel": "event"
+    },
+    {
+      "uuid": "0730efa9-43f2-468d-979a-aaffc74d7582",
+      "type": "core/section",
+      "title": "Sport",
+      "rel": "section"
+    }
+  ],
+  "language": "sv-se"
+}

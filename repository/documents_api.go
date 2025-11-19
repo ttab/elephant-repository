@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"fmt"
+	"iter"
 	"maps"
 	"regexp"
 	"slices"
@@ -19,6 +21,7 @@ import (
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
+	"golang.org/x/sync/errgroup"
 )
 
 type DocumentValidator interface {
@@ -37,13 +40,11 @@ type UploadURLCreator interface {
 	CreateUploadURL(ctx context.Context, id uuid.UUID) (string, error)
 }
 
-type DocumentsService struct {
-	store           DocStore
-	sched           ScheduleStore
-	validator       DocumentValidator
-	workflows       WorkflowProvider
-	assets          UploadURLCreator
-	defaultLanguage string
+type BulkDocCache interface {
+	GetDocuments(
+		ctx context.Context,
+		refs []BulkGetReference,
+	) (iter.Seq[BulkGetItem], error)
 }
 
 func NewDocumentsService(
@@ -53,19 +54,311 @@ func NewDocumentsService(
 	workflows WorkflowProvider,
 	assets UploadURLCreator,
 	defaultLanguage string,
-) *DocumentsService {
+	docTypes *TypeConfigurations,
+	docCache BulkDocCache,
+	socketKey *ecdsa.PrivateKey,
+) (*DocumentsService, error) {
 	return &DocumentsService{
+		socketKey:       socketKey,
 		store:           store,
 		sched:           sched,
 		validator:       validator,
 		workflows:       workflows,
 		assets:          assets,
 		defaultLanguage: defaultLanguage,
-	}
+		docTypes:        docTypes,
+		docCache:        docCache,
+	}, nil
 }
 
 // Interface guard.
 var _ repository.Documents = &DocumentsService{}
+
+type DocumentsService struct {
+	socketKey       *ecdsa.PrivateKey
+	store           DocStore
+	sched           ScheduleStore
+	validator       DocumentValidator
+	workflows       WorkflowProvider
+	assets          UploadURLCreator
+	defaultLanguage string
+	docTypes        *TypeConfigurations
+	docCache        BulkDocCache
+}
+
+// GetSocketToken implements repository.Documents.
+func (a *DocumentsService) GetSocketToken(
+	ctx context.Context, _ *repository.GetSocketTokenRequest,
+) (*repository.GetSocketTokenResponse, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	token := NewSocketToken(auth.Claims.Subject,
+		time.Now().Add(24*time.Hour))
+
+	signedToken, err := token.Sign(a.socketKey)
+	if err != nil {
+		return nil, twirp.InternalErrorf("failed to create token: %v", err)
+	}
+
+	return &repository.GetSocketTokenResponse{
+		Token:   signedToken,
+		Expires: token.Expires.Format(time.RFC3339),
+	}, nil
+}
+
+type matchMethod int
+
+const (
+	matchByType matchMethod = iota
+	matchByTimeRange
+)
+
+// GetMatching implements repository.Documents.
+func (a *DocumentsService) GetMatching(
+	ctx context.Context,
+	req *repository.GetMatchingRequest,
+) (*repository.GetMatchingResponse, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Type == "" {
+		return nil, twirp.RequiredArgumentError("type")
+	}
+
+	if req.Filter != nil {
+		return nil, twirp.InvalidArgumentError("filter", "not implemented yet")
+	}
+
+	typeConf, _, err := a.docTypes.GetConfiguration(ctx, req.Type)
+	if err != nil {
+		return nil, twirp.InternalErrorf("get type configuration: %w", err)
+	}
+
+	method := matchByType
+
+	if req.Timespan != nil {
+		method = matchByTimeRange
+	}
+
+	if method == matchByType && !typeConf.BoundedCollection {
+		return nil, twirp.InvalidArgumentError("type",
+			"is not a bounded collection type")
+	}
+
+	var timespan *Timespan
+
+	if req.Timespan != nil {
+		ts, err := TimespanFromRPC(req.Timespan)
+		if err != nil {
+			return nil, twirp.InvalidArgumentError("timespan", err.Error())
+		}
+
+		timespan = &ts
+	}
+
+	var items []DocumentItem
+
+	switch method {
+	case matchByTimeRange:
+		hits, err := a.store.ListDocumentsInTimeRange(
+			ctx, req.Type, *timespan, req.Labels)
+		if err != nil {
+			return nil, twirp.InternalErrorf(
+				"get documents for time range: %v", err)
+		}
+
+		items = hits
+	case matchByType:
+		hits, err := a.store.ListDocumentsOfType(
+			ctx, req.Type, nil, req.Labels)
+		if err != nil {
+			return nil, twirp.InternalErrorf(
+				"get documents by type range: %v", err)
+		}
+
+		items = hits
+	default:
+		panic(fmt.Sprintf("unexpected match method: %#v", method))
+	}
+
+	permReq := BulkCheckPermissionRequest{
+		UUIDs: make([]uuid.UUID, len(items)),
+		GranteeURIs: append([]string{
+			auth.Claims.Subject,
+		}, auth.Claims.Units...),
+		Permissions: []Permission{ReadPermission},
+	}
+
+	versions := make(map[uuid.UUID]int64, len(items))
+
+	for i := range items {
+		versions[items[i].UUID] = items[i].CurrentVersion
+		permReq.UUIDs[i] = items[i].UUID
+	}
+
+	allowedDocs, err := a.store.BulkCheckPermissions(ctx, permReq)
+	if err != nil {
+		return nil, twirp.InternalErrorf("perform pernissions check: %w", err)
+	}
+
+	if len(allowedDocs) == 0 {
+		return &repository.GetMatchingResponse{}, nil
+	}
+
+	getRefs := make([]BulkGetReference, len(allowedDocs))
+
+	matches := make(map[uuid.UUID]*repository.DocumentMatch)
+
+	for i := range allowedDocs {
+		matches[allowedDocs[i]] = &repository.DocumentMatch{
+			Uuid: allowedDocs[i].String(),
+		}
+
+		getRefs[i] = BulkGetReference{
+			UUID:    allowedDocs[i],
+			Version: versions[allowedDocs[i]],
+		}
+	}
+
+	var (
+		meta      map[uuid.UUID]*DocumentMeta
+		documents iter.Seq[BulkGetItem]
+	)
+
+	grp, gCtx := errgroup.WithContext(ctx)
+
+	if req.IncludeDocuments || req.Filter != nil {
+		grp.Go(func() error {
+			iter, err := a.docCache.GetDocuments(gCtx, getRefs)
+			if err != nil {
+				return fmt.Errorf("get documents: %w", err)
+			}
+
+			documents = iter
+
+			return nil
+		})
+	}
+
+	if req.IncludeMeta {
+		grp.Go(func() error {
+			m, err := a.store.BulkGetDocumentMeta(gCtx, allowedDocs)
+			if err != nil {
+				return fmt.Errorf("get document meta: %w", err)
+			}
+
+			meta = m
+
+			return nil
+		})
+	}
+
+	err = grp.Wait()
+	if err != nil {
+		return nil, twirp.InternalErrorf("get match data: %v", err)
+	}
+
+	// TODO: This is probably where we would apply filters.
+
+	for docID, m := range meta {
+		match, ok := matches[docID]
+		if !ok {
+			continue
+		}
+
+		match.Meta = DocumentMetaToRPC(m)
+	}
+
+	for doc := range documents {
+		docID, err := uuid.Parse(doc.Document.UUID)
+		if err != nil {
+			return nil, twirp.InternalErrorf(
+				"invalid document UUID: %w", err)
+		}
+
+		match, ok := matches[docID]
+		if !ok {
+			continue
+		}
+
+		match.Document = rpcdoc.DocumentToRPC(doc.Document)
+		match.Version = doc.Version
+	}
+
+	res := repository.GetMatchingResponse{
+		Matches: make([]*repository.DocumentMatch, 0, len(matches)),
+	}
+
+	for _, m := range matches {
+		res.Matches = append(res.Matches, m)
+	}
+
+	return &res, nil
+}
+
+func DocumentMetaToRPC(meta *DocumentMeta) *repository.DocumentMeta {
+	if meta == nil {
+		return nil
+	}
+
+	resp := repository.DocumentMeta{
+		Type:               meta.Type,
+		Nonce:              meta.Nonce.String(),
+		Created:            meta.Created.Format(time.RFC3339),
+		CreatorUri:         meta.CreatorURI,
+		Modified:           meta.Modified.Format(time.RFC3339),
+		UpdaterUri:         meta.UpdaterURI,
+		CurrentVersion:     meta.CurrentVersion,
+		IsMetaDocument:     meta.MainDocument != "",
+		MainDocument:       meta.MainDocument,
+		WorkflowState:      meta.WorkflowState,
+		WorkflowCheckpoint: meta.WorkflowCheckpoint,
+	}
+
+	for name, head := range meta.Statuses {
+		if resp.Heads == nil {
+			resp.Heads = make(map[string]*repository.Status)
+		}
+
+		resp.Heads[name] = StatusHeadToRPCStatus(head)
+	}
+
+	for _, a := range meta.Attachments {
+		resp.Attachments = append(resp.Attachments,
+			&repository.AttachmentRef{
+				Name:    a.Name,
+				Version: a.Version,
+			})
+	}
+
+	for _, acl := range meta.ACL {
+		resp.Acl = append(resp.Acl, &repository.ACLEntry{
+			Uri:         acl.URI,
+			Permissions: acl.Permissions,
+		})
+	}
+
+	if meta.Lock.Expires != (time.Time{}) {
+		resp.Lock = &repository.Lock{
+			Uri:     meta.Lock.URI,
+			Created: meta.Lock.Created.Format(time.RFC3339),
+			Expires: meta.Lock.Expires.Format(time.RFC3339),
+			App:     meta.Lock.App,
+			Comment: meta.Lock.Comment,
+		}
+	}
+
+	return &resp
+}
 
 // GetDeliverableInfo implements repository.Documents.
 func (a *DocumentsService) GetDeliverableInfo(
@@ -681,6 +974,12 @@ func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
 			"invalid timestamp for event: %w", err)
 	}
 
+	timespans, err := TimespanTuplesFromRPC(evt.Timespans)
+	if err != nil {
+		return Event{}, fmt.Errorf(
+			"invalid timespans for event: %w", err)
+	}
+
 	var mainDoc *uuid.UUID
 
 	if evt.MainDocument != "" {
@@ -711,6 +1010,7 @@ func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
 		OldLanguage:      evt.OldLanguage,
 		AttachedObjects:  evt.AttachedObjects,
 		DetachedObjects:  evt.DetachedObjects,
+		Timespans:        timespans,
 	}, nil
 }
 
@@ -752,7 +1052,75 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		AttachedObjects:    evt.AttachedObjects,
 		DetachedObjects:    evt.DetachedObjects,
 		DeleteRecordId:     evt.DeleteRecordID,
+		Timespans:          TimespanTuplesToRPC(evt.Timespans),
+		Labels:             evt.Labels,
 	}
+}
+
+func TimespanFromRPC(ts *repository.Timespan) (Timespan, error) {
+	var z Timespan
+
+	from, err := time.Parse(time.RFC3339, ts.From)
+	if err != nil {
+		return z, fmt.Errorf(
+			"invalid Timespan.from: %w", err)
+	}
+
+	to, err := time.Parse(time.RFC3339, ts.To)
+	if err != nil {
+		return z, fmt.Errorf(
+			"invalid Timespan.to: %w", err)
+	}
+
+	return Timespan{
+		From: from,
+		To:   to,
+	}, nil
+}
+
+func TimespanTuplesToRPC(tuples [][2]time.Time) []*repository.Timespan {
+	if tuples == nil {
+		return nil
+	}
+
+	spans := make([]*repository.Timespan, len(tuples))
+
+	for i := range tuples {
+		spans[i] = &repository.Timespan{
+			From: tuples[i][0].Format(time.RFC3339),
+			To:   tuples[i][1].Format(time.RFC3339),
+		}
+	}
+
+	return spans
+}
+
+func TimespanTuplesFromRPC(spans []*repository.Timespan) ([][2]time.Time, error) {
+	if spans == nil {
+		return nil, nil
+	}
+
+	tuples := make([][2]time.Time, len(spans))
+
+	for i := range spans {
+		from, err := time.Parse(time.RFC3339, spans[i].From)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"invalid 'from' value %q for timespan %d: %w",
+				spans[i].From, i+1, err)
+		}
+
+		to, err := time.Parse(time.RFC3339, spans[i].To)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"invalid 'to' value %q for timespan %d: %w",
+				spans[i].To, i+1, err)
+		}
+
+		tuples[i] = [2]time.Time{from, to}
+	}
+
+	return tuples, nil
 }
 
 // Delete implements repository.Documents.
@@ -1439,54 +1807,8 @@ func (a *DocumentsService) GetMeta(
 		return nil, fmt.Errorf("failed to load basic metadata: %w", err)
 	}
 
-	resp := repository.DocumentMeta{
-		Nonce:              meta.Nonce.String(),
-		Created:            meta.Created.Format(time.RFC3339),
-		CreatorUri:         meta.CreatorURI,
-		Modified:           meta.Modified.Format(time.RFC3339),
-		UpdaterUri:         meta.UpdaterURI,
-		CurrentVersion:     meta.CurrentVersion,
-		IsMetaDocument:     meta.MainDocument != "",
-		MainDocument:       meta.MainDocument,
-		WorkflowState:      meta.WorkflowState,
-		WorkflowCheckpoint: meta.WorkflowCheckpoint,
-	}
-
-	for name, head := range meta.Statuses {
-		if resp.Heads == nil {
-			resp.Heads = make(map[string]*repository.Status)
-		}
-
-		resp.Heads[name] = StatusHeadToRPCStatus(head)
-	}
-
-	for _, a := range meta.Attachments {
-		resp.Attachments = append(resp.Attachments,
-			&repository.AttachmentRef{
-				Name:    a.Name,
-				Version: a.Version,
-			})
-	}
-
-	for _, acl := range meta.ACL {
-		resp.Acl = append(resp.Acl, &repository.ACLEntry{
-			Uri:         acl.URI,
-			Permissions: acl.Permissions,
-		})
-	}
-
-	if meta.Lock.Expires != (time.Time{}) {
-		resp.Lock = &repository.Lock{
-			Uri:     meta.Lock.URI,
-			Created: meta.Lock.Created.Format(time.RFC3339),
-			Expires: meta.Lock.Expires.Format(time.RFC3339),
-			App:     meta.Lock.App,
-			Comment: meta.Lock.Comment,
-		}
-	}
-
 	return &repository.GetMetaResponse{
-		Meta: &resp,
+		Meta: DocumentMetaToRPC(meta),
 	}, nil
 }
 

@@ -1,0 +1,62 @@
+{
+  "uuid": "382c0aad-7410-4daa-a9f2-347aa17e315e",
+  "type": "core/planning-item",
+  "uri": "core://newscoverage/382c0aad-7410-4daa-a9f2-347aa17e315e",
+  "title": "Reklam för viktminskningsläkemedel kan vara olaglig",
+  "meta": [
+    {
+      "type": "core/planning-item",
+      "data": {
+        "end_date": "2025-11-14",
+        "start_date": "2025-11-14",
+        "tentative": "false"
+      }
+    },
+    {
+      "type": "core/newsvalue",
+      "value": "3"
+    },
+    {
+      "id": "a46bae54-276d-4715-9c7f-cedfc169fa41",
+      "type": "core/assignment",
+      "title": "Reklam för viktminskningsläkemedel kan vara olagligt",
+      "data": {
+        "end_date": "2025-11-14",
+        "full_day": "false",
+        "public": "true",
+        "publish_slot": "6",
+        "start": "2025-11-14T05:53:05.947Z",
+        "start_date": "2025-11-14"
+      },
+      "links": [
+        {
+          "uuid": "c383e8fd-a3e8-4bf2-9ec3-322930601017",
+          "type": "core/author",
+          "title": "Vera Leijonklo",
+          "rel": "assignee",
+          "role": "primary"
+        },
+        {
+          "uuid": "f7eb1d2d-0814-4027-b857-fa21d2f16805",
+          "type": "core/article",
+          "rel": "deliverable"
+        }
+      ],
+      "meta": [
+        {
+          "type": "core/assignment-type",
+          "value": "text"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "uuid": "956636ed-2687-4bc3-a45a-7e09d98c6eeb",
+      "type": "core/section",
+      "title": "Inrikes",
+      "rel": "section"
+    }
+  ],
+  "language": "sv-se"
+}

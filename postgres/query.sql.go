@@ -122,6 +122,64 @@ func (q *Queries) BulkCheckPermissions(ctx context.Context, arg BulkCheckPermiss
 	return items, nil
 }
 
+const bulkGetAttachments = `-- name: BulkGetAttachments :many
+SELECT document, name, version FROM attached_object_current
+WHERE document = ANY($1::uuid[])
+      AND deleted = false
+`
+
+type BulkGetAttachmentsRow struct {
+	Document uuid.UUID
+	Name     string
+	Version  int64
+}
+
+func (q *Queries) BulkGetAttachments(ctx context.Context, documents []uuid.UUID) ([]BulkGetAttachmentsRow, error) {
+	rows, err := q.db.Query(ctx, bulkGetAttachments, documents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkGetAttachmentsRow
+	for rows.Next() {
+		var i BulkGetAttachmentsRow
+		if err := rows.Scan(&i.Document, &i.Name, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const bulkGetDocumentACL = `-- name: BulkGetDocumentACL :many
+SELECT uuid, uri, permissions
+FROM acl
+WHERE uuid = ANY($1::uuid[])
+`
+
+func (q *Queries) BulkGetDocumentACL(ctx context.Context, uuids []uuid.UUID) ([]Acl, error) {
+	rows, err := q.db.Query(ctx, bulkGetDocumentACL, uuids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Acl
+	for rows.Next() {
+		var i Acl
+		if err := rows.Scan(&i.UUID, &i.URI, &i.Permissions); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const bulkGetDocumentData = `-- name: BulkGetDocumentData :many
 WITH refs AS (
      SELECT unnest($1::uuid[]) AS uuid,
@@ -158,6 +216,143 @@ func (q *Queries) BulkGetDocumentData(ctx context.Context, arg BulkGetDocumentDa
 	for rows.Next() {
 		var i BulkGetDocumentDataRow
 		if err := rows.Scan(&i.UUID, &i.Version, &i.DocumentData); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const bulkGetDocumentInfo = `-- name: BulkGetDocumentInfo :many
+SELECT
+        d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
+        d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
+        l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
+        l.comment as lock_comment, l.token as lock_token,
+        ws.step as workflow_state, ws.checkpoint as workflow_checkpoint
+FROM document as d
+LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > $1
+LEFT JOIN workflow_state AS ws ON ws.uuid = d.uuid
+WHERE d.uuid = ANY($2::uuid[])
+`
+
+type BulkGetDocumentInfoParams struct {
+	Now   pgtype.Timestamptz
+	Uuids []uuid.UUID
+}
+
+type BulkGetDocumentInfoRow struct {
+	UUID               uuid.UUID
+	Type               string
+	URI                string
+	Created            pgtype.Timestamptz
+	CreatorUri         string
+	Updated            pgtype.Timestamptz
+	UpdaterUri         string
+	CurrentVersion     int64
+	SystemState        pgtype.Text
+	MainDoc            pgtype.UUID
+	Nonce              uuid.UUID
+	LockUuid           pgtype.UUID
+	LockUri            pgtype.Text
+	LockCreated        pgtype.Timestamptz
+	LockExpires        pgtype.Timestamptz
+	LockApp            pgtype.Text
+	LockComment        pgtype.Text
+	LockToken          pgtype.Text
+	WorkflowState      pgtype.Text
+	WorkflowCheckpoint pgtype.Text
+}
+
+func (q *Queries) BulkGetDocumentInfo(ctx context.Context, arg BulkGetDocumentInfoParams) ([]BulkGetDocumentInfoRow, error) {
+	rows, err := q.db.Query(ctx, bulkGetDocumentInfo, arg.Now, arg.Uuids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkGetDocumentInfoRow
+	for rows.Next() {
+		var i BulkGetDocumentInfoRow
+		if err := rows.Scan(
+			&i.UUID,
+			&i.Type,
+			&i.URI,
+			&i.Created,
+			&i.CreatorUri,
+			&i.Updated,
+			&i.UpdaterUri,
+			&i.CurrentVersion,
+			&i.SystemState,
+			&i.MainDoc,
+			&i.Nonce,
+			&i.LockUuid,
+			&i.LockUri,
+			&i.LockCreated,
+			&i.LockExpires,
+			&i.LockApp,
+			&i.LockComment,
+			&i.LockToken,
+			&i.WorkflowState,
+			&i.WorkflowCheckpoint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const bulkGetFullDocumentHeads = `-- name: BulkGetFullDocumentHeads :many
+SELECT s.uuid, s.name, s.id, s.version, s.created, s.creator_uri, s.meta,
+       s.archived, s.signature, s.meta_doc_version, h.language
+FROM status_heads AS h
+     INNER JOIN document_status AS s ON
+           s.uuid = h.uuid AND s.name = h.name AND s.id = h.current_id
+WHERE h.uuid = ANY($1::uuid[])
+`
+
+type BulkGetFullDocumentHeadsRow struct {
+	UUID           uuid.UUID
+	Name           string
+	ID             int64
+	Version        int64
+	Created        pgtype.Timestamptz
+	CreatorUri     string
+	Meta           map[string]string
+	Archived       bool
+	Signature      pgtype.Text
+	MetaDocVersion pgtype.Int8
+	Language       pgtype.Text
+}
+
+func (q *Queries) BulkGetFullDocumentHeads(ctx context.Context, uuids []uuid.UUID) ([]BulkGetFullDocumentHeadsRow, error) {
+	rows, err := q.db.Query(ctx, bulkGetFullDocumentHeads, uuids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkGetFullDocumentHeadsRow
+	for rows.Next() {
+		var i BulkGetFullDocumentHeadsRow
+		if err := rows.Scan(
+			&i.UUID,
+			&i.Name,
+			&i.ID,
+			&i.Version,
+			&i.Created,
+			&i.CreatorUri,
+			&i.Meta,
+			&i.Archived,
+			&i.Signature,
+			&i.MetaDocVersion,
+			&i.Language,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -376,10 +571,12 @@ func (q *Queries) ConfigureEventsink(ctx context.Context, arg ConfigureEventsink
 const createDocumentVersion = `-- name: CreateDocumentVersion :exec
 INSERT INTO document_version(
        uuid, version,
-       created, creator_uri, meta, document_data, archived, language
+       created, creator_uri, meta, document_data, archived, language,
+       time, labels
 ) VALUES (
        $1, $2,
-       $3, $4, $5, $6, false, $7
+       $3, $4, $5, $6, false, $7,
+       $8, $9
 )
 `
 
@@ -391,6 +588,8 @@ type CreateDocumentVersionParams struct {
 	Meta         []byte
 	DocumentData []byte
 	Language     pgtype.Text
+	Time         pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels       []string
 }
 
 func (q *Queries) CreateDocumentVersion(ctx context.Context, arg CreateDocumentVersionParams) error {
@@ -402,6 +601,8 @@ func (q *Queries) CreateDocumentVersion(ctx context.Context, arg CreateDocumentV
 		arg.Meta,
 		arg.DocumentData,
 		arg.Language,
+		arg.Time,
+		arg.Labels,
 	)
 	return err
 }
@@ -1261,6 +1462,86 @@ func (q *Queries) GetDeliverableInfo(ctx context.Context, argUuid uuid.UUID) (Ge
 	return i, err
 }
 
+const getDeliverableTimeranges = `-- name: GetDeliverableTimeranges :many
+SELECT a.uuid AS assignment, a.planning_item, a.timerange
+FROM planning_deliverable AS d
+INNER JOIN planning_assignment AS a
+ON a.uuid = d.assignment
+WHERE d.document = $1
+`
+
+type GetDeliverableTimerangesRow struct {
+	Assignment   uuid.UUID
+	PlanningItem uuid.UUID
+	Timerange    pgtype.Range[pgtype.Timestamptz]
+}
+
+func (q *Queries) GetDeliverableTimeranges(ctx context.Context, argUuid uuid.UUID) ([]GetDeliverableTimerangesRow, error) {
+	rows, err := q.db.Query(ctx, getDeliverableTimeranges, argUuid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDeliverableTimerangesRow
+	for rows.Next() {
+		var i GetDeliverableTimerangesRow
+		if err := rows.Scan(&i.Assignment, &i.PlanningItem, &i.Timerange); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getDeliverableTimes = `-- name: GetDeliverableTimes :many
+SELECT a.full_day, a.publish, a.starts, a.ends, a.start_date, a.end_date, a.timezone
+FROM planning_deliverable AS d
+INNER JOIN planning_assignment AS a
+ON a.uuid = d.assignment
+WHERE d.document = $1
+`
+
+type GetDeliverableTimesRow struct {
+	FullDay   bool
+	Publish   pgtype.Timestamptz
+	Starts    pgtype.Timestamptz
+	Ends      pgtype.Timestamptz
+	StartDate pgtype.Date
+	EndDate   pgtype.Date
+	Timezone  pgtype.Text
+}
+
+func (q *Queries) GetDeliverableTimes(ctx context.Context, argUuid uuid.UUID) ([]GetDeliverableTimesRow, error) {
+	rows, err := q.db.Query(ctx, getDeliverableTimes, argUuid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDeliverableTimesRow
+	for rows.Next() {
+		var i GetDeliverableTimesRow
+		if err := rows.Scan(
+			&i.FullDay,
+			&i.Publish,
+			&i.Starts,
+			&i.Ends,
+			&i.StartDate,
+			&i.EndDate,
+			&i.Timezone,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDeprecations = `-- name: GetDeprecations :many
 SELECT label, enforced
 FROM deprecation
@@ -1502,7 +1783,7 @@ func (q *Queries) GetDocumentHeads(ctx context.Context, argUuid uuid.UUID) ([]Ge
 
 const getDocumentInfo = `-- name: GetDocumentInfo :one
 SELECT
-        d.uuid, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
+        d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
         d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
@@ -1520,6 +1801,7 @@ type GetDocumentInfoParams struct {
 
 type GetDocumentInfoRow struct {
 	UUID               uuid.UUID
+	Type               string
 	URI                string
 	Created            pgtype.Timestamptz
 	CreatorUri         string
@@ -1545,6 +1827,7 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, arg GetDocumentInfoParams
 	var i GetDocumentInfoRow
 	err := row.Scan(
 		&i.UUID,
+		&i.Type,
 		&i.URI,
 		&i.Created,
 		&i.CreatorUri,
@@ -1653,7 +1936,8 @@ func (q *Queries) GetDocumentLog(ctx context.Context, arg GetDocumentLogParams) 
 
 const getDocumentRow = `-- name: GetDocumentRow :one
 SELECT uuid, uri, type, created, creator_uri, updated, updater_uri,
-       current_version, main_doc, language, system_state, nonce
+       current_version, main_doc, language, system_state, nonce,
+       time, labels
 FROM document
 WHERE uuid = $1
 `
@@ -1671,6 +1955,8 @@ type GetDocumentRowRow struct {
 	Language       pgtype.Text
 	SystemState    pgtype.Text
 	Nonce          uuid.UUID
+	Time           pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels         []string
 }
 
 func (q *Queries) GetDocumentRow(ctx context.Context, argUuid uuid.UUID) (GetDocumentRowRow, error) {
@@ -1689,7 +1975,27 @@ func (q *Queries) GetDocumentRow(ctx context.Context, argUuid uuid.UUID) (GetDoc
 		&i.Language,
 		&i.SystemState,
 		&i.Nonce,
+		&i.Time,
+		&i.Labels,
 	)
+	return i, err
+}
+
+const getDocumentSearchInfo = `-- name: GetDocumentSearchInfo :one
+SELECT time, labels
+FROM document
+WHERE uuid = $1
+`
+
+type GetDocumentSearchInfoRow struct {
+	Time   pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels []string
+}
+
+func (q *Queries) GetDocumentSearchInfo(ctx context.Context, argUuid uuid.UUID) (GetDocumentSearchInfoRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentSearchInfo, argUuid)
+	var i GetDocumentSearchInfoRow
+	err := row.Scan(&i.Time, &i.Labels)
 	return i, err
 }
 
@@ -1822,6 +2128,29 @@ func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context, arg GetDoc
 		&i.Language,
 		&i.Nonce,
 	)
+	return i, err
+}
+
+const getDocumentVersionSearchInfo = `-- name: GetDocumentVersionSearchInfo :one
+SELECT time, labels
+FROM document_version
+WHERE uuid = $1 AND version = $2
+`
+
+type GetDocumentVersionSearchInfoParams struct {
+	UUID    uuid.UUID
+	Version int64
+}
+
+type GetDocumentVersionSearchInfoRow struct {
+	Time   pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels []string
+}
+
+func (q *Queries) GetDocumentVersionSearchInfo(ctx context.Context, arg GetDocumentVersionSearchInfoParams) (GetDocumentVersionSearchInfoRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentVersionSearchInfo, arg.UUID, arg.Version)
+	var i GetDocumentVersionSearchInfoRow
+	err := row.Scan(&i.Time, &i.Labels)
 	return i, err
 }
 
@@ -2574,7 +2903,8 @@ func (q *Queries) GetNilStatuses(ctx context.Context, arg GetNilStatusesParams) 
 
 const getPlanningAssignment = `-- name: GetPlanningAssignment :one
 SELECT uuid, version, planning_item, status, publish, publish_slot,
-       starts, ends, start_date, end_date, full_day, public, kind, description
+       starts, ends, start_date, end_date, full_day, public, kind, description,
+       timezone, timerange
 FROM planning_assignment
 WHERE uuid = $1
 `
@@ -2597,6 +2927,8 @@ func (q *Queries) GetPlanningAssignment(ctx context.Context, argUuid uuid.UUID) 
 		&i.Public,
 		&i.Kind,
 		&i.Description,
+		&i.Timezone,
+		&i.Timerange,
 	)
 	return i, err
 }
@@ -2608,15 +2940,32 @@ FROM planning_assignment
 WHERE planning_item = $1
 `
 
-func (q *Queries) GetPlanningAssignments(ctx context.Context, planningItem uuid.UUID) ([]PlanningAssignment, error) {
+type GetPlanningAssignmentsRow struct {
+	UUID         uuid.UUID
+	Version      int64
+	PlanningItem uuid.UUID
+	Status       pgtype.Text
+	Publish      pgtype.Timestamptz
+	PublishSlot  pgtype.Int2
+	Starts       pgtype.Timestamptz
+	Ends         pgtype.Timestamptz
+	StartDate    pgtype.Date
+	EndDate      pgtype.Date
+	FullDay      bool
+	Public       bool
+	Kind         []string
+	Description  string
+}
+
+func (q *Queries) GetPlanningAssignments(ctx context.Context, planningItem uuid.UUID) ([]GetPlanningAssignmentsRow, error) {
 	rows, err := q.db.Query(ctx, getPlanningAssignments, planningItem)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []PlanningAssignment
+	var items []GetPlanningAssignmentsRow
 	for rows.Next() {
-		var i PlanningAssignment
+		var i GetPlanningAssignmentsRow
 		if err := rows.Scan(
 			&i.UUID,
 			&i.Version,
@@ -2651,9 +3000,22 @@ FROM planning_item
 WHERE uuid = $1
 `
 
-func (q *Queries) GetPlanningItem(ctx context.Context, argUuid uuid.UUID) (PlanningItem, error) {
+type GetPlanningItemRow struct {
+	UUID        uuid.UUID
+	Version     int64
+	Title       string
+	Description string
+	Public      pgtype.Bool
+	Tentative   bool
+	StartDate   pgtype.Date
+	EndDate     pgtype.Date
+	Priority    pgtype.Int2
+	Event       pgtype.UUID
+}
+
+func (q *Queries) GetPlanningItem(ctx context.Context, argUuid uuid.UUID) (GetPlanningItemRow, error) {
 	row := q.db.QueryRow(ctx, getPlanningItem, argUuid)
-	var i PlanningItem
+	var i GetPlanningItemRow
 	err := row.Scan(
 		&i.UUID,
 		&i.Version,
@@ -2983,6 +3345,55 @@ func (q *Queries) GetStatusesForVersions(ctx context.Context, arg GetStatusesFor
 			&i.Meta,
 			&i.MetaDocVersion,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSystemConfig = `-- name: GetSystemConfig :one
+SELECT value FROM system_config WHERE name = $1
+`
+
+func (q *Queries) GetSystemConfig(ctx context.Context, name string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getSystemConfig, name)
+	var value []byte
+	err := row.Scan(&value)
+	return value, err
+}
+
+const getTypeConfiguration = `-- name: GetTypeConfiguration :one
+SELECT type, bounded_collection, configuration
+FROM document_type
+WHERE type = $1
+`
+
+func (q *Queries) GetTypeConfiguration(ctx context.Context, type_ string) (DocumentType, error) {
+	row := q.db.QueryRow(ctx, getTypeConfiguration, type_)
+	var i DocumentType
+	err := row.Scan(&i.Type, &i.BoundedCollection, &i.Configuration)
+	return i, err
+}
+
+const getTypeConfigurations = `-- name: GetTypeConfigurations :many
+SELECT type, bounded_collection, configuration
+FROM document_type
+`
+
+func (q *Queries) GetTypeConfigurations(ctx context.Context) ([]DocumentType, error) {
+	rows, err := q.db.Query(ctx, getTypeConfigurations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DocumentType
+	for rows.Next() {
+		var i DocumentType
+		if err := rows.Scan(&i.Type, &i.BoundedCollection, &i.Configuration); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -3655,6 +4066,15 @@ func (q *Queries) ListDeleteRecords(ctx context.Context, arg ListDeleteRecordsPa
 	return items, nil
 }
 
+const lockConfigTable = `-- name: LockConfigTable :exec
+LOCK TABLE system_config IN ACCESS EXCLUSIVE MODE
+`
+
+func (q *Queries) LockConfigTable(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockConfigTable)
+	return err
+}
+
 const notify = `-- name: Notify :exec
 SELECT pg_notify($1::text, $2::text)
 `
@@ -3885,6 +4305,89 @@ func (q *Queries) ReleaseJobLock(ctx context.Context, arg ReleaseJobLockParams) 
 	return result.RowsAffected(), nil
 }
 
+const selectBoundedDocumentsWithType = `-- name: SelectBoundedDocumentsWithType :many
+SELECT d.uuid, d.current_version, d.language
+FROM document_type AS dt
+     INNER JOIN document AS d
+           ON d.type = dt.type
+           AND ($1::text IS NULL OR d.language = $1)
+WHERE dt.type = $2
+      AND (COALESCE(cardinality($3::text[]), 0) = 0 OR d.labels @> $3)
+      AND dt.bounded_collection
+`
+
+type SelectBoundedDocumentsWithTypeParams struct {
+	Language pgtype.Text
+	Type     string
+	Labels   []string
+}
+
+type SelectBoundedDocumentsWithTypeRow struct {
+	UUID           uuid.UUID
+	CurrentVersion int64
+	Language       pgtype.Text
+}
+
+func (q *Queries) SelectBoundedDocumentsWithType(ctx context.Context, arg SelectBoundedDocumentsWithTypeParams) ([]SelectBoundedDocumentsWithTypeRow, error) {
+	rows, err := q.db.Query(ctx, selectBoundedDocumentsWithType, arg.Language, arg.Type, arg.Labels)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SelectBoundedDocumentsWithTypeRow
+	for rows.Next() {
+		var i SelectBoundedDocumentsWithTypeRow
+		if err := rows.Scan(&i.UUID, &i.CurrentVersion, &i.Language); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const selectDocumentsInTimeRange = `-- name: SelectDocumentsInTimeRange :many
+SELECT d.uuid, d.current_version, d.language
+FROM document AS d
+WHERE d.time && $1::tstzrange
+      AND (COALESCE(cardinality($2::text[]), 0) = 0 OR d.labels @> $2)
+      AND d.type = $3
+`
+
+type SelectDocumentsInTimeRangeParams struct {
+	Range  pgtype.Range[pgtype.Timestamptz]
+	Labels []string
+	Type   string
+}
+
+type SelectDocumentsInTimeRangeRow struct {
+	UUID           uuid.UUID
+	CurrentVersion int64
+	Language       pgtype.Text
+}
+
+func (q *Queries) SelectDocumentsInTimeRange(ctx context.Context, arg SelectDocumentsInTimeRangeParams) ([]SelectDocumentsInTimeRangeRow, error) {
+	rows, err := q.db.Query(ctx, selectDocumentsInTimeRange, arg.Range, arg.Labels, arg.Type)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SelectDocumentsInTimeRangeRow
+	for rows.Next() {
+		var i SelectDocumentsInTimeRangeRow
+		if err := rows.Scan(&i.UUID, &i.CurrentVersion, &i.Language); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setCurrentAttachedObject = `-- name: SetCurrentAttachedObject :exec
 INSERT INTO attached_object_current(
        document, name, version, deleted
@@ -4045,19 +4548,30 @@ func (q *Queries) SetPlanningAssignee(ctx context.Context, arg SetPlanningAssign
 const setPlanningAssignment = `-- name: SetPlanningAssignment :exec
 INSERT INTO planning_assignment(
        uuid, version, planning_item, status, publish, publish_slot,
-       starts, ends, start_date, end_date, full_day, public, kind, description
+       starts, ends, start_date, end_date, full_day, public, kind, description,
+       timezone, timerange
 ) VALUES (
        $1, $2, $3, $4, $5, $6,
        $7, $8, $9, $10, $11, $12, $13,
-       $14
+       $14, $15, $16
 )
 ON CONFLICT ON CONSTRAINT planning_assignment_pkey DO UPDATE
 SET
-   version = $2, planning_item = $3, status = $4,
-   publish = $5, publish_slot = $6, starts = $7,
-   ends = $8, start_date = $9, end_date = $10,
-   full_day = $11, public = $12, kind = $13,
-   description = $14
+   version = excluded.version,
+   planning_item = excluded.planning_item,
+   status = excluded.status,
+   publish = excluded.publish,
+   publish_slot = excluded.publish_slot,
+   starts = excluded.starts,
+   ends = excluded.ends,
+   start_date = excluded.start_date,
+   end_date = excluded.end_date,
+   full_day = excluded.full_day,
+   public = excluded.public,
+   kind = excluded.kind,
+   description = excluded.description,
+   timezone = excluded.timezone,
+   timerange = excluded.timerange
 `
 
 type SetPlanningAssignmentParams struct {
@@ -4075,6 +4589,8 @@ type SetPlanningAssignmentParams struct {
 	Public       bool
 	Kind         []string
 	Description  string
+	Timezone     pgtype.Text
+	Timerange    pgtype.Range[pgtype.Timestamptz]
 }
 
 func (q *Queries) SetPlanningAssignment(ctx context.Context, arg SetPlanningAssignmentParams) error {
@@ -4093,6 +4609,8 @@ func (q *Queries) SetPlanningAssignment(ctx context.Context, arg SetPlanningAssi
 		arg.Public,
 		arg.Kind,
 		arg.Description,
+		arg.Timezone,
+		arg.Timerange,
 	)
 	return err
 }
@@ -4163,6 +4681,42 @@ func (q *Queries) SetPlanningItemDeliverable(ctx context.Context, arg SetPlannin
 	return err
 }
 
+const setSystemConfig = `-- name: SetSystemConfig :exec
+INSERT INTO system_config(name, value)
+       VALUES ($1, $2)
+ON CONFLICT (name) DO UPDATE SET
+   value = excluded.value
+`
+
+type SetSystemConfigParams struct {
+	Name  string
+	Value []byte
+}
+
+func (q *Queries) SetSystemConfig(ctx context.Context, arg SetSystemConfigParams) error {
+	_, err := q.db.Exec(ctx, setSystemConfig, arg.Name, arg.Value)
+	return err
+}
+
+const setTypeConfiguration = `-- name: SetTypeConfiguration :exec
+INSERT INTO document_type(type, bounded_collection, configuration)
+VALUES ($1, $2, $3)
+ON CONFLICT (type) DO UPDATE
+   SET bounded_collection = excluded.bounded_collection,
+       configuration = excluded.configuration
+`
+
+type SetTypeConfigurationParams struct {
+	Type              string
+	BoundedCollection bool
+	Configuration     TypeConfiguration
+}
+
+func (q *Queries) SetTypeConfiguration(ctx context.Context, arg SetTypeConfigurationParams) error {
+	_, err := q.db.Exec(ctx, setTypeConfiguration, arg.Type, arg.BoundedCollection, arg.Configuration)
+	return err
+}
+
 const stealJobLock = `-- name: StealJobLock :execrows
 UPDATE job_lock
 SET holder = $1,
@@ -4223,6 +4777,22 @@ type UpdateDocumentLockParams struct {
 
 func (q *Queries) UpdateDocumentLock(ctx context.Context, arg UpdateDocumentLockParams) error {
 	_, err := q.db.Exec(ctx, updateDocumentLock, arg.Expires, arg.UUID)
+	return err
+}
+
+const updateDocumentTime = `-- name: UpdateDocumentTime :exec
+UPDATE document
+SET time = $1
+WHERE uuid = $2
+`
+
+type UpdateDocumentTimeParams struct {
+	Time pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	UUID uuid.UUID
+}
+
+func (q *Queries) UpdateDocumentTime(ctx context.Context, arg UpdateDocumentTimeParams) error {
+	_, err := q.db.Exec(ctx, updateDocumentTime, arg.Time, arg.UUID)
 	return err
 }
 
@@ -4314,17 +4884,19 @@ const upsertDocument = `-- name: UpsertDocument :exec
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, main_doc_type, nonce
+       main_doc, language, main_doc_type, nonce, time, labels
 ) VALUES (
        $1, $2, $3,
        $4, $5, $4, $5, $6,
-       $7, $8, $9, $10
+       $7, $8, $9, $10, $11, $12
 ) ON CONFLICT (uuid) DO UPDATE
-     SET uri = $2,
-         updated = $4,
-         updater_uri = $5,
-         current_version = $6,
-         language = $8
+     SET uri = excluded.uri,
+         updated = excluded.created,
+         updater_uri = excluded.creator_uri,
+         current_version = excluded.current_version,
+         language = excluded.language,
+         time = COALESCE(excluded.time, document.time),
+         labels = COALESCE(excluded.labels, document.labels)
 `
 
 type UpsertDocumentParams struct {
@@ -4338,6 +4910,8 @@ type UpsertDocumentParams struct {
 	Language    pgtype.Text
 	MainDocType pgtype.Text
 	Nonce       uuid.UUID
+	Time        pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels      []string
 }
 
 func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) error {
@@ -4352,6 +4926,8 @@ func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) 
 		arg.Language,
 		arg.MainDocType,
 		arg.Nonce,
+		arg.Time,
+		arg.Labels,
 	)
 	return err
 }
