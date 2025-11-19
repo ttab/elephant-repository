@@ -152,7 +152,7 @@ func (th *TypeConfigurations) TimespansForDocument(
 	return spans, nil
 }
 
-// LabelsForDocument calculates the timespans for a given document.
+// LabelsForDocument calculates the labels for a given document.
 func (th *TypeConfigurations) LabelsForDocument(
 	ctx context.Context, doc newsdoc.Document,
 ) ([]string, error) {
