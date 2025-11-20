@@ -315,6 +315,7 @@ func runServer(c *cli.Context) error {
 		repository.PGDocStoreOptions{
 			MetricsCalculators: inMet,
 			TypeConfigurations: typeConfs,
+			DefaultTZ:          defaultTZ,
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
