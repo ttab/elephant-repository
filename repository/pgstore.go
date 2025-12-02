@@ -986,8 +986,8 @@ func eventlogRowToEvent(r postgres.GetEventlogRow) (Event, error) {
 
 	extra := r.Extra
 	if extra != nil {
-		e.Timespans = r.Extra.Timespans
-		e.Labels = r.Extra.Labels
+		e.Timespans = extra.Timespans
+		e.Labels = extra.Labels
 		e.AttachedObjects = extra.AttachedObjects
 		e.DetachedObjects = extra.DetachedObjects
 		e.DeleteRecordID = extra.DeleteRecordID
