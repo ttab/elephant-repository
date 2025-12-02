@@ -982,12 +982,12 @@ func eventlogRowToEvent(r postgres.GetEventlogRow) (Event, error) {
 		SystemState:        r.SystemState.String,
 		WorkflowStep:       r.WorkflowState.String,
 		WorkflowCheckpoint: r.WorkflowCheckpoint.String,
-		Timespans:          r.Extra.Timespans,
-		Labels:             r.Extra.Labels,
 	}
 
 	extra := r.Extra
 	if extra != nil {
+		e.Timespans = r.Extra.Timespans
+		e.Labels = r.Extra.Labels
 		e.AttachedObjects = extra.AttachedObjects
 		e.DetachedObjects = extra.DetachedObjects
 		e.DeleteRecordID = extra.DeleteRecordID
