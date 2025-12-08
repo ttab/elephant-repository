@@ -34,6 +34,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+func DocumentVersionArchiveKey(docUUID uuid.UUID, version int64) string {
+	return fmt.Sprintf("documents/%s/versions/%019d.json", docUUID, version)
+}
+
 type RestoreSpec struct {
 	ACL []ACLEntry
 }
@@ -1503,7 +1507,7 @@ func (a *Archiver) archiveDocumentVersion(
 		Detached:        event.DetachedObjects,
 	}
 
-	key := fmt.Sprintf("documents/%s/versions/%019d.json", dv.UUID, dv.Version)
+	key := DocumentVersionArchiveKey(dv.UUID, dv.Version)
 
 	ref, err := a.storeArchiveObject(ctx, key, &dv)
 	if err != nil {

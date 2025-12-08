@@ -316,6 +316,10 @@ func runServer(ctx context.Context, c *cli.Command) error {
 			MetricsCalculators: inMet,
 			TypeConfigurations: typeConfs,
 			DefaultTZ:          defaultTZ,
+			VersionArchiveReader: repository.NewArchiveReader(repository.ArchiveReaderOptions{
+				S3:     s3Client,
+				Bucket: conf.ArchiveBucket,
+			}),
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)

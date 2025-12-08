@@ -136,14 +136,18 @@ func (a *ArchiveReader) fetchAndVerify(
 		return "", fmt.Errorf("invalid object signature: %w", err)
 	}
 
-	signingKey := a.signingKeys.GetKeyByID(signature.KeyID)
-	if signingKey == nil {
-		return "", errors.New("unknown signing key")
-	}
+	var signingKey *SigningKey
 
-	err = signature.Verify(signingKey)
-	if err != nil {
-		return "", fmt.Errorf("verify signature: %w", err)
+	if a.signingKeys != nil {
+		signingKey = a.signingKeys.GetKeyByID(signature.KeyID)
+		if signingKey == nil {
+			return "", errors.New("unknown signing key")
+		}
+
+		err = signature.Verify(signingKey)
+		if err != nil {
+			return "", fmt.Errorf("verify signature: %w", err)
+		}
 	}
 
 	hash := sha256.New()
@@ -159,7 +163,7 @@ func (a *ArchiveReader) fetchAndVerify(
 		return "", errors.New("object does not match the signature")
 	}
 
-	if !signingKey.UsableAt(obj.GetArchivedTime()) {
+	if signingKey != nil && !signingKey.UsableAt(obj.GetArchivedTime()) {
 		return "", errors.New(
 			"signing key was not valid at the time of archiving")
 	}

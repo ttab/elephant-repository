@@ -45,6 +45,10 @@ type DocStore interface {
 		workflows WorkflowProvider,
 		update []*UpdateRequest,
 	) ([]DocumentUpdate, error)
+	Evict(
+		ctx context.Context,
+		req EvictRequest,
+	) (int64, error)
 	Delete(ctx context.Context, req DeleteRequest) error
 	ListDeleteRecords(
 		ctx context.Context, docUUID *uuid.UUID,
@@ -145,6 +149,12 @@ type DocStore interface {
 		labels []string,
 	) ([]DocumentItem, error)
 	EnsureSocketKey(ctx context.Context) (*ecdsa.PrivateKey, error)
+}
+
+type EvictRequest struct {
+	UUID         uuid.UUID
+	Version      int64
+	UntilVersion int64
 }
 
 type DocumentItem struct {

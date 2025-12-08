@@ -222,6 +222,10 @@ func testingAPIServer(
 			DeleteTimeout:      1 * time.Second,
 			MetricsCalculators: inMet,
 			TypeConfigurations: typeConf,
+			VersionArchiveReader: repository.NewArchiveReader(repository.ArchiveReaderOptions{
+				S3:     env.S3,
+				Bucket: env.Bucket,
+			}),
 		})
 	test.Must(t, err, "create doc store")
 
