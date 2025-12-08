@@ -74,7 +74,7 @@ func VerifySocketToken(
 	return &SocketToken{
 		ID:          id,
 		SubjectHash: subjectHash,
-		Expires:     time.Unix(int64(ts), 0),
+		Expires:     time.Unix(int64(ts), 0), //nolint: gosec
 	}, nil
 }
 
@@ -120,7 +120,7 @@ func (t *SocketToken) Sign(key *ecdsa.PrivateKey) (string, error) {
 	off += uint64size
 
 	// Write the expiry.
-	binary.BigEndian.PutUint64(buf[off:], uint64(ts))
+	binary.BigEndian.PutUint64(buf[off:], uint64(ts)) //nolint: gosec
 	off += uint64size
 
 	// Write the subject hash.
