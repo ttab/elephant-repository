@@ -577,7 +577,9 @@ func runServer(c *cli.Context) error {
 	if !noWebsocket {
 		socket := repository.NewSocketHandler(
 			grace.CancelOnQuit(c.Context), logger,
-			store, docCache, auth.AuthParser, &socketKey.PublicKey)
+			store, docCache, auth.AuthParser, &socketKey.PublicKey,
+			corsHosts,
+		)
 
 		routerOpts = append(routerOpts,
 			repository.WithWebsocket(socket))

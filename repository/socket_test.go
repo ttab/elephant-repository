@@ -53,20 +53,41 @@ func TestIntegrationSocket(t *testing.T) {
 		{Name: "done"},
 	})
 
-	tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
-	test.Must(t, err, "get socket token")
+	serverURL, err := url.Parse(tc.Server.URL)
+	test.Must(t, err, "parse server URL")
 
 	token, err := itest.AccessToken(tc.SigningKey,
 		itest.StandardClaims(t, "doc_read"))
 	test.Must(t, err, "create access token")
 
-	serverURL, err := url.Parse(tc.Server.URL)
-	test.Must(t, err, "parse server URL")
+	t.Run("BadOrigin", func(t *testing.T) {
+		tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
+		test.Must(t, err, "get socket token")
+
+		wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
+		wsURL.Scheme = "ws"
+
+		header := http.Header{
+			"Origin": []string{"https://example.com"},
+		}
+
+		_, resp, err := websocket.DefaultDialer.Dial(wsURL.String(), header)
+		test.MustNot(t, err, "dial websocket")
+
+		_ = resp.Body.Close()
+	})
+
+	tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
+	test.Must(t, err, "get socket token")
 
 	wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
 	wsURL.Scheme = "ws"
 
-	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
+	header := http.Header{
+		"Origin": []string{"https://example.ecms.se"},
+	}
+
+	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL.String(), header)
 	test.Must(t, err, "dial websocket")
 
 	t.Cleanup(func() {

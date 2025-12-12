@@ -346,7 +346,8 @@ func testingAPIServer(
 
 	socket := repository.NewSocketHandler(
 		ctx, logger,
-		store, docCache, authParser, &socketKey.PublicKey)
+		store, docCache, authParser, &socketKey.PublicKey,
+		[]string{"localhost", "example.ecms.se"})
 
 	err = repository.SetUpRouter(router,
 		repository.WithDocumentsAPI(docService, srvOpts),
