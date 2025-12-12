@@ -1,14 +1,13 @@
 package postgres
 
-import "time"
-
 type TypeConfiguration struct {
 	BoundedCollection bool                  `json:"bounded_collection"`
 	TimeExpressions   []TypeTimeExpression  `json:"time_expressions,omitempty"`
 	LabelExpressions  []TypeLabelExpression `json:"label_expressions,omitempty"`
-	// EvictNoncurrentAfter can be set to evict non-current versions of a
-	// document from the database after they've reached a certain age.
-	EvictNoncurrentAfter *time.Duration
+	// EvictNonCurrentAfter can be set to evict non-current versions of a
+	// document from the database after they're older than the given number
+	// of days. Set to 0 to disable eviction.
+	EvictNoncurrentAfter int64 `json:"evict_noncurrent_after,omitempty"`
 }
 
 type TypeTimeExpression struct {

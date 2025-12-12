@@ -868,6 +868,30 @@ func (q *Queries) EvictDocumentVersions(ctx context.Context, arg EvictDocumentVe
 	return result.RowsAffected(), nil
 }
 
+const evictNoncurrentVersions = `-- name: EvictNoncurrentVersions :execrows
+UPDATE document_version AS v
+SET document_data = NULL
+FROM document AS d
+WHERE d.uuid = v.uuid
+      AND v.version != d.current_version
+      AND v.document_data IS NULL
+      AND v.created < $1
+      AND d.type = $2
+`
+
+type EvictNoncurrentVersionsParams struct {
+	Cutoff  pgtype.Timestamptz
+	DocType string
+}
+
+func (q *Queries) EvictNoncurrentVersions(ctx context.Context, arg EvictNoncurrentVersionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, evictNoncurrentVersions, arg.Cutoff, arg.DocType)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const finaliseDeleteRecord = `-- name: FinaliseDeleteRecord :exec
 UPDATE delete_record SET finalised = $1
 WHERE uuid = $2 AND id = $3

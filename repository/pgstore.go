@@ -38,6 +38,8 @@ type PGDocStoreOptions struct {
 	TypeConfigurations   *TypeConfigurations
 	DefaultTZ            *time.Location
 	VersionArchiveReader VersionArchiveReader
+	MaintenanceWindow    *MaintenanceWindow
+	EnableEviction       bool
 }
 
 type VersionArchiveReader interface {
@@ -67,6 +69,10 @@ func NewPGDocStore(
 		options.DefaultTZ = time.UTC
 	}
 
+	if options.MaintenanceWindow == nil {
+		return nil, errors.New("missing required maintenance window")
+	}
+
 	s := &PGDocStore{
 		logger:       logger,
 		pool:         pool,
@@ -75,6 +81,7 @@ func NewPGDocStore(
 		opts:         options,
 		metr:         NewIntrinsicMetrics(logger, options.MetricsCalculators),
 		vArch:        options.VersionArchiveReader,
+		lastRuns:     make(map[string]time.Time),
 		archived:     pg.NewFanOut[ArchivedEvent](NotifyArchived),
 		schemas:      pg.NewFanOut[SchemaEvent](NotifySchemasUpdated),
 		typeConf:     pg.NewFanOut[TypeConfiguredEvent](NotifyTypeConfigured),
@@ -107,6 +114,8 @@ type PGDocStore struct {
 	opts   PGDocStoreOptions
 	metr   *IntrinsicMetrics
 	vArch  VersionArchiveReader
+
+	lastRuns map[string]time.Time
 
 	archived     *pg.FanOut[ArchivedEvent]
 	schemas      *pg.FanOut[SchemaEvent]

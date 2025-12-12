@@ -167,6 +167,10 @@ type TypeConfiguration struct {
 	BoundedCollection bool
 	TimeExpressions   []TimespanConfiguration
 	LabelExpressions  []LabelConfiguration
+	// EvictNonCurrentAfter can be set to evict non-current versions of a
+	// document from the database after they're older than the given number
+	// of days. Set to 0 to disable eviction.
+	EvictNoncurrentAfter int64
 }
 
 type DeliverableInfo struct {

@@ -33,14 +33,94 @@ func (s *PGDocStore) RunCleaner(ctx context.Context, period time.Duration) {
 			continue
 		}
 
-		err = jobLock.RunWithContext(ctx, s.removeExpiredLocks)
+		err = jobLock.RunWithContext(ctx, s.cleanupTasks)
 		if err != nil {
 			s.logger.ErrorContext(
-				ctx, "lock cleaner error",
+				ctx, "run cleanup tasks in lock",
 				elephantine.LogKeyError, err,
 			)
 		}
 	}
+}
+
+func (s *PGDocStore) cleanupTasks(ctx context.Context) error {
+	err := s.removeExpiredLocks(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx, "lock cleaner error",
+			elephantine.LogKeyError, err,
+		)
+	}
+
+	err = s.evictNonCurrent(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx, "eviction error",
+			elephantine.LogKeyError, err,
+		)
+	}
+
+	return nil
+}
+
+const (
+	taskNameEvictNoncurrent = "evict_noncurrent"
+)
+
+func (s *PGDocStore) evictNonCurrent(ctx context.Context) error {
+	if !s.opts.EnableEviction {
+		return nil
+	}
+
+	lastRun := s.lastRuns[taskNameEvictNoncurrent]
+	if time.Since(lastRun) < 12*time.Hour {
+		return nil
+	}
+
+	now := time.Now()
+	if !s.opts.MaintenanceWindow.InWindow(now) {
+		return nil
+	}
+
+	ages := s.opts.TypeConfigurations.GetEvictionAges()
+	q := postgres.New(s.pool)
+
+	var total int64
+
+	for docType, age := range ages {
+		cutoff := now.Add(-age)
+
+		count, err := q.EvictNoncurrentVersions(ctx, postgres.EvictNoncurrentVersionsParams{
+			DocType: docType,
+			Cutoff:  pg.Time(cutoff),
+		})
+		if err != nil {
+			s.logger.WarnContext(ctx,
+				"noncurrent version eviction failed",
+				elephantine.LogKeyError, err,
+				elephantine.LogKeyDocumentType, docType,
+			)
+
+			continue
+		}
+
+		if count > 0 {
+			s.logger.InfoContext(ctx, "evicted non-current versions",
+				elephantine.LogKeyDocumentType, docType,
+				elephantine.LogKeyCount, count,
+			)
+		}
+
+		total += count
+	}
+
+	s.logger.InfoContext(ctx, "finished evicting non-current versions",
+		elephantine.LogKeyCount, total,
+	)
+
+	s.lastRuns[taskNameEvictNoncurrent] = now
+
+	return nil
 }
 
 func (s *PGDocStore) removeExpiredLocks(ctx context.Context) error {

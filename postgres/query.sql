@@ -311,7 +311,15 @@ WHERE uuid = @uuid
       AND archived
       AND NOT document_data IS NULL;
 
-
+-- name: EvictNoncurrentVersions :execrows
+UPDATE document_version AS v
+SET document_data = NULL
+FROM document AS d
+WHERE d.uuid = v.uuid
+      AND v.version != d.current_version
+      AND v.document_data IS NULL
+      AND v.created < @cutoff
+      AND d.type = @doc_type;
 
 -- name: GetDocumentVersionInfo :one
 SELECT uuid, version, created, creator_uri, meta, archived, signature,
