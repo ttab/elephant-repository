@@ -8,6 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,6 +48,7 @@ func NewSocketHandler(
 	cache *DocCache,
 	auth elephantine.AuthInfoParser,
 	socketKey *ecdsa.PublicKey,
+	corsHosts []string,
 ) *SocketHandler {
 	docStream := NewDocumentStream(ctx, logger, store)
 
@@ -59,6 +62,32 @@ func NewSocketHandler(
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				origin := r.Header.Get("Origin")
+
+				switch origin {
+				case "":
+					return true
+				case "null":
+					return false
+				}
+
+				originURL, err := url.Parse(origin)
+				if err != nil {
+					return false
+				}
+
+				hostname := originURL.Hostname()
+				secureOrigin := originURL.Scheme == "https"
+
+				// Require https for everything that isn't
+				// localhost.
+				if hostname != "localhost" && !secureOrigin {
+					return false
+				}
+
+				return slices.Contains(corsHosts, hostname)
+			},
 		},
 		log:       logger,
 		store:     store,
