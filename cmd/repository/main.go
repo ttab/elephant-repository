@@ -33,7 +33,7 @@ import (
 	"github.com/ttab/langos"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -53,133 +53,133 @@ func main() {
 			&cli.StringFlag{
 				Name:    "addr",
 				Value:   ":1080",
-				EnvVars: []string{"ADDR", "LISTEN_ADDR"},
+				Sources: cli.EnvVars("ADDR", "LISTEN_ADDR"),
 			},
 			&cli.StringFlag{
 				Name:    "profile-addr",
 				Value:   ":1081",
-				EnvVars: []string{"PROFILE_ADDR"},
+				Sources: cli.EnvVars("PROFILE_ADDR"),
 			},
 			&cli.StringFlag{
 				Name:    "log-level",
-				EnvVars: []string{"LOG_LEVEL"},
+				Sources: cli.EnvVars("LOG_LEVEL"),
 				Value:   "error",
 			},
 			&cli.StringFlag{
 				Name:    "default-language",
-				EnvVars: []string{"DEFAULT_LANGUAGE"},
+				Sources: cli.EnvVars("DEFAULT_LANGUAGE"),
 				Value:   "sv-se",
 			},
 			&cli.StringFlag{
 				Name:    "default-timezone",
-				EnvVars: []string{"DEFAULT_TIMEZONE"},
+				Sources: cli.EnvVars("DEFAULT_TIMEZONE"),
 				Value:   "Europe/Stockholm",
 			},
 			&cli.StringSliceFlag{
 				Name:    "ensure-schema",
-				EnvVars: []string{"ENSURE_SCHEMA"},
+				Sources: cli.EnvVars("ENSURE_SCHEMA"),
 			},
 			&cli.StringFlag{
 				Name:    "db",
 				Value:   "postgres://elephant-repository:pass@localhost/elephant-repository",
-				EnvVars: []string{"CONN_STRING"},
+				Sources: cli.EnvVars("CONN_STRING"),
 			},
 			&cli.StringFlag{
 				Name:    "db-parameter",
-				EnvVars: []string{"CONN_STRING_PARAMETER"},
+				Sources: cli.EnvVars("CONN_STRING_PARAMETER"),
 			},
 			&cli.StringFlag{
 				Name:    "eventsink",
 				Value:   "aws-eventbridge",
-				EnvVars: []string{"EVENTSINK"},
+				Sources: cli.EnvVars("EVENTSINK"),
 			},
 			&cli.StringFlag{
 				Name:    "archive-bucket",
 				Value:   "elephant-archive",
-				EnvVars: []string{"ARCHIVE_BUCKET"},
+				Sources: cli.EnvVars("ARCHIVE_BUCKET"),
 			},
 			&cli.StringFlag{
 				Name:    "asset-bucket",
 				Value:   "elephant-assets",
-				EnvVars: []string{"ASSET_BUCKET"},
+				Sources: cli.EnvVars("ASSET_BUCKET"),
 			},
 			&cli.StringFlag{
 				Name:    "s3-endpoint",
 				Usage:   "Override the S3 endpoint for use with Minio",
-				EnvVars: []string{"S3_ENDPOINT"},
+				Sources: cli.EnvVars("S3_ENDPOINT"),
 			},
 			&cli.StringFlag{
 				Name:    "s3-key-id",
 				Usage:   "Access key ID to use as a static credential with Minio",
-				EnvVars: []string{"S3_ACCESS_KEY_ID"},
+				Sources: cli.EnvVars("S3_ACCESS_KEY_ID"),
 			},
 			&cli.StringFlag{
 				Name:    "s3-key-secret",
 				Usage:   "Access key secret to use as a static credential with Minio",
-				EnvVars: []string{"S3_ACCESS_KEY_SECRET"},
+				Sources: cli.EnvVars("S3_ACCESS_KEY_SECRET"),
 			},
 			&cli.BoolFlag{
 				Name:    "tolerate-eventlog-gaps",
 				Usage:   "Tolerate eventlog gaps when archiving",
-				EnvVars: []string{"TOLERATE_EVENTLOG_GAPS"},
+				Sources: cli.EnvVars("TOLERATE_EVENTLOG_GAPS"),
 			},
 			&cli.BoolFlag{
 				Name:    "no-core-schema",
 				Usage:   "Don't register the built in core schema",
-				EnvVars: []string{"NO_CORE_SCHEMA"},
+				Sources: cli.EnvVars("NO_CORE_SCHEMA"),
 			},
 			&cli.BoolFlag{
 				Name:    "no-archiver",
 				Usage:   "Disable the archiver",
-				EnvVars: []string{"NO_ARCHIVER"},
+				Sources: cli.EnvVars("NO_ARCHIVER"),
 			},
 			&cli.BoolFlag{
 				Name:    "no-eventsink",
 				Usage:   "Disable the eventsink",
-				EnvVars: []string{"NO_EVENTSINK"},
+				Sources: cli.EnvVars("NO_EVENTSINK"),
 			},
 			&cli.BoolFlag{
 				Name:    "no-eventlog-builder",
 				Usage:   "Disable the eventlog builder",
 				Aliases: []string{"no-replicator"},
-				EnvVars: []string{"NO_EVENTLOG_BUILDER"},
+				Sources: cli.EnvVars("NO_EVENTLOG_BUILDER"),
 			},
 			&cli.BoolFlag{
 				Name:    "no-scheduler",
 				Usage:   "Disable scheduled publishing",
-				EnvVars: []string{"NO_SCHEDULER"},
+				Sources: cli.EnvVars("NO_SCHEDULER"),
 			},
 			&cli.BoolFlag{
 				Name:    "no-charcounter",
 				Usage:   "Disable built in character counter",
-				EnvVars: []string{"NO_CHARCOUNTER"},
+				Sources: cli.EnvVars("NO_CHARCOUNTER"),
 			},
 			&cli.BoolFlag{
 				Name:    "no-websocket",
 				Usage:   "Disable websocket API",
-				EnvVars: []string{"NO_WEBSOCKET"},
+				Sources: cli.EnvVars("NO_WEBSOCKET"),
 			},
 			&cli.BoolFlag{
 				Name:    "no-sse",
 				Usage:   "Disable SSE API",
-				EnvVars: []string{"NO_SSE"},
+				Sources: cli.EnvVars("NO_SSE"),
 			},
 			&cli.StringSliceFlag{
 				Name:    "cors-host",
 				Usage:   "CORS hosts to allow, supports wildcards",
-				EnvVars: []string{"CORS_HOSTS"},
+				Sources: cli.EnvVars("CORS_HOSTS"),
 			},
 			&cli.BoolFlag{
 				Name: "migrate-db",
 				Usage: `Perform database migrations.
 Intended for bootstrapping disposable environments. Having this always on in
 production is a BAD IDEA! Migrations can be expensive and need to be planned.`,
-				EnvVars: []string{"MIGRATE_DB"},
+				Sources: cli.EnvVars("MIGRATE_DB"),
 			},
 		}, elephantine.AuthenticationCLIFlags()...),
 	}
 
-	app := cli.App{
+	app := cli.Command{
 		Name:  "repository",
 		Usage: "The Elephant repository",
 		Commands: []*cli.Command{
@@ -187,14 +187,14 @@ production is a BAD IDEA! Migrations can be expensive and need to be planned.`,
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(context.Background(), os.Args); err != nil {
 		slog.Error("failed to run server",
 			elephantine.LogKeyError, err)
 		os.Exit(1)
 	}
 }
 
-func runServer(c *cli.Context) error {
+func runServer(ctx context.Context, c *cli.Command) error {
 	var (
 		addr            = c.String("addr")
 		profileAddr     = c.String("profile-addr")
@@ -212,7 +212,7 @@ func runServer(c *cli.Context) error {
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
 	grace := elephantine.NewGracefulShutdown(logger, 20*time.Second)
 
-	stopCtx := grace.CancelOnStop(c.Context)
+	stopCtx := grace.CancelOnStop(ctx)
 
 	defer grace.Stop()
 
@@ -232,7 +232,7 @@ func runServer(c *cli.Context) error {
 	}
 
 	auth, err := elephantine.AuthenticationConfigFromCLI(
-		c, nil,
+		ctx, c, nil,
 	)
 	if err != nil {
 		return fmt.Errorf("set up authentication: %w", err)
@@ -265,7 +265,7 @@ func runServer(c *cli.Context) error {
 			"failed to instrument S3 HTTP client: %w", err)
 	}
 
-	s3Client, err := repository.S3Client(c.Context, s3Conf)
+	s3Client, err := repository.S3Client(ctx, s3Conf)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to create S3 client: %w", err)
@@ -274,7 +274,7 @@ func runServer(c *cli.Context) error {
 	presignClient := s3.NewPresignClient(s3Client,
 		s3.WithPresignExpires(15*time.Minute))
 
-	dbpool, err := pgxpool.New(c.Context, conf.DB)
+	dbpool, err := pgxpool.New(ctx, conf.DB)
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)
 	}
@@ -284,7 +284,7 @@ func runServer(c *cli.Context) error {
 		go dbpool.Close()
 	}()
 
-	err = dbpool.Ping(c.Context)
+	err = dbpool.Ping(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
@@ -325,7 +325,7 @@ func runServer(c *cli.Context) error {
 	go store.RunCleaner(stopCtx, 5*time.Minute)
 
 	if !conf.NoCoreSchema {
-		err = repository.EnsureCoreSchema(c.Context, store)
+		err = repository.EnsureCoreSchema(ctx, store)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to ensure core schema: %w", err)
@@ -368,7 +368,7 @@ func runServer(c *cli.Context) error {
 			return fmt.Errorf("unknown schema URL scheme %q", uri.Scheme)
 		}
 
-		err = repository.EnsureSchema(c.Context, store, name, version, schema)
+		err = repository.EnsureSchema(ctx, store, name, version, schema)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to ensure %s schema: %w", name, err)
@@ -376,19 +376,19 @@ func runServer(c *cli.Context) error {
 	}
 
 	validator, err := repository.NewValidator(
-		c.Context, logger, store, prometheus.DefaultRegisterer)
+		ctx, logger, store, prometheus.DefaultRegisterer)
 	if err != nil {
 		return fmt.Errorf("failed to create validator: %w", err)
 	}
 
-	workflows, err := repository.NewWorkflows(c.Context, logger, store)
+	workflows, err := repository.NewWorkflows(ctx, logger, store)
 	if err != nil {
 		return fmt.Errorf("failed to create workflows: %w", err)
 	}
 
 	docCache := repository.NewDocCache(store, 1000)
 
-	socketKey, err := store.EnsureSocketKey(c.Context)
+	socketKey, err := store.EnsureSocketKey(ctx)
 	if err != nil {
 		return fmt.Errorf("ensure socket key: %w", err)
 	}
@@ -408,13 +408,13 @@ func runServer(c *cli.Context) error {
 		return fmt.Errorf("create documents service: %w", err)
 	}
 
-	setupCtx, cancel := context.WithTimeout(c.Context, 10*time.Second)
+	setupCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	group, gCtx := errgroup.WithContext(setupCtx)
 
 	if !conf.NoEventlogBuilder {
-		ctx := grace.CancelOnStop(c.Context)
+		ctx := grace.CancelOnStop(ctx)
 		log := logger.With(elephantine.LogKeyComponent, "eventlog-builder")
 
 		log.Debug("setting up eventlog builder")
@@ -449,7 +449,7 @@ func runServer(c *cli.Context) error {
 
 		switch conf.Eventsink {
 		case "aws-eventbridge":
-			conf, err := config.LoadDefaultConfig(c.Context)
+			conf, err := config.LoadDefaultConfig(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to load AWS SDK config for Eventbridge: %w", err)
 			}
@@ -462,7 +462,7 @@ func runServer(c *cli.Context) error {
 
 			q := postgres.New(dbpool)
 
-			err = q.ConfigureEventsink(c.Context, postgres.ConfigureEventsinkParams{
+			err = q.ConfigureEventsink(ctx, postgres.ConfigureEventsinkParams{
 				Name: sink.SinkName(),
 			})
 			if err != nil {
@@ -486,7 +486,7 @@ func runServer(c *cli.Context) error {
 				"failed to create eventsink forwarder: %w", err)
 		}
 
-		go forwarder.Run(c.Context)
+		go forwarder.Run(ctx)
 
 		go func() {
 			<-grace.ShouldStop()
@@ -514,7 +514,7 @@ func runServer(c *cli.Context) error {
 		go func() {
 			logger.Debug("starting scheduler")
 
-			ctx := grace.CancelOnStop(c.Context)
+			ctx := grace.CancelOnStop(ctx)
 
 			err := scheduler.RunInJobLock(
 				ctx, nil,
@@ -575,11 +575,14 @@ func runServer(c *cli.Context) error {
 	}
 
 	if !noWebsocket {
-		socket := repository.NewSocketHandler(
-			grace.CancelOnQuit(c.Context), logger,
+		socket, err := repository.NewSocketHandler(
+			grace.CancelOnQuit(ctx), logger, prometheus.DefaultRegisterer,
 			store, docCache, auth.AuthParser, &socketKey.PublicKey,
 			corsHosts,
 		)
+		if err != nil {
+			return fmt.Errorf("set up socket handler: %w", err)
+		}
 
 		routerOpts = append(routerOpts,
 			repository.WithWebsocket(socket))
@@ -681,7 +684,7 @@ func runServer(c *cli.Context) error {
 		return nil
 	})
 
-	serverGroup, gCtx := errgroup.WithContext(grace.CancelOnQuit(c.Context))
+	serverGroup, gCtx := errgroup.WithContext(grace.CancelOnQuit(ctx))
 
 	if !conf.NoArchiver {
 		log := logger.With(elephantine.LogKeyComponent, "archiver")

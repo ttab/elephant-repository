@@ -296,7 +296,7 @@ func testingAPIServer(
 	}
 
 	validator, err := repository.NewValidator(
-		ctx, logger, store, prometheus.NewRegistry())
+		ctx, logger, store, reg)
 	test.Must(t, err, "create validator")
 
 	t.Cleanup(validator.Stop)
@@ -344,10 +344,11 @@ func testingAPIServer(
 
 	srvOpts.SetJWTValidation(authParser)
 
-	socket := repository.NewSocketHandler(
-		ctx, logger,
+	socket, err := repository.NewSocketHandler(
+		ctx, logger, reg,
 		store, docCache, authParser, &socketKey.PublicKey,
 		[]string{"localhost", "example.ecms.se"})
+	test.Must(t, err, "set up socket handler")
 
 	err = repository.SetUpRouter(router,
 		repository.WithDocumentsAPI(docService, srvOpts),

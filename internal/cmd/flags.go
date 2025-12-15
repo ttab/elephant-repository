@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"github.com/ttab/elephant-repository/repository"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 type BackendConfig struct {
@@ -29,7 +29,7 @@ type BackendConfig struct {
 	TolerateEventlogGaps bool
 }
 
-func BackendConfigFromContext(c *cli.Context) (BackendConfig, error) {
+func BackendConfigFromContext(c *cli.Command) (BackendConfig, error) {
 	cfg := BackendConfig{
 		DB:                c.String("db"),
 		Eventsink:         c.String("eventsink"),
