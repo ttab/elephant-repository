@@ -2,6 +2,7 @@
   {
     "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
     "document_batch": {
+      "set_name": "planning",
       "documents": [
         {
           "meta": {

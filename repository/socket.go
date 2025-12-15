@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
 	rsock "github.com/ttab/elephant-api/repositorysocket"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
@@ -44,12 +45,13 @@ const (
 func NewSocketHandler(
 	ctx context.Context,
 	logger *slog.Logger,
+	metricsRegisterer prometheus.Registerer,
 	store DocStore,
 	cache *DocCache,
 	auth elephantine.AuthInfoParser,
 	socketKey *ecdsa.PublicKey,
 	corsHosts []string,
-) *SocketHandler {
+) (*SocketHandler, error) {
 	docStream := NewDocumentStream(ctx, logger, store)
 
 	rateLimiterCache := sturdyc.New[*rate.Limiter](
@@ -98,7 +100,29 @@ func NewSocketHandler(
 		rate:      rateLimiterCache,
 	}
 
-	return &h
+	prom := elephantine.NewMetricsHelper(metricsRegisterer)
+
+	prom.CounterVec(&h.socketRejected, prometheus.CounterOpts{
+		Name: "repository_websocket_rate_limited_total",
+	}, []string{"reason"})
+
+	prom.Gauge(&h.openSockets, prometheus.GaugeOpts{
+		Name: "repository_open_sockets",
+	})
+
+	prom.CounterVec(&h.socketCall, prometheus.CounterOpts{
+		Name: "repository_websocket_call_total",
+	}, []string{"method"})
+
+	prom.CounterVec(&h.socketResponse, prometheus.CounterOpts{
+		Name: "repository_websocket_response_total",
+	}, []string{"method", "status", "response"})
+
+	if err := prom.Err(); err != nil {
+		return nil, fmt.Errorf("register metrics: %w", err)
+	}
+
+	return &h, nil
 }
 
 type SocketHandler struct {
@@ -111,6 +135,11 @@ type SocketHandler struct {
 	auth      elephantine.AuthInfoParser
 	socketKey *ecdsa.PublicKey
 	rate      *sturdyc.Client[*rate.Limiter]
+
+	openSockets    prometheus.Gauge
+	socketRejected *prometheus.CounterVec
+	socketCall     *prometheus.CounterVec
+	socketResponse *prometheus.CounterVec
 }
 
 func (h *SocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -118,12 +147,16 @@ func (h *SocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		http.Error(w, "no socket token", http.StatusUnauthorized)
 
+		h.socketRejected.WithLabelValues("no_token").Inc()
+
 		return
 	}
 
 	tok, err := VerifySocketToken(token, h.socketKey)
 	if err != nil {
 		http.Error(w, "invalid socket token", http.StatusUnauthorized)
+
+		h.socketRejected.WithLabelValues("invalid_token").Inc()
 
 		return
 	}
@@ -140,11 +173,15 @@ func (h *SocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !rate.Allow() {
 		http.Error(w, "rate limited", http.StatusTooManyRequests)
 
+		h.socketRejected.WithLabelValues("rate_limit").Inc()
+
 		return
 	}
 
 	if tok.Expires.Before(time.Now()) {
 		http.Error(w, "expired socket token", http.StatusUnauthorized)
+
+		h.socketRejected.WithLabelValues("expired_token").Inc()
 
 		return
 	}
@@ -158,12 +195,19 @@ func (h *SocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"remote_addr", r.RemoteAddr,
 		)
 
+		h.socketRejected.WithLabelValues("upgrade_failed").Inc()
+
 		return
 	}
 
-	sess := NewSocketSession(conn, h.log, h.store, h.cache, h.stream, h.auth)
+	sess := NewSocketSession(
+		conn, h.log, h.store, h.cache, h.stream, h.auth,
+		h.socketCall, h.socketResponse,
+	)
 
+	h.openSockets.Inc()
 	sess.Run(r.Context())
+	h.openSockets.Dec()
 }
 
 func NewSocketSession(
@@ -173,17 +217,21 @@ func NewSocketSession(
 	cache *DocCache,
 	stream *DocumentStream,
 	authParser elephantine.AuthInfoParser,
+	socketCall *prometheus.CounterVec,
+	socketResponse *prometheus.CounterVec,
 ) *SocketSession {
 	return &SocketSession{
-		conn:       conn,
-		log:        log,
-		store:      store,
-		cache:      cache,
-		stream:     stream,
-		authParser: authParser,
-		calls:      make(chan *CallHandle, 8),
-		responses:  make(chan *responseHandle, 16),
-		sets:       make(map[string]*documentSetHandle),
+		conn:           conn,
+		log:            log,
+		store:          store,
+		cache:          cache,
+		stream:         stream,
+		authParser:     authParser,
+		calls:          make(chan *CallHandle, 8),
+		responses:      make(chan *responseHandle, 16),
+		sets:           make(map[string]*documentSetHandle),
+		socketCall:     socketCall,
+		socketResponse: socketResponse,
 	}
 }
 
@@ -193,6 +241,9 @@ type SocketSession struct {
 	m        sync.RWMutex
 	auth     *elephantine.AuthInfo
 	identity []string
+
+	socketCall     *prometheus.CounterVec
+	socketResponse *prometheus.CounterVec
 
 	authExpired *time.Ticker
 
@@ -371,26 +422,47 @@ func (s *SocketSession) handlerLoop(ctx context.Context) error {
 	}
 }
 
+var (
+	handlerAuthenticate     = "Authenticate"
+	handlerGetDocuments     = "GetDocuments"
+	handlerCloseDocumentSet = "CloseDocumentSet"
+)
+
 func (s *SocketSession) runHandler(ctx context.Context, call *CallHandle) bool {
 	var (
 		resp *rsock.Response
 		rErr *rsock.Error
 	)
 
+	var (
+		handler     func(context.Context, *CallHandle) (*rsock.Response, *rsock.Error)
+		handlerName string
+	)
+
 	switch {
 	case call.Call.Authenticate != nil:
-		resp, rErr = s.handleAuthenticate(ctx, call, call.Call.Authenticate)
+		handlerName = handlerAuthenticate
+		handler = s.handleAuthenticate
 	case call.Call.GetDocuments != nil:
-		resp, rErr = s.handleGetDocuments(ctx, call, call.Call.GetDocuments)
+		handlerName = handlerGetDocuments
+		handler = s.handleGetDocuments
 	case call.Call.CloseDocumentSet != nil:
-		resp, rErr = s.handleCloseDocumentSet(ctx, call, call.Call.CloseDocumentSet)
+		handlerName = handlerCloseDocumentSet
+		handler = s.handleCloseDocumentSet
 	default:
-		rErr = SockErrorf(string(twirp.InvalidArgument), "unknown call type")
+		s.Respond(ctx, call, &rsock.Response{
+			Error: SockErrorf(string(twirp.InvalidArgument), "unknown call type"),
+		}, false)
+
+		return false
 	}
 
-	if rErr != nil {
+	call.Method = handlerName
+
+	resp, err := handler(ctx, call)
+	if err != nil {
 		// We always bail immediately on authentication errors.
-		final := rErr.ErrorCode == string(twirp.Unauthenticated)
+		final := err.ErrorCode == string(twirp.Unauthenticated)
 
 		s.Respond(ctx, call, &rsock.Response{
 			Error: rErr,
@@ -414,8 +486,10 @@ func SockErrorf(code string, format string, a ...any) *rsock.Error {
 }
 
 func (s *SocketSession) handleAuthenticate(
-	_ context.Context, _ *CallHandle, req *rsock.Authenticate,
+	_ context.Context, callHandle *CallHandle,
 ) (*rsock.Response, *rsock.Error) {
+	req := callHandle.Call.Authenticate
+
 	auth, err := s.authParser.AuthInfoFromToken(req.Token)
 	if err != nil {
 		return nil, SockErrorf(
@@ -429,8 +503,10 @@ func (s *SocketSession) handleAuthenticate(
 }
 
 func (s *SocketSession) handleGetDocuments(
-	ctx context.Context, callHandle *CallHandle, req *rsock.GetDocuments,
+	ctx context.Context, callHandle *CallHandle,
 ) (*rsock.Response, *rsock.Error) {
+	req := callHandle.Call.GetDocuments
+
 	if req.SetName == "" {
 		return nil, SockErrorf(string(twirp.InvalidArgument),
 			"set_name is required")
@@ -498,8 +574,15 @@ func (s *SocketSession) handleGetDocuments(
 }
 
 func (s *SocketSession) handleCloseDocumentSet(
-	_ context.Context, _ *CallHandle, req *rsock.CloseDocumentSet,
-) (*rsock.Response, *rsock.Error) { //nolint: unparam
+	_ context.Context, callHandle *CallHandle,
+) (*rsock.Response, *rsock.Error) {
+	req := callHandle.Call.CloseDocumentSet
+
+	if req.SetName == "" {
+		return nil, SockErrorf(string(twirp.InvalidArgument),
+			"set_name is required")
+	}
+
 	set, ok := s.sets[req.SetName]
 	if ok {
 		set.Close()
@@ -522,6 +605,26 @@ func (s *SocketSession) Respond(
 		Response:   resp,
 		Final:      final,
 	}
+
+	status := "ok"
+
+	var response string
+
+	switch {
+	case resp.Error != nil:
+		status = resp.Error.ErrorCode
+		response = "Error"
+	case resp.DocumentBatch != nil:
+		response = "DocumentBatch"
+	case resp.InclusionBatch != nil:
+		response = "InclusionBatch"
+	case resp.Removed != nil:
+		response = "Removed"
+	case resp.Handled:
+		response = "Handled"
+	}
+
+	s.socketResponse.WithLabelValues(handle.Method, status, response).Inc()
 
 	select {
 	case <-ctx.Done():
@@ -594,6 +697,7 @@ func (s *SocketSession) writeMessage(messageType int, data []byte) error {
 
 type CallHandle struct {
 	Protobuf bool
+	Method   string
 	Call     *rsock.Call
 }
 

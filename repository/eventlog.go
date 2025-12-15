@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant-repository/postgres"
+	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
 )
 
@@ -65,34 +66,29 @@ func NewEventlogBuilder(
 		metricsRegisterer = prometheus.DefaultRegisterer
 	}
 
-	restarts := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "elephant_eventlog_restarts_total",
-			Help: "Number of times the eventlog has restarted.",
-		},
-	)
-	if err := metricsRegisterer.Register(restarts); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	events := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_eventlog_events_total",
-			Help: "Number of received eventlog events.",
-		},
-		[]string{"type", "doc_type"},
-	)
-	if err := metricsRegisterer.Register(events); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	return &EventlogBuilder{
+	eb := EventlogBuilder{
 		pool:                pool,
 		logger:              logger,
 		outboxNotifications: outboxNotifications,
-		restarts:            restarts,
-		events:              events,
-	}, nil
+	}
+
+	prom := elephantine.NewMetricsHelper(metricsRegisterer)
+
+	prom.Counter(&eb.starts, prometheus.CounterOpts{
+		Name: "elephant_eventlog_start_total",
+		Help: "Number of times the eventlog has started.",
+	})
+
+	prom.CounterVec(&eb.events, prometheus.CounterOpts{
+		Name: "elephant_eventlog_events_total",
+		Help: "Number of received eventlog events.",
+	}, []string{"type", "doc_type"})
+
+	if err := prom.Err(); err != nil {
+		return nil, fmt.Errorf("register metrics: %w", err)
+	}
+
+	return &eb, nil
 }
 
 type EventlogBuilder struct {
@@ -101,8 +97,8 @@ type EventlogBuilder struct {
 
 	outboxNotifications <-chan int64
 
-	restarts prometheus.Counter
-	events   *prometheus.CounterVec
+	starts prometheus.Counter
+	events *prometheus.CounterVec
 }
 
 const (
@@ -112,6 +108,8 @@ const (
 
 func (eb *EventlogBuilder) Run(ctx context.Context) error {
 	eb.logger.Info("starting eventlog builder")
+
+	eb.starts.Inc()
 
 	q := postgres.New(eb.pool)
 
@@ -173,6 +171,8 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 
 				params.Acl = data
 			}
+
+			eb.events.WithLabelValues(evt.Event, evt.Type).Inc()
 
 			err := eb.recordEvent(ctx, item.ID, params)
 			if err != nil {
