@@ -271,6 +271,7 @@ func (ds *documentSet) Initialise(
 			}
 
 			batch = rsock.DocumentBatch{}
+			inclChanges = nil
 		}
 	}
 
