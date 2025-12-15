@@ -249,9 +249,11 @@ func (ds *documentSet) Initialise(
 	}
 
 	var (
-		batch       rsock.DocumentBatch
+		batch       *rsock.DocumentBatch
 		inclChanges []inclusionChange
 	)
+
+	batch = &rsock.DocumentBatch{}
 
 	for docUUID, m := range matches {
 		batch.Documents = append(batch.Documents,
@@ -265,12 +267,12 @@ func (ds *documentSet) Initialise(
 		inclChanges = append(inclChanges, incCh...)
 
 		if len(batch.Documents) == 20 {
-			err := ds.emitBatch(ctx, &batch, inclChanges)
+			err := ds.emitBatch(ctx, batch, inclChanges)
 			if err != nil {
 				return fmt.Errorf("emit document batch: %w", err)
 			}
 
-			batch = rsock.DocumentBatch{}
+			batch = &rsock.DocumentBatch{}
 			inclChanges = nil
 		}
 	}
@@ -279,7 +281,7 @@ func (ds *documentSet) Initialise(
 	// so not checking len(Documents) before emit.
 	batch.FinalBatch = true
 
-	err = ds.emitBatch(ctx, &batch, inclChanges)
+	err = ds.emitBatch(ctx, batch, inclChanges)
 	if err != nil {
 		return fmt.Errorf("emit final document batch: %w", err)
 	}
@@ -546,7 +548,7 @@ func (ds *documentSet) handleInclusionChanges(
 		}
 	}
 
-	batch := rsock.InclusionBatch{
+	batch := &rsock.InclusionBatch{
 		SetName: ds.name,
 	}
 
@@ -557,7 +559,7 @@ func (ds *documentSet) handleInclusionChanges(
 			continue
 		}
 
-		state := rsock.DocumentState{
+		state := &rsock.DocumentState{
 			Meta: DocumentMetaToRPC(meta[change.UUID]),
 		}
 
@@ -568,11 +570,11 @@ func (ds *documentSet) handleInclusionChanges(
 
 		batch.Documents = append(batch.Documents, &rsock.InclusionDocument{
 			Uuid:  change.UUID.String(),
-			State: &state,
+			State: state,
 		})
 	}
 
-	ds.emitter.InclusionBatch(ctx, &batch)
+	ds.emitter.InclusionBatch(ctx, batch)
 
 	return nil
 }
