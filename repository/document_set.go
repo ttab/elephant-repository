@@ -292,6 +292,8 @@ func (ds *documentSet) emitBatch(
 	batch *rsock.DocumentBatch,
 	inclusionChanges []inclusionChange,
 ) error {
+	batch.SetName = ds.name
+
 	ds.emitter.DocumentBatch(ctx, batch)
 
 	err := ds.handleInclusionChanges(ctx, inclusionChanges)
