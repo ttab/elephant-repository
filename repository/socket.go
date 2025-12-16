@@ -618,6 +618,8 @@ func (s *SocketSession) Respond(
 		response = "DocumentBatch"
 	case resp.InclusionBatch != nil:
 		response = "InclusionBatch"
+	case resp.DocumentUpdate != nil:
+		response = "DocumentUpdate"
 	case resp.Removed != nil:
 		response = "Removed"
 	case resp.Handled:
