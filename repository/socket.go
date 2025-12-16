@@ -459,6 +459,8 @@ func (s *SocketSession) runHandler(ctx context.Context, call *CallHandle) bool {
 
 	call.Method = handlerName
 
+	s.socketCall.WithLabelValues(call.Method).Inc()
+
 	resp, err := handler(ctx, call)
 	if err != nil {
 		// We always bail immediately on authentication errors.
