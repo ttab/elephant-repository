@@ -292,7 +292,7 @@ func (s *SocketSession) Run(ctx context.Context) {
 	group, gCtx := errgroup.WithContext(runCtx)
 
 	group.Go(func() error {
-		err := s.readLoop(gCtx)
+		err := elephantine.CallWithRecover(gCtx, s.readLoop)
 		if err != nil {
 			return fmt.Errorf("run read loop: %w", err)
 		}
@@ -301,7 +301,7 @@ func (s *SocketSession) Run(ctx context.Context) {
 	})
 
 	group.Go(func() error {
-		err := s.handlerLoop(gCtx)
+		err := elephantine.CallWithRecover(gCtx, s.handlerLoop)
 		if err != nil {
 			return fmt.Errorf("run handler loop: %w", err)
 		}
@@ -310,7 +310,7 @@ func (s *SocketSession) Run(ctx context.Context) {
 	})
 
 	group.Go(func() error {
-		err := s.writeLoop(gCtx)
+		err := elephantine.CallWithRecover(gCtx, s.writeLoop)
 		if err != nil {
 			return fmt.Errorf("run write loop: %w", err)
 		}
@@ -624,7 +624,13 @@ func (s *SocketSession) Respond(
 		response = "Handled"
 	}
 
-	s.socketResponse.WithLabelValues(handle.Method, status, response).Inc()
+	var method string
+
+	if handle != nil {
+		method = handle.Method
+	}
+
+	s.socketResponse.WithLabelValues(method, status, response).Inc()
 
 	select {
 	case <-ctx.Done():
