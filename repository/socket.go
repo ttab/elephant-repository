@@ -292,7 +292,7 @@ func (s *SocketSession) Run(ctx context.Context) {
 	group, gCtx := errgroup.WithContext(runCtx)
 
 	group.Go(func() error {
-		err := s.readLoop(gCtx)
+		err := elephantine.CallWithRecover(gCtx, s.readLoop)
 		if err != nil {
 			return fmt.Errorf("run read loop: %w", err)
 		}
@@ -301,7 +301,7 @@ func (s *SocketSession) Run(ctx context.Context) {
 	})
 
 	group.Go(func() error {
-		err := s.handlerLoop(gCtx)
+		err := elephantine.CallWithRecover(gCtx, s.handlerLoop)
 		if err != nil {
 			return fmt.Errorf("run handler loop: %w", err)
 		}
@@ -310,7 +310,7 @@ func (s *SocketSession) Run(ctx context.Context) {
 	})
 
 	group.Go(func() error {
-		err := s.writeLoop(gCtx)
+		err := elephantine.CallWithRecover(gCtx, s.writeLoop)
 		if err != nil {
 			return fmt.Errorf("run write loop: %w", err)
 		}
@@ -458,6 +458,8 @@ func (s *SocketSession) runHandler(ctx context.Context, call *CallHandle) bool {
 	}
 
 	call.Method = handlerName
+
+	s.socketCall.WithLabelValues(call.Method).Inc()
 
 	resp, err := handler(ctx, call)
 	if err != nil {
@@ -618,13 +620,21 @@ func (s *SocketSession) Respond(
 		response = "DocumentBatch"
 	case resp.InclusionBatch != nil:
 		response = "InclusionBatch"
+	case resp.DocumentUpdate != nil:
+		response = "DocumentUpdate"
 	case resp.Removed != nil:
 		response = "Removed"
 	case resp.Handled:
 		response = "Handled"
 	}
 
-	s.socketResponse.WithLabelValues(handle.Method, status, response).Inc()
+	var method string
+
+	if handle != nil {
+		method = handle.Method
+	}
+
+	s.socketResponse.WithLabelValues(method, status, response).Inc()
 
 	select {
 	case <-ctx.Done():
