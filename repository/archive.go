@@ -89,86 +89,51 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		return nil, errors.New("missing required asset bucket option")
 	}
 
-	eventsArchiver := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "elephant_archiver_event_archiver_position",
-			Help: "Eventlog archiver position.",
-		},
-	)
-	if err := opts.MetricsRegisterer.Register(eventsArchiver); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	versionsArchived := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_documents_total",
-			Help: "Number of document versions archived.",
-		},
-		[]string{"status"},
-	)
-	if err := opts.MetricsRegisterer.Register(versionsArchived); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	statusesArchived := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_statuses_total",
-			Help: "Number of document statuses archived.",
-		},
-		[]string{"status"},
-	)
-	if err := opts.MetricsRegisterer.Register(statusesArchived); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	deletesProcessed := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_deletes_total",
-			Help: "Number of document deletes processed.",
-		},
-		[]string{"status"},
-	)
-	if err := opts.MetricsRegisterer.Register(deletesProcessed); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	restoresProcessed := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_restores_total",
-			Help: "Number of document restores processed.",
-		},
-		[]string{"status"},
-	)
-	if err := opts.MetricsRegisterer.Register(restoresProcessed); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	purgesProcessed := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_purges_total",
-			Help: "Number of document purges processed.",
-		},
-		[]string{"status"},
-	)
-	if err := opts.MetricsRegisterer.Register(purgesProcessed); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
 	a := Archiver{
-		logger:            opts.Logger,
-		s3:                opts.S3,
-		pool:              opts.DB,
-		store:             opts.Store,
-		types:             opts.TypeConfigurations,
-		bucket:            opts.Bucket,
-		assetBucket:       opts.AssetBucket,
-		eventsArchiver:    eventsArchiver,
-		versionsArchived:  versionsArchived,
-		statusesArchived:  statusesArchived,
-		deletesProcessed:  deletesProcessed,
-		restoresProcessed: restoresProcessed,
-		purgesProcessed:   purgesProcessed,
-		tolerateGaps:      opts.TolerateGaps,
+		logger:       opts.Logger,
+		s3:           opts.S3,
+		pool:         opts.DB,
+		store:        opts.Store,
+		types:        opts.TypeConfigurations,
+		bucket:       opts.Bucket,
+		assetBucket:  opts.AssetBucket,
+		tolerateGaps: opts.TolerateGaps,
+	}
+
+	m := elephantine.NewMetricsHelper(opts.MetricsRegisterer)
+
+	m.Gauge(&a.eventsArchiver, prometheus.GaugeOpts{
+		Name: "elephant_archiver_event_archiver_position",
+		Help: "Eventlog archiver position.",
+	})
+
+	m.CounterVec(&a.versionsArchived, prometheus.CounterOpts{
+		Name: "elephant_archiver_documents_total",
+		Help: "Number of document versions archived.",
+	}, []string{"status"})
+
+	m.CounterVec(&a.statusesArchived, prometheus.CounterOpts{
+		Name: "elephant_archiver_statuses_total",
+		Help: "Number of document statuses archived.",
+	}, []string{"status"})
+
+	m.CounterVec(&a.deletesProcessed, prometheus.CounterOpts{
+		Name: "elephant_archiver_deletes_total",
+		Help: "Number of document deletes processed.",
+	}, []string{"status"})
+
+	m.CounterVec(&a.restoresProcessed, prometheus.CounterOpts{
+		Name: "elephant_archiver_restores_total",
+		Help: "Number of document restores processed.",
+	}, []string{"status"})
+
+	m.CounterVec(&a.purgesProcessed, prometheus.CounterOpts{
+		Name: "elephant_archiver_purges_total",
+		Help: "Number of document purges processed.",
+	}, []string{"status"})
+
+	if err := m.Err(); err != nil {
+		return nil, fmt.Errorf("register metrics: %w", err)
 	}
 
 	a.reader = NewArchiveReader(ArchiveReaderOptions{
