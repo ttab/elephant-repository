@@ -66,8 +66,7 @@ type Archiver struct {
 	tolerateGaps       bool
 
 	eventsArchiver    prometheus.Gauge
-	versionsArchived  *prometheus.CounterVec
-	statusesArchived  *prometheus.CounterVec
+	eventArchived     *prometheus.CounterVec
 	deletesProcessed  *prometheus.CounterVec
 	deleteMoves       *prometheus.CounterVec
 	restoresProcessed *prometheus.CounterVec
@@ -109,15 +108,10 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		Help: "Eventlog archiver position.",
 	})
 
-	m.CounterVec(&a.versionsArchived, prometheus.CounterOpts{
-		Name: "elephant_archiver_documents_total",
-		Help: "Number of document versions archived.",
-	}, []string{"status"})
-
-	m.CounterVec(&a.statusesArchived, prometheus.CounterOpts{
-		Name: "elephant_archiver_statuses_total",
-		Help: "Number of document statuses archived.",
-	}, []string{"status"})
+	m.CounterVec(&a.eventArchived, prometheus.CounterOpts{
+		Name: "elephant_event_archived_total",
+		Help: "Number of document events archived.",
+	}, []string{"event_type", "status"})
 
 	m.CounterVec(&a.deletesProcessed, prometheus.CounterOpts{
 		Name: "elephant_archiver_deletes_total",
@@ -267,8 +261,14 @@ func (a *Archiver) archiveEventlog(ctx context.Context) error {
 		for _, item := range items {
 			newState, err := a.archiveEventlogItem(ctx, item, state)
 			if err != nil {
+				a.eventArchived.WithLabelValues(item.Event, "error")
+
 				return err
 			}
+
+			// Bump metrics on success.
+			a.eventsArchiver.Set(float64(item.ID))
+			a.eventArchived.WithLabelValues(item.Event, "ok")
 
 			state = newState
 		}
@@ -449,17 +449,6 @@ func (a *Archiver) archiveEventlogItem(
 
 	state.LastSignature = ref.Signature
 	state.Position = item.ID
-
-	// Bump metrics
-	a.eventsArchiver.Set(float64(item.ID))
-
-	//nolint: exhaustive
-	switch event.Event {
-	case TypeDocumentVersion:
-		a.versionsArchived.WithLabelValues("ok").Inc()
-	case TypeNewStatus:
-		a.statusesArchived.WithLabelValues("ok").Inc()
-	}
 
 	return postgres.GetEventlogArchiverRow{
 		Position:      item.ID,
