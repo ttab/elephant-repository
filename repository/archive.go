@@ -261,14 +261,14 @@ func (a *Archiver) archiveEventlog(ctx context.Context) error {
 		for _, item := range items {
 			newState, err := a.archiveEventlogItem(ctx, item, state)
 			if err != nil {
-				a.eventArchived.WithLabelValues(item.Event, "error")
+				a.eventArchived.WithLabelValues(item.Event, "error").Inc()
 
 				return err
 			}
 
 			// Bump metrics on success.
 			a.eventsArchiver.Set(float64(item.ID))
-			a.eventArchived.WithLabelValues(item.Event, "ok")
+			a.eventArchived.WithLabelValues(item.Event, "ok").Inc()
 
 			state = newState
 		}
