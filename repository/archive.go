@@ -69,8 +69,10 @@ type Archiver struct {
 	versionsArchived  *prometheus.CounterVec
 	statusesArchived  *prometheus.CounterVec
 	deletesProcessed  *prometheus.CounterVec
+	deleteMoves       *prometheus.CounterVec
 	restoresProcessed *prometheus.CounterVec
 	purgesProcessed   *prometheus.CounterVec
+	purgeDeletes      *prometheus.CounterVec
 
 	cancel  func()
 	stopped chan struct{}
@@ -122,6 +124,11 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		Help: "Number of document deletes processed.",
 	}, []string{"status"})
 
+	m.CounterVec(&a.deleteMoves, prometheus.CounterOpts{
+		Name: "elephant_archiver_delete_moves_total",
+		Help: "Number of objects moves as part of delete processing.",
+	}, []string{"status"})
+
 	m.CounterVec(&a.restoresProcessed, prometheus.CounterOpts{
 		Name: "elephant_archiver_restores_total",
 		Help: "Number of document restores processed.",
@@ -130,6 +137,11 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 	m.CounterVec(&a.purgesProcessed, prometheus.CounterOpts{
 		Name: "elephant_archiver_purges_total",
 		Help: "Number of document purges processed.",
+	}, []string{"status"})
+
+	m.CounterVec(&a.purgeDeletes, prometheus.CounterOpts{
+		Name: "elephant_archiver_purge_deletes_total",
+		Help: "Number of objects deleted as part of purge processing.",
 	}, []string{"status"})
 
 	if err := m.Err(); err != nil {
@@ -1348,8 +1360,12 @@ func (a *Archiver) processPurges(
 			Delete: &types.Delete{Objects: objects},
 		})
 		if err != nil {
+			a.purgeDeletes.WithLabelValues("error").Inc()
+
 			return false, fmt.Errorf("delete objects: %w", err)
 		}
+
+		a.purgeDeletes.WithLabelValues("ok").Inc()
 
 		if len(res.Errors) > 0 {
 			return false, fmt.Errorf(
@@ -1386,7 +1402,17 @@ func (a *Archiver) processPurges(
 
 func (a *Archiver) moveDeletedObject(
 	ctx context.Context, sourceBucket string, key string, dstKey string,
-) error {
+) (outErr error) {
+	defer func() {
+		status := "ok"
+
+		if outErr != nil {
+			status = "error"
+		}
+
+		a.deleteMoves.WithLabelValues(status).Inc()
+	}()
+
 	_, err := a.s3.CopyObject(ctx, &s3.CopyObjectInput{
 		Bucket: aws.String(a.bucket),
 		Key:    aws.String(dstKey),
