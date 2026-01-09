@@ -278,20 +278,22 @@ func (a *DocumentsService) GetMatching(
 		match.Meta = DocumentMetaToRPC(m)
 	}
 
-	for doc := range documents {
-		docID, err := uuid.Parse(doc.Document.UUID)
-		if err != nil {
-			return nil, twirp.InternalErrorf(
-				"invalid document UUID: %w", err)
-		}
+	if documents != nil {
+		for doc := range documents {
+			docID, err := uuid.Parse(doc.Document.UUID)
+			if err != nil {
+				return nil, twirp.InternalErrorf(
+					"invalid document UUID: %w", err)
+			}
 
-		match, ok := matches[docID]
-		if !ok {
-			continue
-		}
+			match, ok := matches[docID]
+			if !ok {
+				continue
+			}
 
-		match.Document = rpcdoc.DocumentToRPC(doc.Document)
-		match.Version = doc.Version
+			match.Document = rpcdoc.DocumentToRPC(doc.Document)
+			match.Version = doc.Version
+		}
 	}
 
 	res := repository.GetMatchingResponse{
