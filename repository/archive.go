@@ -71,7 +71,6 @@ type Archiver struct {
 	deletesProcessed  *prometheus.CounterVec
 	restoresProcessed *prometheus.CounterVec
 	purgesProcessed   *prometheus.CounterVec
-	restarts          prometheus.Counter
 
 	cancel  func()
 	stopped chan struct{}
@@ -155,16 +154,6 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
 
-	restarts := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_restarts_total",
-			Help: "Number of times the archiver has restarted.",
-		},
-	)
-	if err := opts.MetricsRegisterer.Register(restarts); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
 	a := Archiver{
 		logger:            opts.Logger,
 		s3:                opts.S3,
@@ -179,7 +168,6 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		deletesProcessed:  deletesProcessed,
 		restoresProcessed: restoresProcessed,
 		purgesProcessed:   purgesProcessed,
-		restarts:          restarts,
 		tolerateGaps:      opts.TolerateGaps,
 	}
 
@@ -485,7 +473,15 @@ func (a *Archiver) archiveEventlogItem(
 	state.LastSignature = ref.Signature
 	state.Position = item.ID
 
+	// Bump metrics
 	a.eventsArchiver.Set(float64(item.ID))
+
+	switch event.Event {
+	case TypeDocumentVersion:
+		a.versionsArchived.WithLabelValues("ok").Inc()
+	case TypeNewStatus:
+		a.statusesArchived.WithLabelValues("ok").Inc()
+	}
 
 	return postgres.GetEventlogArchiverRow{
 		Position:      item.ID,
