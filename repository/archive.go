@@ -453,6 +453,7 @@ func (a *Archiver) archiveEventlogItem(
 	// Bump metrics
 	a.eventsArchiver.Set(float64(item.ID))
 
+	//nolint: exhaustive
 	switch event.Event {
 	case TypeDocumentVersion:
 		a.versionsArchived.WithLabelValues("ok").Inc()
