@@ -65,8 +65,8 @@ type Archiver struct {
 	types              *TypeConfigurations
 	tolerateGaps       bool
 
-	eventsArchiver    prometheus.Gauge
-	eventArchived     *prometheus.CounterVec
+	eventArchiverPos  prometheus.Gauge
+	eventsArchived    *prometheus.CounterVec
 	deletesProcessed  *prometheus.CounterVec
 	deleteMoves       *prometheus.CounterVec
 	restoresProcessed *prometheus.CounterVec
@@ -103,12 +103,12 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 
 	m := elephantine.NewMetricsHelper(opts.MetricsRegisterer)
 
-	m.Gauge(&a.eventsArchiver, prometheus.GaugeOpts{
+	m.Gauge(&a.eventArchiverPos, prometheus.GaugeOpts{
 		Name: "elephant_archiver_event_archiver_position",
 		Help: "Eventlog archiver position.",
 	})
 
-	m.CounterVec(&a.eventArchived, prometheus.CounterOpts{
+	m.CounterVec(&a.eventsArchived, prometheus.CounterOpts{
 		Name: "elephant_event_archived_total",
 		Help: "Number of document events archived.",
 	}, []string{"event_type", "status"})
@@ -261,14 +261,14 @@ func (a *Archiver) archiveEventlog(ctx context.Context) error {
 		for _, item := range items {
 			newState, err := a.archiveEventlogItem(ctx, item, state)
 			if err != nil {
-				a.eventArchived.WithLabelValues(item.Event, "error").Inc()
+				a.eventsArchived.WithLabelValues(item.Event, "error").Inc()
 
 				return err
 			}
 
 			// Bump metrics on success.
-			a.eventsArchiver.Set(float64(item.ID))
-			a.eventArchived.WithLabelValues(item.Event, "ok").Inc()
+			a.eventArchiverPos.Set(float64(item.ID))
+			a.eventsArchived.WithLabelValues(item.Event, "ok").Inc()
 
 			state = newState
 		}
