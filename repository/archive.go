@@ -65,13 +65,13 @@ type Archiver struct {
 	types              *TypeConfigurations
 	tolerateGaps       bool
 
-	eventsArchiver    prometheus.Gauge
-	versionsArchived  *prometheus.CounterVec
-	statusesArchived  *prometheus.CounterVec
+	eventArchiverPos  prometheus.Gauge
+	eventsArchived    *prometheus.CounterVec
 	deletesProcessed  *prometheus.CounterVec
+	deleteMoves       *prometheus.CounterVec
 	restoresProcessed *prometheus.CounterVec
 	purgesProcessed   *prometheus.CounterVec
-	restarts          prometheus.Counter
+	purgeDeletes      *prometheus.CounterVec
 
 	cancel  func()
 	stopped chan struct{}
@@ -90,97 +90,56 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		return nil, errors.New("missing required asset bucket option")
 	}
 
-	eventsArchiver := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "elephant_archiver_event_archiver_position",
-			Help: "Eventlog archiver position.",
-		},
-	)
-	if err := opts.MetricsRegisterer.Register(eventsArchiver); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	versionsArchived := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_documents_total",
-			Help: "Number of document versions archived.",
-		},
-		[]string{"status"},
-	)
-	if err := opts.MetricsRegisterer.Register(versionsArchived); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	statusesArchived := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_statuses_total",
-			Help: "Number of document statuses archived.",
-		},
-		[]string{"status"},
-	)
-	if err := opts.MetricsRegisterer.Register(statusesArchived); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	deletesProcessed := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_deletes_total",
-			Help: "Number of document deletes processed.",
-		},
-		[]string{"status"},
-	)
-	if err := opts.MetricsRegisterer.Register(deletesProcessed); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	restoresProcessed := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_restores_total",
-			Help: "Number of document restores processed.",
-		},
-		[]string{"status"},
-	)
-	if err := opts.MetricsRegisterer.Register(restoresProcessed); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	purgesProcessed := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_purges_total",
-			Help: "Number of document purges processed.",
-		},
-		[]string{"status"},
-	)
-	if err := opts.MetricsRegisterer.Register(purgesProcessed); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	restarts := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "elephant_archiver_restarts_total",
-			Help: "Number of times the archiver has restarted.",
-		},
-	)
-	if err := opts.MetricsRegisterer.Register(restarts); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
 	a := Archiver{
-		logger:            opts.Logger,
-		s3:                opts.S3,
-		pool:              opts.DB,
-		store:             opts.Store,
-		types:             opts.TypeConfigurations,
-		bucket:            opts.Bucket,
-		assetBucket:       opts.AssetBucket,
-		eventsArchiver:    eventsArchiver,
-		versionsArchived:  versionsArchived,
-		statusesArchived:  statusesArchived,
-		deletesProcessed:  deletesProcessed,
-		restoresProcessed: restoresProcessed,
-		purgesProcessed:   purgesProcessed,
-		restarts:          restarts,
-		tolerateGaps:      opts.TolerateGaps,
+		logger:       opts.Logger,
+		s3:           opts.S3,
+		pool:         opts.DB,
+		store:        opts.Store,
+		types:        opts.TypeConfigurations,
+		bucket:       opts.Bucket,
+		assetBucket:  opts.AssetBucket,
+		tolerateGaps: opts.TolerateGaps,
+	}
+
+	m := elephantine.NewMetricsHelper(opts.MetricsRegisterer)
+
+	m.Gauge(&a.eventArchiverPos, prometheus.GaugeOpts{
+		Name: "elephant_archiver_event_archiver_position",
+		Help: "Eventlog archiver position.",
+	})
+
+	m.CounterVec(&a.eventsArchived, prometheus.CounterOpts{
+		Name: "elephant_event_archived_total",
+		Help: "Number of document events archived.",
+	}, []string{"event_type", "status"})
+
+	m.CounterVec(&a.deletesProcessed, prometheus.CounterOpts{
+		Name: "elephant_archiver_deletes_total",
+		Help: "Number of document deletes processed.",
+	}, []string{"status"})
+
+	m.CounterVec(&a.deleteMoves, prometheus.CounterOpts{
+		Name: "elephant_archiver_delete_moves_total",
+		Help: "Number of objects moves as part of delete processing.",
+	}, []string{"status"})
+
+	m.CounterVec(&a.restoresProcessed, prometheus.CounterOpts{
+		Name: "elephant_archiver_restores_total",
+		Help: "Number of document restores processed.",
+	}, []string{"status"})
+
+	m.CounterVec(&a.purgesProcessed, prometheus.CounterOpts{
+		Name: "elephant_archiver_purges_total",
+		Help: "Number of document purges processed.",
+	}, []string{"status"})
+
+	m.CounterVec(&a.purgeDeletes, prometheus.CounterOpts{
+		Name: "elephant_archiver_purge_deletes_total",
+		Help: "Number of objects deleted as part of purge processing.",
+	}, []string{"status"})
+
+	if err := m.Err(); err != nil {
+		return nil, fmt.Errorf("register metrics: %w", err)
 	}
 
 	a.reader = NewArchiveReader(ArchiveReaderOptions{
@@ -302,8 +261,14 @@ func (a *Archiver) archiveEventlog(ctx context.Context) error {
 		for _, item := range items {
 			newState, err := a.archiveEventlogItem(ctx, item, state)
 			if err != nil {
+				a.eventsArchived.WithLabelValues(item.Event, "error").Inc()
+
 				return err
 			}
+
+			// Bump metrics on success.
+			a.eventArchiverPos.Set(float64(item.ID))
+			a.eventsArchived.WithLabelValues(item.Event, "ok").Inc()
 
 			state = newState
 		}
@@ -484,8 +449,6 @@ func (a *Archiver) archiveEventlogItem(
 
 	state.LastSignature = ref.Signature
 	state.Position = item.ID
-
-	a.eventsArchiver.Set(float64(item.ID))
 
 	return postgres.GetEventlogArchiverRow{
 		Position:      item.ID,
@@ -1387,8 +1350,12 @@ func (a *Archiver) processPurges(
 			Delete: &types.Delete{Objects: objects},
 		})
 		if err != nil {
+			a.purgeDeletes.WithLabelValues("error").Inc()
+
 			return false, fmt.Errorf("delete objects: %w", err)
 		}
+
+		a.purgeDeletes.WithLabelValues("ok").Inc()
 
 		if len(res.Errors) > 0 {
 			return false, fmt.Errorf(
@@ -1425,7 +1392,17 @@ func (a *Archiver) processPurges(
 
 func (a *Archiver) moveDeletedObject(
 	ctx context.Context, sourceBucket string, key string, dstKey string,
-) error {
+) (outErr error) {
+	defer func() {
+		status := "ok"
+
+		if outErr != nil {
+			status = "error"
+		}
+
+		a.deleteMoves.WithLabelValues(status).Inc()
+	}()
+
 	_, err := a.s3.CopyObject(ctx, &s3.CopyObjectInput{
 		Bucket: aws.String(a.bucket),
 		Key:    aws.String(dstKey),
