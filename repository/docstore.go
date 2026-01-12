@@ -45,6 +45,10 @@ type DocStore interface {
 		workflows WorkflowProvider,
 		update []*UpdateRequest,
 	) ([]DocumentUpdate, error)
+	Evict(
+		ctx context.Context,
+		req EvictRequest,
+	) (int64, error)
 	Delete(ctx context.Context, req DeleteRequest) error
 	ListDeleteRecords(
 		ctx context.Context, docUUID *uuid.UUID,
@@ -147,6 +151,12 @@ type DocStore interface {
 	EnsureSocketKey(ctx context.Context) (*ecdsa.PrivateKey, error)
 }
 
+type EvictRequest struct {
+	UUID         uuid.UUID
+	Version      int64
+	UntilVersion int64
+}
+
 type DocumentItem struct {
 	UUID           uuid.UUID
 	CurrentVersion int64
@@ -157,6 +167,10 @@ type TypeConfiguration struct {
 	BoundedCollection bool
 	TimeExpressions   []TimespanConfiguration
 	LabelExpressions  []LabelConfiguration
+	// EvictNonCurrentAfter can be set to evict non-current versions of a
+	// document from the database after they're older than the given number
+	// of days. Set to 0 to disable eviction.
+	EvictNoncurrentAfter int64
 }
 
 type DeliverableInfo struct {

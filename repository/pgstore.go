@@ -33,10 +33,20 @@ const (
 )
 
 type PGDocStoreOptions struct {
-	MetricsCalculators []MetricCalculator
-	DeleteTimeout      time.Duration
-	TypeConfigurations *TypeConfigurations
-	DefaultTZ          *time.Location
+	MetricsCalculators   []MetricCalculator
+	DeleteTimeout        time.Duration
+	TypeConfigurations   *TypeConfigurations
+	DefaultTZ            *time.Location
+	VersionArchiveReader VersionArchiveReader
+	MaintenanceWindow    *MaintenanceWindow
+	EnableEviction       bool
+}
+
+type VersionArchiveReader interface {
+	ReadDocumentVersion(
+		ctx context.Context,
+		key string, parentSignature *string,
+	) (_ *ArchivedDocumentVersion, _ string, outErr error)
 }
 
 func NewPGDocStore(
@@ -49,10 +59,18 @@ func NewPGDocStore(
 		options.DeleteTimeout = 5 * time.Second
 	}
 
+	if options.VersionArchiveReader == nil {
+		return nil, errors.New("missing required VersionArchiveReader")
+	}
+
 	if options.DefaultTZ == nil {
 		logger.Warn("running pgstore with fallback to UTC as default timezone")
 
 		options.DefaultTZ = time.UTC
+	}
+
+	if options.MaintenanceWindow == nil {
+		return nil, errors.New("missing required maintenance window")
 	}
 
 	s := &PGDocStore{
@@ -62,6 +80,8 @@ func NewPGDocStore(
 		assets:       assets,
 		opts:         options,
 		metr:         NewIntrinsicMetrics(logger, options.MetricsCalculators),
+		vArch:        options.VersionArchiveReader,
+		lastRuns:     make(map[string]time.Time),
 		archived:     pg.NewFanOut[ArchivedEvent](NotifyArchived),
 		schemas:      pg.NewFanOut[SchemaEvent](NotifySchemasUpdated),
 		typeConf:     pg.NewFanOut[TypeConfiguredEvent](NotifyTypeConfigured),
@@ -93,6 +113,9 @@ type PGDocStore struct {
 	assets *AssetBucket
 	opts   PGDocStoreOptions
 	metr   *IntrinsicMetrics
+	vArch  VersionArchiveReader
+
+	lastRuns map[string]time.Time
 
 	archived     *pg.FanOut[ArchivedEvent]
 	schemas      *pg.FanOut[SchemaEvent]
@@ -101,6 +124,73 @@ type PGDocStore struct {
 	workflows    *pg.FanOut[WorkflowEvent]
 	eventOutbox  *pg.FanOut[int64]
 	eventlog     *pg.FanOut[int64]
+}
+
+// Evict implements DocStore.
+func (s *PGDocStore) Evict(
+	ctx context.Context,
+	req EvictRequest,
+) (_ int64, outErr error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+
+	// We defer a rollback, rollback after commit won't be treated as an
+	// error.
+	defer pg.Rollback(tx, &outErr)
+
+	q := postgres.New(tx)
+
+	info, err := s.UpdatePreflight(ctx, q, req.UUID, 0, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	if !info.Exists {
+		return 0, nil
+	}
+
+	var fromVersion, toVersion int64
+
+	switch {
+	case req.UntilVersion >= info.Info.CurrentVersion,
+		req.Version >= info.Info.CurrentVersion:
+		return 0, DocStoreErrorf(ErrCodeFailedPrecondition,
+			"cannot evict the current version")
+	case req.UntilVersion < 0:
+		fromVersion = 1
+		toVersion = info.Info.CurrentVersion - 1
+
+		// No versions to evict, early return.
+		if toVersion < 1 {
+			return 0, nil
+		}
+	case req.UntilVersion > 0:
+		fromVersion = 1
+		toVersion = req.UntilVersion
+	case req.Version != 0:
+		fromVersion = req.Version
+		toVersion = req.Version
+	default:
+		return 0, errors.New("no target versions specified")
+	}
+
+	count, err := q.EvictDocumentVersions(ctx, postgres.EvictDocumentVersionsParams{
+		UUID:        req.UUID,
+		FromVersion: fromVersion,
+		ToVersion:   toVersion,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("remove document data from database: %w", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return count, nil
 }
 
 // EnsureSocketKey implements DocStore.
@@ -830,7 +920,15 @@ func (s *PGDocStore) GetDocument(
 		return nil, 0, fmt.Errorf("failed to fetch document data: %w", err)
 	}
 
-	// TODO: check for nil data after pruning has been implemented.
+	if data == nil {
+		d, err := s.readDocumentFromArchive(ctx, uuid, version)
+		if err != nil {
+			return nil, 0, fmt.Errorf(
+				"read document data from archive: %w", err)
+		}
+
+		data = d
+	}
 
 	var d newsdoc.Document
 
@@ -841,6 +939,35 @@ func (s *PGDocStore) GetDocument(
 	}
 
 	return &d, version, nil
+}
+
+func (s *PGDocStore) readDocumentFromArchive(
+	ctx context.Context,
+	uuid uuid.UUID,
+	version int64,
+) ([]byte, error) {
+	info, err := s.reader.GetDocumentVersionInfo(ctx,
+		postgres.GetDocumentVersionInfoParams{
+			UUID:    uuid,
+			Version: version,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("read version info: %w", err)
+	}
+
+	// TODO: cache document version data?
+
+	obj, signature, err := s.vArch.ReadDocumentVersion(ctx,
+		DocumentVersionArchiveKey(info.UUID, info.Version), nil)
+	if err != nil {
+		return nil, fmt.Errorf("read from archive: %w", err)
+	}
+
+	if signature != info.Signature.String {
+		return nil, fmt.Errorf("archive object version mismatch: %w", err)
+	}
+
+	return obj.DocumentData, nil
 }
 
 type BulkGetReference struct {
@@ -880,9 +1007,22 @@ func (s *PGDocStore) BulkGetDocuments(
 	for _, row := range docs {
 		var d newsdoc.Document
 
-		// TODO: check for nil data after pruning has been implemented.
+		data := row.DocumentData
 
-		err = json.Unmarshal(row.DocumentData, &d)
+		if data == nil {
+			// TODO: should we just let this be a slow serial
+			// operation, or do we need to add a bulk archive read
+			// with concurrency?
+			d, err := s.readDocumentFromArchive(ctx, row.UUID, row.Version)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"read document data from archive: %w", err)
+			}
+
+			data = d
+		}
+
+		err = json.Unmarshal(data, &d)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"got an unreadable document from the database for %q v%d: %w",

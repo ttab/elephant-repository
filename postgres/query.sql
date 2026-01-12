@@ -302,6 +302,31 @@ INSERT INTO document(
          time = COALESCE(excluded.time, document.time),
          labels = COALESCE(excluded.labels, document.labels);
 
+-- name: EvictDocumentVersions :execrows
+UPDATE document_version
+SET document_data = NULL
+WHERE uuid = @uuid
+      AND version >= @from_version
+      AND version <= @to_version
+      AND archived
+      AND NOT document_data IS NULL;
+
+-- name: EvictNoncurrentVersions :execrows
+UPDATE document_version AS v
+SET document_data = NULL
+FROM document AS d
+WHERE d.uuid = v.uuid
+      AND v.version != d.current_version
+      AND v.document_data IS NULL
+      AND v.created < @cutoff
+      AND d.type = @doc_type;
+
+-- name: GetDocumentVersionInfo :one
+SELECT uuid, version, created, creator_uri, meta, archived, signature,
+       language, time, labels
+FROM document_version
+WHERE uuid = @uuid AND version = @version;
+
 -- name: GetDocumentSearchInfo :one
 SELECT time, labels
 FROM document

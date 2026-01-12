@@ -194,3 +194,25 @@ func (th *TypeConfigurations) GetConfiguration(
 
 	return c, ok, nil
 }
+
+// GetEvictionAges gets the age at which non-current versions of documents
+// should be expired keyed by document type.
+func (th *TypeConfigurations) GetEvictionAges() map[string]time.Duration {
+	ages := make(map[string]time.Duration)
+
+	th.m.RLock()
+
+	for t, c := range th.confs {
+		if c.EvictNoncurrentAfter == 0 {
+			continue
+		}
+
+		age := 24 * time.Hour * time.Duration(c.EvictNoncurrentAfter)
+
+		ages[t] = age
+	}
+
+	th.m.RUnlock()
+
+	return ages
+}

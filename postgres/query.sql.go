@@ -844,6 +844,54 @@ func (q *Queries) DropRedundantPurgeRequests(ctx context.Context) error {
 	return err
 }
 
+const evictDocumentVersions = `-- name: EvictDocumentVersions :execrows
+UPDATE document_version
+SET document_data = NULL
+WHERE uuid = $1
+      AND version >= $2
+      AND version <= $3
+      AND archived
+      AND NOT document_data IS NULL
+`
+
+type EvictDocumentVersionsParams struct {
+	UUID        uuid.UUID
+	FromVersion int64
+	ToVersion   int64
+}
+
+func (q *Queries) EvictDocumentVersions(ctx context.Context, arg EvictDocumentVersionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, evictDocumentVersions, arg.UUID, arg.FromVersion, arg.ToVersion)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const evictNoncurrentVersions = `-- name: EvictNoncurrentVersions :execrows
+UPDATE document_version AS v
+SET document_data = NULL
+FROM document AS d
+WHERE d.uuid = v.uuid
+      AND v.version != d.current_version
+      AND v.document_data IS NULL
+      AND v.created < $1
+      AND d.type = $2
+`
+
+type EvictNoncurrentVersionsParams struct {
+	Cutoff  pgtype.Timestamptz
+	DocType string
+}
+
+func (q *Queries) EvictNoncurrentVersions(ctx context.Context, arg EvictNoncurrentVersionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, evictNoncurrentVersions, arg.Cutoff, arg.DocType)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const finaliseDeleteRecord = `-- name: FinaliseDeleteRecord :exec
 UPDATE delete_record SET finalised = $1
 WHERE uuid = $2 AND id = $3
@@ -2127,6 +2175,49 @@ func (q *Queries) GetDocumentVersionForArchiving(ctx context.Context, arg GetDoc
 		&i.Type,
 		&i.Language,
 		&i.Nonce,
+	)
+	return i, err
+}
+
+const getDocumentVersionInfo = `-- name: GetDocumentVersionInfo :one
+SELECT uuid, version, created, creator_uri, meta, archived, signature,
+       language, time, labels
+FROM document_version
+WHERE uuid = $1 AND version = $2
+`
+
+type GetDocumentVersionInfoParams struct {
+	UUID    uuid.UUID
+	Version int64
+}
+
+type GetDocumentVersionInfoRow struct {
+	UUID       uuid.UUID
+	Version    int64
+	Created    pgtype.Timestamptz
+	CreatorUri string
+	Meta       []byte
+	Archived   bool
+	Signature  pgtype.Text
+	Language   pgtype.Text
+	Time       pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels     []string
+}
+
+func (q *Queries) GetDocumentVersionInfo(ctx context.Context, arg GetDocumentVersionInfoParams) (GetDocumentVersionInfoRow, error) {
+	row := q.db.QueryRow(ctx, getDocumentVersionInfo, arg.UUID, arg.Version)
+	var i GetDocumentVersionInfoRow
+	err := row.Scan(
+		&i.UUID,
+		&i.Version,
+		&i.Created,
+		&i.CreatorUri,
+		&i.Meta,
+		&i.Archived,
+		&i.Signature,
+		&i.Language,
+		&i.Time,
+		&i.Labels,
 	)
 	return i, err
 }

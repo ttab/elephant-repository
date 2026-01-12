@@ -18,6 +18,7 @@ func typeConfigurationToRPC(
 			[]*repository.LabelExpression,
 			len(conf.LabelExpressions),
 		),
+		EvictNoncurrentAfter: conf.EvictNoncurrentAfter,
 	}
 
 	for i, e := range conf.TimeExpressions {
@@ -42,9 +43,10 @@ func typeConfigurationFromRPC(
 	conf *repository.TypeConfiguration,
 ) TypeConfiguration {
 	c := TypeConfiguration{
-		BoundedCollection: conf.BoundedCollection,
-		TimeExpressions:   make([]TimespanConfiguration, len(conf.TimeExpressions)),
-		LabelExpressions:  make([]LabelConfiguration, len(conf.LabelExpressions)),
+		BoundedCollection:    conf.BoundedCollection,
+		TimeExpressions:      make([]TimespanConfiguration, len(conf.TimeExpressions)),
+		LabelExpressions:     make([]LabelConfiguration, len(conf.LabelExpressions)),
+		EvictNoncurrentAfter: conf.EvictNoncurrentAfter,
 	}
 
 	for i, e := range conf.TimeExpressions {
@@ -76,6 +78,7 @@ func typeConfigurationToDB(conf TypeConfiguration) postgres.TypeConfiguration {
 			[]postgres.TypeLabelExpression,
 			len(conf.LabelExpressions),
 		),
+		EvictNoncurrentAfter: conf.EvictNoncurrentAfter,
 	}
 
 	for i, e := range conf.TimeExpressions {
@@ -107,6 +110,7 @@ func typeConfigurationFromDB(conf postgres.TypeConfiguration) TypeConfiguration 
 			[]LabelConfiguration,
 			len(conf.LabelExpressions),
 		),
+		EvictNoncurrentAfter: conf.EvictNoncurrentAfter,
 	}
 
 	for i, e := range conf.TimeExpressions {

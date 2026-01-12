@@ -86,6 +86,55 @@ type DocumentsService struct {
 	docCache        BulkDocCache
 }
 
+// Evict implements repository.Documents.
+func (a *DocumentsService) Evict(
+	ctx context.Context,
+	req *repository.EvictRequest,
+) (*repository.EvictResponse, error) {
+	_, err := RequireAnyScope(ctx,
+		ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Version < 0 {
+		return nil, twirp.InvalidArgumentError(
+			"version", "must be 0 or greater")
+	}
+
+	if req.Version == 0 && req.UntilVersion == 0 {
+		return nil, twirp.InvalidArgument.Error(
+			"either version or until_version must be set")
+	}
+
+	if req.Version != 0 && req.UntilVersion != 0 {
+		return nil, twirp.InvalidArgument.Error(
+			"only one of version and until_version can be set")
+	}
+
+	evicted, err := a.store.Evict(ctx, EvictRequest{
+		UUID:         docUUID,
+		Version:      req.Version,
+		UntilVersion: req.UntilVersion,
+	})
+	if IsDocStoreErrorCode(err, ErrCodeFailedPrecondition) {
+		return nil, twirp.InvalidArgument.Error(err.Error())
+	} else if err != nil {
+		return nil, twirp.InternalErrorf(
+			"evict versions from database: %w", err)
+	}
+
+	return &repository.EvictResponse{
+		EvictCount: evicted,
+	}, nil
+}
+
 // GetSocketToken implements repository.Documents.
 func (a *DocumentsService) GetSocketToken(
 	ctx context.Context, _ *repository.GetSocketTokenRequest,

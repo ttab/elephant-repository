@@ -169,6 +169,16 @@ func main() {
 				Usage:   "CORS hosts to allow, supports wildcards",
 				Sources: cli.EnvVars("CORS_HOSTS"),
 			},
+			&cli.StringFlag{
+				Name:    "maintenance-window",
+				Sources: cli.EnvVars("MAINTENANCE_WINDOW"),
+				Value:   "Sunday 3h 1h",
+			},
+			&cli.BoolFlag{
+				Name:    "enable-eviction",
+				Usage:   "allow noncurrent versions to be evicted from the DB",
+				Sources: cli.EnvVars("ENABLE_EVICTION"),
+			},
 			&cli.BoolFlag{
 				Name: "migrate-db",
 				Usage: `Perform database migrations.
@@ -207,6 +217,8 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		noSSE           = c.Bool("no-sse")
 		corsHosts       = c.StringSlice("cors-host")
 		migrateDB       = c.Bool("migrate-db")
+		maintenanceW    = c.String("maintenance-window")
+		enableEviction  = c.Bool("enable-eviction")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -224,6 +236,12 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	defaultTZ, err := time.LoadLocation(defaultTimezone)
 	if err != nil {
 		return fmt.Errorf("invalid default timezone: %w", err)
+	}
+
+	maintenanceWindow, err := repository.ParseMaintenanceWindow(maintenanceW)
+	if err != nil {
+		return fmt.Errorf("invalid maintenance window %q: %w",
+			maintenanceW, err)
 	}
 
 	conf, err := cmd.BackendConfigFromContext(c)
@@ -316,6 +334,12 @@ func runServer(ctx context.Context, c *cli.Command) error {
 			MetricsCalculators: inMet,
 			TypeConfigurations: typeConfs,
 			DefaultTZ:          defaultTZ,
+			VersionArchiveReader: repository.NewArchiveReader(repository.ArchiveReaderOptions{
+				S3:     s3Client,
+				Bucket: conf.ArchiveBucket,
+			}),
+			MaintenanceWindow: maintenanceWindow,
+			EnableEviction:    enableEviction,
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
