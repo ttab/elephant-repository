@@ -52,7 +52,6 @@ func ListenAndServe(
 				ReadHeaderTimeout: 5 * time.Second,
 			}
 
-			//nolint:wrapcheck
 			return elephantine.ListenAndServeContext(
 				gCtx, &tlsServer, 10*time.Second,
 				elephantine.ListenAndServeTLS(certFile, keyFile),
@@ -67,11 +66,11 @@ func ListenAndServe(
 	}
 
 	grp.Go(func() error {
-		//nolint:wrapcheck
 		return elephantine.ListenAndServeContext(
 			gCtx, &server, 10*time.Second)
 	})
 
+	//nolint:wrapcheck
 	return grp.Wait()
 }
 
