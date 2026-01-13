@@ -56,6 +56,19 @@ func main() {
 				Sources: cli.EnvVars("ADDR", "LISTEN_ADDR"),
 			},
 			&cli.StringFlag{
+				Name:    "tls-addr",
+				Value:   ":1443",
+				Sources: cli.EnvVars("TLS_ADDR", "TLS_LISTEN_ADDR"),
+			},
+			&cli.StringFlag{
+				Name:    "cert-file",
+				Sources: cli.EnvVars("TLS_CERT"),
+			},
+			&cli.StringFlag{
+				Name:    "key-file",
+				Sources: cli.EnvVars("TLS_KEY"),
+			},
+			&cli.StringFlag{
 				Name:    "profile-addr",
 				Value:   ":1081",
 				Sources: cli.EnvVars("PROFILE_ADDR"),
@@ -197,6 +210,9 @@ production is a BAD IDEA! Migrations can be expensive and need to be planned.`,
 func runServer(ctx context.Context, c *cli.Command) error {
 	var (
 		addr            = c.String("addr")
+		tlsAddr         = c.String("tls-addr")
+		certFile        = c.String("cert-file")
+		keyFile         = c.String("key-file")
 		profileAddr     = c.String("profile-addr")
 		logLevel        = c.String("log-level")
 		ensureSchemas   = c.StringSlice("ensure-schema")
@@ -677,7 +693,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 
 		if res.StatusCode != http.StatusOK {
 			return fmt.Errorf(
-				"api liveness endpoint returned non-ok status:: %s",
+				"api liveness endpoint returned non-ok status: %s",
 				res.Status)
 		}
 
@@ -717,7 +733,9 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	serverGroup.Go(func() error {
 		logger.Debug("starting API server")
 
-		err := repository.ListenAndServe(gCtx, addr, router, corsHosts)
+		err := repository.ListenAndServe(
+			gCtx, addr, tlsAddr,
+			router, corsHosts, certFile, keyFile)
 		if err != nil {
 			return fmt.Errorf("API server error: %w", err)
 		}

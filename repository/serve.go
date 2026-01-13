@@ -11,6 +11,7 @@ import (
 	"github.com/ttab/elephant-repository/internal"
 	"github.com/ttab/elephantine"
 	"github.com/twitchtv/twirp"
+	"golang.org/x/sync/errgroup"
 )
 
 func SetUpRouter(
@@ -28,8 +29,8 @@ func SetUpRouter(
 }
 
 func ListenAndServe(
-	ctx context.Context, addr string, h http.Handler,
-	corsHosts []string,
+	ctx context.Context, addr string, tlsAddr string, h http.Handler,
+	corsHosts []string, certFile string, keyFile string,
 ) error {
 	handler := elephantine.LogMetadataMiddleware(h)
 
@@ -41,14 +42,37 @@ func ListenAndServe(
 		AllowedHeaders:         []string{"Authorization", "Content-Type", "Last-Event-ID"},
 	}, handler)
 
+	grp, gCtx := errgroup.WithContext(ctx)
+
+	if certFile != "" {
+		grp.Go(func() error {
+			tlsServer := http.Server{
+				Addr:              tlsAddr,
+				Handler:           corsHandler,
+				ReadHeaderTimeout: 5 * time.Second,
+			}
+
+			//nolint:wrapcheck
+			return elephantine.ListenAndServeContext(
+				gCtx, &tlsServer, 10*time.Second,
+				elephantine.ListenAndServeTLS(certFile, keyFile),
+			)
+		})
+	}
+
 	server := http.Server{
 		Addr:              addr,
 		Handler:           corsHandler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	//nolint:wrapcheck
-	return elephantine.ListenAndServeContext(ctx, &server, 10*time.Second)
+	grp.Go(func() error {
+		//nolint:wrapcheck
+		return elephantine.ListenAndServeContext(
+			gCtx, &server, 10*time.Second)
+	})
+
+	return grp.Wait()
 }
 
 type ServerOptions struct {
