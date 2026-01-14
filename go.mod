@@ -26,13 +26,13 @@ require (
 	github.com/tmaxmax/go-sse v0.11.0
 	github.com/ttab/darknut v0.1.3
 	github.com/ttab/eleconf v0.1.2
-	github.com/ttab/elephant-api v0.19.3
-	github.com/ttab/elephantine v0.23.4-0.20260113084303-1206e69c5f83
+	github.com/ttab/elephant-api v0.19.4
+	github.com/ttab/elephantine v0.23.6
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.8.4
 	github.com/ttab/newsdoc v0.8.0
 	github.com/ttab/revisor v0.9.4
-	github.com/ttab/revisorschemas v1.0.7
+	github.com/ttab/revisorschemas v1.1.1
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v3 v3.6.1
 	github.com/viccon/sturdyc v1.1.5
@@ -154,7 +154,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/oauth2 v0.33.0 // indirect
+	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/tools v0.40.0 // indirect
