@@ -108,6 +108,23 @@ func TestIntegrationSocket(t *testing.T) {
 	test.Equal(t, http.StatusTooManyRequests, res.StatusCode,
 		"get a too many requests response")
 
+	pingData := []byte("hello")
+
+	gotPong := make(chan struct{})
+	pongTimeout := time.After(1 * time.Second)
+
+	conn.SetPongHandler(func(appData string) error {
+		test.Equal(t, string(pingData), appData, "get the expected pong data")
+
+		close(gotPong)
+
+		return nil
+	})
+
+	// Send a ping to verify that we got a pong back.
+	err = conn.WriteMessage(websocket.PingMessage, pingData)
+	test.Must(t, err, "send ping")
+
 	callID := makeCall(t, conn, &repositorysocket.Call{
 		Authenticate: &repositorysocket.Authenticate{
 			Token: token,
@@ -131,6 +148,13 @@ func TestIntegrationSocket(t *testing.T) {
 	resp := newResponseCollection()
 
 	go resp.ReadResponses(t, conn)
+
+	// Verify that we get pongs back.
+	select {
+	case <-gotPong:
+	case <-pongTimeout:
+		t.Fatal("didn't get the expected pong")
+	}
 
 	makeCall(t, conn, &repositorysocket.Call{
 		CallId: subCall,
