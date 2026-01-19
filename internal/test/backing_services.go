@@ -194,7 +194,7 @@ type BackingServices struct {
 
 func (bs *BackingServices) bootstrapMinio() error {
 	res, err := bs.pool.RunWithOptions(&dockertest.RunOptions{
-		Repository: "minio/minio",
+		Repository: "ghcr.io/ttab/elephant-images/minio",
 		Tag:        "RELEASE.2025-01-20T14-49-07Z",
 		Cmd:        []string{"server", "/data"},
 	}, func(hc *docker.HostConfig) {
@@ -257,7 +257,7 @@ func (bs *BackingServices) getPostgresURI(user, database string) string {
 
 func (bs *BackingServices) bootstrapPostgres() error {
 	res, err := bs.pool.RunWithOptions(&dockertest.RunOptions{
-		Repository: "postgres",
+		Repository: "ghcr.io/ttab/elephant-images/postgres",
 		Tag:        "15.2",
 		Env: []string{
 			"POSTGRES_USER=elephant",
