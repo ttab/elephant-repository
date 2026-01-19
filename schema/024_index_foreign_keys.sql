@@ -13,3 +13,9 @@ ON planning_assignment(planning_item);
 
 -- Clean up any remaining eventlog publication.
 DROP PUBLICATION IF EXISTS eventlog;
+
+-- Remove remaining stored procedures.
+DROP FUNCTION IF EXISTS
+     create_status(uuid, character varying, bigint, bigint, timestamptz, text, jsonb),
+     create_status(uuid, character varying, bigint, bigint, text, timestamptz, text, jsonb),
+     create_version(uuid, bigint, timestamptz, text, jsonb, jsonb);
