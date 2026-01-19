@@ -625,22 +625,6 @@ WHERE type = @type;
 SELECT type, bounded_collection, configuration
 FROM document_type;
 
--- name: InsertACLAuditEntry :exec
-INSERT INTO acl_audit(
-       uuid, type, updated,
-       updater_uri, state, language,
-       system_state
-)
-SELECT
-       @uuid::uuid, @type, @updated::timestamptz,
-       @updater_uri::text, json_agg(l), @language::text,
-       @system_state
-FROM (
-       SELECT uri, permissions
-       FROM acl
-       WHERE uuid = @uuid::uuid
-) AS l;
-
 -- name: GranteesWithPermission :many
 SELECT uri
 FROM acl

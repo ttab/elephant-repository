@@ -2290,8 +2290,7 @@ func (s *PGDocStore) Update(
 		}
 
 		if len(aclUpdate) > 0 {
-			err := updateACL(ctx, q, state.Request.Updater,
-				state.Request.UUID, state.Type, state.Language, aclUpdate)
+			err := updateACL(ctx, q, state.Request.UUID, aclUpdate)
 			if err != nil {
 				return nil, fmt.Errorf("update ACL: %w", err)
 			}
@@ -4060,8 +4059,8 @@ func (s *PGDocStore) RegisterOrIncrementMetric(ctx context.Context, metric Metri
 }
 
 func updateACL(
-	ctx context.Context, q *postgres.Queries, updater string,
-	docUUID uuid.UUID, docType string, language string, updateACL []ACLEntry,
+	ctx context.Context, q *postgres.Queries,
+	docUUID uuid.UUID, updateACL []ACLEntry,
 ) error {
 	// Batch ACL updates, ACLs with empty permissions are dropped
 	// immediately.
@@ -4102,17 +4101,6 @@ func updateACL(
 			return fmt.Errorf("failed to update entries: %w",
 				errors.Join(errs...))
 		}
-	}
-
-	err := q.InsertACLAuditEntry(ctx, postgres.InsertACLAuditEntryParams{
-		UUID:       docUUID,
-		Type:       pg.TextOrNull(docType),
-		Updated:    pg.Time(time.Now()),
-		UpdaterUri: updater,
-		Language:   language,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to record audit trail: %w", err)
 	}
 
 	return nil

@@ -719,42 +719,19 @@ There's a remaining design decision to make about scheduled status changes.
 
 Each repository instance can run one or more archivers.
 
-* Reacts to changes in the database, not direct calls.
+* Follows the eventlog and archives the events and its dependent objects.
 * Should be the only component that **writes** to S3.
 
 The goal of the archiving process is to have all document data replicated to S3.
 
-This will make it possible to purge old document data from the database (and transparently fetch them if they are requested).
+This makes it possible to purge old document data from the database (and transparently fetch them if they are requested).
 
 It also enables safe and simple document deletion by retaining copies on S3.
-
-## Candidates for archiving
-
-The archiver looks for unarchived document versions and statuses (and soon ACLs through the `acl_audit` table).
-
-```
-SELECT
-        v.uuid, v.version, v.created, v.creator_uri, v.meta, v.document_data,
-        p.signature AS parent_signature
-FROM document_version AS v
-     LEFT JOIN document_version AS p
-          ON p.uuid = v.uuid AND p.version = v.version-1
-WHERE v.archived = false
-AND (v.version = 1 OR p.archived = true)
-ORDER BY v.created
-FOR UPDATE OF v SKIP LOCKED
-LIMIT 1;
-```
-
-This fetches the next unarchived version that either is version 1, or whose parent has been archived, and skips any rows that another archiver is working on.
-
-The reason that we only want versions where the parent has been archived is that we want to include the parent signature in all archive objects.
 
 ## The signing and archiving process
 
 * Collect all data for the archive object
-  * ...for document versions this includes the parent signature
-  * ...for statuses this includes the parent and version signature
+  * ...for document versions, statuses and events this includes the parent signature
 * Serialise the archive object to JSON
 * Compute a signature using the hash of the JSON and current signing key
   * `v1.[key ID].[sha256 hash raw url base64].[signature raw url base64]`

@@ -18,93 +18,6 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- Name: create_status(uuid, character varying, bigint, bigint, timestamp with time zone, text, jsonb); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.create_status(uuid uuid, name character varying, current_id bigint, version bigint, created timestamp with time zone, creator_uri text, meta jsonb) RETURNS void
-    LANGUAGE sql
-    AS $$
-   insert into status_heads(
-               uuid, name, current_id, updated, updater_uri
-          )
-          values(
-               uuid, name, current_id, created, creator_uri
-          )
-          on conflict (uuid, name) do update
-             set updated = create_status.created,
-                 updater_uri = create_status.creator_uri,
-                 current_id = create_status.current_id;
-
-   insert into document_status(
-               uuid, name, id, version, created, creator_uri, meta
-          )
-          values(
-               uuid, name, current_id, version, created, creator_uri, meta
-          );
-$$;
-
-
---
--- Name: create_status(uuid, character varying, bigint, bigint, text, timestamp with time zone, text, jsonb); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.create_status(uuid uuid, name character varying, current_id bigint, version bigint, type text, created timestamp with time zone, creator_uri text, meta jsonb) RETURNS void
-    LANGUAGE sql
-    AS $$
-   insert into status_heads(
-               uuid, name, type, version, current_id, updated, updater_uri
-          )
-          values(
-               uuid, name, type, version, current_id, created, creator_uri
-          )
-          on conflict (uuid, name) do update
-             set updated = create_status.created,
-                 updater_uri = create_status.creator_uri,
-                 current_id = create_status.current_id,
-                 version = create_status.version;
-
-   insert into document_status(
-               uuid, name, id, version, created, creator_uri, meta
-          )
-          values(
-               uuid, name, current_id, version, created, creator_uri, meta
-          );
-$$;
-
-
---
--- Name: create_version(uuid, bigint, timestamp with time zone, text, jsonb, jsonb); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.create_version(uuid uuid, version bigint, created timestamp with time zone, creator_uri text, meta jsonb, document_data jsonb) RETURNS void
-    LANGUAGE sql
-    AS $$
-   insert into document(
-               uuid, uri, type,
-               created, creator_uri, updated, updater_uri, current_version
-          )
-          values(
-               uuid, document_data->>'uri', document_data->>'type',
-               created, creator_uri, created, creator_uri, version
-          )
-          on conflict (uuid) do update
-             set uri = create_version.document_data->>'uri',
-                 updated = create_version.created,
-                 updater_uri = create_version.creator_uri,
-                 current_version = version;
-
-   insert into document_version(
-               uuid, version,
-               created, creator_uri, meta, document_data, archived
-          )
-          values(
-               uuid, version,
-               created, creator_uri, meta, document_data, false
-          );
-$$;
-
-
---
 -- Name: sequential_eventlog(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -137,37 +50,6 @@ CREATE TABLE public.acl (
     uuid uuid NOT NULL,
     uri text NOT NULL,
     permissions text[] NOT NULL
-);
-
-
---
--- Name: acl_audit; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.acl_audit (
-    id bigint NOT NULL,
-    uuid uuid NOT NULL,
-    updated timestamp with time zone NOT NULL,
-    updater_uri text NOT NULL,
-    state jsonb NOT NULL,
-    archived boolean DEFAULT false NOT NULL,
-    type text,
-    language text,
-    system_state text
-);
-
-
---
--- Name: acl_audit_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-ALTER TABLE public.acl_audit ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.acl_audit_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
 );
 
 
@@ -745,14 +627,6 @@ CREATE TABLE public.workflow_state (
 
 
 --
--- Name: acl_audit acl_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.acl_audit
-    ADD CONSTRAINT acl_audit_pkey PRIMARY KEY (id);
-
-
---
 -- Name: acl acl_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1105,6 +979,13 @@ CREATE INDEX idx_main_doc_id ON public.document USING btree (main_doc);
 
 
 --
+-- Name: idx_planning_assignment_planning_item; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_planning_assignment_planning_item ON public.planning_assignment USING btree (planning_item);
+
+
+--
 -- Name: pending_purges; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1172,14 +1053,6 @@ CREATE INDEX restores_to_perform ON public.restore_request USING btree (id) WHER
 --
 
 CREATE TRIGGER sequential_eventlog BEFORE INSERT ON public.eventlog FOR EACH ROW EXECUTE FUNCTION public.sequential_eventlog();
-
-
---
--- Name: acl_audit acl_audit_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.acl_audit
-    ADD CONSTRAINT acl_audit_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
 
 
 --
@@ -1348,48 +1221,6 @@ ALTER TABLE ONLY public.status_heads
 
 ALTER TABLE ONLY public.workflow_state
     ADD CONSTRAINT workflow_state_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
-
-
---
--- Name: eventlog; Type: PUBLICATION; Schema: -; Owner: -
---
-
-CREATE PUBLICATION eventlog WITH (publish = 'insert, update');
-
-
---
--- Name: eventlog acl_audit; Type: PUBLICATION TABLE; Schema: public; Owner: -
---
-
-ALTER PUBLICATION eventlog ADD TABLE ONLY public.acl_audit;
-
-
---
--- Name: eventlog delete_record; Type: PUBLICATION TABLE; Schema: public; Owner: -
---
-
-ALTER PUBLICATION eventlog ADD TABLE ONLY public.delete_record;
-
-
---
--- Name: eventlog document; Type: PUBLICATION TABLE; Schema: public; Owner: -
---
-
-ALTER PUBLICATION eventlog ADD TABLE ONLY public.document;
-
-
---
--- Name: eventlog status_heads; Type: PUBLICATION TABLE; Schema: public; Owner: -
---
-
-ALTER PUBLICATION eventlog ADD TABLE ONLY public.status_heads;
-
-
---
--- Name: eventlog workflow_state; Type: PUBLICATION TABLE; Schema: public; Owner: -
---
-
-ALTER PUBLICATION eventlog ADD TABLE ONLY public.workflow_state;
 
 
 --

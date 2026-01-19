@@ -1004,18 +1004,6 @@ func (a *Archiver) processRestores(
 			errors.Join(aclErrors...))
 	}
 
-	err = q.InsertACLAuditEntry(ctx, postgres.InsertACLAuditEntryParams{
-		UUID:        req.UUID,
-		Type:        pg.TextOrNull(docInfo.Type),
-		Updated:     pg.Time(time.Now()),
-		UpdaterUri:  docInfo.UpdaterUri,
-		Language:    docInfo.Language.String,
-		SystemState: pg.Text(SystemStateRestoring),
-	})
-	if err != nil {
-		return false, fmt.Errorf("failed to record audit trail: %w", err)
-	}
-
 	err = q.ClearSystemState(ctx, req.UUID)
 	if err != nil {
 		return false, fmt.Errorf("clear system state: %w", err)

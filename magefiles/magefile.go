@@ -14,7 +14,6 @@ import (
 
 var reportingTables = []string{
 	"acl",
-	"acl_audit",
 	"active_schemas",
 	"attached_object",
 	"attached_object_current",
