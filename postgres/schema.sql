@@ -141,37 +141,6 @@ CREATE TABLE public.acl (
 
 
 --
--- Name: acl_audit; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.acl_audit (
-    id bigint NOT NULL,
-    uuid uuid NOT NULL,
-    updated timestamp with time zone NOT NULL,
-    updater_uri text NOT NULL,
-    state jsonb NOT NULL,
-    archived boolean DEFAULT false NOT NULL,
-    type text,
-    language text,
-    system_state text
-);
-
-
---
--- Name: acl_audit_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-ALTER TABLE public.acl_audit ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.acl_audit_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
-
---
 -- Name: active_schemas; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -745,14 +714,6 @@ CREATE TABLE public.workflow_state (
 
 
 --
--- Name: acl_audit acl_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.acl_audit
-    ADD CONSTRAINT acl_audit_pkey PRIMARY KEY (id);
-
-
---
 -- Name: acl acl_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1105,6 +1066,13 @@ CREATE INDEX idx_main_doc_id ON public.document USING btree (main_doc);
 
 
 --
+-- Name: idx_planning_assignment_planning_item; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_planning_assignment_planning_item ON public.planning_assignment USING btree (planning_item);
+
+
+--
 -- Name: pending_purges; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1172,14 +1140,6 @@ CREATE INDEX restores_to_perform ON public.restore_request USING btree (id) WHER
 --
 
 CREATE TRIGGER sequential_eventlog BEFORE INSERT ON public.eventlog FOR EACH ROW EXECUTE FUNCTION public.sequential_eventlog();
-
-
---
--- Name: acl_audit acl_audit_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.acl_audit
-    ADD CONSTRAINT acl_audit_uuid_fkey FOREIGN KEY (uuid) REFERENCES public.document(uuid) ON DELETE CASCADE;
 
 
 --
@@ -1355,13 +1315,6 @@ ALTER TABLE ONLY public.workflow_state
 --
 
 CREATE PUBLICATION eventlog WITH (publish = 'insert, update');
-
-
---
--- Name: eventlog acl_audit; Type: PUBLICATION TABLE; Schema: public; Owner: -
---
-
-ALTER PUBLICATION eventlog ADD TABLE ONLY public.acl_audit;
 
 
 --

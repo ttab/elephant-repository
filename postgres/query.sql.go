@@ -3606,44 +3606,6 @@ func (q *Queries) GranteesWithPermission(ctx context.Context, arg GranteesWithPe
 	return items, nil
 }
 
-const insertACLAuditEntry = `-- name: InsertACLAuditEntry :exec
-INSERT INTO acl_audit(
-       uuid, type, updated,
-       updater_uri, state, language,
-       system_state
-)
-SELECT
-       $1::uuid, $2, $3::timestamptz,
-       $4::text, json_agg(l), $5::text,
-       $6
-FROM (
-       SELECT uri, permissions
-       FROM acl
-       WHERE uuid = $1::uuid
-) AS l
-`
-
-type InsertACLAuditEntryParams struct {
-	UUID        uuid.UUID
-	Type        pgtype.Text
-	Updated     pgtype.Timestamptz
-	UpdaterUri  string
-	Language    string
-	SystemState pgtype.Text
-}
-
-func (q *Queries) InsertACLAuditEntry(ctx context.Context, arg InsertACLAuditEntryParams) error {
-	_, err := q.db.Exec(ctx, insertACLAuditEntry,
-		arg.UUID,
-		arg.Type,
-		arg.Updated,
-		arg.UpdaterUri,
-		arg.Language,
-		arg.SystemState,
-	)
-	return err
-}
-
 const insertDeleteRecord = `-- name: InsertDeleteRecord :one
 INSERT INTO delete_record(
        uuid, uri, type, version, created, creator_uri, meta,

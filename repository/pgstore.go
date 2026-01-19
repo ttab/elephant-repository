@@ -4104,17 +4104,6 @@ func updateACL(
 		}
 	}
 
-	err := q.InsertACLAuditEntry(ctx, postgres.InsertACLAuditEntryParams{
-		UUID:       docUUID,
-		Type:       pg.TextOrNull(docType),
-		Updated:    pg.Time(time.Now()),
-		UpdaterUri: updater,
-		Language:   language,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to record audit trail: %w", err)
-	}
-
 	return nil
 }
 
