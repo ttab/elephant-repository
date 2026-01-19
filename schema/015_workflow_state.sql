@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS workflow_state(
 );
 
 ALTER TABLE workflow_state REPLICA IDENTITY FULL;
-ALTER PUBLICATION eventlog ADD TABLE ONLY workflow_state;
+
+-- New installations won't have the eventlog publication
+--ALTER PUBLICATION eventlog ADD TABLE ONLY workflow_state;
 
 CREATE TABLE IF NOT EXISTS workflow(
        type text PRIMARY KEY,

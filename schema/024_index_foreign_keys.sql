@@ -11,3 +11,5 @@ DROP TABLE acl_audit;
 CREATE INDEX CONCURRENTLY idx_planning_assignment_planning_item
 ON planning_assignment(planning_item);
 
+-- Clean up any remaining eventlog publication.
+DROP PUBLICATION IF EXISTS eventlog;
