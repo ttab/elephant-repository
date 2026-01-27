@@ -273,7 +273,9 @@ func (s *DocumentStream) Subscribe(ctx context.Context, handler DocumentStreamHa
 	s.serial++
 
 	id := s.serial
+
 	s.consumers[id] = handler
+	s.mSubscribers.Set(float64(len(s.consumers)))
 
 	s.m.Unlock()
 
