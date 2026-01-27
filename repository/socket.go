@@ -67,7 +67,7 @@ func NewSocketHandler(
 		runCtx: ctx,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
+			WriteBufferSize: 10240,
 			CheckOrigin: func(r *http.Request) bool {
 				origin := r.Header.Get("Origin")
 
