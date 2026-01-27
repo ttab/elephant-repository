@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
 	"golang.org/x/sync/errgroup"
@@ -36,8 +37,9 @@ type DocumentStreamHandlerFunc func(item DocumentStreamItem)
 func NewDocumentStream(
 	ctx context.Context,
 	log *slog.Logger,
+	registerer prometheus.Registerer,
 	store DocStore,
-) *DocumentStream {
+) (*DocumentStream, error) {
 	// Buffer of one to make sure that we always run another iteration of
 	// log consume if we get one or more events during processing.
 	ch := make(chan int64, 1)
@@ -53,9 +55,31 @@ func NewDocumentStream(
 		store:     store,
 	}
 
+	prom := elephantine.NewMetricsHelper(registerer)
+
+	prom.CounterVec(&s.mEmitEvents, prometheus.CounterOpts{
+		Name: "repository_docstream_emit_total",
+		Help: "Counts when we 'start' to emit events, and 'ok' on success, 'error' on failure.",
+	}, []string{"status"})
+
+	prom.Gauge(&s.mPosition, prometheus.GaugeOpts{
+		Name: "repository_docstream_position",
+		Help: "The current eventlog position of the docstream.",
+	})
+
+	prom.Gauge(&s.mSubscribers, prometheus.GaugeOpts{
+		Name: "repository_docstream_subscribers",
+		Help: "Current docstream subscribers.",
+	})
+
+	err := prom.Err()
+	if err != nil {
+		return nil, fmt.Errorf("register metrics: %w", err)
+	}
+
 	go s.handleEvents()
 
-	return &s
+	return &s, nil
 }
 
 type DocumentStream struct {
@@ -64,6 +88,10 @@ type DocumentStream struct {
 	m         sync.RWMutex
 	serial    int64
 	consumers map[int64]DocumentStreamHandlerFunc
+
+	mEmitEvents  *prometheus.CounterVec
+	mPosition    prometheus.Gauge
+	mSubscribers prometheus.Gauge
 
 	// No mutex needed for these as they're only touched from the event
 	// handling loop.
@@ -102,22 +130,34 @@ func (s *DocumentStream) handleEvents() {
 	}
 }
 
-func (s *DocumentStream) emitEvents(ctx context.Context, observed int64) error {
+func (s *DocumentStream) emitEvents(
+	ctx context.Context, observed int64,
+) (outErr error) {
 	if s.lastID == -1 {
 		s.lastID = observed - 1
 	}
 
-	expectedItems := observed - s.lastID
+	s.mEmitEvents.WithLabelValues("start").Inc()
+
+	defer func() {
+		if outErr != nil {
+			s.mEmitEvents.WithLabelValues("error").Inc()
+
+			return
+		}
+
+		s.mEmitEvents.WithLabelValues("ok").Inc()
+	}()
 
 	// Set a generous timeout, really shouldn't be anywhere close to being
 	// this slow.
-	ctx, cancel := context.WithTimeout(ctx,
-		2*time.Duration(expectedItems)*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+
 	defer cancel()
 
 	events, err := s.store.GetEventlog(ctx, s.lastID, 50)
 	if err != nil {
-		return fmt.Errorf("fetch eventlog: %w", err)
+		return fmt.Errorf("fetch eventlog after %d: %w", s.lastID, err)
 	}
 
 	// Ignore events generated during restores.
@@ -210,6 +250,8 @@ func (s *DocumentStream) emitEvents(ctx context.Context, observed int64) error {
 		}
 
 		s.lastID = evt.ID
+
+		s.mPosition.Set(float64(s.lastID))
 	}
 
 	s.m.RUnlock()
@@ -235,6 +277,9 @@ func (s *DocumentStream) Subscribe(ctx context.Context, handler DocumentStreamHa
 	}
 
 	s.m.Lock()
+
 	delete(s.consumers, id)
+	s.mSubscribers.Set(float64(len(s.consumers)))
+
 	s.m.Unlock()
 }

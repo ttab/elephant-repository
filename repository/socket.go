@@ -52,7 +52,11 @@ func NewSocketHandler(
 	socketKey *ecdsa.PublicKey,
 	corsHosts []string,
 ) (*SocketHandler, error) {
-	docStream := NewDocumentStream(ctx, logger, store)
+	docStream, err := NewDocumentStream(
+		ctx, logger, metricsRegisterer, store)
+	if err != nil {
+		return nil, fmt.Errorf("create document stream: %w", err)
+	}
 
 	rateLimiterCache := sturdyc.New[*rate.Limiter](
 		5000, 1,
