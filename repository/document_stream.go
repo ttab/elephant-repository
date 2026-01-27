@@ -115,6 +115,12 @@ func (s *DocumentStream) handleEvents() {
 			return
 		case id := <-s.eventChan:
 			if s.consumerCount() == 0 {
+				// Bump the lastID so that we don't do
+				// unnecessary processing to the time when
+				// nobody was connected.
+				s.lastID = max(s.lastID, id)
+				s.mPosition.Set(float64(s.lastID))
+
 				continue
 			}
 
