@@ -98,6 +98,11 @@ func main() {
 				Sources: cli.EnvVars("CONN_STRING"),
 			},
 			&cli.StringFlag{
+				Name:    "db-bouncer",
+				Usage:   "Connection string routed through PgBouncer, used for all DB operations except pubsub",
+				Sources: cli.EnvVars("BOUNCER_CONN_STRING"),
+			},
+			&cli.StringFlag{
 				Name:    "db-parameter",
 				Sources: cli.EnvVars("CONN_STRING_PARAMETER"),
 			},
@@ -296,13 +301,35 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	}
 
 	defer func() {
-		// Don't block for close
+		// Don't block for close.
 		go dbpool.Close()
 	}()
 
 	err = dbpool.Ping(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
+		return fmt.Errorf("connect to database: %w", err)
+	}
+
+	// The pubsub pool uses a direct connection to PostgreSQL, as
+	// LISTEN/NOTIFY is not supported through PgBouncer. When no
+	// separate bouncer connection string is configured we share a
+	// single pool for both.
+	pubsubPool := dbpool
+
+	if conf.DBBouncer != conf.DB {
+		dbpool, err = pgxpool.New(ctx, conf.DBBouncer)
+		if err != nil {
+			return fmt.Errorf("unable to create bouncer connection pool: %w", err)
+		}
+
+		defer func() {
+			go dbpool.Close()
+		}()
+
+		err = dbpool.Ping(ctx)
+		if err != nil {
+			return fmt.Errorf("connect to bouncer database: %w", err)
+		}
 	}
 
 	if migrateDB {
@@ -337,7 +364,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
 
-	go store.RunListener(stopCtx)
+	go store.RunListener(stopCtx, pubsubPool)
 	go store.RunCleaner(stopCtx, 5*time.Minute)
 
 	if !conf.NoCoreSchema {

@@ -225,7 +225,7 @@ func testingAPIServer(
 		})
 	test.Must(t, err, "create doc store")
 
-	go store.RunListener(ctx)
+	go store.RunListener(ctx, dbpool)
 
 	go func() {
 		err := typeConf.Run(ctx, store)
