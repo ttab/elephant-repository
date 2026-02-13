@@ -157,6 +157,7 @@ type TypeConfiguration struct {
 	BoundedCollection bool
 	TimeExpressions   []TimespanConfiguration
 	LabelExpressions  []LabelConfiguration
+	Variants          []string
 }
 
 type DeliverableInfo struct {

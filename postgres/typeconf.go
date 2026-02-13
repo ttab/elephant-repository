@@ -4,6 +4,7 @@ type TypeConfiguration struct {
 	BoundedCollection bool                  `json:"bounded_collection"`
 	TimeExpressions   []TypeTimeExpression  `json:"time_expressions,omitempty"`
 	LabelExpressions  []TypeLabelExpression `json:"label_expressions,omitempty"`
+	Variants          []string              `json:"variants,omitempty"`
 }
 
 type TypeTimeExpression struct {

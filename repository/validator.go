@@ -36,6 +36,8 @@ type ValidatorStore interface {
 	OnSchemaUpdate(ctx context.Context, ch chan SchemaEvent)
 	GetEnforcedDeprecations(ctx context.Context) (EnforcedDeprecations, error)
 	OnDeprecationUpdate(ctx context.Context, ch chan DeprecationEvent)
+	GetTypeConfigurations(ctx context.Context) (map[string]TypeConfiguration, error)
+	OnTypeConfigured(ctx context.Context, ch chan TypeConfiguredEvent)
 }
 
 func NewValidator(
@@ -114,9 +116,11 @@ func (v *Validator) reloadLoop(
 
 	schemaSub := make(chan SchemaEvent, 1)
 	deprecationSub := make(chan DeprecationEvent, 1)
+	typeConfSub := make(chan TypeConfiguredEvent, 1)
 
 	loader.OnSchemaUpdate(ctx, schemaSub)
 	loader.OnDeprecationUpdate(ctx, deprecationSub)
+	loader.OnTypeConfigured(ctx, typeConfSub)
 
 	for {
 		var refreshChan chan struct{}
@@ -127,6 +131,7 @@ func (v *Validator) reloadLoop(
 		case <-time.After(recheckInterval):
 		case <-schemaSub:
 		case <-deprecationSub:
+		case <-typeConfSub:
 		case refreshChan = <-v.refreshChan:
 		}
 
@@ -170,11 +175,49 @@ func (v *Validator) loadSchemas(ctx context.Context, loader ValidatorStore) erro
 			"failed to create a validator from the constraints: %w", err)
 	}
 
+	variants, err := loadVariants(ctx, loader)
+	if err != nil {
+		return fmt.Errorf("load variants: %w", err)
+	}
+
+	if len(variants) > 0 {
+		val = val.WithVariants(variants...)
+	}
+
 	v.m.Lock()
 	v.val = val
 	v.m.Unlock()
 
 	return nil
+}
+
+func loadVariants(
+	ctx context.Context, loader ValidatorStore,
+) ([]revisor.Variant, error) {
+	configs, err := loader.GetTypeConfigurations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"get type configurations: %w", err)
+	}
+
+	variantTypes := make(map[string][]string)
+
+	for docType, conf := range configs {
+		for _, v := range conf.Variants {
+			variantTypes[v] = append(variantTypes[v], docType)
+		}
+	}
+
+	variants := make([]revisor.Variant, 0, len(variantTypes))
+
+	for name, types := range variantTypes {
+		variants = append(variants, revisor.Variant{
+			Name:  name,
+			Types: types,
+		})
+	}
+
+	return variants, nil
 }
 
 func (v *Validator) loadDeprecations(ctx context.Context, loader ValidatorStore) error {
