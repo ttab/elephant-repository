@@ -181,12 +181,16 @@ func TestIntegrationSocket(t *testing.T) {
 	beachPlanV1, err := resp.AwaitDocumentUpdate(subCall, beachPlanUUID, 2*time.Second)
 	test.Must(t, err, "get beach plan v1 document message")
 
+	test.Equal(t, 1, beachPlanV1.DocumentUpdate.Event.Version, "get v1 of beach plan")
+
 	beachUUID := writeDoc(t, client, docsDir, "beach", nil)
 
 	writeDoc(t, client, docsDir, "beach_plan_v2", nil)
 
 	beachPlanV2, err := resp.AwaitDocumentUpdate(subCall, beachPlanUUID, 2*time.Second)
 	test.Must(t, err, "get beach plan v2 document message")
+
+	test.Equal(t, 2, beachPlanV2.DocumentUpdate.Event.Version, "get v2 of beach plan")
 
 	beachInclusion, err := resp.AwaitInclusionBatch(subCall, 2*time.Second)
 	test.Must(t, err, "get beach plan inclusion batch message")
@@ -284,18 +288,23 @@ func TestIntegrationSocket(t *testing.T) {
 	}
 }
 
+type respNotification struct {
+	Index    int
+	Response *repositorysocket.Response
+}
+
 type responseCollection struct {
 	m         sync.Mutex
 	responses []*repositorysocket.Response
 
 	lastAwait int
 
-	notifyResp chan *repositorysocket.Response
+	notifyResp chan respNotification
 }
 
 func newResponseCollection() *responseCollection {
 	return &responseCollection{
-		notifyResp: make(chan *repositorysocket.Response, 64),
+		notifyResp: make(chan respNotification, 64),
 	}
 }
 
@@ -309,11 +318,15 @@ func (rc *responseCollection) ReadResponses(t *testing.T, conn *websocket.Conn) 
 		}
 
 		rc.m.Lock()
+		idx := len(rc.responses)
 		rc.responses = append(rc.responses, resp)
 		rc.m.Unlock()
 
 		select {
-		case rc.notifyResp <- resp:
+		case rc.notifyResp <- respNotification{
+			Index:    idx,
+			Response: resp,
+		}:
 		case <-t.Context().Done():
 			return
 		}
@@ -450,7 +463,10 @@ func (rc *responseCollection) AwaitResponse(
 		select {
 		case <-deadline:
 			return nil, errors.New("deadline exceeded")
-		case resp := <-rc.notifyResp:
+		case n := <-rc.notifyResp:
+			rc.lastAwait = n.Index + 1
+			resp := n.Response
+
 			if resp.CallId != callID {
 				continue
 			}
