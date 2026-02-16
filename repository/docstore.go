@@ -91,6 +91,9 @@ type DocStore interface {
 	OnEventlog(
 		ctx context.Context, ch chan int64,
 	)
+	OnArchivedUpdate(
+		ctx context.Context, ch chan ArchivedEvent,
+	)
 	GetStatus(
 		ctx context.Context, uuid uuid.UUID,
 		name string, id int64,

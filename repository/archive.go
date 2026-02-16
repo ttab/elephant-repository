@@ -65,13 +65,16 @@ type Archiver struct {
 	types              *TypeConfigurations
 	tolerateGaps       bool
 
-	eventArchiverPos  prometheus.Gauge
-	eventsArchived    *prometheus.CounterVec
-	deletesProcessed  *prometheus.CounterVec
-	deleteMoves       *prometheus.CounterVec
-	restoresProcessed *prometheus.CounterVec
-	purgesProcessed   *prometheus.CounterVec
-	purgeDeletes      *prometheus.CounterVec
+	eventArchiverPos    prometheus.Gauge
+	eventsArchived      *prometheus.CounterVec
+	deletesProcessed    *prometheus.CounterVec
+	deleteMoves         *prometheus.CounterVec
+	restoresProcessed   *prometheus.CounterVec
+	purgesProcessed     *prometheus.CounterVec
+	purgeDeletes        *prometheus.CounterVec
+	batchesCreated      *prometheus.CounterVec
+	batchArchiverPos1k  prometheus.Gauge
+	batchArchiverPos10k prometheus.Gauge
 
 	cancel  func()
 	stopped chan struct{}
@@ -138,6 +141,21 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		Help: "Number of objects deleted as part of purge processing.",
 	}, []string{"status"})
 
+	m.CounterVec(&a.batchesCreated, prometheus.CounterOpts{
+		Name: "elephant_archiver_batches_created_total",
+		Help: "Number of event batches created.",
+	}, []string{"size", "status"})
+
+	m.Gauge(&a.batchArchiverPos1k, prometheus.GaugeOpts{
+		Name: "elephant_archiver_batch_1k_position",
+		Help: "Eventlog batch archiver position for 1k batches.",
+	})
+
+	m.Gauge(&a.batchArchiverPos10k, prometheus.GaugeOpts{
+		Name: "elephant_archiver_batch_10k_position",
+		Help: "Eventlog batch archiver position for 10k batches.",
+	})
+
 	if err := m.Err(); err != nil {
 		return nil, fmt.Errorf("register metrics: %w", err)
 	}
@@ -179,6 +197,11 @@ func (a *Archiver) Run(ctx context.Context) error {
 		30, elephantine.StaticBackoff(10*time.Second),
 		1*time.Hour,
 		a.runEventlogArchiver)
+
+	grp.GoWithRetries("run eventlog batch archiver",
+		30, elephantine.StaticBackoff(10*time.Second),
+		1*time.Hour,
+		a.runEventlogBatchArchiver)
 
 	return grp.Wait() //nolint: wrapcheck
 }
@@ -1749,6 +1772,66 @@ func (a *Archiver) ensureSigningKeys(ctx context.Context) (outErr error) {
 
 	a.signingKeysChecked = time.Now()
 	a.signingKeys.Replace(set.Keys)
+
+	err = a.archiveSigningKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("archive signing keys: %w", err)
+	}
+
+	return nil
+}
+
+func (a *Archiver) archiveSigningKeys(ctx context.Context) error {
+	q := postgres.New(a.pool)
+
+	keys, err := q.GetUnarchivedSigningKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("get unarchived signing keys: %w", err)
+	}
+
+	for _, k := range keys {
+		var sk SigningKey
+
+		err := json.Unmarshal(k.Spec, &sk)
+		if err != nil {
+			return fmt.Errorf("unmarshal key %q: %w", k.Kid, err)
+		}
+
+		jwkData, err := MarshalPublicSigningKey(sk)
+		if err != nil {
+			return fmt.Errorf("marshal public key %q: %w", k.Kid, err)
+		}
+
+		checksum := sha256.Sum256(jwkData)
+		s3Key := fmt.Sprintf("signing-keys/%s.json", k.Kid)
+
+		_, err = a.s3.PutObject(ctx, &s3.PutObjectInput{
+			Bucket:            aws.String(a.bucket),
+			Key:               aws.String(s3Key),
+			Body:              bytes.NewReader(jwkData),
+			ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+			ChecksumSHA256: aws.String(
+				base64.StdEncoding.EncodeToString(checksum[:]),
+			),
+			ContentType:   aws.String("application/json"),
+			ContentLength: aws.Int64(int64(len(jwkData))),
+		})
+		if err != nil {
+			return fmt.Errorf("upload signing key %q to S3: %w",
+				k.Kid, err)
+		}
+
+		err = q.SetSigningKeyArchived(ctx, k.Kid)
+		if err != nil {
+			return fmt.Errorf("mark signing key %q as archived: %w",
+				k.Kid, err)
+		}
+
+		a.logger.InfoContext(ctx, "archived signing key to S3",
+			"kid", k.Kid,
+			"s3_key", s3Key,
+		)
+	}
 
 	return nil
 }

@@ -108,6 +108,42 @@ func (a *ArchiveReader) ReadDocumentStatus(
 	return &obj, sigStr, nil
 }
 
+// RawEvent holds the raw bytes and signature of an archived event.
+type RawEvent struct {
+	Data      []byte
+	Signature string
+}
+
+// ReadEventRaw reads the raw bytes and signature of an archived event from S3
+// without unmarshaling or verifying. This is used by the batch archiver to
+// preserve byte-stability.
+func (a *ArchiveReader) ReadEventRaw(
+	ctx context.Context, id int64,
+) (*RawEvent, error) {
+	key := fmt.Sprintf("events/%020d.json", id)
+
+	res, err := a.s3.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(a.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf(
+			"get archive object from S3: %w", err)
+	}
+
+	defer res.Body.Close()
+
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read S3 response body: %w", err)
+	}
+
+	return &RawEvent{
+		Data:      data,
+		Signature: res.Metadata["elephant-signature"],
+	}, nil
+}
+
 func (a *ArchiveReader) fetchAndVerify(
 	ctx context.Context,
 	key string, parentSignature *string, obj ArchivedObject,

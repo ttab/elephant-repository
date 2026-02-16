@@ -15,18 +15,6 @@ type Acl struct {
 	Permissions []string
 }
 
-type AclAudit struct {
-	ID          int64
-	UUID        uuid.UUID
-	Updated     pgtype.Timestamptz
-	UpdaterUri  string
-	State       []byte
-	Archived    bool
-	Type        pgtype.Text
-	Language    pgtype.Text
-	SystemState pgtype.Text
-}
-
 type ActiveSchema struct {
 	Name    string
 	Version string
@@ -287,8 +275,9 @@ type SchemaVersion struct {
 }
 
 type SigningKey struct {
-	Kid  string
-	Spec []byte
+	Kid      string
+	Spec     []byte
+	Archived bool
 }
 
 type Status struct {

@@ -3156,15 +3156,20 @@ const getSigningKeys = `-- name: GetSigningKeys :many
 SELECT kid, spec FROM signing_keys
 `
 
-func (q *Queries) GetSigningKeys(ctx context.Context) ([]SigningKey, error) {
+type GetSigningKeysRow struct {
+	Kid  string
+	Spec []byte
+}
+
+func (q *Queries) GetSigningKeys(ctx context.Context) ([]GetSigningKeysRow, error) {
 	rows, err := q.db.Query(ctx, getSigningKeys)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SigningKey
+	var items []GetSigningKeysRow
 	for rows.Next() {
-		var i SigningKey
+		var i GetSigningKeysRow
 		if err := rows.Scan(&i.Kid, &i.Spec); err != nil {
 			return nil, err
 		}
@@ -3415,6 +3420,35 @@ func (q *Queries) GetTypeOfDocument(ctx context.Context, argUuid uuid.UUID) (str
 	var type_ string
 	err := row.Scan(&type_)
 	return type_, err
+}
+
+const getUnarchivedSigningKeys = `-- name: GetUnarchivedSigningKeys :many
+SELECT kid, spec FROM signing_keys WHERE NOT archived
+`
+
+type GetUnarchivedSigningKeysRow struct {
+	Kid  string
+	Spec []byte
+}
+
+func (q *Queries) GetUnarchivedSigningKeys(ctx context.Context) ([]GetUnarchivedSigningKeysRow, error) {
+	rows, err := q.db.Query(ctx, getUnarchivedSigningKeys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUnarchivedSigningKeysRow
+	for rows.Next() {
+		var i GetUnarchivedSigningKeysRow
+		if err := rows.Scan(&i.Kid, &i.Spec); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUpload = `-- name: GetUpload :one
@@ -4640,6 +4674,15 @@ type SetPlanningItemDeliverableParams struct {
 
 func (q *Queries) SetPlanningItemDeliverable(ctx context.Context, arg SetPlanningItemDeliverableParams) error {
 	_, err := q.db.Exec(ctx, setPlanningItemDeliverable, arg.Assignment, arg.Document, arg.Version)
+	return err
+}
+
+const setSigningKeyArchived = `-- name: SetSigningKeyArchived :exec
+UPDATE signing_keys SET archived = true WHERE kid = $1
+`
+
+func (q *Queries) SetSigningKeyArchived(ctx context.Context, kid string) error {
+	_, err := q.db.Exec(ctx, setSigningKeyArchived, kid)
 	return err
 }
 

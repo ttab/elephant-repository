@@ -2,13 +2,17 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-repository/internal"
+	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/sync/errgroup"
@@ -220,6 +224,115 @@ func WithMetricsAPI(
 
 		return nil
 	}
+}
+
+// MarshalPublicSigningKey marshals a SigningKey into a public JWK JSON
+// representation with iat/nbf/exp timestamps.
+func MarshalPublicSigningKey(sk SigningKey) (json.RawMessage, error) {
+	pub, err := sk.Spec.PublicOnly()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"extract public key %q: %w",
+			sk.Spec.KeyID, err)
+	}
+
+	jwkJSON, err := pub.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"marshal key %q: %w",
+			sk.Spec.KeyID, err)
+	}
+
+	var entry map[string]json.RawMessage
+
+	err = json.Unmarshal(jwkJSON, &entry)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"re-parse key %q: %w",
+			sk.Spec.KeyID, err)
+	}
+
+	entry["iat"] = marshalUnixTime(sk.IssuedAt)
+	entry["nbf"] = marshalUnixTime(sk.NotBefore)
+	entry["exp"] = marshalUnixTime(sk.NotAfter)
+
+	raw, err := json.Marshal(entry)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"marshal key entry %q: %w",
+			sk.Spec.KeyID, err)
+	}
+
+	return raw, nil
+}
+
+// WithSigningKeys registers a public endpoint that exposes the archive
+// signing public keys as a JWKS document.
+func WithSigningKeys(pool *pgxpool.Pool) RouterOption {
+	return func(router *httprouter.Router) error {
+		router.GET("/signing-keys", internal.RHandleFunc(func(
+			w http.ResponseWriter, r *http.Request, _ httprouter.Params,
+		) error {
+			q := postgres.New(pool)
+
+			keys, err := q.GetSigningKeys(r.Context())
+			if err != nil {
+				return fmt.Errorf("get signing keys: %w", err)
+			}
+
+			entries := make([]json.RawMessage, 0, len(keys))
+
+			for i := range keys {
+				var sk SigningKey
+
+				err := json.Unmarshal(keys[i].Spec, &sk)
+				if err != nil {
+					return fmt.Errorf(
+						"unmarshal key %q: %w",
+						keys[i].Kid, err)
+				}
+
+				raw, err := MarshalPublicSigningKey(sk)
+				if err != nil {
+					return fmt.Errorf(
+						"marshal public key %q: %w",
+						keys[i].Kid, err)
+				}
+
+				entries = append(entries, raw)
+			}
+
+			resp := struct {
+				Keys []json.RawMessage `json:"keys"`
+			}{
+				Keys: entries,
+			}
+
+			data, err := json.MarshalIndent(resp, "", "  ")
+			if err != nil {
+				return fmt.Errorf("marshal response: %w", err)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+
+			_, err = w.Write(data)
+			if err != nil {
+				return fmt.Errorf("write response: %w", err)
+			}
+
+			return nil
+		}))
+
+		return nil
+	}
+}
+
+func marshalUnixTime(t time.Time) json.RawMessage {
+	if t.IsZero() {
+		return json.RawMessage("0")
+	}
+
+	return json.RawMessage(fmt.Sprintf("%d", t.Unix()))
 }
 
 type apiServerForRouter interface {

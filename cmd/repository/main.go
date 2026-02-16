@@ -599,6 +599,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		repository.WithSchemasAPI(schemaService, opts),
 		repository.WithWorkflowsAPI(workflowService, opts),
 		repository.WithMetricsAPI(metricsService, opts),
+		repository.WithSigningKeys(dbpool),
 	}
 
 	var sseSubsystem *repository.SSE

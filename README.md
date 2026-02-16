@@ -338,7 +338,33 @@ Signing keys are used for 180 days, a new signing key will be created and publis
 
 #### Fetching signing keys
 
-TODO: Not implemented yet, the idea is to borrow heavily from JWKS and to that end the internal `SigningKey` data struct is based on a JWK key spec.
+The `GET /signing-keys` endpoint returns the archive signing public keys as a JWKS document. This is a public, unauthenticated endpoint. The response contains ECDSA P-384 public keys that can be used to verify archive signatures. Each key includes `iat` (issued at), `nbf` (not before), and `exp` (not after) as unix timestamps.
+
+```
+curl http://localhost:1080/signing-keys
+```
+
+Example response:
+```json
+{
+  "keys": [
+    {
+      "kid": "1",
+      "kty": "EC",
+      "crv": "P-384",
+      "x": "...",
+      "y": "...",
+      "iat": 1700000000,
+      "nbf": 1700000000,
+      "exp": 1715552000
+    }
+  ]
+}
+```
+
+Signing keys are also written to the S3 archive bucket under `signing-keys/{kid}.json` as individual JWK objects (the same format as a single entry in the endpoint response above). The archiver writes each key when it's created and catches up on any unarchived keys on startup.
+
+Note that anyone who wants to independently validate the archive should store the signing keys in a location they control. The archived keys are provided as a convenience, but relying solely on keys stored alongside the data they sign doesn't provide independent verification — an attacker who can modify the archive could also modify the keys.
 
 #### Deletes
 

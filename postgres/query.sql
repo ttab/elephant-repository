@@ -551,6 +551,12 @@ SELECT kid, spec FROM signing_keys;
 -- name: InsertSigningKey :exec
 INSERT INTO signing_keys(kid, spec) VALUES(@kid, @spec);
 
+-- name: GetUnarchivedSigningKeys :many
+SELECT kid, spec FROM signing_keys WHERE NOT archived;
+
+-- name: SetSigningKeyArchived :exec
+UPDATE signing_keys SET archived = true WHERE kid = @kid;
+
 -- name: ACLUpdate :batchexec
 INSERT INTO acl(uuid, uri, permissions)
 VALUES (@uuid, @uri, @permissions::text[])
