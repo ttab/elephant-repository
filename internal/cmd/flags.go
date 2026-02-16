@@ -8,6 +8,7 @@ import (
 type BackendConfig struct {
 	repository.S3Options
 	DB                string
+	DBBouncer         string
 	Eventsink         string
 	ArchiveBucket     string
 	AssetBucket       string
@@ -30,8 +31,14 @@ type BackendConfig struct {
 }
 
 func BackendConfigFromContext(c *cli.Command) (BackendConfig, error) {
+	dbBouncer := c.String("db-bouncer")
+	if dbBouncer == "" {
+		dbBouncer = c.String("db")
+	}
+
 	cfg := BackendConfig{
 		DB:                c.String("db"),
+		DBBouncer:         dbBouncer,
 		Eventsink:         c.String("eventsink"),
 		ArchiveBucket:     c.String("archive-bucket"),
 		AssetBucket:       c.String("asset-bucket"),

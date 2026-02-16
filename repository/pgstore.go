@@ -312,7 +312,7 @@ func (s *PGDocStore) OnEventlog(
 
 // RunListener opens a connection to the database and subscribes to all store
 // notifications.
-func (s *PGDocStore) RunListener(ctx context.Context) {
+func (s *PGDocStore) RunListener(ctx context.Context, pool *pgxpool.Pool) {
 	fanOuts := []pg.ChannelSubscription{
 		s.archived,
 		s.schemas,
@@ -323,7 +323,7 @@ func (s *PGDocStore) RunListener(ctx context.Context) {
 		s.typeConf,
 	}
 
-	pg.Subscribe(ctx, s.logger, s.pool, fanOuts...)
+	pg.Subscribe(ctx, s.logger, pool, fanOuts...)
 }
 
 // Delete implements DocStore.
