@@ -65,13 +65,16 @@ type Archiver struct {
 	types              *TypeConfigurations
 	tolerateGaps       bool
 
-	eventArchiverPos  prometheus.Gauge
-	eventsArchived    *prometheus.CounterVec
-	deletesProcessed  *prometheus.CounterVec
-	deleteMoves       *prometheus.CounterVec
-	restoresProcessed *prometheus.CounterVec
-	purgesProcessed   *prometheus.CounterVec
-	purgeDeletes      *prometheus.CounterVec
+	eventArchiverPos    prometheus.Gauge
+	eventsArchived      *prometheus.CounterVec
+	deletesProcessed    *prometheus.CounterVec
+	deleteMoves         *prometheus.CounterVec
+	restoresProcessed   *prometheus.CounterVec
+	purgesProcessed     *prometheus.CounterVec
+	purgeDeletes        *prometheus.CounterVec
+	batchesCreated      *prometheus.CounterVec
+	batchArchiverPos1k  prometheus.Gauge
+	batchArchiverPos10k prometheus.Gauge
 
 	cancel  func()
 	stopped chan struct{}
@@ -138,6 +141,21 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 		Help: "Number of objects deleted as part of purge processing.",
 	}, []string{"status"})
 
+	m.CounterVec(&a.batchesCreated, prometheus.CounterOpts{
+		Name: "elephant_archiver_batches_created_total",
+		Help: "Number of event batches created.",
+	}, []string{"size", "status"})
+
+	m.Gauge(&a.batchArchiverPos1k, prometheus.GaugeOpts{
+		Name: "elephant_archiver_batch_1k_position",
+		Help: "Eventlog batch archiver position for 1k batches.",
+	})
+
+	m.Gauge(&a.batchArchiverPos10k, prometheus.GaugeOpts{
+		Name: "elephant_archiver_batch_10k_position",
+		Help: "Eventlog batch archiver position for 10k batches.",
+	})
+
 	if err := m.Err(); err != nil {
 		return nil, fmt.Errorf("register metrics: %w", err)
 	}
@@ -179,6 +197,11 @@ func (a *Archiver) Run(ctx context.Context) error {
 		30, elephantine.StaticBackoff(10*time.Second),
 		1*time.Hour,
 		a.runEventlogArchiver)
+
+	grp.GoWithRetries("run eventlog batch archiver",
+		30, elephantine.StaticBackoff(10*time.Second),
+		1*time.Hour,
+		a.runEventlogBatchArchiver)
 
 	return grp.Wait() //nolint: wrapcheck
 }
