@@ -362,6 +362,10 @@ Example response:
 }
 ```
 
+Signing keys are also written to the S3 archive bucket under `signing-keys/{kid}.json` as individual JWK objects (the same format as a single entry in the endpoint response above). The archiver writes each key when it's created and catches up on any unarchived keys on startup.
+
+Note that anyone who wants to independently validate the archive should store the signing keys in a location they control. The archived keys are provided as a convenience, but relying solely on keys stored alongside the data they sign doesn't provide independent verification — an attacker who can modify the archive could also modify the keys.
+
 #### Deletes
 
 Archiving is used to support the delete functionality. A delete request will acquire a row lock for the document, and then wait for its versions and statuses to be fully archived. It then creates a delete_record with information about the delete, and deletes the document row to replace it with a system_state `deleting` placeholder. From the clients' standpoint the delete is now finished. But no reads of, or updates to the document are allowed until the delete has been finalised by an archiver. The reason that the archiver is responsible for finalising the delete is that we then can ensure that the database and S3 archive are consistent. Otherwise we would be forced to manage error handling and consistency across a db transaction and the object store.

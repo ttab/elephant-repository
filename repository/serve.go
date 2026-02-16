@@ -226,6 +226,46 @@ func WithMetricsAPI(
 	}
 }
 
+// MarshalPublicSigningKey marshals a SigningKey into a public JWK JSON
+// representation with iat/nbf/exp timestamps.
+func MarshalPublicSigningKey(sk SigningKey) (json.RawMessage, error) {
+	pub, err := sk.Spec.PublicOnly()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"extract public key %q: %w",
+			sk.Spec.KeyID, err)
+	}
+
+	jwkJSON, err := pub.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"marshal key %q: %w",
+			sk.Spec.KeyID, err)
+	}
+
+	var entry map[string]json.RawMessage
+
+	err = json.Unmarshal(jwkJSON, &entry)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"re-parse key %q: %w",
+			sk.Spec.KeyID, err)
+	}
+
+	entry["iat"] = marshalUnixTime(sk.IssuedAt)
+	entry["nbf"] = marshalUnixTime(sk.NotBefore)
+	entry["exp"] = marshalUnixTime(sk.NotAfter)
+
+	raw, err := json.Marshal(entry)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"marshal key entry %q: %w",
+			sk.Spec.KeyID, err)
+	}
+
+	return raw, nil
+}
+
 // WithSigningKeys registers a public endpoint that exposes the archive
 // signing public keys as a JWKS document.
 func WithSigningKeys(pool *pgxpool.Pool) RouterOption {
@@ -252,37 +292,10 @@ func WithSigningKeys(pool *pgxpool.Pool) RouterOption {
 						keys[i].Kid, err)
 				}
 
-				pub, err := sk.Spec.PublicOnly()
+				raw, err := MarshalPublicSigningKey(sk)
 				if err != nil {
 					return fmt.Errorf(
-						"extract public key %q: %w",
-						keys[i].Kid, err)
-				}
-
-				jwkJSON, err := pub.MarshalJSON()
-				if err != nil {
-					return fmt.Errorf(
-						"marshal key %q: %w",
-						keys[i].Kid, err)
-				}
-
-				var entry map[string]json.RawMessage
-
-				err = json.Unmarshal(jwkJSON, &entry)
-				if err != nil {
-					return fmt.Errorf(
-						"re-parse key %q: %w",
-						keys[i].Kid, err)
-				}
-
-				entry["iat"] = marshalUnixTime(sk.IssuedAt)
-				entry["nbf"] = marshalUnixTime(sk.NotBefore)
-				entry["exp"] = marshalUnixTime(sk.NotAfter)
-
-				raw, err := json.Marshal(entry)
-				if err != nil {
-					return fmt.Errorf(
-						"marshal key entry %q: %w",
+						"marshal public key %q: %w",
 						keys[i].Kid, err)
 				}
 

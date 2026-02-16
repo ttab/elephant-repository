@@ -528,7 +528,8 @@ CREATE TABLE public.schema_version (
 
 CREATE TABLE public.signing_keys (
     kid text NOT NULL,
-    spec jsonb NOT NULL
+    spec jsonb NOT NULL,
+    archived boolean DEFAULT false NOT NULL
 );
 
 

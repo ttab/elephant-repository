@@ -1773,5 +1773,65 @@ func (a *Archiver) ensureSigningKeys(ctx context.Context) (outErr error) {
 	a.signingKeysChecked = time.Now()
 	a.signingKeys.Replace(set.Keys)
 
+	err = a.archiveSigningKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("archive signing keys: %w", err)
+	}
+
+	return nil
+}
+
+func (a *Archiver) archiveSigningKeys(ctx context.Context) error {
+	q := postgres.New(a.pool)
+
+	keys, err := q.GetUnarchivedSigningKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("get unarchived signing keys: %w", err)
+	}
+
+	for _, k := range keys {
+		var sk SigningKey
+
+		err := json.Unmarshal(k.Spec, &sk)
+		if err != nil {
+			return fmt.Errorf("unmarshal key %q: %w", k.Kid, err)
+		}
+
+		jwkData, err := MarshalPublicSigningKey(sk)
+		if err != nil {
+			return fmt.Errorf("marshal public key %q: %w", k.Kid, err)
+		}
+
+		checksum := sha256.Sum256(jwkData)
+		s3Key := fmt.Sprintf("signing-keys/%s.json", k.Kid)
+
+		_, err = a.s3.PutObject(ctx, &s3.PutObjectInput{
+			Bucket:            aws.String(a.bucket),
+			Key:               aws.String(s3Key),
+			Body:              bytes.NewReader(jwkData),
+			ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+			ChecksumSHA256: aws.String(
+				base64.StdEncoding.EncodeToString(checksum[:]),
+			),
+			ContentType:   aws.String("application/json"),
+			ContentLength: aws.Int64(int64(len(jwkData))),
+		})
+		if err != nil {
+			return fmt.Errorf("upload signing key %q to S3: %w",
+				k.Kid, err)
+		}
+
+		err = q.SetSigningKeyArchived(ctx, k.Kid)
+		if err != nil {
+			return fmt.Errorf("mark signing key %q as archived: %w",
+				k.Kid, err)
+		}
+
+		a.logger.InfoContext(ctx, "archived signing key to S3",
+			"kid", k.Kid,
+			"s3_key", s3Key,
+		)
+	}
+
 	return nil
 }
