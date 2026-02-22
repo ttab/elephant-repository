@@ -2297,3 +2297,303 @@ func TestUUIDNormalisation(t *testing.T) {
 	})
 	test.Must(t, err, "update article, both uppercase")
 }
+
+func TestIntegrationGetSubset(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write"))
+
+	ctx := t.Context()
+
+	const (
+		docUUID     = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI      = "article://test/123"
+		sectionUUID = "aaaa5627-be7a-4f09-8bfc-bc3361b0b0b5"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+	doc.Content = []*newsdoc.Block{
+		{
+			Type: "core/text",
+			Role: "heading-1",
+			Data: map[string]string{
+				"text": "The headline of the year",
+			},
+		},
+	}
+	doc.Links = []*newsdoc.Block{
+		{
+			Uuid:  sectionUUID,
+			Type:  "core/section",
+			Title: "A section",
+			Rel:   "section",
+		},
+	}
+
+	_, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.Must(t, err, "create article")
+
+	t.Run("AttributeExtraction", func(t *testing.T) {
+		res, err := client.Get(ctx, &repository.GetDocumentRequest{
+			Uuid: docUUID,
+			Subset: []string{
+				".meta(type='core/newsvalue')@{value}",
+			},
+		})
+		test.Must(t, err, "get with subset")
+
+		if res.Document != nil {
+			t.Fatal("expected Document to be nil when subset is requested")
+		}
+
+		if len(res.Subset) != 1 {
+			t.Fatalf("expected 1 extracted values entry, got %d",
+				len(res.Subset))
+		}
+
+		ev, ok := res.Subset[0].Values["value"]
+		if !ok {
+			t.Fatal("expected 'value' key in extracted values")
+		}
+
+		test.Equal(t, "3", ev.Value, "extracted newsvalue")
+	})
+
+	t.Run("DataExtraction", func(t *testing.T) {
+		res, err := client.Get(ctx, &repository.GetDocumentRequest{
+			Uuid: docUUID,
+			Subset: []string{
+				".content(type='core/text').data{text}",
+			},
+		})
+		test.Must(t, err, "get with data subset")
+
+		if res.Document != nil {
+			t.Fatal("expected Document to be nil when subset is requested")
+		}
+
+		if len(res.Subset) != 1 {
+			t.Fatalf("expected 1 extracted values entry, got %d",
+				len(res.Subset))
+		}
+
+		ev, ok := res.Subset[0].Values["text"]
+		if !ok {
+			t.Fatal("expected 'text' key in extracted values")
+		}
+
+		test.Equal(t, "The headline of the year", ev.Value,
+			"extracted text data")
+	})
+
+	t.Run("BlockExtraction", func(t *testing.T) {
+		res, err := client.Get(ctx, &repository.GetDocumentRequest{
+			Uuid: docUUID,
+			Subset: []string{
+				"sec=.links(rel='section')",
+			},
+		})
+		test.Must(t, err, "get with block subset")
+
+		if res.Document != nil {
+			t.Fatal("expected Document to be nil when subset is requested")
+		}
+
+		if len(res.Subset) != 1 {
+			t.Fatalf("expected 1 extracted values entry, got %d",
+				len(res.Subset))
+		}
+
+		ev, ok := res.Subset[0].Values["sec"]
+		if !ok {
+			t.Fatal("expected 'sec' key in extracted values")
+		}
+
+		if ev.Block == nil {
+			t.Fatal("expected block to be non-nil")
+		}
+
+		test.Equal(t, "core/section", ev.Block.Type,
+			"extracted block type")
+		test.Equal(t, sectionUUID, ev.Block.Uuid,
+			"extracted block uuid")
+	})
+
+	t.Run("MultipleExpressions", func(t *testing.T) {
+		res, err := client.Get(ctx, &repository.GetDocumentRequest{
+			Uuid: docUUID,
+			Subset: []string{
+				".meta(type='core/newsvalue')@{value}",
+				".content(type='core/text').data{text}",
+			},
+		})
+		test.Must(t, err, "get with multiple subset expressions")
+
+		if res.Document != nil {
+			t.Fatal("expected Document to be nil when subset is requested")
+		}
+
+		if len(res.Subset) != 2 {
+			t.Fatalf("expected 2 extracted values entries, got %d",
+				len(res.Subset))
+		}
+	})
+
+	t.Run("NoSubsetReturnsDocument", func(t *testing.T) {
+		res, err := client.Get(ctx, &repository.GetDocumentRequest{
+			Uuid: docUUID,
+		})
+		test.Must(t, err, "get without subset")
+
+		if res.Document == nil {
+			t.Fatal("expected Document to be non-nil without subset")
+		}
+
+		if len(res.Subset) != 0 {
+			t.Fatalf("expected no subset, got %d entries",
+				len(res.Subset))
+		}
+	})
+
+	t.Run("InvalidExpression", func(t *testing.T) {
+		_, err := client.Get(ctx, &repository.GetDocumentRequest{
+			Uuid: docUUID,
+			Subset: []string{
+				".meta((type='broken')",
+			},
+		})
+		if err == nil {
+			t.Fatal("expected error for invalid expression")
+		}
+
+		var twerr twirp.Error
+		if !errors.As(err, &twerr) {
+			t.Fatalf("expected twirp error, got %T", err)
+		}
+
+		test.Equal(t, twirp.InvalidArgument, twerr.Code(),
+			"expected invalid argument error")
+	})
+
+	t.Run("NoMatchReturnsEmpty", func(t *testing.T) {
+		res, err := client.Get(ctx, &repository.GetDocumentRequest{
+			Uuid: docUUID,
+			Subset: []string{
+				".meta(type='nonexistent/type')@{value}",
+			},
+		})
+		test.Must(t, err, "get with non-matching subset")
+
+		if res.Document != nil {
+			t.Fatal("expected Document to be nil when subset is requested")
+		}
+
+		test.Equal(t, 0, len(res.Subset),
+			"expected empty subset for non-matching expression")
+	})
+}
+
+func TestIntegrationBulkGetSubset(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write"))
+
+	ctx := t.Context()
+
+	const (
+		docUUID1 = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI1  = "article://test/123"
+		docUUID2 = "bbf05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI2  = "article://test/456"
+	)
+
+	doc1 := baseDocument(docUUID1, docURI1)
+	doc2 := baseDocument(docUUID2, docURI2)
+
+	_, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID1,
+		Document: doc1,
+	})
+	test.Must(t, err, "create first article")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID2,
+		Document: doc2,
+	})
+	test.Must(t, err, "create second article")
+
+	t.Run("SubsetExtraction", func(t *testing.T) {
+		res, err := client.BulkGet(ctx, &repository.BulkGetRequest{
+			Documents: []*repository.BulkGetReference{
+				{Uuid: docUUID1},
+				{Uuid: docUUID2},
+			},
+			Subset: []string{
+				".meta(type='core/newsvalue')@{value}",
+			},
+		})
+		test.Must(t, err, "bulk get with subset")
+
+		if len(res.Items) != 2 {
+			t.Fatalf("expected 2 items, got %d", len(res.Items))
+		}
+
+		for i, item := range res.Items {
+			if item.Document != nil {
+				t.Fatalf("item %d: expected Document to be nil", i)
+			}
+
+			if len(item.Subset) != 1 {
+				t.Fatalf("item %d: expected 1 subset entry, got %d",
+					i, len(item.Subset))
+			}
+
+			ev, ok := item.Subset[0].Values["value"]
+			if !ok {
+				t.Fatalf("item %d: expected 'value' key", i)
+			}
+
+			test.Equal(t, "3", ev.Value,
+				"item %d: extracted newsvalue", i)
+		}
+	})
+
+	t.Run("InvalidExpression", func(t *testing.T) {
+		_, err := client.BulkGet(ctx, &repository.BulkGetRequest{
+			Documents: []*repository.BulkGetReference{
+				{Uuid: docUUID1},
+			},
+			Subset: []string{
+				".meta((type='broken')",
+			},
+		})
+		if err == nil {
+			t.Fatal("expected error for invalid expression")
+		}
+
+		var twerr twirp.Error
+		if !errors.As(err, &twerr) {
+			t.Fatalf("expected twirp error, got %T", err)
+		}
+
+		test.Equal(t, twirp.InvalidArgument, twerr.Code(),
+			"expected invalid argument error")
+	})
+}
