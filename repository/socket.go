@@ -547,6 +547,36 @@ func (s *SocketSession) handleGetDocuments(
 		includeExtractors = append(includeExtractors, inc)
 	}
 
+	var subsetExtractors []*newsdoc.ValueExtractor
+
+	for i, expr := range req.Subset {
+		ve, err := newsdoc.ValueExtractorFromString(expr)
+		if err != nil {
+			return nil, SockErrorf(string(twirp.InvalidArgument),
+				"invalid subset expression subset[%d]: %v", i, err)
+		}
+
+		subsetExtractors = append(subsetExtractors, ve)
+	}
+
+	var inclusionSubsets map[string][]*newsdoc.ValueExtractor
+
+	for docType, expr := range req.InclusionSubsets {
+		ve, err := newsdoc.ValueExtractorFromString(expr)
+		if err != nil {
+			return nil, SockErrorf(string(twirp.InvalidArgument),
+				"invalid inclusion subset expression for %q: %v",
+				docType, err)
+		}
+
+		if inclusionSubsets == nil {
+			inclusionSubsets = make(map[string][]*newsdoc.ValueExtractor)
+		}
+
+		inclusionSubsets[docType] = append(
+			inclusionSubsets[docType], ve)
+	}
+
 	previous, ok := s.sets[req.SetName]
 	if ok {
 		previous.Close()
@@ -560,6 +590,8 @@ func (s *SocketSession) handleGetDocuments(
 		req.Type, req.IncludeAcls, req.SetName,
 		timespan, req.Labels,
 		includeExtractors,
+		subsetExtractors,
+		inclusionSubsets,
 		identity, s.cache, s.store, handle)
 
 	handle.Set = docSet

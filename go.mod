@@ -26,7 +26,7 @@ require (
 	github.com/tmaxmax/go-sse v0.11.0
 	github.com/ttab/darknut v0.1.3
 	github.com/ttab/eleconf v0.1.2
-	github.com/ttab/elephant-api v0.21.1
+	github.com/ttab/elephant-api v0.21.2-0.20260223183249-53631ebb4519
 	github.com/ttab/elephantine v0.23.6
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.8.4

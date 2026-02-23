@@ -62,11 +62,11 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "cert-file",
-				Sources: cli.EnvVars("TLS_CERT"),
+				Sources: cli.EnvVars("TLS_CERT_PATH"),
 			},
 			&cli.StringFlag{
 				Name:    "key-file",
-				Sources: cli.EnvVars("TLS_KEY"),
+				Sources: cli.EnvVars("TLS_KEY_PATH"),
 			},
 			&cli.StringFlag{
 				Name:    "profile-addr",
