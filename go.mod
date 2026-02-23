@@ -1,6 +1,6 @@
 module github.com/ttab/elephant-repository
 
-go 1.25.6
+go 1.25.7
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
@@ -30,7 +30,7 @@ require (
 	github.com/ttab/elephantine v0.23.6
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.8.4
-	github.com/ttab/newsdoc v1.0.0-pre2.0.20260222162209-72f99faf57a2
+	github.com/ttab/newsdoc v1.0.0
 	github.com/ttab/revisor v0.10.0
 	github.com/ttab/revisorschemas v1.1.1
 	github.com/twitchtv/twirp v8.1.3+incompatible
