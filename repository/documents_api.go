@@ -1365,6 +1365,65 @@ func (a *DocumentsService) Purge(
 	return &repository.PurgeResponse{}, nil
 }
 
+func parseSubsetExpressions(
+	expressions []string,
+) ([]*newsdoc.ValueExtractor, error) {
+	if len(expressions) == 0 {
+		return nil, nil
+	}
+
+	extractors := make([]*newsdoc.ValueExtractor, len(expressions))
+
+	for i, expr := range expressions {
+		ve, err := newsdoc.ValueExtractorFromString(expr)
+		if err != nil {
+			return nil, twirp.InvalidArgumentError(
+				fmt.Sprintf("subset[%d]", i), err.Error())
+		}
+
+		extractors[i] = ve
+	}
+
+	return extractors, nil
+}
+
+func collectSubset(
+	doc newsdoc.Document, extractors []*newsdoc.ValueExtractor,
+) []*repository.ExtractedValues {
+	var result []*repository.ExtractedValues
+
+	for ie, ve := range extractors {
+		items := ve.Collect(doc)
+
+		for _, item := range items {
+			values := make(
+				map[string]*repository.ExtractedValue, len(item),
+			)
+
+			for key, nev := range item {
+				ev := &repository.ExtractedValue{
+					Value:      nev.Value,
+					Annotation: nev.Annotation,
+					Role:       nev.Role,
+				}
+
+				if nev.Block != nil {
+					ev.Block = rpcdoc.BlockToRPC(*nev.Block)
+				}
+
+				values[key] = ev
+			}
+
+			result = append(result, &repository.ExtractedValues{
+				Extractor: int64(ie),
+				Values:    values,
+			})
+		}
+	}
+
+	return result
+}
+
 // Get implements repository.Documents.
 func (a *DocumentsService) Get(
 	ctx context.Context, req *repository.GetDocumentRequest,
@@ -1406,6 +1465,11 @@ func (a *DocumentsService) Get(
 	}
 
 	docUUID, err := validateRequiredUUIDParam(req.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	extractors, err := parseSubsetExpressions(req.Subset)
 	if err != nil {
 		return nil, err
 	}
@@ -1488,7 +1552,11 @@ func (a *DocumentsService) Get(
 			doc.Language = a.defaultLanguage
 		}
 
-		res.Document = rpcdoc.DocumentToRPC(*doc)
+		if len(extractors) > 0 {
+			res.Subset = collectSubset(*doc, extractors)
+		} else {
+			res.Document = rpcdoc.DocumentToRPC(*doc)
+		}
 	}
 
 	if includeMetaDoc && metaVersion != -1 {
@@ -1533,6 +1601,11 @@ func (a *DocumentsService) BulkGet(
 	if len(req.Documents) > 200 {
 		return nil, twirp.InvalidArgumentError("documents",
 			"bulk loading of more than 200 documents is not allowed")
+	}
+
+	extractors, err := parseSubsetExpressions(req.Subset)
+	if err != nil {
+		return nil, err
 	}
 
 	refs := make([]BulkGetReference, len(req.Documents))
@@ -1614,10 +1687,18 @@ func (a *DocumentsService) BulkGet(
 	// filtering or documents that have been deleted.
 
 	for i, d := range docs {
-		resp.Items[i] = &repository.BulkGetItem{
-			Document: rpcdoc.DocumentToRPC(d.Document),
-			Version:  d.Version,
+		item := &repository.BulkGetItem{
+			Uuid:    d.UUID.String(),
+			Version: d.Version,
 		}
+
+		if len(extractors) > 0 {
+			item.Subset = collectSubset(d.Document, extractors)
+		} else {
+			item.Document = rpcdoc.DocumentToRPC(d.Document)
+		}
+
+		resp.Items[i] = item
 	}
 
 	return &resp, nil

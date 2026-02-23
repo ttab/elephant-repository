@@ -1,6 +1,6 @@
 module github.com/ttab/elephant-repository
 
-go 1.25.6
+go 1.25.7
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
@@ -26,11 +26,11 @@ require (
 	github.com/tmaxmax/go-sse v0.11.0
 	github.com/ttab/darknut v0.1.3
 	github.com/ttab/eleconf v0.1.2
-	github.com/ttab/elephant-api v0.20.1-0.20260216064443-836ac30a1fce
+	github.com/ttab/elephant-api v0.21.1
 	github.com/ttab/elephantine v0.23.6
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.8.4
-	github.com/ttab/newsdoc v0.8.0
+	github.com/ttab/newsdoc v1.0.0
 	github.com/ttab/revisor v0.10.0
 	github.com/ttab/revisorschemas v1.1.1
 	github.com/twitchtv/twirp v8.1.3+incompatible

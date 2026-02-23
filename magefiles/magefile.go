@@ -6,10 +6,10 @@ package main
 import (
 	"context"
 
-	//mage:import sql
-	sql "github.com/ttab/mage/sql"
 	//mage:import s3
 	_ "github.com/ttab/mage/s3"
+	//mage:import sql
+	sql "github.com/ttab/mage/sql"
 )
 
 var reportingTables = []string{
