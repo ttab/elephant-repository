@@ -428,7 +428,7 @@ func (a *SchemasService) fetchRemoteSpec(
 			fmt.Sprintf("failed to create schema request: %v", err))
 	}
 
-	res, err := a.client.Do(req) //nolint:bodyclose
+	res, err := a.client.Do(req) //nolint:bodyclose,gosec // G704: fetching admin-provided schema URL by design.
 	if err != nil {
 		return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
 			"schema_url",

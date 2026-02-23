@@ -92,7 +92,7 @@ func main() {
 				Name:    "ensure-schema",
 				Sources: cli.EnvVars("ENSURE_SCHEMA"),
 			},
-			&cli.StringFlag{
+			&cli.StringFlag{ //nolint:gosec // G101: default dev connection string, not a real credential.
 				Name:    "db",
 				Value:   "postgres://elephant-repository:pass@localhost/elephant-repository",
 				Sources: cli.EnvVars("CONN_STRING"),
@@ -711,7 +711,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 
 		var client http.Client
 
-		res, err := client.Do(req)
+		res, err := client.Do(req) //nolint:gosec // G704: liveness check to localhost, not user-controlled.
 		if err != nil {
 			return fmt.Errorf(
 				"failed to perform liveness check request: %w", err)
