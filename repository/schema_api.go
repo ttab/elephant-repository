@@ -428,6 +428,7 @@ func (a *SchemasService) fetchRemoteSpec(
 			fmt.Sprintf("failed to create schema request: %v", err))
 	}
 
+	//nolint:gosec // G704: URL is from a validated schema_url, not user input.
 	res, err := a.client.Do(req) //nolint:bodyclose
 	if err != nil {
 		return revisor.ConstraintSet{}, twirp.InvalidArgumentError(

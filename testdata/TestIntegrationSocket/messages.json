@@ -92,7 +92,8 @@
               }
             ],
             "language": "sv-se"
-          }
+          },
+          "uuid": "382c0aad-7410-4daa-a9f2-347aa17e315e"
         }
       ],
       "final_batch": true
@@ -132,7 +133,8 @@
               "updater_uri": "user://test/testintegrationsocket",
               "nonce": "00000000-0000-0000-0000-000000000000",
               "type": "core/article"
-            }
+            },
+            "uuid": "f7eb1d2d-0814-4027-b857-fa21d2f16805"
           }
         }
       ]
@@ -453,7 +455,8 @@
               "updater_uri": "user://test/testintegrationsocket",
               "nonce": "00000000-0000-0000-0000-000000000000",
               "type": "core/article"
-            }
+            },
+            "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437"
           }
         }
       ]

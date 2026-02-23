@@ -1123,6 +1123,13 @@ func TimespanTuplesFromRPC(spans []*repository.Timespan) ([][2]time.Time, error)
 	return tuples, nil
 }
 
+// Evict implements repository.Documents.
+func (a *DocumentsService) Evict(
+	_ context.Context, _ *repository.EvictRequest,
+) (*repository.EvictResponse, error) {
+	return nil, twirp.Unimplemented.Error("not implemented")
+}
+
 // Delete implements repository.Documents.
 func (a *DocumentsService) Delete(
 	ctx context.Context, req *repository.DeleteDocumentRequest,

@@ -30,9 +30,62 @@ type DocumentStreamItem struct {
 	Data      *DocumentStreamData
 }
 
-// DocumentStreamHandlerFunc handles a entry in the document stream. A handler
-// should never block as as handlers are processed serially.
-type DocumentStreamHandlerFunc func(item DocumentStreamItem)
+// DocumentStreamHandlerFunc handles entries in the document stream. A handler
+// should never block as handlers are processed serially.
+type DocumentStreamHandlerFunc func(items []DocumentStreamItem)
+
+const docStreamBufSize = 100
+
+// docStreamBuf is a fixed-size circular buffer of DocumentStreamItems.
+type docStreamBuf struct {
+	items [docStreamBufSize]DocumentStreamItem
+	head  int
+	len   int
+}
+
+// put appends an item to the buffer, overwriting the oldest when full.
+func (b *docStreamBuf) put(item DocumentStreamItem) {
+	b.items[b.head] = item
+	b.head = (b.head + 1) % docStreamBufSize
+
+	if b.len < docStreamBufSize {
+		b.len++
+	}
+}
+
+// itemsFrom returns items with Event.ID >= from. Returns (nil, false) if from
+// is older than the earliest item in the buffer. Returns (nil, true) if the
+// buffer is empty or from > latest Event.ID.
+func (b *docStreamBuf) itemsFrom(from int64) ([]DocumentStreamItem, bool) {
+	if b.len == 0 {
+		return nil, true
+	}
+
+	// Start is the index of the oldest item.
+	start := (b.head - b.len + docStreamBufSize) % docStreamBufSize
+	oldest := b.items[start].Event.ID
+	newest := b.items[(b.head-1+docStreamBufSize)%docStreamBufSize].Event.ID
+
+	if from < oldest {
+		return nil, false
+	}
+
+	if from > newest {
+		return nil, true
+	}
+
+	var result []DocumentStreamItem
+
+	for i := range b.len {
+		idx := (start + i) % docStreamBufSize
+
+		if b.items[idx].Event.ID >= from {
+			result = append(result, b.items[idx])
+		}
+	}
+
+	return result, true
+}
 
 func NewDocumentStream(
 	ctx context.Context,
@@ -83,11 +136,17 @@ func NewDocumentStream(
 }
 
 type DocumentStream struct {
-	ctx       context.Context
-	log       *slog.Logger
-	m         sync.RWMutex
+	ctx context.Context
+	log *slog.Logger
+	m   sync.RWMutex
+	// emitMu serializes emitEvents with Subscribe/SubscribeFrom so that
+	// subscriptions cannot be registered while events are being loaded.
+	// This prevents consumers from either missing in-flight events or
+	// receiving events that predate their subscription.
+	emitMu    sync.Mutex
 	serial    int64
 	consumers map[int64]DocumentStreamHandlerFunc
+	buf       docStreamBuf
 
 	mEmitEvents  *prometheus.CounterVec
 	mPosition    prometheus.Gauge
@@ -100,29 +159,13 @@ type DocumentStream struct {
 	store     DocStore
 }
 
-func (s *DocumentStream) consumerCount() int {
-	s.m.RLock()
-	count := len(s.consumers)
-	s.m.RUnlock()
-
-	return count
-}
-
 func (s *DocumentStream) handleEvents() {
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
 		case id := <-s.eventChan:
-			if s.consumerCount() == 0 {
-				// Bump the lastID so that we don't do
-				// unnecessary processing to the time when
-				// nobody was connected.
-				s.lastID = max(s.lastID, id)
-				s.mPosition.Set(float64(s.lastID))
-
-				continue
-			}
+			s.emitMu.Lock()
 
 			err := elephantine.CallWithRecover(s.ctx,
 				func(ctx context.Context) error {
@@ -132,6 +175,8 @@ func (s *DocumentStream) handleEvents() {
 				s.log.Error("failed to emit document stream items",
 					elephantine.LogKeyError, err)
 			}
+
+			s.emitMu.Unlock()
 		}
 	}
 }
@@ -242,32 +287,44 @@ func (s *DocumentStream) emitEvents(
 		return fmt.Errorf("load data: %w", err)
 	}
 
-	s.m.RLock()
+	items := make([]DocumentStreamItem, 0, len(events))
 
 	for _, evt := range events {
-		item := DocumentStreamItem{
+		items = append(items, DocumentStreamItem{
 			Event:     evt,
 			Timespans: TimespansFromTuples(evt.Timespans),
 			Data:      data[evt.UUID],
-		}
+		})
+	}
 
-		for _, h := range s.consumers {
-			h(item)
-		}
+	s.m.Lock()
 
-		s.lastID = evt.ID
+	for i := range items {
+		s.buf.put(items[i])
+
+		s.lastID = items[i].Event.ID
 
 		s.mPosition.Set(float64(s.lastID))
 	}
 
-	s.m.RUnlock()
+	for _, h := range s.consumers {
+		h(items)
+	}
+
+	s.m.Unlock()
 
 	return nil
 }
 
-// Subscribe calls handler with new items until the subscription context is
-// cancelled or the document stream is stopped.
-func (s *DocumentStream) Subscribe(ctx context.Context, handler DocumentStreamHandlerFunc) {
+// Subscribe registers a handler for new document stream items. The handler
+// will be automatically unregistered when ctx or the stream context is
+// cancelled.
+func (s *DocumentStream) Subscribe(
+	ctx context.Context, handler DocumentStreamHandlerFunc,
+) {
+	s.emitMu.Lock()
+	defer s.emitMu.Unlock()
+
 	s.m.Lock()
 
 	s.serial++
@@ -279,6 +336,47 @@ func (s *DocumentStream) Subscribe(ctx context.Context, handler DocumentStreamHa
 
 	s.m.Unlock()
 
+	go s.unsubscribeOnCancel(ctx, id)
+}
+
+// SubscribeFrom registers a handler and replays buffered items with
+// Event.ID >= from before delivering live events. Returns false if the
+// requested position is no longer available in the buffer. The handler will be
+// automatically unregistered when ctx or the stream context is cancelled.
+func (s *DocumentStream) SubscribeFrom(
+	ctx context.Context, from int64, handler DocumentStreamHandlerFunc,
+) bool {
+	s.emitMu.Lock()
+	defer s.emitMu.Unlock()
+
+	s.m.Lock()
+
+	replay, ok := s.buf.itemsFrom(from)
+	if !ok {
+		s.m.Unlock()
+
+		return false
+	}
+
+	if len(replay) > 0 {
+		handler(replay)
+	}
+
+	s.serial++
+
+	id := s.serial
+
+	s.consumers[id] = handler
+	s.mSubscribers.Set(float64(len(s.consumers)))
+
+	s.m.Unlock()
+
+	go s.unsubscribeOnCancel(ctx, id)
+
+	return true
+}
+
+func (s *DocumentStream) unsubscribeOnCancel(ctx context.Context, id int64) {
 	select {
 	case <-ctx.Done():
 	case <-s.ctx.Done():

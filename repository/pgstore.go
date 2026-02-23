@@ -311,9 +311,10 @@ func (s *PGDocStore) OnEventlog(
 }
 
 // RunListener opens a connection to the database and subscribes to all store
-// notifications.
+// notifications. The pool must be a direct connection to PostgreSQL, as
+// LISTEN/NOTIFY is not supported through PgBouncer.
 func (s *PGDocStore) RunListener(ctx context.Context, pool *pgxpool.Pool) {
-	fanOuts := []pg.ChannelSubscription{
+	sub := pg.NewSubscriber(s.logger, pool, []pg.ChannelSubscription{
 		s.archived,
 		s.schemas,
 		s.deprecations,
@@ -321,9 +322,13 @@ func (s *PGDocStore) RunListener(ctx context.Context, pool *pgxpool.Pool) {
 		s.eventOutbox,
 		s.eventlog,
 		s.typeConf,
-	}
+	})
 
-	pg.Subscribe(ctx, s.logger, pool, fanOuts...)
+	err := sub.Run(ctx)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "subscriber stopped",
+			elephantine.LogKeyError, err)
+	}
 }
 
 // Delete implements DocStore.
