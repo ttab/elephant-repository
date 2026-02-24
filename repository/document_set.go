@@ -29,6 +29,8 @@ func newDocumentSet(
 	timespan *Timespan,
 	labels []string,
 	includeExtractors []*newsdoc.ValueExtractor,
+	subsetExtractors []*newsdoc.ValueExtractor,
+	inclusionSubsets map[string][]*newsdoc.ValueExtractor,
 	identity []string,
 	cache *DocCache,
 	store DocStore,
@@ -45,6 +47,8 @@ func newDocumentSet(
 		set:               make(map[uuid.UUID]*setDocument),
 		included:          make(map[uuid.UUID]*incDocument),
 		includeExtractors: includeExtractors,
+		subsetExtractors:  subsetExtractors,
+		inclusionSubsets:  inclusionSubsets,
 		process:           make(chan DocumentStreamItem, 128),
 		oosErr:            make(chan struct{}),
 		identity:          identity,
@@ -75,6 +79,8 @@ type documentSet struct {
 	included map[uuid.UUID]*incDocument
 
 	includeExtractors []*newsdoc.ValueExtractor
+	subsetExtractors  []*newsdoc.ValueExtractor
+	inclusionSubsets  map[string][]*newsdoc.ValueExtractor
 
 	process chan DocumentStreamItem
 
@@ -96,22 +102,27 @@ func (ds *documentSet) getIdentity() []string {
 	return identity
 }
 
-func (ds *documentSet) handleDocStreamItem(item DocumentStreamItem) {
-	if item.Event.Event == TypeACLUpdate && !ds.includeACL {
-		return
-	}
+func (ds *documentSet) handleDocStreamItem(items []DocumentStreamItem) {
+	for _, item := range items {
+		if item.Event.Event == TypeACLUpdate && !ds.includeACL {
+			continue
+		}
 
-	select {
-	case <-ds.oosErr:
-	case ds.process <- item:
-	default:
-		// If the processing buffer is full we will lose events and get
-		// out of sync with the actual state of things. This will cause
-		// the processing loop to emit an "oos" error and exit on the
-		// next iteration.
-		ds.oosOnce.Do(func() {
-			close(ds.oosErr)
-		})
+		select {
+		case <-ds.oosErr:
+			return
+		case ds.process <- item:
+		default:
+			// If the processing buffer is full we will lose
+			// events and get out of sync with the actual state of
+			// things. This will cause the processing loop to emit
+			// an "oos" error and exit on the next iteration.
+			ds.oosOnce.Do(func() {
+				close(ds.oosErr)
+			})
+
+			return
+		}
 	}
 }
 
@@ -119,7 +130,7 @@ func (ds *documentSet) Initialise(
 	ctx context.Context,
 	stream *DocumentStream,
 ) error {
-	go stream.Subscribe(ctx, ds.handleDocStreamItem)
+	stream.Subscribe(ctx, ds.handleDocStreamItem)
 
 	method := matchByType
 
@@ -256,11 +267,18 @@ func (ds *documentSet) Initialise(
 	batch = &rsock.DocumentBatch{}
 
 	for docUUID, m := range matches {
-		batch.Documents = append(batch.Documents,
-			&rsock.DocumentState{
-				Meta:     DocumentMetaToRPC(&m.Meta),
-				Document: rpc_newsdoc.DocumentToRPC(m.Document),
-			})
+		state := &rsock.DocumentState{
+			Uuid: docUUID.String(),
+			Meta: DocumentMetaToRPC(&m.Meta),
+		}
+
+		if len(ds.subsetExtractors) > 0 {
+			state.Subset = collectSubset(m.Document, ds.subsetExtractors)
+		} else {
+			state.Document = rpc_newsdoc.DocumentToRPC(m.Document)
+		}
+
+		batch.Documents = append(batch.Documents, state)
 
 		incCh := ds.AddDocument(docUUID, m.Document)
 
@@ -441,8 +459,20 @@ func (ds *documentSet) emitItem(
 	}
 
 	if withState {
-		update.Document = rpc_newsdoc.DocumentToRPC(item.Data.Document)
 		update.Meta = DocumentMetaToRPC(&item.Data.Meta)
+
+		extractors := ds.subsetExtractors
+		if !inSet {
+			extractors = ds.inclusionSubsets[item.Event.Type]
+		}
+
+		if len(extractors) > 0 {
+			update.Subset = collectSubset(
+				item.Data.Document, extractors)
+		} else {
+			update.Document = rpc_newsdoc.DocumentToRPC(
+				item.Data.Document)
+		}
 	}
 
 	ds.emitter.Update(ctx, &update)
@@ -559,13 +589,22 @@ func (ds *documentSet) handleInclusionChanges(
 			continue
 		}
 
+		docMeta := meta[change.UUID]
+
 		state := &rsock.DocumentState{
-			Meta: DocumentMetaToRPC(meta[change.UUID]),
+			Uuid: change.UUID.String(),
+			Meta: DocumentMetaToRPC(docMeta),
 		}
 
 		doc := loadDocs[change.UUID]
 		if doc != nil {
-			state.Document = rpc_newsdoc.DocumentToRPC(*doc)
+			extractors := ds.inclusionSubsets[docMeta.Type]
+
+			if len(extractors) > 0 {
+				state.Subset = collectSubset(*doc, extractors)
+			} else {
+				state.Document = rpc_newsdoc.DocumentToRPC(*doc)
+			}
 		}
 
 		batch.Documents = append(batch.Documents, &rsock.InclusionDocument{

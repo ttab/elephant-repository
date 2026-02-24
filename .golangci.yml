@@ -59,6 +59,11 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      - linters: [gosec]
+        path: _test\.go$
+      - linters: [gosec]
+        path: jwt_dummy\.go$
     paths:
       - third_party$
       - builtin$

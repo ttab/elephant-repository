@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -286,6 +287,434 @@ func TestIntegrationSocket(t *testing.T) {
 			resp.Responses())
 		test.Must(t, err, "write messages reference file")
 	}
+}
+
+func TestIntegrationSocketPartial(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	ctx := t.Context()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	// Reuse the TestIntegrationSocket testdata for config and documents.
+	testdata := filepath.Join("..", "testdata")
+	socketDir := filepath.Join(testdata, "TestIntegrationSocket")
+	docsDir := filepath.Join(socketDir, "documents")
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunArchiver:        true,
+		RunEventlogBuilder: true,
+		ConfigDirectory:    filepath.Join(socketDir, "config"),
+	})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
+
+	// Create beach_plan_v1 before subscribing so it appears in the
+	// initial batch.
+	beachPlanUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
+
+	// Create the beach article so it can be included later when
+	// beach_plan_v2 adds a deliverable link to it.
+	beachUUID := writeDoc(t, client, docsDir, "beach", nil)
+
+	serverURL, err := url.Parse(tc.Server.URL)
+	test.Must(t, err, "parse server URL")
+
+	token, err := itest.AccessToken(tc.SigningKey,
+		itest.StandardClaims(t, "doc_read"))
+	test.Must(t, err, "create access token")
+
+	tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
+	test.Must(t, err, "get socket token")
+
+	wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
+	wsURL.Scheme = "ws"
+
+	header := http.Header{
+		"Origin": []string{"https://example.ecms.se"},
+	}
+
+	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL.String(), header)
+	test.Must(t, err, "dial websocket")
+
+	t.Cleanup(func() {
+		err := wsResp.Body.Close()
+		if err != nil && !errors.Is(err, os.ErrClosed) {
+			t.Errorf("close websocket response body: %v", err)
+		}
+	})
+
+	callID := makeCall(t, conn, &repositorysocket.Call{
+		Authenticate: &repositorysocket.Authenticate{
+			Token: token,
+		},
+	})
+
+	authResp, ok := readResponse(t, conn)
+	if !ok {
+		t.Fatal("socket was unexpectedly closed")
+	}
+
+	if authResp.CallId != callID {
+		t.Fatal("authentication response call ID mismatch")
+	}
+
+	// --- Verify that malformed subset expressions are rejected ---
+
+	badSubsetCall := makeCall(t, conn, &repositorysocket.Call{
+		GetDocuments: &repositorysocket.GetDocuments{
+			SetName: "bad-subset",
+			Type:    "core/planning-item",
+			Subset:  []string{".meta(type='broken"},
+		},
+	})
+
+	badSubsetResp, ok := readResponse(t, conn)
+	if !ok {
+		t.Fatal("socket was unexpectedly closed after malformed subset")
+	}
+
+	if badSubsetResp.CallId != badSubsetCall {
+		t.Fatal("malformed subset response call ID mismatch")
+	}
+
+	if badSubsetResp.Error == nil {
+		t.Fatal("expected error response for malformed subset expression")
+	}
+
+	test.Equal(t, "invalid_argument", badSubsetResp.Error.ErrorCode,
+		"malformed subset error code")
+
+	if !strings.Contains(badSubsetResp.Error.ErrorMessage, "subset") {
+		t.Fatalf("expected error message to mention subset, got: %s",
+			badSubsetResp.Error.ErrorMessage)
+	}
+
+	const subCall = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+	resp := newResponseCollection()
+
+	go resp.ReadResponses(t, conn)
+
+	// Subscribe with subset for planning items and inclusion subset
+	// for articles. Uses the doc annotation on the include expression
+	// so that the full document is loaded for included articles.
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId: subCall,
+		GetDocuments: &repositorysocket.GetDocuments{
+			SetName: "planning",
+			Type:    "core/planning-item",
+			Timespan: &rpc.Timespan{
+				From: "2025-11-14T00:00:00Z",
+				To:   "2025-11-14T23:59:59Z",
+			},
+			Include: []string{
+				".meta(type='core/assignment').links(rel='deliverable')@{uuid:doc}",
+			},
+			Subset: []string{
+				".meta(type='core/newsvalue')@{value}",
+			},
+			InclusionSubsets: map[string]string{
+				"core/article": ".content(type='core/text' role='heading-1').data{text}",
+			},
+		},
+	})
+
+	// --- Verify initial batch uses subset ---
+
+	batch, err := resp.AwaitDocumentBatch(subCall, 2*time.Second)
+	test.Must(t, err, "get initial document batch")
+
+	db := batch.DocumentBatch
+
+	// Find the beach plan document in the batch.
+	var beachPlanState *repositorysocket.DocumentState
+
+	for _, doc := range db.Documents {
+		if doc.Meta != nil && doc.Meta.Type == "core/planning-item" {
+			beachPlanState = doc
+
+			break
+		}
+	}
+
+	if beachPlanState == nil {
+		t.Fatal("beach plan not found in initial batch")
+	}
+
+	if beachPlanState.Document != nil {
+		t.Fatal("expected Document to be nil when subset is active")
+	}
+
+	if len(beachPlanState.Subset) != 1 {
+		t.Fatalf("expected 1 subset entry in initial batch, got %d",
+			len(beachPlanState.Subset))
+	}
+
+	ev, ok := beachPlanState.Subset[0].Values["value"]
+	if !ok {
+		t.Fatal("expected 'value' key in initial batch subset")
+	}
+
+	test.Equal(t, "3", ev.Value, "extracted newsvalue from initial batch")
+
+	_, err = resp.AwaitResponse(subCall, nil, 2*time.Second)
+	test.Must(t, err, "subscribe to document set")
+
+	// --- Write beach_plan_v2 to trigger update + inclusion ---
+
+	// beach_plan_v2 adds a deliverable link to the beach article,
+	// which triggers an inclusion change.
+	writeDoc(t, client, docsDir, "beach_plan_v2", nil)
+
+	// Verify DocumentUpdate has subset applied for the plan update.
+	planUpdate, err := resp.AwaitDocumentUpdate(
+		subCall, beachPlanUUID, 2*time.Second)
+	test.Must(t, err, "get beach plan v2 update")
+
+	du := planUpdate.DocumentUpdate
+
+	test.Equal(t, int64(2), du.Event.Version, "beach plan v2 version")
+
+	if du.Document != nil {
+		t.Fatal("expected Document to be nil in update when subset is active")
+	}
+
+	if len(du.Subset) != 1 {
+		t.Fatalf("expected 1 subset entry in update, got %d",
+			len(du.Subset))
+	}
+
+	updateEV, ok := du.Subset[0].Values["value"]
+	if !ok {
+		t.Fatal("expected 'value' key in update subset")
+	}
+
+	test.Equal(t, "3", updateEV.Value,
+		"extracted newsvalue from update")
+
+	// --- Verify inclusion batch uses inclusion subset ---
+
+	inclResp, err := resp.AwaitInclusionBatch(subCall, 2*time.Second)
+	test.Must(t, err, "get inclusion batch after plan v2")
+
+	ib := inclResp.InclusionBatch
+	if len(ib.Documents) == 0 {
+		t.Fatal("expected at least one included document")
+	}
+
+	// Find the beach article in the inclusion batch.
+	var beachIncl *repositorysocket.InclusionDocument
+
+	for _, doc := range ib.Documents {
+		if doc.Uuid == beachUUID {
+			beachIncl = doc
+
+			break
+		}
+	}
+
+	if beachIncl == nil {
+		t.Fatal("beach article not found in inclusion batch")
+	}
+
+	if beachIncl.State == nil {
+		t.Fatal("expected state for included document")
+	}
+
+	if beachIncl.State.Document != nil {
+		t.Fatal("expected Document to be nil for included doc with inclusion subset")
+	}
+
+	if len(beachIncl.State.Subset) != 1 {
+		t.Fatalf("expected 1 subset entry for included doc, got %d",
+			len(beachIncl.State.Subset))
+	}
+
+	textEV, ok := beachIncl.State.Subset[0].Values["text"]
+	if !ok {
+		t.Fatal("expected 'text' key in inclusion subset")
+	}
+
+	test.Equal(t, "Svenska talangerna vann i VM-debuten",
+		textEV.Value, "extracted heading from included article")
+
+	err = conn.WriteMessage(websocket.CloseMessage, nil)
+	test.Must(t, err, "close socket gracefully")
+}
+
+func TestIntegrationSocketEventlog(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	ctx := t.Context()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	// Reuse the TestIntegrationSocket testdata for config and documents.
+	testdata := filepath.Join("..", "testdata")
+	dataDir := filepath.Join(testdata, t.Name())
+	socketDir := filepath.Join(testdata, "TestIntegrationSocket")
+	docsDir := filepath.Join(socketDir, "documents")
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunArchiver:        true,
+		RunEventlogBuilder: true,
+		ConfigDirectory:    filepath.Join(socketDir, "config"),
+	})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write eventlog_read"))
+
+	// Write beach_plan_v1 before subscribing so that we test
+	// playback from the docstream buffer.
+	beachPlanUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
+
+	serverURL, err := url.Parse(tc.Server.URL)
+	test.Must(t, err, "parse server URL")
+
+	token, err := itest.AccessToken(tc.SigningKey,
+		itest.StandardClaims(t, "eventlog_read doc_read"))
+	test.Must(t, err, "create access token")
+
+	tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
+	test.Must(t, err, "get socket token")
+
+	wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
+	wsURL.Scheme = "ws"
+
+	header := http.Header{
+		"Origin": []string{"https://example.ecms.se"},
+	}
+
+	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL.String(), header)
+	test.Must(t, err, "dial websocket")
+
+	t.Cleanup(func() {
+		err := wsResp.Body.Close()
+		if err != nil && !errors.Is(err, os.ErrClosed) {
+			t.Errorf("close websocket response body: %v", err)
+		}
+	})
+
+	callID := makeCall(t, conn, &repositorysocket.Call{
+		Authenticate: &repositorysocket.Authenticate{
+			Token: token,
+		},
+	})
+
+	authResp, ok := readResponse(t, conn)
+	if !ok {
+		t.Fatal("socket was unexpectedly closed")
+	}
+
+	if authResp.CallId != callID {
+		t.Fatal("authentication response call ID mismatch")
+	}
+
+	const (
+		evtCall   = "e1e2e3e4-f5f6-7890-abcd-ef1234567890"
+		closeCall = "c1c2c3c4-d5d6-7890-abcd-ef1234567890"
+	)
+
+	resp := newResponseCollection()
+
+	go resp.ReadResponses(t, conn)
+
+	// Subscribe to the eventlog with after=0 to get buffer playback
+	// (beach_plan_v1 should be in the buffer). Use type subsets to
+	// test partial document extraction.
+	afterZero := int64(0)
+
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId: evtCall,
+		GetEventlog: &repositorysocket.GetEventlog{
+			Name:  "test-eventlog",
+			After: &afterZero,
+			DocumentTypes: []string{
+				"core/planning-item",
+				"core/article",
+			},
+			TypeSubsets: map[string]string{
+				"core/planning-item": ".meta(type='core/newsvalue')@{value}",
+				"core/article":       ".content(type='core/text' role='heading-1').data{text}",
+			},
+		},
+	})
+
+	// Await the subscription confirmation.
+	_, err = resp.AwaitResponse(evtCall, nil, 2*time.Second)
+	test.Must(t, err, "subscribe to eventlog")
+
+	// Write the remaining beach documents.
+	writeDoc(t, client, docsDir, "beach", nil)
+	writeDoc(t, client, docsDir, "beach_plan_v2", nil)
+	writeDoc(t, client, docsDir, "beach_plan_v3", nil)
+
+	// Wait for the beach_plan_v3 event (the last expected event).
+	_, err = resp.AwaitResponse(evtCall, func(r *repositorysocket.Response) bool {
+		if r.Events == nil {
+			return false
+		}
+
+		for _, item := range r.Events.Items {
+			if item.Event != nil &&
+				item.Event.Uuid == beachPlanUUID &&
+				item.Event.Version == 3 {
+				return true
+			}
+		}
+
+		return false
+	}, 5*time.Second)
+	test.Must(t, err, "get beach plan v3 event")
+
+	// Close the eventlog subscription.
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId: closeCall,
+		CloseEventlog: &repositorysocket.CloseEventlog{
+			Name: "test-eventlog",
+		},
+	})
+
+	_, err = resp.AwaitResponse(closeCall, nil, 2*time.Second)
+	test.Must(t, err, "close eventlog subscription")
+
+	err = conn.WriteMessage(websocket.CloseMessage, nil)
+	test.Must(t, err, "close socket gracefully")
+
+	// Collect all eventlog items from all Events responses into a
+	// single normalized response for stable golden comparison
+	// regardless of event batching.
+	var allItems []*repositorysocket.EventlogItem
+
+	for _, r := range resp.Responses() {
+		if r.CallId == evtCall && r.Events != nil {
+			allItems = append(allItems, r.Events.Items...)
+		}
+	}
+
+	keyResp := []*repositorysocket.Response{
+		{
+			CallId: evtCall,
+			Events: &repositorysocket.EventlogResponse{
+				Items: allItems,
+			},
+		},
+	}
+
+	goldenOpts := []test.GoldenHelper{
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("nonce"),
+		ignoreUUIDField("document_nonce"),
+	}
+
+	test.TestMessagesAgainstGolden(t, regenerateTestFixtures(),
+		keyResp, filepath.Join(dataDir, "messages.json"),
+		goldenOpts...,
+	)
 }
 
 type respNotification struct {
