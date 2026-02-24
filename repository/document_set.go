@@ -268,6 +268,7 @@ func (ds *documentSet) Initialise(
 
 	for docUUID, m := range matches {
 		state := &rsock.DocumentState{
+			Uuid: docUUID.String(),
 			Meta: DocumentMetaToRPC(&m.Meta),
 		}
 
@@ -591,6 +592,7 @@ func (ds *documentSet) handleInclusionChanges(
 		docMeta := meta[change.UUID]
 
 		state := &rsock.DocumentState{
+			Uuid: change.UUID.String(),
 			Meta: DocumentMetaToRPC(docMeta),
 		}
 
