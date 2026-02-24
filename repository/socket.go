@@ -708,9 +708,9 @@ func (s *SocketSession) handleGetEventlog(
 		oosErr:    make(chan struct{}),
 	}
 
-	if req.From != nil {
+	if req.After != nil {
 		ok := s.stream.SubscribeFrom(
-			handleCtx, *req.From, handle.handleStreamItems)
+			handleCtx, *req.After+1, handle.handleStreamItems)
 		if !ok {
 			handleCancel()
 

@@ -53,10 +53,9 @@ func (b *docStreamBuf) put(item DocumentStreamItem) {
 	}
 }
 
-// itemsFrom returns items with Event.ID > from. Returns (nil, false) if from
+// itemsFrom returns items with Event.ID >= from. Returns (nil, false) if from
 // is older than the earliest item in the buffer. Returns (nil, true) if the
-// buffer is empty or from >= latest Event.ID. A from value of 0 is treated as
-// "from the beginning" and always succeeds since event IDs start at 1.
+// buffer is empty or from > latest Event.ID.
 func (b *docStreamBuf) itemsFrom(from int64) ([]DocumentStreamItem, bool) {
 	if b.len == 0 {
 		return nil, true
@@ -67,13 +66,11 @@ func (b *docStreamBuf) itemsFrom(from int64) ([]DocumentStreamItem, bool) {
 	oldest := b.items[start].Event.ID
 	newest := b.items[(b.head-1+docStreamBufSize)%docStreamBufSize].Event.ID
 
-	// Event IDs start at 1, so from < 1 means "from the beginning"
-	// and can always be served as long as the buffer has the first events.
-	if from > 0 && from < oldest {
+	if from < oldest {
 		return nil, false
 	}
 
-	if from >= newest {
+	if from > newest {
 		return nil, true
 	}
 
@@ -82,7 +79,7 @@ func (b *docStreamBuf) itemsFrom(from int64) ([]DocumentStreamItem, bool) {
 	for i := range b.len {
 		idx := (start + i) % docStreamBufSize
 
-		if b.items[idx].Event.ID > from {
+		if b.items[idx].Event.ID >= from {
 			result = append(result, b.items[idx])
 		}
 	}
@@ -343,7 +340,7 @@ func (s *DocumentStream) Subscribe(
 }
 
 // SubscribeFrom registers a handler and replays buffered items with
-// Event.ID > from before delivering live events. Returns false if the
+// Event.ID >= from before delivering live events. Returns false if the
 // requested position is no longer available in the buffer. The handler will be
 // automatically unregistered when ctx or the stream context is cancelled.
 func (s *DocumentStream) SubscribeFrom(

@@ -591,16 +591,16 @@ func TestIntegrationSocketEventlog(t *testing.T) {
 
 	go resp.ReadResponses(t, conn)
 
-	// Subscribe to the eventlog with from=0 to get buffer playback
+	// Subscribe to the eventlog with after=0 to get buffer playback
 	// (beach_plan_v1 should be in the buffer). Use type subsets to
 	// test partial document extraction.
-	fromZero := int64(0)
+	afterZero := int64(0)
 
 	makeCall(t, conn, &repositorysocket.Call{
 		CallId: evtCall,
 		GetEventlog: &repositorysocket.GetEventlog{
-			Name: "test-eventlog",
-			From: &fromZero,
+			Name:  "test-eventlog",
+			After: &afterZero,
 			DocumentTypes: []string{
 				"core/planning-item",
 				"core/article",
