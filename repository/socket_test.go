@@ -513,6 +513,178 @@ func TestIntegrationSocketPartial(t *testing.T) {
 	test.Must(t, err, "close socket gracefully")
 }
 
+func TestIntegrationSocketEventlog(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	ctx := t.Context()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	// Reuse the TestIntegrationSocket testdata for config and documents.
+	testdata := filepath.Join("..", "testdata")
+	dataDir := filepath.Join(testdata, t.Name())
+	socketDir := filepath.Join(testdata, "TestIntegrationSocket")
+	docsDir := filepath.Join(socketDir, "documents")
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunArchiver:        true,
+		RunEventlogBuilder: true,
+		ConfigDirectory:    filepath.Join(socketDir, "config"),
+	})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write eventlog_read"))
+
+	// Write beach_plan_v1 before subscribing so that we test
+	// playback from the docstream buffer.
+	beachPlanUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
+
+	serverURL, err := url.Parse(tc.Server.URL)
+	test.Must(t, err, "parse server URL")
+
+	token, err := itest.AccessToken(tc.SigningKey,
+		itest.StandardClaims(t, "eventlog_read doc_read"))
+	test.Must(t, err, "create access token")
+
+	tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
+	test.Must(t, err, "get socket token")
+
+	wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
+	wsURL.Scheme = "ws"
+
+	header := http.Header{
+		"Origin": []string{"https://example.ecms.se"},
+	}
+
+	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL.String(), header)
+	test.Must(t, err, "dial websocket")
+
+	t.Cleanup(func() {
+		err := wsResp.Body.Close()
+		if err != nil && !errors.Is(err, os.ErrClosed) {
+			t.Errorf("close websocket response body: %v", err)
+		}
+	})
+
+	callID := makeCall(t, conn, &repositorysocket.Call{
+		Authenticate: &repositorysocket.Authenticate{
+			Token: token,
+		},
+	})
+
+	authResp, ok := readResponse(t, conn)
+	if !ok {
+		t.Fatal("socket was unexpectedly closed")
+	}
+
+	if authResp.CallId != callID {
+		t.Fatal("authentication response call ID mismatch")
+	}
+
+	const (
+		evtCall   = "e1e2e3e4-f5f6-7890-abcd-ef1234567890"
+		closeCall = "c1c2c3c4-d5d6-7890-abcd-ef1234567890"
+	)
+
+	resp := newResponseCollection()
+
+	go resp.ReadResponses(t, conn)
+
+	// Subscribe to the eventlog with from=0 to get buffer playback
+	// (beach_plan_v1 should be in the buffer). Use type subsets to
+	// test partial document extraction.
+	fromZero := int64(0)
+
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId: evtCall,
+		GetEventlog: &repositorysocket.GetEventlog{
+			Name: "test-eventlog",
+			From: &fromZero,
+			DocumentTypes: []string{
+				"core/planning-item",
+				"core/article",
+			},
+			TypeSubsets: map[string]string{
+				"core/planning-item": ".meta(type='core/newsvalue')@{value}",
+				"core/article":      ".content(type='core/text' role='heading-1').data{text}",
+			},
+		},
+	})
+
+	// Await the subscription confirmation.
+	_, err = resp.AwaitResponse(evtCall, nil, 2*time.Second)
+	test.Must(t, err, "subscribe to eventlog")
+
+	// Write the remaining beach documents.
+	writeDoc(t, client, docsDir, "beach", nil)
+	writeDoc(t, client, docsDir, "beach_plan_v2", nil)
+	writeDoc(t, client, docsDir, "beach_plan_v3", nil)
+
+	// Wait for the beach_plan_v3 event (the last expected event).
+	_, err = resp.AwaitResponse(evtCall, func(r *repositorysocket.Response) bool {
+		if r.Events == nil {
+			return false
+		}
+
+		for _, item := range r.Events.Items {
+			if item.Event != nil &&
+				item.Event.Uuid == beachPlanUUID &&
+				item.Event.Version == 3 {
+				return true
+			}
+		}
+
+		return false
+	}, 5*time.Second)
+	test.Must(t, err, "get beach plan v3 event")
+
+	// Close the eventlog subscription.
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId: closeCall,
+		CloseEventlog: &repositorysocket.CloseEventlog{
+			Name: "test-eventlog",
+		},
+	})
+
+	_, err = resp.AwaitResponse(closeCall, nil, 2*time.Second)
+	test.Must(t, err, "close eventlog subscription")
+
+	err = conn.WriteMessage(websocket.CloseMessage, nil)
+	test.Must(t, err, "close socket gracefully")
+
+	// Collect all eventlog items from all Events responses into a
+	// single normalized response for stable golden comparison
+	// regardless of event batching.
+	var allItems []*repositorysocket.EventlogItem
+
+	for _, r := range resp.Responses() {
+		if r.CallId == evtCall && r.Events != nil {
+			allItems = append(allItems, r.Events.Items...)
+		}
+	}
+
+	keyResp := []*repositorysocket.Response{
+		{
+			CallId: evtCall,
+			Events: &repositorysocket.EventlogResponse{
+				Items: allItems,
+			},
+		},
+	}
+
+	goldenOpts := []test.GoldenHelper{
+		test.IgnoreTimestamps{},
+		ignoreUUIDField("nonce"),
+		ignoreUUIDField("document_nonce"),
+	}
+
+	test.TestMessagesAgainstGolden(t, regenerateTestFixtures(),
+		keyResp, filepath.Join(dataDir, "messages.json"),
+		goldenOpts...,
+	)
+}
+
 type respNotification struct {
 	Index    int
 	Response *repositorysocket.Response

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 	rsock "github.com/ttab/elephant-api/repositorysocket"
@@ -234,6 +235,7 @@ func NewSocketSession(
 		calls:          make(chan *CallHandle, 8),
 		responses:      make(chan *responseHandle, 16),
 		sets:           make(map[string]*documentSetHandle),
+		eventlogs:      make(map[string]*eventlogHandle),
 		socketCall:     socketCall,
 		socketResponse: socketResponse,
 	}
@@ -260,7 +262,8 @@ type SocketSession struct {
 	calls     chan *CallHandle
 	responses chan *responseHandle
 
-	sets map[string]*documentSetHandle
+	sets      map[string]*documentSetHandle
+	eventlogs map[string]*eventlogHandle
 }
 
 func (s *SocketSession) setAuth(auth *elephantine.AuthInfo) {
@@ -430,6 +433,8 @@ var (
 	handlerAuthenticate     = "Authenticate"
 	handlerGetDocuments     = "GetDocuments"
 	handlerCloseDocumentSet = "CloseDocumentSet"
+	handlerGetEventlog      = "GetEventlog"
+	handlerCloseEventlog    = "CloseEventlog"
 )
 
 func (s *SocketSession) runHandler(ctx context.Context, call *CallHandle) bool {
@@ -453,6 +458,12 @@ func (s *SocketSession) runHandler(ctx context.Context, call *CallHandle) bool {
 	case call.Call.CloseDocumentSet != nil:
 		handlerName = handlerCloseDocumentSet
 		handler = s.handleCloseDocumentSet
+	case call.Call.GetEventlog != nil:
+		handlerName = handlerGetEventlog
+		handler = s.handleGetEventlog
+	case call.Call.CloseEventlog != nil:
+		handlerName = handlerCloseEventlog
+		handler = s.handleCloseEventlog
 	default:
 		s.Respond(ctx, call, &rsock.Response{
 			Error: SockErrorf(string(twirp.InvalidArgument), "unknown call type"),
@@ -631,6 +642,228 @@ func (s *SocketSession) handleCloseDocumentSet(
 	return &rsock.Response{}, nil
 }
 
+func (s *SocketSession) handleGetEventlog(
+	ctx context.Context, callHandle *CallHandle,
+) (*rsock.Response, *rsock.Error) {
+	req := callHandle.Call.GetEventlog
+
+	auth, _ := s.getAuth()
+	if !auth.Claims.HasScope(ScopeEventlogRead) {
+		return nil, SockErrorf(string(twirp.PermissionDenied),
+			"the %s scope is required", ScopeEventlogRead)
+	}
+
+	if req.Name == "" {
+		return nil, SockErrorf(string(twirp.InvalidArgument),
+			"name is required")
+	}
+
+	var subsets map[string][]*newsdoc.ValueExtractor
+
+	for docType, expr := range req.TypeSubsets {
+		ve, err := newsdoc.ValueExtractorFromString(expr)
+		if err != nil {
+			return nil, SockErrorf(string(twirp.InvalidArgument),
+				"invalid type subset expression for %q: %v",
+				docType, err)
+		}
+
+		if subsets == nil {
+			subsets = make(map[string][]*newsdoc.ValueExtractor)
+		}
+
+		subsets[docType] = append(subsets[docType], ve)
+	}
+
+	previous, ok := s.eventlogs[req.Name]
+	if ok {
+		previous.Close()
+	}
+
+	docTypes := make(map[string]bool, len(req.DocumentTypes))
+
+	for _, dt := range req.DocumentTypes {
+		docTypes[dt] = true
+	}
+
+	languages := make(map[string]bool, len(req.Languages))
+
+	for _, l := range req.Languages {
+		languages[l] = true
+	}
+
+	handleCtx, handleCancel := context.WithCancel(ctx)
+
+	handle := &eventlogHandle{
+		call:      callHandle,
+		ctx:       handleCtx,
+		cancel:    handleCancel,
+		responder: s,
+		store:     s.store,
+		getAuth:   s.getAuth,
+		docTypes:  docTypes,
+		languages: languages,
+		subsets:   subsets,
+		process:   make(chan []DocumentStreamItem, 128),
+		oosErr:    make(chan struct{}),
+	}
+
+	if req.From != nil {
+		ok := s.stream.SubscribeFrom(
+			handleCtx, *req.From, handle.handleStreamItems)
+		if !ok {
+			handleCancel()
+
+			return nil, SockErrorf("eventlog_resume_oob",
+				"resume position is out of bounds")
+		}
+	} else {
+		s.stream.Subscribe(handleCtx, handle.handleStreamItems)
+	}
+
+	go handle.processingLoop()
+
+	s.eventlogs[req.Name] = handle
+
+	return &rsock.Response{}, nil
+}
+
+func (s *SocketSession) handleCloseEventlog(
+	_ context.Context, callHandle *CallHandle,
+) (*rsock.Response, *rsock.Error) {
+	req := callHandle.Call.CloseEventlog
+
+	if req.Name == "" {
+		return nil, SockErrorf(string(twirp.InvalidArgument),
+			"name is required")
+	}
+
+	handle, ok := s.eventlogs[req.Name]
+	if ok {
+		handle.Close()
+
+		delete(s.eventlogs, req.Name)
+	}
+
+	return &rsock.Response{}, nil
+}
+
+type eventlogHandle struct {
+	call      *CallHandle
+	ctx       context.Context
+	cancel    func()
+	responder SocketResponder
+
+	store   DocStore
+	getAuth func() (*elephantine.AuthInfo, []string)
+
+	docTypes  map[string]bool
+	languages map[string]bool
+	subsets   map[string][]*newsdoc.ValueExtractor
+
+	process chan []DocumentStreamItem
+	oosErr  chan struct{}
+	oosOnce sync.Once
+}
+
+func (h *eventlogHandle) Close() {
+	h.cancel()
+}
+
+func (h *eventlogHandle) handleStreamItems(items []DocumentStreamItem) {
+	select {
+	case <-h.oosErr:
+		return
+	case h.process <- items:
+	default:
+		h.oosOnce.Do(func() {
+			close(h.oosErr)
+		})
+	}
+}
+
+func (h *eventlogHandle) processingLoop() {
+	for {
+		select {
+		case <-h.ctx.Done():
+			return
+		case <-h.oosErr:
+			h.responder.Respond(h.ctx, h.call, &rsock.Response{
+				Error: SockErrorf("oos", "processing buffer overflow"),
+			}, false)
+
+			return
+		case batch := <-h.process:
+			h.processBatch(batch)
+		}
+	}
+}
+
+func (h *eventlogHandle) processBatch(items []DocumentStreamItem) {
+	var responseItems []*rsock.EventlogItem
+
+	for _, item := range items {
+		if len(h.docTypes) > 0 && !h.docTypes[item.Event.Type] {
+			continue
+		}
+
+		if len(h.languages) > 0 {
+			if !h.languages[item.Event.Language] &&
+				!h.languages[item.Event.OldLanguage] {
+				continue
+			}
+		}
+
+		rpcItem := &rsock.EventlogItem{
+			Event: EventToRPC(item.Event),
+		}
+
+		extractors, hasSubsets := h.subsets[item.Event.Type]
+
+		if hasSubsets &&
+			item.Event.Event == TypeDocumentVersion &&
+			item.Data != nil &&
+			h.hasReadPermission(item.Event.UUID) {
+			rpcItem.Subset = collectSubset(
+				item.Data.Document, extractors)
+		}
+
+		responseItems = append(responseItems, rpcItem)
+	}
+
+	if len(responseItems) == 0 {
+		return
+	}
+
+	h.responder.Respond(h.ctx, h.call, &rsock.Response{
+		Events: &rsock.EventlogResponse{
+			Items: responseItems,
+		},
+	}, false)
+}
+
+func (h *eventlogHandle) hasReadPermission(docUUID uuid.UUID) bool {
+	auth, identity := h.getAuth()
+	if auth == nil {
+		return false
+	}
+
+	if auth.Claims.HasScope(ScopeDocumentReadAll) {
+		return true
+	}
+
+	result, err := h.store.CheckPermissions(h.ctx, CheckPermissionRequest{
+		UUID:        docUUID,
+		GranteeURIs: identity,
+		Permissions: []Permission{ReadPermission},
+	})
+	if err != nil {
+		return false
+	}
+
+	return result == PermissionCheckAllowed
+}
+
 func (s *SocketSession) Respond(
 	ctx context.Context, handle *CallHandle, resp *rsock.Response, final bool,
 ) {
@@ -660,6 +893,8 @@ func (s *SocketSession) Respond(
 		response = "DocumentUpdate"
 	case resp.Removed != nil:
 		response = "Removed"
+	case resp.Events != nil:
+		response = "Events"
 	case resp.Handled:
 		response = "Handled"
 	}

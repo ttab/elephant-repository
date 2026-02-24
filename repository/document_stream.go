@@ -55,7 +55,8 @@ func (b *docStreamBuf) put(item DocumentStreamItem) {
 
 // itemsFrom returns items with Event.ID > from. Returns (nil, false) if from
 // is older than the earliest item in the buffer. Returns (nil, true) if the
-// buffer is empty or from >= latest Event.ID.
+// buffer is empty or from >= latest Event.ID. A from value of 0 is treated as
+// "from the beginning" and always succeeds since event IDs start at 1.
 func (b *docStreamBuf) itemsFrom(from int64) ([]DocumentStreamItem, bool) {
 	if b.len == 0 {
 		return nil, true
@@ -66,7 +67,9 @@ func (b *docStreamBuf) itemsFrom(from int64) ([]DocumentStreamItem, bool) {
 	oldest := b.items[start].Event.ID
 	newest := b.items[(b.head-1+docStreamBufSize)%docStreamBufSize].Event.ID
 
-	if from < oldest {
+	// Event IDs start at 1, so from < 1 means "from the beginning"
+	// and can always be served as long as the buffer has the first events.
+	if from > 0 && from < oldest {
 		return nil, false
 	}
 
@@ -136,9 +139,14 @@ func NewDocumentStream(
 }
 
 type DocumentStream struct {
-	ctx       context.Context
-	log       *slog.Logger
-	m         sync.RWMutex
+	ctx context.Context
+	log *slog.Logger
+	m   sync.RWMutex
+	// emitMu serializes emitEvents with Subscribe/SubscribeFrom so that
+	// subscriptions cannot be registered while events are being loaded.
+	// This prevents consumers from either missing in-flight events or
+	// receiving events that predate their subscription.
+	emitMu    sync.Mutex
 	serial    int64
 	consumers map[int64]DocumentStreamHandlerFunc
 	buf       docStreamBuf
@@ -154,29 +162,13 @@ type DocumentStream struct {
 	store     DocStore
 }
 
-func (s *DocumentStream) consumerCount() int {
-	s.m.RLock()
-	count := len(s.consumers)
-	s.m.RUnlock()
-
-	return count
-}
-
 func (s *DocumentStream) handleEvents() {
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
 		case id := <-s.eventChan:
-			if s.consumerCount() == 0 {
-				// Bump the lastID so that we don't do
-				// unnecessary processing to the time when
-				// nobody was connected.
-				s.lastID = max(s.lastID, id)
-				s.mPosition.Set(float64(s.lastID))
-
-				continue
-			}
+			s.emitMu.Lock()
 
 			err := elephantine.CallWithRecover(s.ctx,
 				func(ctx context.Context) error {
@@ -186,6 +178,8 @@ func (s *DocumentStream) handleEvents() {
 				s.log.Error("failed to emit document stream items",
 					elephantine.LogKeyError, err)
 			}
+
+			s.emitMu.Unlock()
 		}
 	}
 }
@@ -331,6 +325,9 @@ func (s *DocumentStream) emitEvents(
 func (s *DocumentStream) Subscribe(
 	ctx context.Context, handler DocumentStreamHandlerFunc,
 ) {
+	s.emitMu.Lock()
+	defer s.emitMu.Unlock()
+
 	s.m.Lock()
 
 	s.serial++
@@ -352,6 +349,9 @@ func (s *DocumentStream) Subscribe(
 func (s *DocumentStream) SubscribeFrom(
 	ctx context.Context, from int64, handler DocumentStreamHandlerFunc,
 ) bool {
+	s.emitMu.Lock()
+	defer s.emitMu.Unlock()
+
 	s.m.Lock()
 
 	replay, ok := s.buf.itemsFrom(from)
