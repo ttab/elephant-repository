@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -358,6 +359,37 @@ func TestIntegrationSocketPartial(t *testing.T) {
 
 	if authResp.CallId != callID {
 		t.Fatal("authentication response call ID mismatch")
+	}
+
+	// --- Verify that malformed subset expressions are rejected ---
+
+	badSubsetCall := makeCall(t, conn, &repositorysocket.Call{
+		GetDocuments: &repositorysocket.GetDocuments{
+			SetName: "bad-subset",
+			Type:    "core/planning-item",
+			Subset:  []string{".meta(type='broken"},
+		},
+	})
+
+	badSubsetResp, ok := readResponse(t, conn)
+	if !ok {
+		t.Fatal("socket was unexpectedly closed after malformed subset")
+	}
+
+	if badSubsetResp.CallId != badSubsetCall {
+		t.Fatal("malformed subset response call ID mismatch")
+	}
+
+	if badSubsetResp.Error == nil {
+		t.Fatal("expected error response for malformed subset expression")
+	}
+
+	test.Equal(t, "invalid_argument", badSubsetResp.Error.ErrorCode,
+		"malformed subset error code")
+
+	if !strings.Contains(badSubsetResp.Error.ErrorMessage, "subset") {
+		t.Fatalf("expected error message to mention subset, got: %s",
+			badSubsetResp.Error.ErrorMessage)
 	}
 
 	const subCall = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"

@@ -476,10 +476,10 @@ func (s *SocketSession) runHandler(ctx context.Context, call *CallHandle) bool {
 
 	s.socketCall.WithLabelValues(call.Method).Inc()
 
-	resp, err := handler(ctx, call)
-	if err != nil {
+	resp, rErr = handler(ctx, call)
+	if rErr != nil {
 		// We always bail immediately on authentication errors.
-		final := err.ErrorCode == string(twirp.Unauthenticated)
+		final := rErr.ErrorCode == string(twirp.Unauthenticated)
 
 		s.Respond(ctx, call, &rsock.Response{
 			Error: rErr,
