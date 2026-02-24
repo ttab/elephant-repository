@@ -607,7 +607,7 @@ func TestIntegrationSocketEventlog(t *testing.T) {
 			},
 			TypeSubsets: map[string]string{
 				"core/planning-item": ".meta(type='core/newsvalue')@{value}",
-				"core/article":      ".content(type='core/text' role='heading-1').data{text}",
+				"core/article":       ".content(type='core/text' role='heading-1').data{text}",
 			},
 		},
 	})
