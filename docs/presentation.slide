@@ -1,6 +1,6 @@
-# 🐘 Elephant
+# Elephant
 
-Internal 2023-03-07
+Internal 2023-03-07, updated 2026-02-27
 
 Hugo Wetterberg
 hugo.wetterberg@tt.se
@@ -13,8 +13,6 @@ The repository is a Go application that exposes a Twirp RPC API.
   * RPC interfaces and types (from protobuf)
   * SQL queries (from schema and queries)
 
-Still bundled with an "ingester" that can read documents from OC (dawroc) and save them using the document API.
-
 ## Running and scaling the Elephant
 
 Except some cached configuration (validation schemas, statuses, et.c.) the service is completely stateless.
@@ -22,7 +20,7 @@ Except some cached configuration (validation schemas, statuses, et.c.) the servi
 * Small footprint
 * Redundancy will probably be main reason for running multiple instances
 * An instance can run with certain components disabled
-  * A dedicated API front instance could run with `--no-archiver --no-eventlog-builder --no-eventsink`
+  * A dedicated API front instance could run with `--no-archiver --no-eventlog-builder --no-eventsink --no-scheduler`
 
 Where it's necessary to coordinate between instances it's handled by Postgres row locks or advisory locks.
 
@@ -36,6 +34,7 @@ Elephant stores:
 * statuses
 * ACLs (access control lists)
 * document schemas
+* metrics
 * archive signing keys
 
 All writes go through Postgres so that we get strong consistency guarantees.
@@ -56,10 +55,10 @@ The API is defined in a protobuf file.
 
 Elephant exposes four services:
 
-* Documents - for document CRUD operations
-* Schemas - for managing Revisor schemas
-* Workflows - for managing statuses and status rules
-* Reports - for defining periodic reporting
+* Documents - for document CRUD operations, eventlog, locking, assets, and WebSocket tokens
+* Schemas - for managing Revisor schemas, document types, and meta types
+* Workflows - for managing statuses, status rules, and workflow definitions
+* Metrics - for defining and tracking custom metrics
 
 Clients can communicate with these services using JSON or protobuf.
 
@@ -67,56 +66,43 @@ Clients can communicate with these services using JSON or protobuf.
 * Generate OpenAPI client
 * ...or make your own bespoke calls.
 
-## Getting an access token
-
-The API service has an endpoint for fetching dummy tokens for use with the API.
-
-```
-curl http://localhost:1080/token \
-    -d grant_type=password \
-    -d 'username=Hugo Wetterberg <user://tt/hugo, unit://tt/redaktionen>' \
-    -d 'scope=doc_read doc_write doc_delete'
-```
-
-```
-$ curl [...] | jq -r .access_token | awk -F. '{print $2}' | base64 -d | jq .
-{
-  "iss": "test",
-  "sub": "user://tt/hugo",
-  "exp": 1677770712,
-  "sub_name": "Hugo Wetterberg",
-  "scope": "doc_read doc_write doc_delete",
-  "units": [
-    "unit://tt/redaktionen"
-  ]
-}
-```
-
-It's essentially a password-less password grant where you can specify your own permissions and identity.
-
 ## Current permission scopes
 
-* Document CRUD: `doc_read`, `doc_write`, `doc_delete`
+* Document CRUD: `doc_read`, `doc_write`, `doc_delete`, `doc_admin`
   * The doc scopes work together with the document ACLs.
   * Both scope and an ACL granting permission are required.
-* `import_directive` allows the caller override timestamps and the user sub for Update requests.
+* `doc_read_all` bypasses ACLs for read access.
+* `doc_import` allows the caller to override timestamps and the user sub for Update requests.
+* `doc_restore` and `doc_purge` for deletion lifecycle management.
+* `meta_doc_write_all` allows writing to all document metadata.
+* `asset_upload` allows uploading assets and attachments.
+* `eventlog_read` gives access to the eventlog and WebSocket eventlog streaming.
 * `workflow_admin` gives access to the `Workflows` service.
-* `schema_admin` gives access to the `Schemas` service.
-* `reports_admin` gives access to the full `Reports` service.
-  * `reports_run` gives access to just `Reports.Run`.
+* `schema_read` and `schema_admin` for the `Schemas` service.
+* `metrics_read`, `metrics_write`, and `metrics_admin` for the `Metrics` service.
+
+Per-document ACL entries can grant: Read, Write, MetaWrite, and SetStatus permissions.
 
 ## The API - Documents
+
+An extract of the Documents API:
 
 ```
 service Documents {
   // Get retrieves a document version.
   rpc Get(GetDocumentRequest) returns (GetDocumentResponse);
 
+  // BulkGet retrieves multiple documents with optional subset extraction.
+  rpc BulkGet(BulkGetRequest) returns (BulkGetResponse);
+
   // GetHistory lists the document version history.
   rpc GetHistory(GetHistoryRequest) returns (GetHistoryResponse);
 
   // Update is used to create new document versions, set statuses, update ACLs.
   rpc Update(UpdateRequest) returns (UpdateResponse);
+
+  // BulkUpdate performs batch updates of multiple documents.
+  rpc BulkUpdate(BulkUpdateRequest) returns (BulkUpdateResponse);
 
   // Validate is used to validate a document without writing it to the
   // repository.
@@ -125,9 +111,21 @@ service Documents {
   // Delete deletes a document and all its associated data.
   rpc Delete(DeleteDocumentRequest) returns (DeleteDocumentResponse);
 
+  // Restore restores a previously deleted document.
+  rpc Restore(RestoreRequest) returns (RestoreResponse);
+
+  // Purge permanently removes archived data for a deleted document.
+  rpc Purge(PurgeRequest) returns (PurgeResponse);
+
   // GetMeta returns metadata for a document, including the ACL and current
   // status heads.
   rpc GetMeta(GetMetaRequest) returns (GetMetaResponse);
+
+  // Lock acquires an edit lock on a document.
+  rpc Lock(LockRequest) returns (LockResponse);
+
+  // GetSocketToken returns a JWT token for WebSocket streaming.
+  rpc GetSocketToken(GetSocketTokenRequest) returns (GetSocketTokenResponse);
 }
 ```
 
@@ -177,7 +175,7 @@ message UpdateRequest {
   // ACL is an ACL list controlling access to the document.
   repeated ACLEntry acl = 6;
   // ImportDirective can be used to preserve timestamps and authorship
-  // information from originating systems, but requires the "import_directive"
+  // information from originating systems, but requires the "doc_import"
   // scope for use.
   ImportDirective import_directive = 7;
 }
@@ -192,6 +190,7 @@ curl --location 'http://localhost:1080/twirp/elephant.repository.Documents/Updat
 --data '{
     "uuid": "142ea73d-dc92-46b8-a546-8e8a870b1d0e",
     "document": {
+        "uuid": "142ea73d-dc92-46b8-a546-8e8a870b1d0e",
         "uri": "example://article/2",
         "type": "core/article",
         "title": "Simple docs",
@@ -239,46 +238,90 @@ Writing a document with the following content block:
 
 ## Revisor schema example
 
+Revisor uses block definitions that can be referenced from document declarations:
+
 ```
 {
-  "name": "TT visual element",
-  "description": "This can be either a picture or a graphic",
-  "declares": {"type":"tt/visual"},
-  "data": {
-    "caption": {"allowEmpty":true}
-  },
-  "links": [
+  "version": 1,
+  "name": "block-example",
+  "documents": [
     {
-      "declares": {"rel":"self"},
-      "attributes": {
-        "uri": {},
-        "url": {},
-        "type": {
-          "enum": ["tt/picture", "tt/graphic"]
+      "name": "Article",
+      "description": "An editorial article",
+      "declares": "core/article",
+      "content": [
+        {"ref": "core://text"}
+      ]
+    }
+  ],
+  "content": [
+    {
+      "id": "core://text",
+      "block": {
+        "description": "A standard text block",
+        "declares": {"type":"core/text"},
+        "attributes": {
+          "role": {
+            "optional":true,
+            "enum": ["heading-1", "heading-2", "preamble"]
+          }
+        },
+        "data": {
+          "text":{
+            "allowEmpty":true,
+            "format": "html"
+          }
         }
-      },
-      "data": {
-        "credit": {},
-        "height": {"format":"int"},
-        "width": {"format":"int"},
-        "hiresScale": {"format":"float"}
       }
-    }]}
+    }
+  ]
+}
 ```
+
+## Block references
+
+When using `ref` it's possible to extend the block in the same block constraint. Writing this:
+
+```
+"meta": [
+  {
+    "ref": "core://newsvalue",
+    "count": 1
+  }
+]
+```
+
+\...is equivalent to:
+
+```
+"meta": [
+  {"ref": "core://newsvalue"},
+  {
+    "match": {"type": "core/newsvalue"},
+    "count": 1
+  }
+]
+```
+
+Constraints on a ref are treated as a block constraint with a `match` directive equivalent to the `declares` of the referenced block.
 
 ## String constraints
 
 ```
-| Name       | Use                                                                                     |
-|:-----------|:----------------------------------------------------------------------------------------|
-| optional   | Set to `true` if the value doesn't have to be present                                   |
-| allowEmpty | Set to `true` if an empty value is ok                                                   |
-| const      | A specific `"value"` that must match                                                    |
-| enum       | A list `["of", "values"]` where one must match                                          |
-| pattern    | A regular expression that the value must match                                          |
-| glob       | A list of glob patterns `["http://**", "https://**"]` where one must match              |
-| format     | A named format that the value must follow                                               |
-| time       | A time format specification                                                             |
+| Name          | Use                                                                        |
+|:--------------|:---------------------------------------------------------------------------|
+| optional      | Set to `true` if the value doesn't have to be present                      |
+| allowEmpty    | Set to `true` if an empty value is ok                                      |
+| const         | A specific `"value"` that must match                                       |
+| enum          | A list `["of", "values"]` where one must match                             |
+| pattern       | A regular expression that the value must match                             |
+| glob          | A list of glob patterns `["http://**", "https://**"]` where one must match |
+| format        | A named format that the value must follow                                  |
+| time          | A time format specification                                                |
+| colourFormats | Controls the "colour" format. Any combination of "hex", "rgb", "rgba"      |
+| geometry      | Geometry and coordinate type for WKT strings                               |
+| labels        | Labels used to describe the value                                          |
+| hints         | Key value pairs used to describe the value                                 |
 ```
 
 ## Formats
@@ -290,8 +333,15 @@ The following formats are available:
 * `float`: a floating point number ("12.34")
 * `bool`: a boolean ("true" or "false")
 * `html`: validate the contents as HTML
+* `uuid`: validate the string as a UUID
+* `wkt`: validate the string as a WKT geometry
+* `colour`: a colour in one of the formats specified in `colourFormats`
 
 When using the format "html" it's also possible to use `htmlPolicy` to use a specific HTML policy.
+
+## Document type variants
+
+Document type variants allow documents to use a suffixed type like `"core/article+template"` and still match the base declaration `"core/article"`. Variants are configured on the validator, not in constraint sets, so that the set of allowed suffixes is controlled by the application.
 
 ## Time formats
 
@@ -361,7 +411,7 @@ Heads.approved.ID != 0 and Heads.approved.Version == Status.Version
 
 ```
 service Schemas {
-  // Register register a new validation schema version.
+  // Register a new validation schema version.
   rpc Register(RegisterSchemaRequest) returns (RegisterSchemaResponse);
 
   // SetActive activates schema versions.
@@ -370,8 +420,29 @@ service Schemas {
   // Get retrieves a schema.
   rpc Get(GetSchemaRequest) returns (GetSchemaResponse);
 
-  // GetAllActiveSchemas returns the currently active schemas.
+  // GetAllActive returns the currently active schemas.
   rpc GetAllActive(GetAllActiveSchemasRequest) returns (GetAllActiveSchemasResponse);
+
+  // ListActive returns the active schema versions.
+  rpc ListActive(ListActiveRequest) returns (ListActiveResponse);
+
+  // GetDocumentTypes returns the known document types.
+  rpc GetDocumentTypes(GetDocumentTypesRequest) returns (GetDocumentTypesResponse);
+
+  // ConfigureType configures a document type.
+  rpc ConfigureType(ConfigureTypeRequest) returns (ConfigureTypeResponse);
+
+  // GetMetaTypes returns registered meta types.
+  rpc GetMetaTypes(GetMetaTypesRequest) returns (GetMetaTypesResponse);
+
+  // RegisterMetaType registers a meta document type.
+  rpc RegisterMetaType(RegisterMetaTypeRequest) returns (RegisterMetaTypeResponse);
+
+  // GetDeprecations returns deprecation rules.
+  rpc GetDeprecations(GetDeprecationsRequest) returns (GetDeprecationsResponse);
+
+  // UpdateDeprecation creates or updates a deprecation rule.
+  rpc UpdateDeprecation(UpdateDeprecationRequest) returns (UpdateDeprecationResponse);
 }
 ```
 
@@ -394,100 +465,59 @@ service Workflows {
 
   // GetStatusRules returns all status rules.
   rpc GetStatusRules(GetStatusRulesRequest) returns (GetStatusRulesResponse);
+
+  // SetWorkflow creates or updates a workflow definition.
+  rpc SetWorkflow(SetWorkflowRequest) returns (SetWorkflowResponse);
+
+  // GetWorkflow retrieves a workflow definition.
+  rpc GetWorkflow(GetWorkflowRequest) returns (GetWorkflowResponse);
+
+  // DeleteWorkflow removes a workflow definition.
+  rpc DeleteWorkflow(DeleteWorkflowRequest) returns (DeleteWorkflowResponse);
 }
 ```
 
-## The API - Reports
+## The API - Metrics
 
 ```
-service Reports {
-  // Update or create a report.
-  rpc Update(UpdateReportRequest) returns (UpdateReportResponse);
+service Metrics {
+  // GetMetrics retrieves metric data.
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
 
-  // Get a report.
-  rpc Get(GetReportRequest) returns (GetReportResponse);
+  // GetKinds lists registered metric kinds.
+  rpc GetKinds(GetKindsRequest) returns (GetKindsResponse);
 
-  // Run a report. This will run the report and return the results instead of
-  // sending it to any outputs.
-  rpc Run(RunReportRequest) returns (RunReportResponse);
+  // RegisterKind registers a new metric kind.
+  rpc RegisterKind(RegisterKindRequest) returns (RegisterKindResponse);
+
+  // DeleteKind deletes a metric kind.
+  rpc DeleteKind(DeleteKindRequest) returns (DeleteKindResponse);
+
+  // RegisterMetric registers a metric instance.
+  rpc RegisterMetric(RegisterMetricRequest) returns (RegisterMetricResponse);
 }
 ```
 
-## Update report request
+## Real-time streaming
 
-```
-message UpdateReportRequest {
-  Report report = 1;
-  bool enabled = 2;
-}
+Elephant provides two real-time streaming mechanisms:
 
-message Report {                          message ReportQuery {
-  string name = 1;                          string name = 1;
-  string title = 2;                         repeated int32 summarise = 2;
-  bool generate_sheet = 3;                  string sql = 3;
-  string cron_expression = 4;               repeated ReportValue value_processing = 4;
-  repeated string slack_channels = 5;     }
-  repeated ReportQuery queries = 6;
-}                                         message ReportValue {
-                                            string column = 1;
-                                            repeated string processors = 2;
-                                          }
-```
+**Server-Sent Events (SSE)** - Event stream with 200-event replay buffer and topic filtering. Accessible via the `/sse` endpoint. Soon to be deprecated.
 
-## Creating a report
+**WebSocket** - Per-user rate-limited document and eventlog streaming with JWT socket tokens. Supports:
 
-```
-POST /twirp/elephant.repository.Reports/Update
+* Subscribing to document sets by type and timespan
+* Subset extraction for partial document delivery
+* Including related documents (e.g. deliverables linked from a planning item)
+* Eventlog streaming with buffer playback and type-specific subsets
 
-{
-    "report": {
-        "name": "last_days",
-        "title": "Published last days",
-        "cron_expression": "0 7 * * *",
-        "queries": [{
-            "name": "Published count",
-            "sql": "
-SELECT to_char(date(created), 'YYYY-MM-DD') AS date, COUNT(*)
-FROM document_status WHERE name='usable'
-GROUP BY date(created) ORDER BY date(created) DESC LIMIT 7",
-            "summarise": [1]
-        }]
-    },
-    "enabled": true
-}
-```
+Socket tokens are obtained via `Documents.GetSocketToken` and used to connect to the `/websocket` endpoint.
 
-(SQL string formatted for readability)
+## Event flow
 
-## Running a report manually
+Mutations -> `event_outbox_item` table -> `EventlogBuilder` processes into `eventlog` -> fans out to SSE/WebSocket/EventBridge.
 
-```
-POST /twirp/elephant.repository.Reports/Run
-
-{"name": "last_days"}
-```
-
-```
-{
-    "tables": [
-        "┌────────────────────┐
-         │ Published count    │
-         ├────────────┬───────┤
-         │ DATE       │ COUNT │
-         ├────────────┼───────┤
-         │ 2021-05-29 │   129 │
-         │ 2021-05-28 │   281 │
-         │ 2021-05-27 │   303 │
-         │ 2021-05-26 │   291 │
-         │ 2021-05-25 │   249 │
-         │ 2021-05-24 │   262 │
-         │ 2021-05-23 │   180 │
-         ├────────────┼───────┤
-         │            │  1695 │
-         └────────────┴───────┘"
-    ]
-}
-```
+Internal pub/sub uses `pg.FanOut[T]` backed by PostgreSQL LISTEN/NOTIFY.
 
 ## Elephant data mining
 
@@ -500,24 +530,23 @@ Being able to query the full history **and** the contents of documents opens up 
 FROM document_status AS s
      INNER JOIN document_version AS v
            ON v.uuid = s.uuid AND v.version = s.version
-              AND v.type = 'core/article'
 WHERE s.name='usable' AND s.created >= '2023-02-14' AND s.created < '2023-02-17'
 GROUP BY date(s.created), cause ORDER BY date(s.created), cause NULLS FIRST;
 
-    date    │    cause    │ num
-════════════╪═════════════╪═════
- 2023-02-14 │ ¤           │ 143
- 2023-02-14 │ correction  │   3
- 2023-02-14 │ development │  81
- 2023-02-14 │ fix         │   6
- 2023-02-15 │ ¤           │ 141
- 2023-02-15 │ correction  │   2
- 2023-02-15 │ development │  81
- 2023-02-15 │ fix         │   5
- 2023-02-16 │ ¤           │ 158
- 2023-02-16 │ correction  │   4
- 2023-02-16 │ development │  59
- 2023-02-16 │ fix         │   8
+    date    |    cause    | num
+============+=============+=====
+ 2023-02-14 |             | 143
+ 2023-02-14 | correction  |   3
+ 2023-02-14 | development |  81
+ 2023-02-14 | fix         |   6
+ 2023-02-15 |             | 141
+ 2023-02-15 | correction  |   2
+ 2023-02-15 | development |  81
+ 2023-02-15 | fix         |   5
+ 2023-02-16 |             | 158
+ 2023-02-16 | correction  |   4
+ 2023-02-16 | development |  59
+ 2023-02-16 | fix         |   8
 (12 rows)
 
 ```
@@ -532,21 +561,21 @@ FROM document_status AS s
 WHERE s.name='usable' AND s.meta->>'cause' = 'correction'
 ORDER BY s.created;
 
-                 uuid                 │  initially_published   │        time_to_correction
-══════════════════════════════════════╪════════════════════════╪═══════════════════════════════════
- 9b2620ec-df55-4091-b7f8-c315182a5b99 │ 2023-02-13 12:01:13+00 │ @ 1 hour 33 mins 51 secs
- 319e8029-769b-4119-8dca-1085d0d49733 │ 2023-02-13 14:49:35+00 │ @ 46 mins 44 secs
- 319e8029-769b-4119-8dca-1085d0d49733 │ 2023-02-13 14:49:35+00 │ @ 3 hours 11 mins 14 secs
- 2c0b198f-77e9-4be5-abe7-1bb32193f38c │ 2023-02-14 06:55:26+00 │ @ 47 mins 21 secs
- 19a52124-c94f-4f21-ab67-27e341ac1304 │ 2023-02-14 09:27:13+00 │ @ 29 mins 54 secs
- b1eec421-60f4-4fdf-a213-2d6fae395241 │ 2023-02-14 12:06:10+00 │ @ 3 hours 57 mins 22 secs
- c42afff0-55ea-4efb-80ba-2e3cced3061b │ 2023-02-15 04:00:02+00 │ @ 2 hours 45 mins 38 secs
- 8bacd909-a391-43cd-b1b9-91105ea1d496 │ 2023-02-15 15:39:19+00 │ @ 4 hours 15 mins 11 secs
- a3657009-c8b4-4310-a5c3-a6600e712b7e │ 2023-02-16 02:16:42+00 │ @ 8 hours 54 mins 28 secs
- 12cd4075-c072-4db1-b677-e7f6ffa8b86d │ 2023-02-14 19:01:36+00 │ @ 1 day 19 hours 36 mins 22 secs
- 9d3a767f-33a6-4527-94fc-39d4c73324b8 │ 2023-02-14 05:00:02+00 │ @ 2 days 10 hours 17 mins 24 secs
- 09ee2a9e-d2a9-4e5e-87fc-4932fc54ba76 │ 2023-02-16 19:36:03+00 │ @ 15 mins 7 secs
- 37969929-40d3-4c30-a9af-db968cb753fd │ 2023-02-17 08:58:31+00 │ @ 19 mins 18 secs
+                 uuid                 |  initially_published   |        time_to_correction
+======================================+========================+===================================
+ 9b2620ec-df55-4091-b7f8-c315182a5b99 | 2023-02-13 12:01:13+00 | @ 1 hour 33 mins 51 secs
+ 319e8029-769b-4119-8dca-1085d0d49733 | 2023-02-13 14:49:35+00 | @ 46 mins 44 secs
+ 319e8029-769b-4119-8dca-1085d0d49733 | 2023-02-13 14:49:35+00 | @ 3 hours 11 mins 14 secs
+ 2c0b198f-77e9-4be5-abe7-1bb32193f38c | 2023-02-14 06:55:26+00 | @ 47 mins 21 secs
+ 19a52124-c94f-4f21-ab67-27e341ac1304 | 2023-02-14 09:27:13+00 | @ 29 mins 54 secs
+ b1eec421-60f4-4fdf-a213-2d6fae395241 | 2023-02-14 12:06:10+00 | @ 3 hours 57 mins 22 secs
+ c42afff0-55ea-4efb-80ba-2e3cced3061b | 2023-02-15 04:00:02+00 | @ 2 hours 45 mins 38 secs
+ 8bacd909-a391-43cd-b1b9-91105ea1d496 | 2023-02-15 15:39:19+00 | @ 4 hours 15 mins 11 secs
+ a3657009-c8b4-4310-a5c3-a6600e712b7e | 2023-02-16 02:16:42+00 | @ 8 hours 54 mins 28 secs
+ 12cd4075-c072-4db1-b677-e7f6ffa8b86d | 2023-02-14 19:01:36+00 | @ 1 day 19 hours 36 mins 22 secs
+ 9d3a767f-33a6-4527-94fc-39d4c73324b8 | 2023-02-14 05:00:02+00 | @ 2 days 10 hours 17 mins 24 secs
+ 09ee2a9e-d2a9-4e5e-87fc-4932fc54ba76 | 2023-02-16 19:36:03+00 | @ 15 mins 7 secs
+ 37969929-40d3-4c30-a9af-db968cb753fd | 2023-02-17 08:58:31+00 | @ 19 mins 18 secs
 (13 rows)
 
 ```
@@ -570,7 +599,6 @@ FROM (
           INNER JOIN document_version AS v
                 ON v.uuid = d.uuid
                    AND v.version = d.current_version
-                   AND v.type = 'core/article'
      WHERE
         s.name='usable' AND s.id = 1 AND date(s.created) = '2023-02-14'
 ) AS vs
@@ -581,18 +609,18 @@ GROUP BY vs.section, vs.newsvalue ORDER BY vs.section, vs.newsvalue;
 ## High-value result
 
 ```
- section │ newsvalue │ count
-═════════╪═══════════╪═══════
- Ekonomi │         1 │     3
- Ekonomi │         2 │    11
- Inrikes │         1 │     2
- Inrikes │         2 │    13
- Kultur  │         2 │     2
- Nöje    │         2 │     3
- Sport   │         1 │     2
- Sport   │         2 │     7
- Utrikes │         1 │     1
- Utrikes │         2 │    13
+ section | newsvalue | count
+=========+===========+=======
+ Ekonomi |         1 |     3
+ Ekonomi |         2 |    11
+ Inrikes |         1 |     2
+ Inrikes |         2 |    13
+ Kultur  |         2 |     2
+ Noje    |         2 |     3
+ Sport   |         1 |     2
+ Sport   |         2 |     7
+ Utrikes |         1 |     1
+ Utrikes |         2 |    13
 (10 rows)
 ```
 
@@ -609,11 +637,9 @@ The row lock is held until the transaction is committed or rolled back.
 
 `pg_advisory_xact_lock` is used when tasks that can't depend on row locking need to be coordinated, f.ex.:
 
-* Which instance should start the logical replication
-* ...or take responsibility for generating new archive signing keys.
+* Which instance should take responsibility for generating new archive signing keys.
 
-The lock is defined by an integer (constants `LockSigningKeys` and
-`LockLogicalReplication` in the code) and is held until the transaction closes.
+The lock is defined by an integer (`LockSigningKeys` in the code) and is held until the transaction closes.
 
 ## Update Concurrency
 
@@ -639,30 +665,24 @@ Deleted documents are listed in the `delete_record` table.
 ```sql
 create table document(                       create table document_version(
        uuid uuid primary key,                       uuid uuid not null,
-       uri text unique not null,                    uri text not null,
-       created timestamptz not null,                version bigint not null,
-       creator_uri text not null,                   title text,
-       updated timestamptz not null,                type text not null,
-       updater_uri text not null,                   language text,
-       current_version bigint not null,             created timestamptz not null,
-       deleting bool not null default false         creator_uri text not null,
-);                                                  meta jsonb default null,
-                                                    document_data jsonb,
-                                                    archived bool not null default false,
-                                                    signature text,
-                                                    primary key(uuid, version),
-                                                    foreign key(uuid) references document(uuid)
-                                                            on delete cascade
-                                             );
+       uri text unique not null,                    version bigint not null,
+       type text not null,                          created timestamptz not null,
+       created timestamptz not null,                creator_uri text not null,
+       creator_uri text not null,                   meta jsonb default null,
+       updated timestamptz not null,                document_data jsonb,
+       updater_uri text not null,                   archived bool not null default false,
+       current_version bigint not null,             signature text,
+       main_doc uuid,                               language text,
+       language text,                               "time" tstzmultirange,
+       system_state text,                           labels text[],
+       main_doc_type text,                          primary key(uuid, version),
+       nonce uuid not null,                         foreign key(uuid) references document(uuid)
+       "time" tstzmultirange,                               on delete cascade
+       labels text[]                         );
+);
 ```
 
 All tables that carry data for a individual document has a `on delete cascade` reference to the document table. Therefore deleting a row in the document table will remove everything *except* the `delete_records` for the document.
-
-## Notes on the schema
-
-The `document_version` table has a couple of columns (`title`, `uri`, `type`, and `language`) that duplicates data from the `document_data` column. They were created for ease of querying, and everything except `type` should probably be removed.
-
-One thing I'm a bit uncertain of is whether a document should be allowed to change its `type` without an intermediate delete. It feels like something that could cause confusion. In that case it would make sense to move `type` to the `document` table.
 
 ## Statuses
 
@@ -676,6 +696,16 @@ Some statuses that we have today will instead be inferred from the richer status
 
 * "replaced" - from the fact that you got a usable status with ID > 1.
 * "cancelled" - from the fact that you got a usable status that doesn't refer to a document version.
+
+## Scheduled publishing
+
+Elephant has a `Scheduler` component that handles scheduled publishing:
+
+* Runs as a background service (can be disabled with `--no-scheduler`)
+* Monitors documents in a "withheld" workflow state with scheduled publish times
+* Automatically transitions documents to "usable" status at the scheduled time
+* Uses distributed locking across multiple instances
+* Maximum poll interval of 1 minute for discovering new scheduled articles
 
 ## Status schema
 
@@ -694,26 +724,18 @@ create table status_heads(                          create table document_status
        current_id bigint not null,                         id bigint not null,
        updated timestamptz not null,                       version bigint not null,
        updater_uri text not null,                          created timestamptz not null,
-       primary key(uuid, name),                            creator_uri text not null,
-       foreign key(uuid) references document(uuid)         meta jsonb default null,
-               on delete cascade                           archived bool not null default false,
-);                                                         signature text,
-                                                           primary key(uuid, name, id),
-                                                           foreign key(uuid) references document(uuid)
-                                                                   on delete cascade
+       type text,                                          creator_uri text not null,
+       version bigint,                                     meta jsonb default null,
+       language text,                                      archived bool not null default false,
+       system_state text,                                  signature text,
+       primary key(uuid, name),                            meta_doc_version bigint,
+       foreign key(uuid) references document(uuid)         primary key(uuid, name, id),
+               on delete cascade                           foreign key(uuid) references document(uuid)
+);                                                                 on delete cascade
                                                     );
 ```
 
-Just like in `document_versions` `document_status` has a `meta jsonb` column that's used to store information about that specific status. A good example would be setting a `{"reason":"correction"}` on a "usable" status for a `RÄ`.
-
-## Next steps for statuses
-
-There's a remaining design decision to make about scheduled status changes.
-
-1. Should they be modelled as "withheld" statuses as curently done in OC?
-2. Should they be a separate entity altogether, a deferred write op?
-3. Should we be able to add future statuses without advancing the head?
-4. ...something else?
+Just like in `document_versions` `document_status` has a `meta jsonb` column that's used to store information about that specific status. A good example would be setting a `{"reason":"correction"}` on a "usable" status.
 
 ## Archiving
 
@@ -748,29 +770,27 @@ The deletion system ties into the archiving system. The first steps are performe
   * ...if not, wait until it has.
 * Insert a delete record
 * Delete the current `document` row (triggering delete cascade)
-* Insert a placeholder `document` row with `deleting=true`, where `current_version` refers to the `delete_record` for the delete.
+* Insert a placeholder `document` row where `current_version` refers to the `delete_record` for the delete.
 
 Once this has been done all attempts to update the document, or create a new document with the same UUID, will fail with a "failed_precondition" error code. Reads will yield a "not_found".
 
 ## Deletes - Step 2
 
-The archiver reacts to the `document` row with `deleting=true` and starts finalising the delete:
+The archiver reacts to the placeholder document row and starts finalising the delete:
 
 * Get a row lock on the document
 * Move all archive objects for the document from `documents/[uuid]/` to `deleted/[uuid]/[delete record id]/`.
-* Delete the placeholder `deleting=true` row from `documents`.
+* Delete the placeholder row from `documents`.
 
 Now clients are free to create a new document with the same UUID.
 
-## Next steps for deletes
+## Restore and purge
 
-Delete will need a matching restore that re-creates the document and its history. This restoration process should preserve timestamps and authorship information for restored entries.
+**Restore** re-creates a deleted document from the S3 archive, preserving its full version history, status history, and authorship information.
 
-If we're deleting the document for legal reasons we need to be able to actually purge the document data.
+**Purge** permanently removes the archived data for a deleted document. This is needed for legal compliance when document data must be fully erased.
 
-So the next step for deletes should be to add a purge method that will set the delete record to "purge", and let the archiver delete all objects and then finalise the purge by deleting the delete record (or update its status to "purged" or similar).
-
-Just like delete, purge should be gated by a specific permission.
+Both operations require dedicated permission scopes (`doc_restore` and `doc_purge`).
 
 ## Managing ACLs
 
@@ -786,7 +806,7 @@ curl --location 'http://localhost:1080/twirp/elephant.repository.Documents/Updat
     "uuid": "142ea73d-dc92-46b8-a546-8e8a870b1d0d",
     "acl": [
         {
-            "uri": "unit://tt/redaktionen",
+            "uri": "core://unit/redaktionen",
             "permissions": [
                 "r"
             ]
@@ -815,20 +835,15 @@ Tests are self-contained and use docker to spin up dependencies like Postgres an
 
 ```
 $ go test ./...
-?       github.com/ttab/elephant/cmd/docformat	[no test files]
-?       github.com/ttab/elephant/cmd/repository	[no test files]
-?       github.com/ttab/elephant/cmd/revisor	[no test files]
-?       github.com/ttab/elephant/doc	[no test files]
-?       github.com/ttab/elephant/ingest	[no test files]
-?       github.com/ttab/elephant/internal	[no test files]
-?       github.com/ttab/elephant/internal/cmd	[no test files]
-?       github.com/ttab/elephant/internal/test	[no test files]
-?       github.com/ttab/elephant/postgres	[no test files]
-?       github.com/ttab/elephant/rpc/repository	[no test files]
-?       github.com/ttab/elephant/schema	[no test files]
-ok      github.com/ttab/elephant/repository	5.642s
-ok      github.com/ttab/elephant/revisor	(cached)
-ok      github.com/ttab/elephant/revisor/constraints	(cached)
+?       github.com/ttab/elephant-repository/cmd/repository	[no test files]
+?       github.com/ttab/elephant-repository/internal	[no test files]
+?       github.com/ttab/elephant-repository/internal/cmd	[no test files]
+?       github.com/ttab/elephant-repository/internal/test	[no test files]
+?       github.com/ttab/elephant-repository/planning	[no test files]
+?       github.com/ttab/elephant-repository/postgres	[no test files]
+?       github.com/ttab/elephant-repository/schema	[no test files]
+?       github.com/ttab/elephant-repository/sinks	[no test files]
+ok      github.com/ttab/elephant-repository/repository	5.642s
 ```
 
 ## Testing the repository
@@ -890,7 +905,7 @@ $ go test -v -run TestIntegrationBasicCrud ./repository
     api_test.go:118: success: expected get of old version to fail after delete: error message: twirp error permission_denied: no read permission for the document
 --- PASS: TestIntegrationBasicCrud (5.08s)
 PASS
-ok      github.com/ttab/elephant/repository	5.090s
+ok      github.com/ttab/elephant-repository/repository	5.090s
 
 ```
 
