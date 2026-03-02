@@ -63,6 +63,10 @@ linters:
       - third_party$
       - builtin$
       - examples$
+    rules:
+      - linters:
+          - gosec
+        path: _test\.go
 formatters:
   enable:
     - gci

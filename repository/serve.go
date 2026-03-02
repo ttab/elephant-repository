@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -33,7 +34,8 @@ func SetUpRouter(
 }
 
 func ListenAndServe(
-	ctx context.Context, addr string, tlsAddr string, h http.Handler,
+	ctx context.Context, log *slog.Logger,
+	addr string, tlsAddr string, h http.Handler,
 	corsHosts []string, certFile string, keyFile string,
 ) error {
 	handler := elephantine.LogMetadataMiddleware(h)
@@ -58,7 +60,7 @@ func ListenAndServe(
 
 			return elephantine.ListenAndServeContext(
 				gCtx, &tlsServer, 10*time.Second,
-				elephantine.ListenAndServeTLS(certFile, keyFile),
+				elephantine.ListenAndServeTLS(log, certFile, keyFile),
 			)
 		})
 	}

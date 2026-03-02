@@ -92,7 +92,7 @@ func main() {
 				Name:    "ensure-schema",
 				Sources: cli.EnvVars("ENSURE_SCHEMA"),
 			},
-			&cli.StringFlag{
+			&cli.StringFlag{ //nolint:gosec // Development default connection string.
 				Name:    "db",
 				Value:   "postgres://elephant-repository:pass@localhost/elephant-repository",
 				Sources: cli.EnvVars("CONN_STRING"),
@@ -187,6 +187,16 @@ func main() {
 				Usage:   "CORS hosts to allow, supports wildcards",
 				Sources: cli.EnvVars("CORS_HOSTS"),
 			},
+			&cli.StringFlag{
+				Name:    "maintenance-window",
+				Sources: cli.EnvVars("MAINTENANCE_WINDOW"),
+				Value:   "Sunday 3h 1h",
+			},
+			&cli.BoolFlag{
+				Name:    "enable-eviction",
+				Usage:   "allow noncurrent versions to be evicted from the DB",
+				Sources: cli.EnvVars("ENABLE_EVICTION"),
+			},
 			&cli.BoolFlag{
 				Name: "migrate-db",
 				Usage: `Perform database migrations.
@@ -228,6 +238,8 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		noSSE           = c.Bool("no-sse")
 		corsHosts       = c.StringSlice("cors-host")
 		migrateDB       = c.Bool("migrate-db")
+		maintenanceW    = c.String("maintenance-window")
+		enableEviction  = c.Bool("enable-eviction")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -245,6 +257,12 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	defaultTZ, err := time.LoadLocation(defaultTimezone)
 	if err != nil {
 		return fmt.Errorf("invalid default timezone: %w", err)
+	}
+
+	maintenanceWindow, err := repository.ParseMaintenanceWindow(maintenanceW)
+	if err != nil {
+		return fmt.Errorf("invalid maintenance window %q: %w",
+			maintenanceW, err)
 	}
 
 	conf, err := cmd.BackendConfigFromContext(c)
@@ -359,12 +377,19 @@ func runServer(ctx context.Context, c *cli.Command) error {
 			MetricsCalculators: inMet,
 			TypeConfigurations: typeConfs,
 			DefaultTZ:          defaultTZ,
+			VersionArchiveReader: repository.NewArchiveReader(repository.ArchiveReaderOptions{
+				S3:     s3Client,
+				Bucket: conf.ArchiveBucket,
+			}),
+			MaintenanceWindow: maintenanceWindow,
+			EnableEviction:    enableEviction,
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
 
-	go store.RunListener(stopCtx, pubsubPool)
+	listenerPool := pubsubPool
+
 	go store.RunCleaner(stopCtx, 5*time.Minute)
 
 	if !conf.NoCoreSchema {
@@ -711,7 +736,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 
 		var client http.Client
 
-		res, err := client.Do(req)
+		res, err := client.Do(req) //nolint:gosec // Liveness check URL is from configuration.
 		if err != nil {
 			return fmt.Errorf(
 				"failed to perform liveness check request: %w", err)
@@ -750,6 +775,10 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	}
 
 	serverGroup.Go(func() error {
+		return store.RunListener(gCtx, listenerPool)
+	})
+
+	serverGroup.Go(func() error {
 		err := typeConfs.Run(gCtx, store)
 		if err != nil {
 			return fmt.Errorf("run type configurations: %w", err)
@@ -762,7 +791,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		logger.Debug("starting API server")
 
 		err := repository.ListenAndServe(
-			gCtx, addr, tlsAddr,
+			gCtx, logger, addr, tlsAddr,
 			router, corsHosts, certFile, keyFile)
 		if err != nil {
 			return fmt.Errorf("API server error: %w", err)

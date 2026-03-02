@@ -71,7 +71,7 @@ func NewSSE(ctx context.Context, logger *slog.Logger, store DocStore) (*SSE, err
 				code := elephantine.TwirpErrorToHTTPStatusCode(err)
 
 				w.WriteHeader(code)
-				_, _ = w.Write([]byte(err.Error()))
+				_, _ = w.Write([]byte(err.Error())) //nolint:gosec // Auth error, not user-supplied content.
 
 				return nil, false
 			}

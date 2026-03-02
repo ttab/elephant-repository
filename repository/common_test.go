@@ -222,10 +222,22 @@ func testingAPIServer(
 			DeleteTimeout:      1 * time.Second,
 			MetricsCalculators: inMet,
 			TypeConfigurations: typeConf,
+			VersionArchiveReader: repository.NewArchiveReader(repository.ArchiveReaderOptions{
+				S3:     env.S3,
+				Bucket: env.Bucket,
+			}),
+			MaintenanceWindow: &repository.MaintenanceWindow{
+				Weekday: time.Sunday,
+				Start:   3 * time.Hour,
+				Length:  1 * time.Hour,
+			},
 		})
 	test.Must(t, err, "create doc store")
 
-	go store.RunListener(ctx, dbpool)
+	go func() {
+		err := store.RunListener(ctx, dbpool)
+		test.Must(t, err, "run listener")
+	}()
 
 	go func() {
 		err := typeConf.Run(ctx, store)
