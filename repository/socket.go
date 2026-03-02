@@ -572,20 +572,22 @@ func (s *SocketSession) handleGetDocuments(
 
 	var inclusionSubsets map[string][]*newsdoc.ValueExtractor
 
-	for docType, expr := range req.InclusionSubsets {
-		ve, err := newsdoc.ValueExtractorFromString(expr)
-		if err != nil {
-			return nil, SockErrorf(string(twirp.InvalidArgument),
-				"invalid inclusion subset expression for %q: %v",
-				docType, err)
-		}
+	for docType, sub := range req.InclusionSubsets {
+		for i, expr := range sub.GetExpressions() {
+			ve, err := newsdoc.ValueExtractorFromString(expr)
+			if err != nil {
+				return nil, SockErrorf(string(twirp.InvalidArgument),
+					"invalid inclusion subset expression for %q[%d]: %v",
+					docType, i, err)
+			}
 
-		if inclusionSubsets == nil {
-			inclusionSubsets = make(map[string][]*newsdoc.ValueExtractor)
-		}
+			if inclusionSubsets == nil {
+				inclusionSubsets = make(map[string][]*newsdoc.ValueExtractor)
+			}
 
-		inclusionSubsets[docType] = append(
-			inclusionSubsets[docType], ve)
+			inclusionSubsets[docType] = append(
+				inclusionSubsets[docType], ve)
+		}
 	}
 
 	previous, ok := s.sets[req.SetName]
@@ -660,19 +662,21 @@ func (s *SocketSession) handleGetEventlog(
 
 	var subsets map[string][]*newsdoc.ValueExtractor
 
-	for docType, expr := range req.TypeSubsets {
-		ve, err := newsdoc.ValueExtractorFromString(expr)
-		if err != nil {
-			return nil, SockErrorf(string(twirp.InvalidArgument),
-				"invalid type subset expression for %q: %v",
-				docType, err)
-		}
+	for docType, sub := range req.TypeSubsets {
+		for i, expr := range sub.GetExpressions() {
+			ve, err := newsdoc.ValueExtractorFromString(expr)
+			if err != nil {
+				return nil, SockErrorf(string(twirp.InvalidArgument),
+					"invalid type subset expression for %q[%d]: %v",
+					docType, i, err)
+			}
 
-		if subsets == nil {
-			subsets = make(map[string][]*newsdoc.ValueExtractor)
-		}
+			if subsets == nil {
+				subsets = make(map[string][]*newsdoc.ValueExtractor)
+			}
 
-		subsets[docType] = append(subsets[docType], ve)
+			subsets[docType] = append(subsets[docType], ve)
+		}
 	}
 
 	previous, ok := s.eventlogs[req.Name]

@@ -416,8 +416,10 @@ func TestIntegrationSocketPartial(t *testing.T) {
 			Subset: []string{
 				".meta(type='core/newsvalue')@{value}",
 			},
-			InclusionSubsets: map[string]string{
-				"core/article": ".content(type='core/text' role='heading-1').data{text}",
+			InclusionSubsets: map[string]*repositorysocket.Subsets{
+				"core/article": {Expressions: []string{
+					".content(type='core/text' role='heading-1').data{text}",
+				}},
 			},
 		},
 	})
@@ -637,9 +639,13 @@ func TestIntegrationSocketEventlog(t *testing.T) {
 				"core/planning-item",
 				"core/article",
 			},
-			TypeSubsets: map[string]string{
-				"core/planning-item": ".meta(type='core/newsvalue')@{value}",
-				"core/article":       ".content(type='core/text' role='heading-1').data{text}",
+			TypeSubsets: map[string]*repositorysocket.Subsets{
+				"core/planning-item": {Expressions: []string{
+					".meta(type='core/newsvalue')@{value}",
+				}},
+				"core/article": {Expressions: []string{
+					".content(type='core/text' role='heading-1').data{text}",
+				}},
 			},
 		},
 	})
