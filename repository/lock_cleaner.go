@@ -52,13 +52,7 @@ func (s *PGDocStore) cleanupTasks(ctx context.Context) error {
 		)
 	}
 
-	err = s.evictNonCurrent(ctx)
-	if err != nil {
-		s.logger.ErrorContext(
-			ctx, "eviction error",
-			elephantine.LogKeyError, err,
-		)
-	}
+	s.evictNonCurrent(ctx)
 
 	return nil
 }
@@ -67,19 +61,19 @@ const (
 	taskNameEvictNoncurrent = "evict_noncurrent"
 )
 
-func (s *PGDocStore) evictNonCurrent(ctx context.Context) error {
+func (s *PGDocStore) evictNonCurrent(ctx context.Context) {
 	if !s.opts.EnableEviction {
-		return nil
+		return
 	}
 
 	lastRun := s.lastRuns[taskNameEvictNoncurrent]
 	if time.Since(lastRun) < 12*time.Hour {
-		return nil
+		return
 	}
 
 	now := time.Now()
 	if !s.opts.MaintenanceWindow.InWindow(now) {
-		return nil
+		return
 	}
 
 	ages := s.opts.TypeConfigurations.GetEvictionAges()
@@ -119,8 +113,6 @@ func (s *PGDocStore) evictNonCurrent(ctx context.Context) error {
 	)
 
 	s.lastRuns[taskNameEvictNoncurrent] = now
-
-	return nil
 }
 
 func (s *PGDocStore) removeExpiredLocks(ctx context.Context) error {

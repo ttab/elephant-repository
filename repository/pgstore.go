@@ -401,8 +401,8 @@ func (s *PGDocStore) OnEventlog(
 }
 
 // RunListener opens a connection to the database and subscribes to all store
-// notifications.
-func (s *PGDocStore) RunListener(ctx context.Context, pool *pgxpool.Pool) {
+// notifications. Blocks until the context is cancelled or an error occurs.
+func (s *PGDocStore) RunListener(ctx context.Context, pool *pgxpool.Pool) error {
 	fanOuts := []pg.ChannelSubscription{
 		s.archived,
 		s.schemas,
@@ -413,7 +413,14 @@ func (s *PGDocStore) RunListener(ctx context.Context, pool *pgxpool.Pool) {
 		s.typeConf,
 	}
 
-	pg.Subscribe(ctx, s.logger, pool, fanOuts...)
+	sub := pg.NewSubscriber(s.logger, pool, fanOuts)
+
+	err := sub.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("run listener: %w", err)
+	}
+
+	return nil
 }
 
 // Delete implements DocStore.

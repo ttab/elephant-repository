@@ -92,6 +92,8 @@ func mustParseTime(t *testing.T, s string) time.Time {
 }
 
 func equalTime(t *testing.T, name string, want string, got time.Time) {
+	t.Helper()
+
 	wantTime := mustParseTime(t, want)
 
 	if !got.Equal(wantTime) {

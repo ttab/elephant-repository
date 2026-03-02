@@ -92,7 +92,7 @@ func main() {
 				Name:    "ensure-schema",
 				Sources: cli.EnvVars("ENSURE_SCHEMA"),
 			},
-			&cli.StringFlag{
+			&cli.StringFlag{ //nolint:gosec // Development default connection string.
 				Name:    "db",
 				Value:   "postgres://elephant-repository:pass@localhost/elephant-repository",
 				Sources: cli.EnvVars("CONN_STRING"),
@@ -388,7 +388,8 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
 
-	go store.RunListener(stopCtx, pubsubPool)
+	listenerPool := pubsubPool
+
 	go store.RunCleaner(stopCtx, 5*time.Minute)
 
 	if !conf.NoCoreSchema {
@@ -735,7 +736,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 
 		var client http.Client
 
-		res, err := client.Do(req)
+		res, err := client.Do(req) //nolint:gosec // Liveness check URL is from configuration.
 		if err != nil {
 			return fmt.Errorf(
 				"failed to perform liveness check request: %w", err)
@@ -772,6 +773,10 @@ func runServer(ctx context.Context, c *cli.Command) error {
 			return nil
 		})
 	}
+
+	serverGroup.Go(func() error {
+		return store.RunListener(gCtx, listenerPool)
+	})
 
 	serverGroup.Go(func() error {
 		err := typeConfs.Run(gCtx, store)
