@@ -187,7 +187,7 @@ func TestVariantValidation(t *testing.T) {
 		"b3a7c8e1-1234-4f00-9abc-def012345678",
 		"article://test/template-1",
 	)
-	templateDoc.Type = "core/article+template"
+	templateDoc.Type = "core/article#template"
 
 	deadline := time.Now().Add(5 * time.Second)
 	succeeded := false
@@ -215,7 +215,7 @@ func TestVariantValidation(t *testing.T) {
 		"c4b8d9f2-5678-4f00-9abc-def012345679",
 		"article://test/bad-variant-1",
 	)
-	badDoc.Type = "core/article+nonexistent"
+	badDoc.Type = "core/article#nonexistent"
 
 	_, err = documentsClient.Update(ctx, &rpc_repository.UpdateRequest{
 		Uuid:     badDoc.Uuid,
