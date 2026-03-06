@@ -1,0 +1,191 @@
+[
+  {
+    "call_id": "e1e2e3e4-f5f6-7890-abcd-ef1234567890",
+    "events": {
+      "items": [
+        {
+          "event": {
+            "id": "1",
+            "event": "document",
+            "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
+            "timestamp": "2023-01-10T20:06:37+01:00",
+            "version": "1",
+            "updater_uri": "user://test/testintegrationsocketeventlog",
+            "type": "core/planning-item",
+            "language": "sv-se",
+            "document_nonce": "00000000-0000-0000-0000-000000000000",
+            "timespans": [
+              {
+                "from": "2025-11-14T00:00:00Z",
+                "to": "2025-11-14T23:59:59Z"
+              }
+            ],
+            "labels": [
+              "section:0730efa9-43f2-468d-979a-aaffc74d7582"
+            ]
+          },
+          "subset": [
+            {
+              "values": {
+                "value": {
+                  "value": "3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "id": "2",
+            "event": "acl",
+            "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
+            "timestamp": "2023-01-10T20:06:37+01:00",
+            "version": "1",
+            "acl": [
+              {
+                "uri": "user://test/testintegrationsocketeventlog",
+                "permissions": [
+                  "r",
+                  "w"
+                ]
+              }
+            ],
+            "updater_uri": "user://test/testintegrationsocketeventlog",
+            "type": "core/planning-item",
+            "language": "sv-se",
+            "document_nonce": "00000000-0000-0000-0000-000000000000",
+            "timespans": [
+              {
+                "from": "2025-11-14T00:00:00Z",
+                "to": "2025-11-14T23:59:59Z"
+              }
+            ],
+            "labels": [
+              "section:0730efa9-43f2-468d-979a-aaffc74d7582"
+            ]
+          }
+        },
+        {
+          "event": {
+            "id": "3",
+            "event": "document",
+            "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437",
+            "timestamp": "2023-01-10T20:06:37+01:00",
+            "version": "1",
+            "updater_uri": "user://test/testintegrationsocketeventlog",
+            "type": "core/article",
+            "language": "sv-se",
+            "document_nonce": "00000000-0000-0000-0000-000000000000"
+          },
+          "subset": [
+            {
+              "values": {
+                "text": {
+                  "value": "Svenska talangerna vann i VM-debuten"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "id": "4",
+            "event": "acl",
+            "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437",
+            "timestamp": "2023-01-10T20:06:37+01:00",
+            "version": "1",
+            "acl": [
+              {
+                "uri": "user://test/testintegrationsocketeventlog",
+                "permissions": [
+                  "r",
+                  "w"
+                ]
+              }
+            ],
+            "updater_uri": "user://test/testintegrationsocketeventlog",
+            "type": "core/article",
+            "language": "sv-se",
+            "document_nonce": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "event": {
+            "id": "5",
+            "event": "workflow",
+            "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437",
+            "timestamp": "2023-01-10T20:06:37+01:00",
+            "version": "1",
+            "updater_uri": "user://test/testintegrationsocketeventlog",
+            "type": "core/article",
+            "language": "sv-se",
+            "workflow_state": "draft",
+            "document_nonce": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "event": {
+            "id": "6",
+            "event": "document",
+            "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
+            "timestamp": "2023-01-10T20:06:37+01:00",
+            "version": "2",
+            "updater_uri": "user://test/testintegrationsocketeventlog",
+            "type": "core/planning-item",
+            "language": "sv-se",
+            "document_nonce": "00000000-0000-0000-0000-000000000000",
+            "timespans": [
+              {
+                "from": "2025-11-14T00:00:00Z",
+                "to": "2025-11-14T23:59:59Z"
+              }
+            ],
+            "labels": [
+              "section:0730efa9-43f2-468d-979a-aaffc74d7582"
+            ]
+          },
+          "subset": [
+            {
+              "values": {
+                "value": {
+                  "value": "3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "event": {
+            "id": "7",
+            "event": "document",
+            "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
+            "timestamp": "2023-01-10T20:06:37+01:00",
+            "version": "3",
+            "updater_uri": "user://test/testintegrationsocketeventlog",
+            "type": "core/planning-item",
+            "language": "sv-se",
+            "document_nonce": "00000000-0000-0000-0000-000000000000",
+            "timespans": [
+              {
+                "from": "2025-11-15T00:00:00Z",
+                "to": "2025-11-15T23:59:59Z"
+              }
+            ],
+            "labels": [
+              "section:0730efa9-43f2-468d-979a-aaffc74d7582"
+            ]
+          },
+          "subset": [
+            {
+              "values": {
+                "value": {
+                  "value": "3"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+]
