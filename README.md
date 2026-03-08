@@ -6,7 +6,7 @@ Elephant repository is a [NewsDoc](https://github.com/ttab/newsdoc) document rep
 
 The repository depends on PostgreSQL for data storage and a S3 compatible store for archiving and reports. It can use AWS EventBridge as an event sink, but that is optional and can be disabled with `--no-eventsink`.
 
-All operations against the repository is exposed as a [Twirp RPC API](https://twitchtv.github.io/twirp/docs/intro.html) that you can communicate either using [Protobuf](https://protobuf.dev/) messages or standard JSON. See [Calling the API](#calling-the-api) for more details on communicating with the defined services.
+All operations against the repository are exposed as a [Twirp RPC API](https://twitchtv.github.io/twirp/docs/intro.html) that you can communicate either using [Protobuf](https://protobuf.dev/) messages or standard JSON. See [Calling the API](#calling-the-api) for more details on communicating with the defined services.
 
 ## Versioning
 
@@ -16,19 +16,16 @@ Old versions can always be fetched through the API, and the history can be inspe
 
 ## ACLs for permissions
 
-Documents can be shared with individuals or units (groups of people). By default only the entity that created a document has access to it, and other entities will have to be granted read and/or write access.
+Documents can be shared with individuals or units (groups of people). By default only the entity that created a document has access to it, and other entities will have to be granted access.
+
+The four ACL permission types are:
+
+* **Read** — read the document
+* **Write** — create new versions
+* **MetaWrite** — update document metadata without creating a full version
+* **SetStatus** — set statuses on the document
 
 In most workflows documents will be shared with a group of people, but this makes it possible to work with private drafts, and share documents with individuals that are untrusted in the sense that they shouldn't have access to all your content.
-
-## Archiving
-
-All events, document statuses and versions are archived by a background process in the repository. Archiving is tightly integrated with the document lifecycle and a document cannot be deleted until it has been fully archived.
-
-As part of the archiving process the archive objects are signed with an archiving key, and as the signature of the previous version is included in the object we create a tamper-proof chain of updates. Statuses also include the signature of the document version they refer to.
-
-The archive status and signature are fed back into the database after the object has been successfully archived.
-
-See [Archiving data](#archiving-data) for further details.
 
 ## Validation schemas
 
@@ -42,7 +39,11 @@ You can define and set statuses for document versions. To publish a version of a
 
 The last status of a given name for a document is referred to as the "head". Just like documents, statuses are versioned and have sequential IDs for a given document and status name.
 
-TODO: write and link to workflow rule documentation, see presentation.slide
+## Scheduled publishing
+
+The repository includes a scheduler that handles future-dated document publishing. When a document enters the "withheld" workflow state with a planned publish time, the scheduler will automatically publish it at the specified time. The scheduler polls for new scheduled documents every minute and has a 30-minute retry window after the planned publish time.
+
+Scheduled publishing is enabled by default and can be disabled with `--no-scheduler` / `NO_SCHEDULER`.
 
 ## Attaching objects (files/assets)
 
@@ -59,21 +60,39 @@ The actual attached objects are currently not being archived. Still an open ques
 All changes to a document are emitted on the eventlog, accessed through `Documents.Eventlog`. Changes can be:
 
 * a new document version
-* anew document status
+* a new document status
 * updated ACL entries
 * a document delete
 
 This eventlog can be used by other applications to act on changes in the repository.
 
+### Server-Sent Events (SSE)
+
+The repository exposes an SSE endpoint at `/sse` for real-time event streaming. It maintains a 200-event replay buffer so that clients that reconnect can catch up on missed events. Clients can filter events by topic using the standard SSE `Last-Event-ID` header for resumption.
+
+SSE can be disabled with `--no-sse` / `NO_SSE`.
+
+### WebSocket
+
+A WebSocket API is available at `/websocket/:token` for per-user rate-limited document streaming. Clients authenticate using JWT socket tokens. The WebSocket API supports subscribing to specific documents and receiving real-time updates.
+
+WebSocket support can be disabled with `--no-websocket` / `NO_WEBSOCKET`.
+
 ### Event sink
 
-The repository also has the concept of event sinks where enriched events can be posted to an event sink (right now only we only support AWS EventBridge as a sink).
+The repository also has the concept of event sinks where enriched events can be posted to an event sink (right now we only support AWS EventBridge as a sink).
 
-The purpose of the enriched events is to allow the constructions of event-based architectures where f.ex. a Lambda function could subscribe to published articles with a specific category. This let's you avoid situations where a lot of systems load unnecessary just to determine if an event should be handled.
+The purpose of the enriched events is to allow the construction of event-based architectures where f.ex. a Lambda function could subscribe to published articles with a specific category. This lets you avoid situations where a lot of systems load unnecessarily just to determine if an event should be handled.
 
-TODO: link to more documentation of enriched format.
+## Document metrics
 
-## Metrics
+The repository has a `Metrics` Twirp service for storing and retrieving custom document-level metrics. These are distinct from the operational Prometheus metrics (see [Observability](#observability)). Document metrics support different aggregation modes (replace, increment) and can be used for tracking things like character counts. A built-in character counter is enabled by default (disable with `--no-charcounter` / `NO_CHARCOUNTER`).
+
+## Partial document fetching
+
+The `Documents.Get` and `Documents.GetMeta` API calls support a `Subset` field for extracting specific parts of a document using subset expressions. This allows clients to request only the data they need rather than fetching entire documents.
+
+## Observability
 
 Prometheus metrics and PPROF debugging endpoints are exposed on port 1081 at "/metrics" and "/debug/pprof/".
 
@@ -85,57 +104,14 @@ The PPROF debugging endpoints allow for CPU and memory profiling to get to the b
 
 The API is defined in [service.proto](https://github.com/ttab/elephant-api/blob/main/repository/service.proto).
 
-### Retrieving a token
-
-Elephant has an endpoint for fetching dummy tokens for use with the API. This exists only because we want to be able to easily test the API with authentication from the beginning. This token endpoint will be removed as soon as we're getting close to having something that can be deployed in production.
-
-``` shell
-curl http://localhost:1080/token \
-    -d grant_type=password \
-    -d 'username=Hugo Wetterberg <user://tt/hugo, unit://tt/unit/a, unit://tt/unit/b>' \
-    -d 'scope=doc_read doc_write doc_delete'
-```
-
-This will yeild a JWT with the following claims:
-
-``` json
-{
-  "iss": "test",
-  "sub": "user://tt/hugo",
-  "exp": 1675894185,
-  "sub_name": "Hugo Wetterberg",
-  "scope": "doc_read doc_write doc_delete",
-  "units": [
-    "unit://tt/unit/a",
-    "unit://tt/unit/b"
-  ]
-}
-```
-
-It's essentially a password-less password grant where you can specify your own permissions and identity.
-
-Example scripting usage:
-
-``` shell
-TOKEN=$(curl -s http://localhost:1080/token \
-    -d grant_type=password \
-    -d 'username=Hugo Wetterberg <user://tt/hugo, unit://tt/unit/a, unit://tt/unit/b>' \
-    -d 'scope=doc_read doc_write doc_delete' | jq -r .access_token)
-
-curl --request POST \
-  --url http://localhost:1080/twirp/elephant.repository.Documents/Get \
-  --header "Authorization: Bearer $TOKEN" \
-  --header 'Content-Type: application/json' \
-  --data '{
-        "uuid": "23ba8778-36c2-417b-abc7-323db47a7472"
-}'
-```
+Authentication is OIDC-based, configured via the `--oidc-config`, `--jwt-audience`, `--jwt-scope-prefix`, `--client-id`, and `--client-secret` flags (or their corresponding environment variables).
 
 ### Fetching a document
 
 ``` shell
 curl --request POST \
   --url http://localhost:1080/twirp/elephant.repository.Documents/Get \
+  --header "Authorization: Bearer $TOKEN" \
   --header 'Content-Type: application/json' \
   --data '{
 	"uuid": "8090ff79-030e-419b-952e-12917cfdaaac"
@@ -149,6 +125,7 @@ Here you can specify `version` to fetch a specific version, or `status` to fetch
 ``` shell
 curl --request POST \
   --url http://localhost:1080/twirp/elephant.repository.Documents/GetMeta \
+  --header "Authorization: Bearer $TOKEN" \
   --header 'Content-Type: application/json' \
   --data '{
 	"uuid": "8090ff79-030e-419b-952e-12917cfdaaac"
@@ -167,10 +144,9 @@ Then create a ".env" file containing the following values:
 S3_ENDPOINT=http://localhost:9000/
 S3_ACCESS_KEY_ID=minioadmin
 S3_ACCESS_KEY_SECRET=minioadmin
-MOCK_JWT_SIGNING_KEY='MIGkAgEBBDAgdjcifmVXiJoQh7IbTnsCS81CxYHQ1r6ftXE6ykJDz1SoQJEB6LppaCLpNBJhGNugBwYFK4EEACKhZANiAAS4LqvuFUwFXUNpCPTtgeMy61hE-Pdm57OVzTaVKUz7GzzPKNoGbcTllPGDg7nzXIga9ObRNs8ytSLQMOWIO8xJW35Xko4kwPR_CVsTS5oMaoYnBCOZYEO2NXND7gU7GoM'
 ```
 
-The server will generate and a JWT signing key (and log a warning) if it's missing from the environment.
+The S3 variables are only needed for local development with MinIO. In production, standard AWS credential resolution is used.
 
 ###  Running the repository server
 
@@ -179,6 +155,47 @@ The repository server runs the API, archiver, and eventlog builder. If your envi
 ``` shell
 go run ./cmd/repository run --no-eventsink
 ```
+
+### Configuration reference
+
+The server is configured via CLI flags and/or environment variables. Key options:
+
+| Flag | Env var | Default | Description |
+|------|---------|---------|-------------|
+| `--addr` | `ADDR` | `:1080` | API listen address |
+| `--tls-addr` | `TLS_ADDR` | `:1443` | TLS listen address |
+| `--cert-file` | `TLS_CERT_PATH` | | TLS certificate path |
+| `--key-file` | `TLS_KEY_PATH` | | TLS key path |
+| `--profile-addr` | `PROFILE_ADDR` | `:1081` | Metrics/pprof listen address |
+| `--log-level` | `LOG_LEVEL` | `error` | Log level |
+| `--default-language` | `DEFAULT_LANGUAGE` | `sv-se` | Default document language |
+| `--default-timezone` | `DEFAULT_TIMEZONE` | `Europe/Stockholm` | Default timezone |
+| `--db` | `CONN_STRING` | `postgres://elephant-repository:pass@localhost/elephant-repository` | PostgreSQL connection string |
+| `--db-bouncer` | `BOUNCER_CONN_STRING` | | PgBouncer connection string (used for all DB ops except pubsub) |
+| `--db-parameter` | `CONN_STRING_PARAMETER` | | Additional connection string parameter |
+| `--s3-endpoint` | `S3_ENDPOINT` | | S3 endpoint override (for MinIO) |
+| `--s3-key-id` | `S3_ACCESS_KEY_ID` | | S3 access key ID (for MinIO) |
+| `--s3-key-secret` | `S3_ACCESS_KEY_SECRET` | | S3 access key secret (for MinIO) |
+| `--archive-bucket` | `ARCHIVE_BUCKET` | `elephant-archive` | S3 bucket for archives |
+| `--asset-bucket` | `ASSET_BUCKET` | `elephant-assets` | S3 bucket for assets |
+| `--eventsink` | `EVENTSINK` | `aws-eventbridge` | Event sink type |
+| `--cors-host` | `CORS_HOSTS` | | CORS hosts to allow (supports wildcards) |
+| `--ensure-schema` | `ENSURE_SCHEMA` | | Schema specifications to ensure on startup |
+| `--migrate-db` | `MIGRATE_DB` | `false` | Run database migrations on startup |
+| `--no-eventsink` | `NO_EVENTSINK` | `false` | Disable event sink |
+| `--no-archiver` | `NO_ARCHIVER` | `false` | Disable archiver |
+| `--no-eventlog-builder` | `NO_EVENTLOG_BUILDER` | `false` | Disable eventlog builder |
+| `--no-scheduler` | `NO_SCHEDULER` | `false` | Disable scheduled publishing |
+| `--no-charcounter` | `NO_CHARCOUNTER` | `false` | Disable built-in character counter |
+| `--no-websocket` | `NO_WEBSOCKET` | `false` | Disable WebSocket API |
+| `--no-sse` | `NO_SSE` | `false` | Disable SSE API |
+| `--no-core-schema` | `NO_CORE_SCHEMA` | `false` | Don't register built-in core schema |
+| `--tolerate-eventlog-gaps` | `TOLERATE_EVENTLOG_GAPS` | `false` | Tolerate eventlog gaps when archiving |
+| `--oidc-config` | `OIDC_CONFIG` | | OIDC configuration URL |
+| `--jwt-audience` | `JWT_AUDIENCE` | | Expected JWT audience |
+| `--jwt-scope-prefix` | `JWT_SCOPE_PREFIX` | | Prefix for JWT scopes |
+| `--client-id` | `CLIENT_ID` | | OAuth client ID |
+| `--client-secret` | `CLIENT_SECRET` | | OAuth client secret |
 
 ## The database
 
@@ -190,11 +207,11 @@ The database schema is defined using numbered [tern](https://github.com/jackc/te
 
 Start a local minio instance and the necessary buckets using `mage s3:minio s3:bucket elephant-archive s3:bucket elephant-assets`.
 
-Queries are defined in "./postgres/query.sql" and are compiled using [sqlc](https://sqlc.dev/) to a `Queries` struct in "./postgres/query.go". Run `make sql:generate` to compile queries.
+Queries are defined in "./postgres/query.sql" and are compiled using [sqlc](https://sqlc.dev/) to a `Queries` struct in "./postgres/query.sql.go". Run `mage sql:generate` to compile queries.
 
 Use `mage sql:rollback 0` to undo all migrations, to migrate to a specific version, f.ex. 7, use `mage sql:rollback 7`.
 
-Connect to the local database using `psql $(mage connstring)` or `psql postgres://elephant-repository:pass@localhost/elephant-repository`.
+Connect to the local database using `psql $(mage sql:connString)` or `psql postgres://elephant-repository:pass@localhost/elephant-repository`.
 
 ### Introduction to the schema
 
@@ -217,7 +234,7 @@ ORDER BY date(s.created), cause NULLS FIRST;
 ```
 
 ```
-    date    │    cause    │ num 
+    date    │    cause    │ num
 ════════════╪═════════════╪═════
  2023-02-07 │ ¤           │ 620
  2023-02-07 │ correction  │   4
@@ -299,7 +316,7 @@ ORDER BY vs.section, vs.newsvalue;
 ```
 
 ```
- section │ newsvalue │ count 
+ section │ newsvalue │ count
 ═════════╪═══════════╪═══════
  Ekonomi │         1 │     2
  Ekonomi │         2 │     5
@@ -318,7 +335,7 @@ ORDER BY vs.section, vs.newsvalue;
 
 The repository has an archiving subsystem that records all eventlog events, and their associated document or status data, to a S3 compatible store.
 
-All archived objects (events, statuses, and documents) contain the signature of their parent, so the entire archive forms a narrow [merkle tree](https://en.wikipedia.org/wiki/Merkle_tree). This would for example allow for the publication of a transparency log, with which where a trusted third party could verify what was in the repository at any given time.
+All archived objects (events, statuses, and documents) contain the signature of their parent, so the entire archive forms a narrow [merkle tree](https://en.wikipedia.org/wiki/Merkle_tree). This would for example allow for the publication of a transparency log, with which a trusted third party could verify what was in the repository at any given time.
 
 #### Signing
 
@@ -330,11 +347,11 @@ v1.[key ID].[sha256 hash as raw URL base64].[signature as raw URL base64]
 
 The signature is set as the metadata header "X-Amz-Meta-Elephant-Signature" on the S3 object itself. After the object has been archived the corresponding database row is updated with the signature of the archived object.
 
-Event, status and document version archive objects contain the signature of their parents to create a signature chain that can be verified. That means that everything that gets written can be verified against the a log.
+Event, status and document version archive objects contain the signature of their parents to create a signature chain that can be verified. That means that everything that gets written can be verified against the log.
 
 The reason that signing has to be done during archiving is that the jsonb data type isn't guaranteed to be byte stable. Verifying signatures on the archive objects is straightforward, verifying signatures for the database would have to be done by verifying the signature for the archive signature, and then verifying that the data in the database is "logically" equivalent to the archive data.
 
-Signing keys are used for 180 days, a new signing key will be created and published 30 days before it's taken into use.
+Signing keys are used for 180 days. A new signing key will be created 7 days before the current key expires, with a 2-day heads-up period before it is taken into use.
 
 #### Fetching signing keys
 
@@ -374,7 +391,7 @@ The archiver looks for documents with pending deletes and then moves the objects
 
 #### Restoring documents
 
-When a restore is initiated a system locked document row is created in documents (system_state == "restoring"). This is not reflected in the eventlog, but all the restored document versions and status updates will be, and when the restore is finished a "restore_finished" will be emitted. All event log events that result from a restore will have "system_state" set to "restoring" so that they can be ignored by event processors. 
+When a restore is initiated a system locked document row is created in documents (system_state == "restoring"). This is not reflected in the eventlog, but all the restored document versions and status updates will be, and when the restore is finished a "restore_finished" will be emitted. All event log events that result from a restore will have "system_state" set to "restoring" so that they can be ignored by event processors.
 
 #### Purging documents
 
