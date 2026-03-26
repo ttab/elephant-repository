@@ -1437,7 +1437,7 @@ func (q *Queries) GetDeleteRecordForUpdate(ctx context.Context, arg GetDeleteRec
 }
 
 const getDeliverableInfo = `-- name: GetDeliverableInfo :one
-SELECT 
+SELECT
        pa.planning_item AS planning_uuid,
        pd.assignment AS assignment_uuid,
        pi.event AS event_uuid
@@ -1446,7 +1446,11 @@ FROM planning_deliverable pd
           ON pd.assignment = pa.uuid
      JOIN planning_item pi
           ON pa.planning_item = pi.uuid
+     JOIN document d
+          ON d.uuid = pi.uuid
 WHERE pd.document = $1
+ORDER BY d.updated DESC
+LIMIT 1
 `
 
 type GetDeliverableInfoRow struct {
