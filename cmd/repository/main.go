@@ -712,7 +712,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 
 		var client http.Client
 
-		res, err := client.Do(req) //nolint:gosec // URL is built from the server's own listen address, not external input.
+		res, err := client.Do(req)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to perform liveness check request: %w", err)

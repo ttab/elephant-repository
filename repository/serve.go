@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -58,7 +59,7 @@ func ListenAndServe(
 
 			return elephantine.ListenAndServeContext(
 				gCtx, &tlsServer, 10*time.Second,
-				elephantine.ListenAndServeTLS(certFile, keyFile),
+				elephantine.ListenAndServeTLS(slog.Default(), certFile, keyFile),
 			)
 		})
 	}
