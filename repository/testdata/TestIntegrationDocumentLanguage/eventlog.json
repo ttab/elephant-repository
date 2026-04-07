@@ -8,7 +8,8 @@
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
       "language": "sv-se",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
       "id": "2",
@@ -37,7 +38,8 @@
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
       "language": "en-gb",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
       "id": "4",
@@ -79,7 +81,8 @@
       "type": "core/article",
       "language": "en-us",
       "old_language": "en-gb",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
       "id": "7",

@@ -28,6 +28,7 @@ type DocumentValidator interface {
 	ValidateDocument(
 		ctx context.Context, document *newsdoc.Document,
 	) ([]revisor.ValidationResult, error)
+	ActiveGenerationID() int64
 }
 
 type WorkflowProvider interface {
@@ -1054,6 +1055,7 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		DeleteRecordId:     evt.DeleteRecordID,
 		Timespans:          TimespanTuplesToRPC(evt.Timespans),
 		Labels:             evt.Labels,
+		SchemaGeneration:   evt.SchemaGeneration,
 	}
 }
 
@@ -2114,6 +2116,8 @@ func (a *DocumentsService) buildUpdateRequest(
 
 			return nil, err
 		}
+
+		up.SchemaGeneration = a.validator.ActiveGenerationID()
 
 		up.Document = &doc
 

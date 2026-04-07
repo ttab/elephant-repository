@@ -38,6 +38,22 @@ func (q *Queries) ActivateSchema(ctx context.Context, arg ActivateSchemaParams) 
 	return err
 }
 
+const activateSchemaGeneration = `-- name: ActivateSchemaGeneration :exec
+UPDATE schema_generation
+SET status = 'active', activated = $1
+WHERE id = $2
+`
+
+type ActivateSchemaGenerationParams struct {
+	Activated pgtype.Timestamptz
+	ID        int64
+}
+
+func (q *Queries) ActivateSchemaGeneration(ctx context.Context, arg ActivateSchemaGenerationParams) error {
+	_, err := q.db.Exec(ctx, activateSchemaGeneration, arg.Activated, arg.ID)
+	return err
+}
+
 const addAttachedObject = `-- name: AddAttachedObject :exec
 INSERT INTO attached_object(
        document, name, version, object_version, attached_at,
@@ -542,6 +558,15 @@ func (q *Queries) CleanUpDeliverables(ctx context.Context, arg CleanUpDeliverabl
 	return err
 }
 
+const clearActiveSchemas = `-- name: ClearActiveSchemas :exec
+DELETE FROM active_schemas
+`
+
+func (q *Queries) ClearActiveSchemas(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, clearActiveSchemas)
+	return err
+}
+
 const clearSystemState = `-- name: ClearSystemState :exec
 UPDATE document SET system_state = NULL
 WHERE uuid = $1 AND NOT system_state IS NULL
@@ -572,24 +597,25 @@ const createDocumentVersion = `-- name: CreateDocumentVersion :exec
 INSERT INTO document_version(
        uuid, version,
        created, creator_uri, meta, document_data, archived, language,
-       time, labels
+       time, labels, schema_generation
 ) VALUES (
        $1, $2,
        $3, $4, $5, $6, false, $7,
-       $8, $9
+       $8, $9, $10
 )
 `
 
 type CreateDocumentVersionParams struct {
-	UUID         uuid.UUID
-	Version      int64
-	Created      pgtype.Timestamptz
-	CreatorUri   string
-	Meta         []byte
-	DocumentData []byte
-	Language     pgtype.Text
-	Time         pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
-	Labels       []string
+	UUID             uuid.UUID
+	Version          int64
+	Created          pgtype.Timestamptz
+	CreatorUri       string
+	Meta             []byte
+	DocumentData     []byte
+	Language         pgtype.Text
+	Time             pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels           []string
+	SchemaGeneration int64
 }
 
 func (q *Queries) CreateDocumentVersion(ctx context.Context, arg CreateDocumentVersionParams) error {
@@ -603,6 +629,7 @@ func (q *Queries) CreateDocumentVersion(ctx context.Context, arg CreateDocumentV
 		arg.Language,
 		arg.Time,
 		arg.Labels,
+		arg.SchemaGeneration,
 	)
 	return err
 }
@@ -672,6 +699,38 @@ func (q *Queries) CreateUpload(ctx context.Context, arg CreateUploadParams) erro
 	return err
 }
 
+const deactivateCurrentActiveGeneration = `-- name: DeactivateCurrentActiveGeneration :exec
+UPDATE schema_generation
+SET status = 'deactivated', deactivated = $1
+WHERE status = 'active' AND id != $2
+`
+
+type DeactivateCurrentActiveGenerationParams struct {
+	Deactivated pgtype.Timestamptz
+	ExcludeID   int64
+}
+
+func (q *Queries) DeactivateCurrentActiveGeneration(ctx context.Context, arg DeactivateCurrentActiveGenerationParams) error {
+	_, err := q.db.Exec(ctx, deactivateCurrentActiveGeneration, arg.Deactivated, arg.ExcludeID)
+	return err
+}
+
+const deactivateCurrentPendingGeneration = `-- name: DeactivateCurrentPendingGeneration :exec
+UPDATE schema_generation
+SET status = 'deactivated', deactivated = $1
+WHERE status = 'pending' AND id != $2
+`
+
+type DeactivateCurrentPendingGenerationParams struct {
+	Deactivated pgtype.Timestamptz
+	ExcludeID   int64
+}
+
+func (q *Queries) DeactivateCurrentPendingGeneration(ctx context.Context, arg DeactivateCurrentPendingGenerationParams) error {
+	_, err := q.db.Exec(ctx, deactivateCurrentPendingGeneration, arg.Deactivated, arg.ExcludeID)
+	return err
+}
+
 const deactivateSchema = `-- name: DeactivateSchema :exec
 DELETE FROM active_schemas
 WHERE name = $1
@@ -679,6 +738,22 @@ WHERE name = $1
 
 func (q *Queries) DeactivateSchema(ctx context.Context, name string) error {
 	_, err := q.db.Exec(ctx, deactivateSchema, name)
+	return err
+}
+
+const deactivateSchemaGeneration = `-- name: DeactivateSchemaGeneration :exec
+UPDATE schema_generation
+SET status = 'deactivated', deactivated = $1
+WHERE id = $2
+`
+
+type DeactivateSchemaGenerationParams struct {
+	Deactivated pgtype.Timestamptz
+	ID          int64
+}
+
+func (q *Queries) DeactivateSchemaGeneration(ctx context.Context, arg DeactivateSchemaGenerationParams) error {
+	_, err := q.db.Exec(ctx, deactivateSchemaGeneration, arg.Deactivated, arg.ID)
 	return err
 }
 
@@ -844,6 +919,23 @@ func (q *Queries) DropRedundantPurgeRequests(ctx context.Context) error {
 	return err
 }
 
+const ensureSchema = `-- name: EnsureSchema :exec
+INSERT INTO document_schema(name, version, spec)
+VALUES ($1, $2, $3)
+ON CONFLICT (name, version) DO NOTHING
+`
+
+type EnsureSchemaParams struct {
+	Name    string
+	Version string
+	Spec    []byte
+}
+
+func (q *Queries) EnsureSchema(ctx context.Context, arg EnsureSchemaParams) error {
+	_, err := q.db.Exec(ctx, ensureSchema, arg.Name, arg.Version, arg.Spec)
+	return err
+}
+
 const finaliseDeleteRecord = `-- name: FinaliseDeleteRecord :exec
 UPDATE delete_record SET finalised = $1
 WHERE uuid = $2 AND id = $3
@@ -905,6 +997,43 @@ func (q *Queries) FinishRestoreRequest(ctx context.Context, arg FinishRestoreReq
 	return err
 }
 
+const getActiveGenerationSchemas = `-- name: GetActiveGenerationSchemas :many
+SELECT sgs.name, sgs.version, ds.spec
+FROM schema_generation sg
+     INNER JOIN schema_generation_schema sgs
+           ON sgs.generation_id = sg.id
+     INNER JOIN document_schema ds
+           ON ds.name = sgs.name AND ds.version = sgs.version
+WHERE sg.status = 'active'
+ORDER BY sgs.name
+`
+
+type GetActiveGenerationSchemasRow struct {
+	Name    string
+	Version string
+	Spec    []byte
+}
+
+func (q *Queries) GetActiveGenerationSchemas(ctx context.Context) ([]GetActiveGenerationSchemasRow, error) {
+	rows, err := q.db.Query(ctx, getActiveGenerationSchemas)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetActiveGenerationSchemasRow
+	for rows.Next() {
+		var i GetActiveGenerationSchemasRow
+		if err := rows.Scan(&i.Name, &i.Version, &i.Spec); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getActiveSchema = `-- name: GetActiveSchema :one
 SELECT s.name, s.version, s.spec
 FROM active_schemas AS a
@@ -917,6 +1046,26 @@ func (q *Queries) GetActiveSchema(ctx context.Context, name string) (DocumentSch
 	row := q.db.QueryRow(ctx, getActiveSchema, name)
 	var i DocumentSchema
 	err := row.Scan(&i.Name, &i.Version, &i.Spec)
+	return i, err
+}
+
+const getActiveSchemaGeneration = `-- name: GetActiveSchemaGeneration :one
+SELECT id, identity_hash, status, created, activated, deactivated
+FROM schema_generation
+WHERE status = 'active'
+`
+
+func (q *Queries) GetActiveSchemaGeneration(ctx context.Context) (SchemaGeneration, error) {
+	row := q.db.QueryRow(ctx, getActiveSchemaGeneration)
+	var i SchemaGeneration
+	err := row.Scan(
+		&i.ID,
+		&i.IdentityHash,
+		&i.Status,
+		&i.Created,
+		&i.Activated,
+		&i.Deactivated,
+	)
 	return i, err
 }
 
@@ -2905,6 +3054,63 @@ func (q *Queries) GetNilStatuses(ctx context.Context, arg GetNilStatusesParams) 
 	return items, nil
 }
 
+const getPendingGenerationSchemas = `-- name: GetPendingGenerationSchemas :many
+SELECT sgs.name, sgs.version, ds.spec
+FROM schema_generation sg
+     INNER JOIN schema_generation_schema sgs
+           ON sgs.generation_id = sg.id
+     INNER JOIN document_schema ds
+           ON ds.name = sgs.name AND ds.version = sgs.version
+WHERE sg.status = 'pending'
+ORDER BY sgs.name
+`
+
+type GetPendingGenerationSchemasRow struct {
+	Name    string
+	Version string
+	Spec    []byte
+}
+
+func (q *Queries) GetPendingGenerationSchemas(ctx context.Context) ([]GetPendingGenerationSchemasRow, error) {
+	rows, err := q.db.Query(ctx, getPendingGenerationSchemas)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetPendingGenerationSchemasRow
+	for rows.Next() {
+		var i GetPendingGenerationSchemasRow
+		if err := rows.Scan(&i.Name, &i.Version, &i.Spec); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPendingSchemaGeneration = `-- name: GetPendingSchemaGeneration :one
+SELECT id, identity_hash, status, created, activated, deactivated
+FROM schema_generation
+WHERE status = 'pending'
+`
+
+func (q *Queries) GetPendingSchemaGeneration(ctx context.Context) (SchemaGeneration, error) {
+	row := q.db.QueryRow(ctx, getPendingSchemaGeneration)
+	var i SchemaGeneration
+	err := row.Scan(
+		&i.ID,
+		&i.IdentityHash,
+		&i.Status,
+		&i.Created,
+		&i.Activated,
+		&i.Deactivated,
+	)
+	return i, err
+}
+
 const getPlanningAssignment = `-- name: GetPlanningAssignment :one
 SELECT uuid, version, planning_item, status, publish, publish_slot,
        starts, ends, start_date, end_date, full_day, public, kind, description,
@@ -3004,22 +3210,9 @@ FROM planning_item
 WHERE uuid = $1
 `
 
-type GetPlanningItemRow struct {
-	UUID        uuid.UUID
-	Version     int64
-	Title       string
-	Description string
-	Public      pgtype.Bool
-	Tentative   bool
-	StartDate   pgtype.Date
-	EndDate     pgtype.Date
-	Priority    pgtype.Int2
-	Event       pgtype.UUID
-}
-
-func (q *Queries) GetPlanningItem(ctx context.Context, argUuid uuid.UUID) (GetPlanningItemRow, error) {
+func (q *Queries) GetPlanningItem(ctx context.Context, argUuid uuid.UUID) (PlanningItem, error) {
 	row := q.db.QueryRow(ctx, getPlanningItem, argUuid)
-	var i GetPlanningItemRow
+	var i PlanningItem
 	err := row.Scan(
 		&i.UUID,
 		&i.Version,
@@ -3129,6 +3322,204 @@ func (q *Queries) GetSchema(ctx context.Context, arg GetSchemaParams) (DocumentS
 	var i DocumentSchema
 	err := row.Scan(&i.Name, &i.Version, &i.Spec)
 	return i, err
+}
+
+const getSchemaGeneration = `-- name: GetSchemaGeneration :one
+SELECT id, identity_hash, status, created, activated, deactivated
+FROM schema_generation
+WHERE id = $1
+`
+
+func (q *Queries) GetSchemaGeneration(ctx context.Context, id int64) (SchemaGeneration, error) {
+	row := q.db.QueryRow(ctx, getSchemaGeneration, id)
+	var i SchemaGeneration
+	err := row.Scan(
+		&i.ID,
+		&i.IdentityHash,
+		&i.Status,
+		&i.Created,
+		&i.Activated,
+		&i.Deactivated,
+	)
+	return i, err
+}
+
+const getSchemaGenerationArchiver = `-- name: GetSchemaGenerationArchiver :one
+SELECT position, last_signature
+FROM schema_generation_archiver
+LIMIT 1
+`
+
+type GetSchemaGenerationArchiverRow struct {
+	Position      int64
+	LastSignature string
+}
+
+func (q *Queries) GetSchemaGenerationArchiver(ctx context.Context) (GetSchemaGenerationArchiverRow, error) {
+	row := q.db.QueryRow(ctx, getSchemaGenerationArchiver)
+	var i GetSchemaGenerationArchiverRow
+	err := row.Scan(&i.Position, &i.LastSignature)
+	return i, err
+}
+
+const getSchemaGenerationByIdentityHash = `-- name: GetSchemaGenerationByIdentityHash :one
+SELECT id, identity_hash, status, created, activated, deactivated
+FROM schema_generation
+WHERE identity_hash = $1
+`
+
+func (q *Queries) GetSchemaGenerationByIdentityHash(ctx context.Context, identityHash string) (SchemaGeneration, error) {
+	row := q.db.QueryRow(ctx, getSchemaGenerationByIdentityHash, identityHash)
+	var i SchemaGeneration
+	err := row.Scan(
+		&i.ID,
+		&i.IdentityHash,
+		&i.Status,
+		&i.Created,
+		&i.Activated,
+		&i.Deactivated,
+	)
+	return i, err
+}
+
+const getSchemaGenerationEvents = `-- name: GetSchemaGenerationEvents :many
+SELECT id, generation_id, event, timestamp, signature
+FROM schema_generation_event
+WHERE id > $1
+ORDER BY id ASC
+LIMIT $2
+`
+
+type GetSchemaGenerationEventsParams struct {
+	After    int64
+	RowLimit int32
+}
+
+func (q *Queries) GetSchemaGenerationEvents(ctx context.Context, arg GetSchemaGenerationEventsParams) ([]SchemaGenerationEvent, error) {
+	rows, err := q.db.Query(ctx, getSchemaGenerationEvents, arg.After, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SchemaGenerationEvent
+	for rows.Next() {
+		var i SchemaGenerationEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.GenerationID,
+			&i.Event,
+			&i.Timestamp,
+			&i.Signature,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSchemaGenerationExemplars = `-- name: GetSchemaGenerationExemplars :many
+SELECT se.name, se.version, se.doc_type, se.document
+FROM schema_generation_exemplar sge
+     INNER JOIN schema_exemplar se
+           ON se.name = sge.name AND se.version = sge.version
+WHERE sge.generation_id = $1
+ORDER BY se.name
+`
+
+func (q *Queries) GetSchemaGenerationExemplars(ctx context.Context, generationID int64) ([]SchemaExemplar, error) {
+	rows, err := q.db.Query(ctx, getSchemaGenerationExemplars, generationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SchemaExemplar
+	for rows.Next() {
+		var i SchemaExemplar
+		if err := rows.Scan(
+			&i.Name,
+			&i.Version,
+			&i.DocType,
+			&i.Document,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSchemaGenerationSchemas = `-- name: GetSchemaGenerationSchemas :many
+SELECT name, version
+FROM schema_generation_schema
+WHERE generation_id = $1
+ORDER BY name
+`
+
+type GetSchemaGenerationSchemasRow struct {
+	Name    string
+	Version string
+}
+
+func (q *Queries) GetSchemaGenerationSchemas(ctx context.Context, generationID int64) ([]GetSchemaGenerationSchemasRow, error) {
+	rows, err := q.db.Query(ctx, getSchemaGenerationSchemas, generationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSchemaGenerationSchemasRow
+	for rows.Next() {
+		var i GetSchemaGenerationSchemasRow
+		if err := rows.Scan(&i.Name, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSchemaGenerationSchemasWithSpec = `-- name: GetSchemaGenerationSchemasWithSpec :many
+SELECT sgs.name, sgs.version, ds.spec
+FROM schema_generation_schema sgs
+     INNER JOIN document_schema ds
+           ON ds.name = sgs.name AND ds.version = sgs.version
+WHERE sgs.generation_id = $1
+ORDER BY sgs.name
+`
+
+type GetSchemaGenerationSchemasWithSpecRow struct {
+	Name    string
+	Version string
+	Spec    []byte
+}
+
+func (q *Queries) GetSchemaGenerationSchemasWithSpec(ctx context.Context, generationID int64) ([]GetSchemaGenerationSchemasWithSpecRow, error) {
+	rows, err := q.db.Query(ctx, getSchemaGenerationSchemasWithSpec, generationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSchemaGenerationSchemasWithSpecRow
+	for rows.Next() {
+		var i GetSchemaGenerationSchemasWithSpecRow
+		if err := rows.Scan(&i.Name, &i.Version, &i.Spec); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getSchemaVersions = `-- name: GetSchemaVersions :many
@@ -3959,6 +4350,84 @@ func (q *Queries) InsertRestoreRequest(ctx context.Context, arg InsertRestoreReq
 	return err
 }
 
+const insertSchemaGeneration = `-- name: InsertSchemaGeneration :one
+
+INSERT INTO schema_generation(identity_hash, status, created, activated)
+       VALUES ($1, $2, $3, $4)
+RETURNING id
+`
+
+type InsertSchemaGenerationParams struct {
+	IdentityHash string
+	Status       SchemaGenerationStatus
+	Created      pgtype.Timestamptz
+	Activated    pgtype.Timestamptz
+}
+
+// Schema generation queries
+func (q *Queries) InsertSchemaGeneration(ctx context.Context, arg InsertSchemaGenerationParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertSchemaGeneration,
+		arg.IdentityHash,
+		arg.Status,
+		arg.Created,
+		arg.Activated,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const insertSchemaGenerationEvent = `-- name: InsertSchemaGenerationEvent :one
+INSERT INTO schema_generation_event(generation_id, event, timestamp)
+       VALUES ($1, $2, $3)
+RETURNING id
+`
+
+type InsertSchemaGenerationEventParams struct {
+	GenerationID int64
+	Event        string
+	Timestamp    pgtype.Timestamptz
+}
+
+func (q *Queries) InsertSchemaGenerationEvent(ctx context.Context, arg InsertSchemaGenerationEventParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertSchemaGenerationEvent, arg.GenerationID, arg.Event, arg.Timestamp)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const insertSchemaGenerationExemplar = `-- name: InsertSchemaGenerationExemplar :exec
+INSERT INTO schema_generation_exemplar(generation_id, name, version)
+       VALUES ($1, $2, $3)
+`
+
+type InsertSchemaGenerationExemplarParams struct {
+	GenerationID int64
+	Name         string
+	Version      string
+}
+
+func (q *Queries) InsertSchemaGenerationExemplar(ctx context.Context, arg InsertSchemaGenerationExemplarParams) error {
+	_, err := q.db.Exec(ctx, insertSchemaGenerationExemplar, arg.GenerationID, arg.Name, arg.Version)
+	return err
+}
+
+const insertSchemaGenerationSchema = `-- name: InsertSchemaGenerationSchema :exec
+INSERT INTO schema_generation_schema(generation_id, name, version)
+       VALUES ($1, $2, $3)
+`
+
+type InsertSchemaGenerationSchemaParams struct {
+	GenerationID int64
+	Name         string
+	Version      string
+}
+
+func (q *Queries) InsertSchemaGenerationSchema(ctx context.Context, arg InsertSchemaGenerationSchemaParams) error {
+	_, err := q.db.Exec(ctx, insertSchemaGenerationSchema, arg.GenerationID, arg.Name, arg.Version)
+	return err
+}
+
 const insertSigningKey = `-- name: InsertSigningKey :exec
 INSERT INTO signing_keys(kid, spec) VALUES($1, $2)
 `
@@ -4066,6 +4535,41 @@ func (q *Queries) ListDeleteRecords(ctx context.Context, arg ListDeleteRecordsPa
 	return items, nil
 }
 
+const listSchemaGenerations = `-- name: ListSchemaGenerations :many
+SELECT id, identity_hash, status, created, activated, deactivated
+FROM schema_generation
+WHERE ($1::bigint = 0 OR id < $1::bigint)
+ORDER BY id DESC
+LIMIT 20
+`
+
+func (q *Queries) ListSchemaGenerations(ctx context.Context, before int64) ([]SchemaGeneration, error) {
+	rows, err := q.db.Query(ctx, listSchemaGenerations, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SchemaGeneration
+	for rows.Next() {
+		var i SchemaGeneration
+		if err := rows.Scan(
+			&i.ID,
+			&i.IdentityHash,
+			&i.Status,
+			&i.Created,
+			&i.Activated,
+			&i.Deactivated,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockConfigTable = `-- name: LockConfigTable :exec
 LOCK TABLE system_config IN ACCESS EXCLUSIVE MODE
 `
@@ -4115,7 +4619,7 @@ func (q *Queries) PingJobLock(ctx context.Context, arg PingJobLockParams) (int64
 const purgeDeleteRecordDetails = `-- name: PurgeDeleteRecordDetails :exec
 UPDATE delete_record SET
        meta = NULL, acl = NULL, heads = NULL, version = 0,
-       language = NULL, 
+       language = NULL,
        purged = $1
 WHERE id = $2
 `
@@ -4681,6 +5185,50 @@ func (q *Queries) SetPlanningItemDeliverable(ctx context.Context, arg SetPlannin
 	return err
 }
 
+const setSchemaGenerationArchiver = `-- name: SetSchemaGenerationArchiver :exec
+INSERT INTO schema_generation_archiver(position, last_signature)
+       VALUES ($1, $2)
+ON CONFLICT (id) DO UPDATE
+   SET position = $1, last_signature = $2
+`
+
+type SetSchemaGenerationArchiverParams struct {
+	Position      int64
+	LastSignature string
+}
+
+func (q *Queries) SetSchemaGenerationArchiver(ctx context.Context, arg SetSchemaGenerationArchiverParams) error {
+	_, err := q.db.Exec(ctx, setSchemaGenerationArchiver, arg.Position, arg.LastSignature)
+	return err
+}
+
+const setSchemaGenerationEventSignature = `-- name: SetSchemaGenerationEventSignature :exec
+UPDATE schema_generation_event
+SET signature = $1
+WHERE id = $2
+`
+
+type SetSchemaGenerationEventSignatureParams struct {
+	Signature pgtype.Text
+	ID        int64
+}
+
+func (q *Queries) SetSchemaGenerationEventSignature(ctx context.Context, arg SetSchemaGenerationEventSignatureParams) error {
+	_, err := q.db.Exec(ctx, setSchemaGenerationEventSignature, arg.Signature, arg.ID)
+	return err
+}
+
+const setSchemaGenerationPending = `-- name: SetSchemaGenerationPending :exec
+UPDATE schema_generation
+SET status = 'pending'
+WHERE id = $1
+`
+
+func (q *Queries) SetSchemaGenerationPending(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, setSchemaGenerationPending, id)
+	return err
+}
+
 const setSigningKeyArchived = `-- name: SetSigningKeyArchived :exec
 UPDATE signing_keys SET archived = true WHERE kid = $1
 `
@@ -4754,6 +5302,19 @@ func (q *Queries) StealJobLock(ctx context.Context, arg StealJobLockParams) (int
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const syncActiveSchemasFromGeneration = `-- name: SyncActiveSchemasFromGeneration :exec
+INSERT INTO active_schemas(name, version)
+       SELECT sgs.name, sgs.version
+       FROM schema_generation_schema sgs
+       WHERE sgs.generation_id = $1
+ON CONFLICT (name) DO UPDATE SET version = excluded.version
+`
+
+func (q *Queries) SyncActiveSchemasFromGeneration(ctx context.Context, generationID int64) error {
+	_, err := q.db.Exec(ctx, syncActiveSchemasFromGeneration, generationID)
+	return err
 }
 
 const updateDeprecation = `-- name: UpdateDeprecation :exec
@@ -4937,6 +5498,29 @@ func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) 
 		arg.Nonce,
 		arg.Time,
 		arg.Labels,
+	)
+	return err
+}
+
+const upsertSchemaExemplar = `-- name: UpsertSchemaExemplar :exec
+INSERT INTO schema_exemplar(name, version, doc_type, document)
+       VALUES ($1, $2, $3, $4)
+ON CONFLICT (name, version) DO NOTHING
+`
+
+type UpsertSchemaExemplarParams struct {
+	Name     string
+	Version  string
+	DocType  string
+	Document []byte
+}
+
+func (q *Queries) UpsertSchemaExemplar(ctx context.Context, arg UpsertSchemaExemplarParams) error {
+	_, err := q.db.Exec(ctx, upsertSchemaExemplar,
+		arg.Name,
+		arg.Version,
+		arg.DocType,
+		arg.Document,
 	)
 	return err
 }

@@ -406,7 +406,11 @@ func testingAPIServer(
 			itest.StandardClaims(t, repository.ScopeMetricsAdmin)),
 	}
 
-	changes, err := eleconf.GetChanges(ctx, &clients, config, schemas)
+	err = repository.BootstrapGeneration(ctx, store)
+	test.Must(t, err, "bootstrap generation")
+
+	changes, err := eleconf.GetChanges(ctx, &clients, config, schemas,
+		nil, rpc.SchemaActivation_ACTIVATION_ACTIVE)
 	test.Must(t, err, "get changes")
 
 	for _, change := range changes {

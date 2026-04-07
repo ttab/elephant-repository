@@ -7,7 +7,6 @@ import (
 	"context"
 
 	"github.com/ttab/elephant-repository/schema"
-
 	//mage:import s3
 	_ "github.com/ttab/mage/s3"
 	//mage:import sql

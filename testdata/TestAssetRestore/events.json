@@ -12,7 +12,8 @@
       "attached_objects": [
         "plaintext"
       ],
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
       "id": "2",

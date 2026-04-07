@@ -144,6 +144,73 @@ func (a *ArchiveReader) ReadEventRaw(
 	}, nil
 }
 
+// ReadRaw reads the raw bytes from an S3 key without signature verification.
+func (a *ArchiveReader) ReadRaw(
+	ctx context.Context, key string,
+) (_ []byte, outErr error) {
+	res, err := a.s3.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(a.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get archive object from S3: %w", err)
+	}
+
+	defer func() {
+		err := res.Body.Close()
+		if err != nil {
+			outErr = errors.Join(outErr, fmt.Errorf(
+				"close S3 response body: %w", err))
+		}
+	}()
+
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read S3 response body: %w", err)
+	}
+
+	return data, nil
+}
+
+// ReadGenerationEvents reads archived generation events from S3 starting after
+// afterPos, up to limit events.
+func (a *ArchiveReader) ReadGenerationEvents(
+	ctx context.Context, afterPos int64, limit int32,
+) ([]ArchivedGenerationEvent, error) {
+	prefix := "generations/events/"
+
+	listRes, err := a.s3.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket:     aws.String(a.bucket),
+		Prefix:     aws.String(prefix),
+		StartAfter: aws.String(fmt.Sprintf("%s%020d.json", prefix, afterPos)),
+		MaxKeys:    aws.Int32(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list generation events: %w", err)
+	}
+
+	var events []ArchivedGenerationEvent
+
+	for _, obj := range listRes.Contents {
+		data, rErr := a.ReadRaw(ctx, *obj.Key)
+		if rErr != nil {
+			return nil, fmt.Errorf("read event %s: %w", *obj.Key, rErr)
+		}
+
+		var event ArchivedGenerationEvent
+
+		rErr = json.Unmarshal(data, &event)
+		if rErr != nil {
+			return nil, fmt.Errorf("unmarshal event %s: %w",
+				*obj.Key, rErr)
+		}
+
+		events = append(events, event)
+	}
+
+	return events, nil
+}
+
 func (a *ArchiveReader) fetchAndVerify(
 	ctx context.Context,
 	key string, parentSignature *string, obj ArchivedObject,

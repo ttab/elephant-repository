@@ -5,6 +5,8 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -996,6 +998,7 @@ func eventlogRowToEvent(r postgres.GetEventlogRow) (Event, error) {
 		e.AttachedObjects = extra.AttachedObjects
 		e.DetachedObjects = extra.DetachedObjects
 		e.DeleteRecordID = extra.DeleteRecordID
+		e.SchemaGeneration = extra.SchemaGeneration
 	}
 
 	if r.Acl != nil {
@@ -2053,6 +2056,7 @@ func (s *PGDocStore) Update(
 				Timespans:          state.Timespans,
 				IntrinsicTimespans: extr.IntrinsicTimespans,
 				Labels:             state.Labels,
+				SchemaGeneration:   state.Request.SchemaGeneration,
 			}
 
 			err = createNewDocumentVersion(
@@ -2085,6 +2089,7 @@ func (s *PGDocStore) Update(
 				SystemState:      state.SystemState,
 				Timespans:        TimespansAsTuples(state.Timespans),
 				Labels:           state.Labels,
+				SchemaGeneration: state.Request.SchemaGeneration,
 			}
 
 			// Add attaches and detaches to the event, we'll act on
@@ -2861,6 +2866,7 @@ type documentVersionProps struct {
 	Timespans          []Timespan
 	IntrinsicTimespans []Timespan
 	Labels             []string
+	SchemaGeneration   int64
 }
 
 func createNewDocumentVersion(
@@ -2893,15 +2899,16 @@ func createNewDocumentVersion(
 	}
 
 	err = q.CreateDocumentVersion(ctx, postgres.CreateDocumentVersionParams{
-		UUID:         props.UUID,
-		Version:      props.Version,
-		Created:      pg.Time(props.Created),
-		CreatorUri:   props.Creator,
-		Meta:         props.MetaJSON,
-		Language:     pg.Text(props.Language),
-		DocumentData: props.DocJSON,
-		Time:         TimespansToTimestampMultiranges(props.IntrinsicTimespans),
-		Labels:       props.Labels,
+		UUID:             props.UUID,
+		Version:          props.Version,
+		Created:          pg.Time(props.Created),
+		CreatorUri:       props.Creator,
+		Meta:             props.MetaJSON,
+		Language:         pg.Text(props.Language),
+		DocumentData:     props.DocJSON,
+		Time:             TimespansToTimestampMultiranges(props.IntrinsicTimespans),
+		Labels:           props.Labels,
+		SchemaGeneration: props.SchemaGeneration,
 	})
 	if err != nil {
 		return fmt.Errorf(
@@ -3907,6 +3914,519 @@ func (s *PGDocStore) UpdateDeprecation(
 	}
 
 	return nil
+}
+
+// --- Schema generation methods ---
+
+func computeGenerationIdentityHash(
+	schemas []RegisterGenerationSchema,
+	exemplars []ExemplarInput,
+) string {
+	var parts []string
+
+	for _, s := range schemas {
+		parts = append(parts, fmt.Sprintf("schema:%s@%s", s.Name, s.Version))
+	}
+
+	for _, e := range exemplars {
+		parts = append(parts, fmt.Sprintf("exemplar:%s@%s", e.Name, e.Version))
+	}
+
+	slices.Sort(parts)
+
+	h := sha256.New()
+
+	for _, p := range parts {
+		_, _ = h.Write([]byte(p))
+		_, _ = h.Write([]byte{0})
+	}
+
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func schemaGenerationFromRow(
+	g postgres.SchemaGeneration,
+	schemas []SchemaReference,
+) SchemaGeneration {
+	gen := SchemaGeneration{
+		ID:      g.ID,
+		Status:  SchemaGenerationStatus(g.Status),
+		Created: g.Created.Time,
+		Schemas: schemas,
+	}
+
+	if g.Activated.Valid {
+		t := g.Activated.Time
+		gen.Activated = &t
+	}
+
+	if g.Deactivated.Valid {
+		t := g.Deactivated.Time
+		gen.Deactivated = &t
+	}
+
+	return gen
+}
+
+func (s *PGDocStore) RegisterGeneration(
+	ctx context.Context, req RegisterGenerationStoreRequest,
+) (_ int64, outErr error) {
+	identityHash := computeGenerationIdentityHash(req.Schemas, req.Exemplars)
+
+	// Check for existing generation with the same hash (idempotency).
+	existing, err := s.reader.GetSchemaGenerationByIdentityHash(ctx, identityHash)
+	if err == nil {
+		return existing.ID, nil
+	}
+
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return 0, fmt.Errorf("look up generation by identity hash: %w", err)
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("start transaction: %w", err)
+	}
+
+	defer pg.Rollback(tx, &outErr)
+
+	q := postgres.New(tx)
+
+	now := time.Now()
+
+	// Ensure all schema versions exist in document_schema.
+	for _, schema := range req.Schemas {
+		specJSON, mErr := json.Marshal(schema.Specification)
+		if mErr != nil {
+			return 0, fmt.Errorf("marshal spec for %q: %w",
+				schema.Name, mErr)
+		}
+
+		err = q.EnsureSchema(ctx, postgres.EnsureSchemaParams{
+			Name:    schema.Name,
+			Version: schema.Version,
+			Spec:    specJSON,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("register schema %q v%s: %w",
+				schema.Name, schema.Version, err)
+		}
+	}
+
+	// Determine initial status.
+	status := postgres.SchemaGenerationStatusDeactivated
+
+	var activated pgtype.Timestamptz
+
+	switch req.Activation {
+	case GenerationStatusActive:
+		status = postgres.SchemaGenerationStatusActive
+		activated = pg.Time(now)
+	case GenerationStatusPending:
+		status = postgres.SchemaGenerationStatusPending
+	case GenerationStatusDeactivated:
+		// Already the default, nothing to do.
+	}
+
+	genID, err := q.InsertSchemaGeneration(ctx, postgres.InsertSchemaGenerationParams{
+		IdentityHash: identityHash,
+		Status:       status,
+		Created:      pg.Time(now),
+		Activated:    activated,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("insert schema generation: %w", err)
+	}
+
+	// Insert schema references.
+	for _, schema := range req.Schemas {
+		err = q.InsertSchemaGenerationSchema(ctx, postgres.InsertSchemaGenerationSchemaParams{
+			GenerationID: genID,
+			Name:         schema.Name,
+			Version:      schema.Version,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("insert generation schema %q: %w",
+				schema.Name, err)
+		}
+	}
+
+	// Insert exemplars.
+	for _, ex := range req.Exemplars {
+		err = q.UpsertSchemaExemplar(ctx, postgres.UpsertSchemaExemplarParams{
+			Name:     ex.Name,
+			Version:  ex.Version,
+			DocType:  ex.DocType,
+			Document: ex.Document,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("upsert exemplar %q: %w",
+				ex.Name, err)
+		}
+
+		err = q.InsertSchemaGenerationExemplar(ctx, postgres.InsertSchemaGenerationExemplarParams{
+			GenerationID: genID,
+			Name:         ex.Name,
+			Version:      ex.Version,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("insert generation exemplar %q: %w",
+				ex.Name, err)
+		}
+	}
+
+	// Record creation event.
+	_, err = q.InsertSchemaGenerationEvent(ctx, postgres.InsertSchemaGenerationEventParams{
+		GenerationID: genID,
+		Event:        "created",
+		Timestamp:    pg.Time(now),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("insert generation created event: %w", err)
+	}
+
+	// Handle activation.
+	switch req.Activation {
+	case GenerationStatusActive:
+		err = s.activateGeneration(ctx, q, genID, now)
+		if err != nil {
+			return 0, err
+		}
+	case GenerationStatusPending:
+		err = s.setPendingGeneration(ctx, q, genID, now)
+		if err != nil {
+			return 0, err
+		}
+	case GenerationStatusDeactivated:
+		// Nothing to do, already deactivated.
+	}
+
+	// Publish schema update notification.
+	err = s.schemas.Publish(ctx, tx, SchemaEvent{
+		Type: SchemaEventTypeActivation,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("publish schema event: %w", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return genID, nil
+}
+
+func (s *PGDocStore) activateGeneration(
+	ctx context.Context, q *postgres.Queries, genID int64, now time.Time,
+) error {
+	err := q.DeactivateCurrentActiveGeneration(ctx,
+		postgres.DeactivateCurrentActiveGenerationParams{
+			Deactivated: pg.Time(now),
+			ExcludeID:   genID,
+		})
+	if err != nil {
+		return fmt.Errorf("deactivate previous active generation: %w", err)
+	}
+
+	err = q.ActivateSchemaGeneration(ctx, postgres.ActivateSchemaGenerationParams{
+		Activated: pg.Time(now),
+		ID:        genID,
+	})
+	if err != nil {
+		return fmt.Errorf("activate generation: %w", err)
+	}
+
+	_, err = q.InsertSchemaGenerationEvent(ctx, postgres.InsertSchemaGenerationEventParams{
+		GenerationID: genID,
+		Event:        "activated",
+		Timestamp:    pg.Time(now),
+	})
+	if err != nil {
+		return fmt.Errorf("insert activated event: %w", err)
+	}
+
+	// Sync active_schemas for backward compatibility.
+	err = q.ClearActiveSchemas(ctx)
+	if err != nil {
+		return fmt.Errorf("clear active schemas: %w", err)
+	}
+
+	err = q.SyncActiveSchemasFromGeneration(ctx, genID)
+	if err != nil {
+		return fmt.Errorf("sync active schemas: %w", err)
+	}
+
+	return nil
+}
+
+func (s *PGDocStore) setPendingGeneration(
+	ctx context.Context, q *postgres.Queries, genID int64, now time.Time,
+) error {
+	// Deactivate any existing pending generation.
+	err := q.DeactivateCurrentPendingGeneration(ctx,
+		postgres.DeactivateCurrentPendingGenerationParams{
+			Deactivated: pg.Time(now),
+			ExcludeID:   genID,
+		})
+	if err != nil {
+		return fmt.Errorf("deactivate previous pending generation: %w", err)
+	}
+
+	err = q.SetSchemaGenerationPending(ctx, genID)
+	if err != nil {
+		return fmt.Errorf("set generation pending: %w", err)
+	}
+
+	_, err = q.InsertSchemaGenerationEvent(ctx, postgres.InsertSchemaGenerationEventParams{
+		GenerationID: genID,
+		Event:        "pending",
+		Timestamp:    pg.Time(now),
+	})
+	if err != nil {
+		return fmt.Errorf("insert pending event: %w", err)
+	}
+
+	return nil
+}
+
+func (s *PGDocStore) SetGenerationStatus(
+	ctx context.Context, id int64, activation SchemaGenerationStatus,
+) error {
+	return pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		gen, err := q.GetSchemaGeneration(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return DocStoreErrorf(ErrCodeNotFound, "generation %d not found", id)
+		} else if err != nil {
+			return fmt.Errorf("get generation: %w", err)
+		}
+
+		now := time.Now()
+
+		switch activation {
+		case GenerationStatusActive:
+			err = s.activateGeneration(ctx, q, id, now)
+			if err != nil {
+				return err
+			}
+
+		case GenerationStatusPending:
+			err = s.setPendingGeneration(ctx, q, id, now)
+			if err != nil {
+				return err
+			}
+
+		case GenerationStatusDeactivated:
+			if gen.Status == postgres.SchemaGenerationStatusActive {
+				return DocStoreErrorf(ErrCodeBadRequest,
+					"cannot deactivate an active generation")
+			}
+
+			err = q.DeactivateSchemaGeneration(ctx, postgres.DeactivateSchemaGenerationParams{
+				Deactivated: pg.Time(now),
+				ID:          id,
+			})
+			if err != nil {
+				return fmt.Errorf("deactivate generation: %w", err)
+			}
+
+			_, err = q.InsertSchemaGenerationEvent(ctx, postgres.InsertSchemaGenerationEventParams{
+				GenerationID: id,
+				Event:        "deactivated",
+				Timestamp:    pg.Time(now),
+			})
+			if err != nil {
+				return fmt.Errorf("insert deactivated event: %w", err)
+			}
+		}
+
+		err = s.schemas.Publish(ctx, tx, SchemaEvent{
+			Type: SchemaEventTypeActivation,
+		})
+		if err != nil {
+			return fmt.Errorf("publish schema event: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (s *PGDocStore) ListGenerations(
+	ctx context.Context, before int64,
+) ([]SchemaGeneration, error) {
+	rows, err := s.reader.ListSchemaGenerations(ctx, before)
+	if err != nil {
+		return nil, fmt.Errorf("list generations: %w", err)
+	}
+
+	var result []SchemaGeneration
+
+	for _, row := range rows {
+		schemas, sErr := s.reader.GetSchemaGenerationSchemas(ctx, row.ID)
+		if sErr != nil {
+			return nil, fmt.Errorf("get schemas for generation %d: %w",
+				row.ID, sErr)
+		}
+
+		refs := make([]SchemaReference, len(schemas))
+		for i, sr := range schemas {
+			refs[i] = SchemaReference{
+				Name:    sr.Name,
+				Version: sr.Version,
+			}
+		}
+
+		result = append(result, schemaGenerationFromRow(row, refs))
+	}
+
+	return result, nil
+}
+
+func (s *PGDocStore) GetExemplars(
+	ctx context.Context, generationID int64, known map[string]string,
+) ([]ExemplarRecord, error) {
+	rows, err := s.reader.GetSchemaGenerationExemplars(ctx, generationID)
+	if err != nil {
+		return nil, fmt.Errorf("get exemplars: %w", err)
+	}
+
+	var result []ExemplarRecord
+
+	for _, row := range rows {
+		// Skip exemplars the caller already knows about.
+		if knownVersion, ok := known[row.Name]; ok && knownVersion == row.Version {
+			continue
+		}
+
+		result = append(result, ExemplarRecord{
+			Name:        row.Name,
+			VersionHash: row.Version,
+			DocType:     row.DocType,
+			Document:    row.Document,
+		})
+	}
+
+	return result, nil
+}
+
+func (s *PGDocStore) getSchemaGeneration(
+	ctx context.Context, gen postgres.SchemaGeneration,
+) (*SchemaGeneration, error) {
+	schemas, err := s.reader.GetSchemaGenerationSchemas(ctx, gen.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get generation schemas: %w", err)
+	}
+
+	refs := make([]SchemaReference, len(schemas))
+	for i, sr := range schemas {
+		refs[i] = SchemaReference{
+			Name:    sr.Name,
+			Version: sr.Version,
+		}
+	}
+
+	g := schemaGenerationFromRow(gen, refs)
+
+	return &g, nil
+}
+
+func (s *PGDocStore) GetActiveGeneration(
+	ctx context.Context,
+) (*SchemaGeneration, error) {
+	gen, err := s.reader.GetActiveSchemaGeneration(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil //nolint:nilnil // nil means no active generation exists
+	} else if err != nil {
+		return nil, fmt.Errorf("get active generation: %w", err)
+	}
+
+	return s.getSchemaGeneration(ctx, gen)
+}
+
+func (s *PGDocStore) GetActiveGenerationID(
+	ctx context.Context,
+) (int64, error) {
+	gen, err := s.reader.GetActiveSchemaGeneration(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	} else if err != nil {
+		return 0, fmt.Errorf("get active generation: %w", err)
+	}
+
+	return gen.ID, nil
+}
+
+func (s *PGDocStore) GetPendingGeneration(
+	ctx context.Context,
+) (*SchemaGeneration, error) {
+	gen, err := s.reader.GetPendingSchemaGeneration(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil //nolint:nilnil // nil means no pending generation exists
+	} else if err != nil {
+		return nil, fmt.Errorf("get pending generation: %w", err)
+	}
+
+	return s.getSchemaGeneration(ctx, gen)
+}
+
+func (s *PGDocStore) GetActiveGenerationSchemas(
+	ctx context.Context,
+) ([]*Schema, error) {
+	rows, err := s.reader.GetActiveGenerationSchemas(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get active generation schemas: %w", err)
+	}
+
+	schemas := make([]*Schema, 0, len(rows))
+
+	for _, row := range rows {
+		var spec revisor.ConstraintSet
+
+		err := json.Unmarshal(row.Spec, &spec)
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal spec for %q: %w",
+				row.Name, err)
+		}
+
+		schemas = append(schemas, &Schema{
+			Name:          row.Name,
+			Version:       row.Version,
+			Specification: spec,
+		})
+	}
+
+	return schemas, nil
+}
+
+func (s *PGDocStore) GetPendingGenerationSchemas(
+	ctx context.Context,
+) ([]*Schema, error) {
+	rows, err := s.reader.GetPendingGenerationSchemas(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get pending generation schemas: %w", err)
+	}
+
+	schemas := make([]*Schema, 0, len(rows))
+
+	for _, row := range rows {
+		var spec revisor.ConstraintSet
+
+		err := json.Unmarshal(row.Spec, &spec)
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal spec for %q: %w",
+				row.Name, err)
+		}
+
+		schemas = append(schemas, &Schema{
+			Name:          row.Name,
+			Version:       row.Version,
+			Specification: spec,
+		})
+	}
+
+	return schemas, nil
 }
 
 func (s *PGDocStore) RegisterMetricKind(

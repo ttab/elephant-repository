@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -237,6 +238,25 @@ type SchemaStore interface {
 	GetTypeConfigurations(
 		ctx context.Context,
 	) (map[string]TypeConfiguration, error)
+
+	// Generation management.
+	RegisterGeneration(
+		ctx context.Context, req RegisterGenerationStoreRequest,
+	) (int64, error)
+	SetGenerationStatus(
+		ctx context.Context, id int64, activation SchemaGenerationStatus,
+	) error
+	ListGenerations(
+		ctx context.Context, before int64,
+	) ([]SchemaGeneration, error)
+	GetExemplars(
+		ctx context.Context, generationID int64, known map[string]string,
+	) ([]ExemplarRecord, error)
+	GetActiveGeneration(ctx context.Context) (*SchemaGeneration, error)
+	GetActiveGenerationID(ctx context.Context) (int64, error)
+	GetPendingGeneration(ctx context.Context) (*SchemaGeneration, error)
+	GetActiveGenerationSchemas(ctx context.Context) ([]*Schema, error)
+	GetPendingGenerationSchemas(ctx context.Context) ([]*Schema, error)
 }
 
 type WorkflowStore interface {
@@ -382,6 +402,62 @@ type RegisterSchemaRequest struct {
 	Activate      bool
 }
 
+// SchemaGenerationStatus represents the activation state of a generation.
+type SchemaGenerationStatus string
+
+const (
+	GenerationStatusActive      SchemaGenerationStatus = "active"
+	GenerationStatusPending     SchemaGenerationStatus = "pending"
+	GenerationStatusDeactivated SchemaGenerationStatus = "deactivated"
+)
+
+// SchemaGeneration is a numbered, immutable set of schema versions.
+type SchemaGeneration struct {
+	ID          int64
+	Status      SchemaGenerationStatus
+	Created     time.Time
+	Activated   *time.Time
+	Deactivated *time.Time
+	Schemas     []SchemaReference
+}
+
+// SchemaReference identifies a schema by name and version.
+type SchemaReference struct {
+	Name    string
+	Version string
+}
+
+// ExemplarRecord is a stored exemplar document for a generation.
+type ExemplarRecord struct {
+	Name        string
+	VersionHash string
+	DocType     string
+	Document    json.RawMessage
+}
+
+// RegisterGenerationSchema is a schema to include in a generation.
+type RegisterGenerationSchema struct {
+	Name          string
+	Version       string
+	Specification revisor.ConstraintSet
+}
+
+// ExemplarInput is an exemplar document to register with a generation.
+type ExemplarInput struct {
+	Name     string
+	DocType  string
+	Document json.RawMessage
+	Version  string
+}
+
+// RegisterGenerationStoreRequest is the store-layer request for registering
+// a schema generation.
+type RegisterGenerationStoreRequest struct {
+	Schemas    []RegisterGenerationSchema
+	Activation SchemaGenerationStatus
+	Exemplars  []ExemplarInput
+}
+
 type MetaTypeInfo struct {
 	Name   string
 	UsedBy []string
@@ -414,21 +490,22 @@ const (
 )
 
 type UpdateRequest struct {
-	UUID            uuid.UUID
-	Updated         time.Time
-	Updater         string
-	Meta            newsdoc.DataMap
-	ACL             []ACLEntry
-	DefaultACL      []ACLEntry
-	Status          []StatusUpdate
-	Document        *newsdoc.Document
-	MainDocument    *uuid.UUID
-	IfMatch         int64
-	LockToken       string
-	IfWorkflowState string
-	IfStatusHeads   map[string]int64
-	AttachObjects   map[string]Upload
-	DetachObjects   []string
+	UUID             uuid.UUID
+	Updated          time.Time
+	Updater          string
+	Meta             newsdoc.DataMap
+	ACL              []ACLEntry
+	DefaultACL       []ACLEntry
+	Status           []StatusUpdate
+	Document         *newsdoc.Document
+	MainDocument     *uuid.UUID
+	IfMatch          int64
+	LockToken        string
+	IfWorkflowState  string
+	IfStatusHeads    map[string]int64
+	AttachObjects    map[string]Upload
+	DetachObjects    []string
+	SchemaGeneration int64
 }
 
 type DeleteRequest struct {
