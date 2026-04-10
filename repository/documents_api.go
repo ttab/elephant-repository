@@ -28,6 +28,9 @@ type DocumentValidator interface {
 	ValidateDocument(
 		ctx context.Context, document *newsdoc.Document,
 	) ([]revisor.ValidationResult, error)
+	PruneDocument(
+		ctx context.Context, document *newsdoc.Document,
+	) ([]revisor.ValidationResult, error)
 	ActiveGenerationID() int64
 }
 
@@ -2524,6 +2527,38 @@ func (a *DocumentsService) Validate(
 			Entity: EntityRefToRPC(r.Entity),
 			Error:  r.Error,
 		})
+	}
+
+	return &res, nil
+}
+
+// Prune implements repository.Documents.
+func (a *DocumentsService) Prune(
+	ctx context.Context, req *repository.PruneRequest,
+) (*repository.PruneResponse, error) {
+	if req.Document == nil {
+		return nil, twirp.RequiredArgumentError("document")
+	}
+
+	doc := rpcdoc.DocumentFromRPC(req.Document)
+
+	pruneResult, err := a.validator.PruneDocument(ctx, &doc)
+	if err != nil {
+		//nolint: wrapcheck
+		return nil, err
+	}
+
+	var res repository.PruneResponse
+
+	for _, r := range pruneResult {
+		res.Errors = append(res.Errors, &repository.ValidationResult{
+			Entity: EntityRefToRPC(r.Entity),
+			Error:  r.Error,
+		})
+	}
+
+	if len(res.Errors) == 0 {
+		res.Document = rpcdoc.DocumentToRPC(doc)
 	}
 
 	return &res, nil

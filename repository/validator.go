@@ -372,6 +372,23 @@ func (v *Validator) deprecationHandler(
 	}, nil
 }
 
+// PruneDocument prunes a document using the active schema generation,
+// removing non-conforming parts where possible.
+func (v *Validator) PruneDocument(
+	ctx context.Context, document *newsdoc.Document,
+) ([]revisor.ValidationResult, error) {
+	v.m.RLock()
+	val := v.val
+	v.m.RUnlock()
+
+	results, err := val.Prune(ctx, document)
+	if err != nil {
+		return nil, fmt.Errorf("prune document: %w", err)
+	}
+
+	return results, nil
+}
+
 func (v *Validator) GetValidator() *revisor.Validator {
 	v.m.RLock()
 	defer v.m.RUnlock()
