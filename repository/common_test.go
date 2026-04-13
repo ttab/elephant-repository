@@ -40,6 +40,7 @@ type TestContext struct {
 
 	SigningKey       *ecdsa.PrivateKey
 	Server           *httptest.Server
+	Validator        *repository.Validator
 	WorkflowProvider repository.WorkflowProvider
 	Documents        rpc.Documents
 	Schemas          rpc.Schemas
@@ -372,6 +373,7 @@ func testingAPIServer(
 		client:           client,
 		SigningKey:       jwtKey,
 		Server:           server,
+		Validator:        validator,
 		Documents:        docService,
 		Workflows:        workflowService,
 		Schemas:          schemaService,

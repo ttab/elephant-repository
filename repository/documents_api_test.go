@@ -724,6 +724,9 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	})
 	test.Must(t, err, "register metadata schema generation")
 
+	err = tc.Validator.RefreshSchemas(ctx)
+	test.Must(t, err, "refresh schemas after generation registration")
+
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
@@ -2259,6 +2262,123 @@ func TestIntegrationStatsOverview(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPrune(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write"))
+
+	ctx := t.Context()
+
+	const (
+		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI  = "article://test/123"
+	)
+
+	t.Run("ValidDocument", func(t *testing.T) {
+		doc := baseDocument(docUUID, docURI)
+
+		res, err := client.Prune(ctx, &repository.PruneRequest{
+			Document: doc,
+		})
+		test.Must(t, err, "prune valid document")
+
+		test.Equal(t, 0, len(res.Errors),
+			"expected no errors for a valid document")
+
+		if res.Document == nil {
+			t.Fatal("expected pruned document to be returned")
+		}
+
+		test.Equal(t, docUUID, res.Document.Uuid,
+			"pruned document should have the same UUID")
+	})
+
+	t.Run("RemoveInvalidBlocks", func(t *testing.T) {
+		doc := baseDocument(docUUID, docURI)
+
+		doc.Meta = append(doc.Meta, &newsdoc.Block{
+			Type: "totally/invalid-block",
+		})
+
+		doc.Content = append(doc.Content, &newsdoc.Block{
+			Type: "not-a-real/content-block",
+			Data: map[string]string{
+				"text": "this should be pruned",
+			},
+		})
+
+		res, err := client.Prune(ctx, &repository.PruneRequest{
+			Document: doc,
+		})
+		test.Must(t, err, "prune document with invalid blocks")
+
+		test.Equal(t, 0, len(res.Errors),
+			"expected no errors after pruning invalid blocks")
+
+		if res.Document == nil {
+			t.Fatal("expected pruned document to be returned")
+		}
+
+		for _, m := range res.Document.Meta {
+			if m.Type == "totally/invalid-block" {
+				t.Error("invalid meta block should have been pruned")
+			}
+		}
+
+		for _, c := range res.Document.Content {
+			if c.Type == "not-a-real/content-block" {
+				t.Error("invalid content block should have been pruned")
+			}
+		}
+	})
+
+	t.Run("UndeclaredDocumentType", func(t *testing.T) {
+		doc := &newsdoc.Document{
+			Uuid:     docUUID,
+			Title:    "Unknown type",
+			Type:     "unknown/type",
+			Uri:      docURI,
+			Language: "en",
+		}
+
+		res, err := client.Prune(ctx, &repository.PruneRequest{
+			Document: doc,
+		})
+		test.Must(t, err, "prune document with undeclared type")
+
+		if len(res.Errors) == 0 {
+			t.Fatal("expected errors for undeclared document type")
+		}
+
+		if res.Document != nil {
+			t.Error("document should not be returned when there are errors")
+		}
+	})
+
+	t.Run("MissingDocument", func(t *testing.T) {
+		_, err := client.Prune(ctx, &repository.PruneRequest{})
+		if err == nil {
+			t.Fatal("expected error for missing document")
+		}
+
+		var twerr twirp.Error
+
+		if !errors.As(err, &twerr) {
+			t.Fatalf("expected twirp error, got %T", err)
+		}
+
+		test.Equal(t, twirp.InvalidArgument, twerr.Code(),
+			"expected invalid argument error code")
+	})
 }
 
 func TestUUIDNormalisation(t *testing.T) {
