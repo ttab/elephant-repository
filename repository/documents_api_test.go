@@ -724,6 +724,9 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	})
 	test.Must(t, err, "register metadata schema generation")
 
+	err = tc.Validator.RefreshSchemas(ctx)
+	test.Must(t, err, "refresh schemas after generation registration")
+
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
 
