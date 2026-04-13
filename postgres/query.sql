@@ -275,7 +275,7 @@ AND pr.delete_record_id = ANY(
 -- name: PurgeDeleteRecordDetails :exec
 UPDATE delete_record SET
        meta = NULL, acl = NULL, heads = NULL, version = 0,
-       language = NULL, 
+       language = NULL,
        purged = @purged_time
 WHERE id = @id;
 
@@ -322,11 +322,11 @@ WHERE uuid = @uuid;
 INSERT INTO document_version(
        uuid, version,
        created, creator_uri, meta, document_data, archived, language,
-       time, labels
+       time, labels, schema_generation
 ) VALUES (
        @uuid, @version,
        @created, @creator_uri, @meta, @document_data, false, @language,
-       @time, @labels
+       @time, @labels, @schema_generation
 );
 
 -- name: CreateStatusHead :exec
@@ -640,6 +640,11 @@ WHERE uuid = @uuid
 -- name: RegisterSchema :exec
 INSERT INTO document_schema(name, version, spec)
 VALUES (@name, @version, @spec);
+
+-- name: EnsureSchema :exec
+INSERT INTO document_schema(name, version, spec)
+VALUES (@name, @version, @spec)
+ON CONFLICT (name, version) DO NOTHING;
 
 -- name: ActivateSchema :exec
 INSERT INTO active_schemas(name, version)
@@ -1231,3 +1236,155 @@ ON CONFLICT (name) DO UPDATE SET
 
 -- name: GetSystemConfig :one
 SELECT value FROM system_config WHERE name = @name;
+
+-- Schema generation queries
+
+-- name: InsertSchemaGeneration :one
+INSERT INTO schema_generation(identity_hash, status, created, activated)
+       VALUES (@identity_hash, @status, @created, @activated)
+RETURNING id;
+
+-- name: GetSchemaGenerationByIdentityHash :one
+SELECT id, identity_hash, status, created, activated, deactivated
+FROM schema_generation
+WHERE identity_hash = @identity_hash;
+
+-- name: InsertSchemaGenerationSchema :exec
+INSERT INTO schema_generation_schema(generation_id, name, version)
+       VALUES (@generation_id, @name, @version);
+
+-- name: UpsertSchemaExemplar :exec
+INSERT INTO schema_exemplar(name, version, doc_type, document)
+       VALUES (@name, @version, @doc_type, @document)
+ON CONFLICT (name, version) DO NOTHING;
+
+-- name: InsertSchemaGenerationExemplar :exec
+INSERT INTO schema_generation_exemplar(generation_id, name, version)
+       VALUES (@generation_id, @name, @version);
+
+-- name: ActivateSchemaGeneration :exec
+UPDATE schema_generation
+SET status = 'active', activated = @activated
+WHERE id = @id;
+
+-- name: DeactivateSchemaGeneration :exec
+UPDATE schema_generation
+SET status = 'deactivated', deactivated = @deactivated
+WHERE id = @id;
+
+-- name: SetSchemaGenerationPending :exec
+UPDATE schema_generation
+SET status = 'pending'
+WHERE id = @id;
+
+-- name: GetActiveSchemaGeneration :one
+SELECT id, identity_hash, status, created, activated, deactivated
+FROM schema_generation
+WHERE status = 'active';
+
+-- name: GetPendingSchemaGeneration :one
+SELECT id, identity_hash, status, created, activated, deactivated
+FROM schema_generation
+WHERE status = 'pending';
+
+-- name: DeactivateCurrentActiveGeneration :exec
+UPDATE schema_generation
+SET status = 'deactivated', deactivated = @deactivated
+WHERE status = 'active' AND id != @exclude_id;
+
+-- name: DeactivateCurrentPendingGeneration :exec
+UPDATE schema_generation
+SET status = 'deactivated', deactivated = @deactivated
+WHERE status = 'pending' AND id != @exclude_id;
+
+-- name: ListSchemaGenerations :many
+SELECT id, identity_hash, status, created, activated, deactivated
+FROM schema_generation
+WHERE (sqlc.arg(before)::bigint = 0 OR id < sqlc.arg(before)::bigint)
+ORDER BY id DESC
+LIMIT 20;
+
+-- name: GetSchemaGeneration :one
+SELECT id, identity_hash, status, created, activated, deactivated
+FROM schema_generation
+WHERE id = @id;
+
+-- name: GetSchemaGenerationSchemas :many
+SELECT name, version
+FROM schema_generation_schema
+WHERE generation_id = @generation_id
+ORDER BY name;
+
+-- name: GetSchemaGenerationSchemasWithSpec :many
+SELECT sgs.name, sgs.version, ds.spec
+FROM schema_generation_schema sgs
+     INNER JOIN document_schema ds
+           ON ds.name = sgs.name AND ds.version = sgs.version
+WHERE sgs.generation_id = @generation_id
+ORDER BY sgs.name;
+
+-- name: GetSchemaGenerationExemplars :many
+SELECT se.name, se.version, se.doc_type, se.document
+FROM schema_generation_exemplar sge
+     INNER JOIN schema_exemplar se
+           ON se.name = sge.name AND se.version = sge.version
+WHERE sge.generation_id = @generation_id
+ORDER BY se.name;
+
+-- name: InsertSchemaGenerationEvent :one
+INSERT INTO schema_generation_event(generation_id, event, timestamp)
+       VALUES (@generation_id, @event, @timestamp)
+RETURNING id;
+
+-- name: GetSchemaGenerationEvents :many
+SELECT id, generation_id, event, timestamp, signature
+FROM schema_generation_event
+WHERE id > sqlc.arg(after)
+ORDER BY id ASC
+LIMIT sqlc.arg(row_limit);
+
+-- name: GetSchemaGenerationArchiver :one
+SELECT position, last_signature
+FROM schema_generation_archiver
+LIMIT 1;
+
+-- name: SetSchemaGenerationArchiver :exec
+INSERT INTO schema_generation_archiver(position, last_signature)
+       VALUES (@position, @last_signature)
+ON CONFLICT (id) DO UPDATE
+   SET position = @position, last_signature = @last_signature;
+
+-- name: SetSchemaGenerationEventSignature :exec
+UPDATE schema_generation_event
+SET signature = @signature
+WHERE id = @id;
+
+-- name: GetActiveGenerationSchemas :many
+SELECT sgs.name, sgs.version, ds.spec
+FROM schema_generation sg
+     INNER JOIN schema_generation_schema sgs
+           ON sgs.generation_id = sg.id
+     INNER JOIN document_schema ds
+           ON ds.name = sgs.name AND ds.version = sgs.version
+WHERE sg.status = 'active'
+ORDER BY sgs.name;
+
+-- name: GetPendingGenerationSchemas :many
+SELECT sgs.name, sgs.version, ds.spec
+FROM schema_generation sg
+     INNER JOIN schema_generation_schema sgs
+           ON sgs.generation_id = sg.id
+     INNER JOIN document_schema ds
+           ON ds.name = sgs.name AND ds.version = sgs.version
+WHERE sg.status = 'pending'
+ORDER BY sgs.name;
+
+-- name: ClearActiveSchemas :exec
+DELETE FROM active_schemas;
+
+-- name: SyncActiveSchemasFromGeneration :exec
+INSERT INTO active_schemas(name, version)
+       SELECT sgs.name, sgs.version
+       FROM schema_generation_schema sgs
+       WHERE sgs.generation_id = @generation_id
+ON CONFLICT (name) DO UPDATE SET version = excluded.version;

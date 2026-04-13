@@ -1,30 +1,26 @@
 package repository
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"time"
 
+	rpc_newsdoc "github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
-	"github.com/ttab/elephantine"
+	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
-	"golang.org/x/mod/semver"
 )
 
 func NewSchemasService(logger *slog.Logger, store SchemaStore) *SchemasService {
 	return &SchemasService{
 		logger: logger,
 		store:  store,
-		client: &http.Client{},
 	}
 }
 
@@ -34,7 +30,6 @@ var _ repository.Schemas = &SchemasService{}
 type SchemasService struct {
 	logger *slog.Logger
 	store  SchemaStore
-	client *http.Client
 }
 
 // GetDocumentTypes implements repository.Schemas.
@@ -160,6 +155,10 @@ func (a *SchemasService) ListActive(
 		}
 	}
 
+	genID, _ := a.store.GetActiveGenerationID(ctx)
+
+	res.GenerationId = genID
+
 	return &res, nil
 }
 
@@ -178,7 +177,7 @@ func (a *SchemasService) RegisterMetaType(
 
 	err = a.store.RegisterMetaType(ctx, req.Type, req.Exclusive)
 	if err != nil {
-		return nil, fmt.Errorf("failed to register meta type: %w", err)
+		return nil, fmt.Errorf("register meta type: %w", err)
 	}
 
 	return &repository.RegisterMetaTypeResponse{}, nil
@@ -205,13 +204,13 @@ func (a *SchemasService) RegisterMetaTypeUse(
 	if errors.As(err, &DocStoreError{}) {
 		return nil, twirp.InvalidArgument.Error(err.Error())
 	} else if err != nil {
-		return nil, fmt.Errorf("failed to register meta type: %w", err)
+		return nil, fmt.Errorf("register meta type use: %w", err)
 	}
 
 	return &repository.RegisterMetaTypeUseResponse{}, nil
 }
 
-// GetAllActiveSchemas returns the currently active schemas.
+// GetAllActive returns the currently active schemas.
 func (a *SchemasService) GetAllActive(
 	ctx context.Context, req *repository.GetAllActiveSchemasRequest,
 ) (*repository.GetAllActiveSchemasResponse, error) {
@@ -234,7 +233,7 @@ func (a *SchemasService) GetAllActive(
 	schemas, err := a.store.GetActiveSchemas(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to retrieve active schemas: %w", err)
+			"retrieve active schemas: %w", err)
 	}
 
 	var (
@@ -252,7 +251,7 @@ func (a *SchemasService) GetAllActive(
 		data, err := json.Marshal(schemas[i].Specification)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"failed to marshal %q@%s specification for response: %w",
+				"marshal %q@%s specification for response: %w",
 				schemas[i].Name, schemas[i].Version, err)
 		}
 
@@ -272,6 +271,9 @@ func (a *SchemasService) GetAllActive(
 
 		res.Removed = append(res.Removed, requested)
 	}
+
+	genID, _ := a.store.GetActiveGenerationID(ctx)
+	res.GenerationId = genID
 
 	return &res, nil
 }
@@ -331,13 +333,13 @@ func (a *SchemasService) Get(
 	schema, err := a.store.GetSchema(ctx, req.Name, req.Version)
 	if err != nil {
 		return nil, twirp.InternalErrorf(
-			"failed to retrieve schema: %w", err)
+			"retrieve schema: %w", err)
 	}
 
 	data, err := json.Marshal(schema.Specification)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to marshal specification for response: %w",
+			"marshal specification for response: %w",
 			err)
 	}
 
@@ -347,175 +349,277 @@ func (a *SchemasService) Get(
 	}, nil
 }
 
-// Register register a new validation schema version.
-func (a *SchemasService) Register(
-	ctx context.Context, req *repository.RegisterSchemaRequest,
-) (*repository.RegisterSchemaResponse, error) {
+// RegisterGeneration implements repository.Schemas.
+func (a *SchemasService) RegisterGeneration(
+	ctx context.Context, req *repository.RegisterGenerationRequest,
+) (*repository.RegisterGenerationResponse, error) {
 	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin)
 	if err != nil {
 		return nil, err
 	}
 
-	if req.Schema == nil {
-		return nil, twirp.RequiredArgumentError("schema")
+	if len(req.Schemas) == 0 {
+		return nil, twirp.RequiredArgumentError("schemas")
 	}
 
-	if req.Schema.Name == "" {
-		return nil, twirp.RequiredArgumentError("schema.name")
+	activation := GenerationStatusDeactivated
+
+	switch req.Activation {
+	case repository.SchemaActivation_ACTIVATION_ACTIVE:
+		activation = GenerationStatusActive
+	case repository.SchemaActivation_ACTIVATION_PENDING:
+		activation = GenerationStatusPending
+	case repository.SchemaActivation_ACTIVATION_UNKNOWN,
+		repository.SchemaActivation_ACTIVATION_DEACTIVATED:
+		activation = GenerationStatusDeactivated
 	}
 
-	if req.Schema.Version == "" {
-		return nil, twirp.RequiredArgumentError("schema.version")
+	// Parse schemas from RPC.
+	schemas := make([]RegisterGenerationSchema, 0, len(req.Schemas))
+
+	for _, s := range req.Schemas {
+		if s.Name == "" {
+			return nil, twirp.RequiredArgumentError("schemas[].name")
+		}
+
+		if s.Version == "" {
+			return nil, twirp.RequiredArgumentError("schemas[].version")
+		}
+
+		var spec revisor.ConstraintSet
+
+		if s.Spec != "" {
+			err = json.Unmarshal([]byte(s.Spec), &spec)
+			if err != nil {
+				return nil, twirp.InvalidArgument.Errorf(
+					"invalid schema spec for %q: %v", s.Name, err)
+			}
+		}
+
+		schemas = append(schemas, RegisterGenerationSchema{
+			Name:          s.Name,
+			Version:       s.Version,
+			Specification: spec,
+		})
 	}
 
-	version := semver.Canonical(req.Schema.Version)
-	if version == "" {
-		return nil, twirp.InvalidArgumentError(
-			"schema.version", "invalid semver version")
-	}
+	// Process exemplars: canonicalize and hash.
+	exemplars := make([]ExemplarInput, 0, len(req.Exemplars))
 
-	if req.Schema.Spec == "" && req.SchemaUrl == "" {
-		return nil, twirp.InvalidArgumentError("schema.spec",
-			"the schema spec is required if no URL is passed")
-	}
+	for _, rpcDoc := range req.Exemplars {
+		doc := rpc_newsdoc.DocumentFromRPC(rpcDoc)
 
-	if req.Schema.Spec != "" && req.SchemaUrl != "" {
-		return nil, twirp.InvalidArgumentError("schema_url",
-			"a schema_url cannot be passed if an inline spec is set")
-	}
-
-	var spec revisor.ConstraintSet
-
-	if req.Schema.Spec != "" {
-		err = json.Unmarshal([]byte(req.Schema.Spec), &spec)
-		if err != nil {
+		canonical, cErr := json.Marshal(doc)
+		if cErr != nil {
 			return nil, twirp.InvalidArgument.Errorf(
-				"invalid schema: %w", err)
-		}
-	} else {
-		s, err := a.fetchRemoteSpec(ctx,
-			req.SchemaUrl, req.SchemaSha256)
-		if err != nil {
-			return nil, err
+				"canonicalize exemplar: %v", cErr)
 		}
 
-		spec = s
+		h := sha256.Sum256(canonical)
+		versionHash := "sha256:" + hex.EncodeToString(h[:])
+
+		name := doc.URI
+		if name == "" {
+			name = doc.UUID
+		}
+
+		exemplars = append(exemplars, ExemplarInput{
+			Name:     name,
+			DocType:  doc.Type,
+			Document: canonical,
+			Version:  versionHash,
+		})
 	}
 
-	err = a.store.RegisterSchema(ctx, RegisterSchemaRequest{
-		Name:          req.Schema.Name,
-		Version:       version,
-		Specification: spec,
-		Activate:      req.Activate,
+	// Validate exemplars against the generation's schemas.
+	if len(schemas) > 0 && len(exemplars) > 0 {
+		var constraints []revisor.ConstraintSet
+
+		for _, s := range schemas {
+			constraints = append(constraints, s.Specification)
+		}
+
+		val, vErr := revisor.NewValidator(constraints...)
+		if vErr != nil {
+			return nil, twirp.InvalidArgument.Errorf(
+				"schemas cannot form a valid validator: %v", vErr)
+		}
+
+		for _, ex := range exemplars {
+			var doc newsdoc.Document
+
+			if uErr := json.Unmarshal(ex.Document, &doc); uErr != nil {
+				return nil, twirp.InvalidArgument.Errorf(
+					"invalid exemplar document %q: %v",
+					ex.Name, uErr)
+			}
+
+			results, vErr := val.ValidateDocument(ctx, &doc)
+			if vErr != nil {
+				return nil, fmt.Errorf(
+					"validate exemplar %q: %w", ex.Name, vErr)
+			}
+
+			if len(results) > 0 {
+				return nil, twirp.InvalidArgument.Errorf(
+					"exemplar %q has %d validation errors: %s",
+					ex.Name, len(results), results[0].String())
+			}
+		}
+	}
+
+	genID, err := a.store.RegisterGeneration(ctx, RegisterGenerationStoreRequest{
+		Schemas:    schemas,
+		Activation: activation,
+		Exemplars:  exemplars,
 	})
-	if IsDocStoreErrorCode(err, ErrCodeExists) {
-		return nil, twirp.FailedPrecondition.Error(
-			"schema version already exists")
-	} else if err != nil {
-		return nil, fmt.Errorf("failed to register schema: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("register generation: %w", err)
 	}
 
-	return &repository.RegisterSchemaResponse{}, nil
+	return &repository.RegisterGenerationResponse{
+		GenerationId: genID,
+	}, nil
 }
 
-func (a *SchemasService) fetchRemoteSpec(
-	ctx context.Context, schemaURL string, schemaHash string,
-) (_ revisor.ConstraintSet, outErr error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, schemaURL, nil)
-	if err != nil {
-		return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
-			"schema_url",
-			fmt.Sprintf("failed to create schema request: %v", err))
-	}
-
-	res, err := a.client.Do(req) //nolint:bodyclose
-	if err != nil {
-		return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
-			"schema_url",
-			fmt.Sprintf("failed to get schema_url: %v", err))
-	}
-
-	defer elephantine.Close("schema response", res.Body, &outErr)
-
-	specData, err := io.ReadAll(res.Body)
-	if err != nil {
-		return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
-			"schema_url",
-			fmt.Sprintf("failed to read schema_url response: %v", err))
-	}
-
-	if schemaHash != "" {
-		want, err := hex.DecodeString(schemaHash)
-		if err != nil {
-			return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
-				"schema_sha256",
-				fmt.Sprintf("invalid checksum: %v", err))
-		}
-
-		if len(want) != sha256.Size {
-			return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
-				"schema_sha256",
-				fmt.Sprintf(
-					"invalid checksum length, expected %d bytes, got %d",
-					sha256.Size, len(want)))
-		}
-
-		got := sha256.Sum256(specData)
-
-		if !bytes.Equal(want, got[:]) {
-			return revisor.ConstraintSet{}, twirp.InvalidArgumentError(
-				"schema_sha256",
-				fmt.Sprintf(
-					"checksum mismatch expected %x, got %x",
-					want, got))
-		}
-	}
-
-	var spec revisor.ConstraintSet
-
-	err = json.Unmarshal(specData, &spec)
-	if err != nil {
-		return revisor.ConstraintSet{}, twirp.InvalidArgument.Errorf(
-			"invalid schema: %w", err)
-	}
-
-	return spec, nil
-}
-
-// SetActive activates schema versions.
+// SetActive implements repository.Schemas.
 func (a *SchemasService) SetActive(
-	ctx context.Context, req *repository.SetActiveSchemaRequest,
-) (*repository.SetActiveSchemaResponse, error) {
+	ctx context.Context, req *repository.SetActiveSchemasRequest,
+) (*repository.SetActiveSchemasResponse, error) {
 	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin)
 	if err != nil {
 		return nil, err
 	}
 
-	if req.Name == "" {
-		return nil, twirp.RequiredArgumentError("name")
+	if req.GenerationId == 0 {
+		return nil, twirp.RequiredArgumentError("generation_id")
 	}
 
-	if !req.Deactivate && req.Version == "" {
-		return nil, twirp.RequiredArgumentError("version")
+	var activation SchemaGenerationStatus
+
+	switch req.Activation {
+	case repository.SchemaActivation_ACTIVATION_ACTIVE:
+		activation = GenerationStatusActive
+	case repository.SchemaActivation_ACTIVATION_PENDING:
+		activation = GenerationStatusPending
+	case repository.SchemaActivation_ACTIVATION_DEACTIVATED:
+		activation = GenerationStatusDeactivated
+	case repository.SchemaActivation_ACTIVATION_UNKNOWN:
+		return nil, twirp.InvalidArgumentError(
+			"activation", "invalid activation value")
 	}
 
-	if req.Deactivate {
-		err := a.store.DeactivateSchema(ctx, req.Name)
-		if err != nil {
+	err = a.store.SetGenerationStatus(ctx, req.GenerationId, activation)
+
+	switch {
+	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
+		return nil, twirp.InvalidArgument.Error(err.Error())
+	case IsDocStoreErrorCode(err, ErrCodeNotFound):
+		return nil, twirp.NotFound.Error(err.Error())
+	case err != nil:
+		return nil, fmt.Errorf("set generation status: %w", err)
+	}
+
+	return &repository.SetActiveSchemasResponse{}, nil
+}
+
+// ListGenerations implements repository.Schemas.
+func (a *SchemasService) ListGenerations(
+	ctx context.Context, req *repository.ListSchemaGenerationsRequest,
+) (*repository.ListSchemaGenerationsResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin, ScopeSchemaRead)
+	if err != nil {
+		return nil, err
+	}
+
+	generations, err := a.store.ListGenerations(ctx, req.Before)
+	if err != nil {
+		return nil, fmt.Errorf("list generations: %w", err)
+	}
+
+	items := make([]*repository.SchemaGeneration, 0, len(generations))
+
+	for _, g := range generations {
+		items = append(items, schemaGenerationToRPC(g))
+	}
+
+	return &repository.ListSchemaGenerationsResponse{
+		Items: items,
+	}, nil
+}
+
+// GetExemplars implements repository.Schemas.
+func (a *SchemasService) GetExemplars(
+	ctx context.Context, req *repository.GetExemplarsRequest,
+) (*repository.GetExemplarsResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin, ScopeSchemaRead)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.GenerationId == 0 {
+		return nil, twirp.RequiredArgumentError("generation_id")
+	}
+
+	exemplars, err := a.store.GetExemplars(ctx, req.GenerationId, req.Known)
+	if err != nil {
+		return nil, fmt.Errorf("get exemplars: %w", err)
+	}
+
+	items := make([]*repository.Exemplar, 0, len(exemplars))
+
+	for _, ex := range exemplars {
+		var doc newsdoc.Document
+
+		if uErr := json.Unmarshal(ex.Document, &doc); uErr != nil {
 			return nil, fmt.Errorf(
-				"failed to deactivate schema: %w", err)
+				"unmarshal exemplar %q: %w", ex.Name, uErr)
 		}
-	} else {
-		err := a.store.ActivateSchema(ctx, req.Name, req.Version)
-		if IsDocStoreErrorCode(err, ErrCodeFailedPrecondition) {
-			return nil, twirp.FailedPrecondition.Error(err.Error())
-		} else if err != nil {
-			return nil, fmt.Errorf(
-				"failed to register activation: %w", err)
+
+		items = append(items, &repository.Exemplar{
+			Name:        ex.Name,
+			Document:    rpc_newsdoc.DocumentToRPC(doc),
+			VersionHash: ex.VersionHash,
+		})
+	}
+
+	return &repository.GetExemplarsResponse{
+		Exemplars: items,
+	}, nil
+}
+
+func schemaGenerationToRPC(g SchemaGeneration) *repository.SchemaGeneration {
+	rpc := &repository.SchemaGeneration{
+		Id:      g.ID,
+		Created: g.Created.Format(time.RFC3339),
+	}
+
+	switch g.Status {
+	case GenerationStatusActive:
+		rpc.Status = repository.SchemaActivation_ACTIVATION_ACTIVE
+	case GenerationStatusPending:
+		rpc.Status = repository.SchemaActivation_ACTIVATION_PENDING
+	case GenerationStatusDeactivated:
+		rpc.Status = repository.SchemaActivation_ACTIVATION_DEACTIVATED
+	}
+
+	if g.Activated != nil {
+		rpc.Activated = g.Activated.Format(time.RFC3339)
+	}
+
+	if g.Deactivated != nil {
+		rpc.Deactivated = g.Deactivated.Format(time.RFC3339)
+	}
+
+	rpc.Schemas = make([]*repository.SchemaReference, len(g.Schemas))
+	for i, s := range g.Schemas {
+		rpc.Schemas[i] = &repository.SchemaReference{
+			Name:    s.Name,
+			Version: s.Version,
 		}
 	}
 
-	return &repository.SetActiveSchemaResponse{}, nil
+	return rpc
 }
 
 // GetDeprecations implements repository.Schemas.
@@ -532,7 +636,7 @@ func (a *SchemasService) GetDeprecations(
 	deprecations, err := a.store.GetDeprecations(ctx)
 	if err != nil {
 		return nil, twirp.InternalErrorf(
-			"failed to list deprecations: %w", err)
+			"list deprecations: %w", err)
 	}
 
 	res.Deprecations = make([]*repository.Deprecation, len(deprecations))
@@ -564,7 +668,7 @@ func (a *SchemasService) UpdateDeprecation(
 		Enforced: req.Deprecation.Enforced,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to update deprecation: %w", err)
+		return nil, fmt.Errorf("update deprecation: %w", err)
 	}
 
 	return &repository.UpdateDeprecationResponse{}, nil

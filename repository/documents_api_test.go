@@ -704,15 +704,25 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	specPayload, err := json.Marshal(&spec)
 	test.Must(t, err, "marshal meta schema")
 
-	_, err = schema.Register(ctx, &repository.RegisterSchemaRequest{
-		Activate: true,
-		Schema: &repository.Schema{
-			Name:    "test/metadata",
-			Version: "v1.0.0",
-			Spec:    string(specPayload),
-		},
+	// Get all currently active schemas so we can include them in the new
+	// generation alongside the test schema.
+	activeSchemas, err := schema.GetAllActive(ctx,
+		&repository.GetAllActiveSchemasRequest{})
+	test.Must(t, err, "get active schemas")
+
+	genSchemas := make([]*repository.Schema, 0, len(activeSchemas.Schemas)+1)
+	genSchemas = append(genSchemas, activeSchemas.Schemas...)
+	genSchemas = append(genSchemas, &repository.Schema{
+		Name:    "test/metadata",
+		Version: "v1.0.0",
+		Spec:    string(specPayload),
 	})
-	test.Must(t, err, "register metadata schema")
+
+	_, err = schema.RegisterGeneration(ctx, &repository.RegisterGenerationRequest{
+		Activation: repository.SchemaActivation_ACTIVATION_ACTIVE,
+		Schemas:    genSchemas,
+	})
+	test.Must(t, err, "register metadata schema generation")
 
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))

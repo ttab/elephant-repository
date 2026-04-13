@@ -5,9 +5,55 @@
 package postgres
 
 import (
+	"database/sql/driver"
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type SchemaGenerationStatus string
+
+const (
+	SchemaGenerationStatusActive      SchemaGenerationStatus = "active"
+	SchemaGenerationStatusPending     SchemaGenerationStatus = "pending"
+	SchemaGenerationStatusDeactivated SchemaGenerationStatus = "deactivated"
+)
+
+func (e *SchemaGenerationStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SchemaGenerationStatus(s)
+	case string:
+		*e = SchemaGenerationStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SchemaGenerationStatus: %T", src)
+	}
+	return nil
+}
+
+type NullSchemaGenerationStatus struct {
+	SchemaGenerationStatus SchemaGenerationStatus
+	Valid                  bool // Valid is true if SchemaGenerationStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSchemaGenerationStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.SchemaGenerationStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SchemaGenerationStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSchemaGenerationStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SchemaGenerationStatus), nil
+}
 
 type Acl struct {
 	UUID        uuid.UUID
@@ -123,17 +169,18 @@ type DocumentType struct {
 }
 
 type DocumentVersion struct {
-	UUID         uuid.UUID
-	Version      int64
-	Created      pgtype.Timestamptz
-	CreatorUri   string
-	Meta         []byte
-	DocumentData []byte
-	Archived     bool
-	Signature    pgtype.Text
-	Language     pgtype.Text
-	Time         pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
-	Labels       []string
+	UUID             uuid.UUID
+	Version          int64
+	Created          pgtype.Timestamptz
+	CreatorUri       string
+	Meta             []byte
+	DocumentData     []byte
+	Archived         bool
+	Signature        pgtype.Text
+	Language         pgtype.Text
+	Time             pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels           []string
+	SchemaGeneration int64
 }
 
 type EventOutboxItem struct {
@@ -248,7 +295,6 @@ type PlanningItem struct {
 	EndDate     pgtype.Date
 	Priority    pgtype.Int2
 	Event       pgtype.UUID
-	Timezone    pgtype.Text
 }
 
 type PurgeRequest struct {
@@ -268,6 +314,48 @@ type RestoreRequest struct {
 	Creator        string
 	Spec           []byte
 	Finished       pgtype.Timestamptz
+}
+
+type SchemaExemplar struct {
+	Name     string
+	Version  string
+	DocType  string
+	Document []byte
+}
+
+type SchemaGeneration struct {
+	ID           int64
+	IdentityHash string
+	Status       SchemaGenerationStatus
+	Created      pgtype.Timestamptz
+	Activated    pgtype.Timestamptz
+	Deactivated  pgtype.Timestamptz
+}
+
+type SchemaGenerationArchiver struct {
+	ID            bool
+	Position      int64
+	LastSignature string
+}
+
+type SchemaGenerationEvent struct {
+	ID           int64
+	GenerationID int64
+	Event        string
+	Timestamp    pgtype.Timestamptz
+	Signature    pgtype.Text
+}
+
+type SchemaGenerationExemplar struct {
+	GenerationID int64
+	Name         string
+	Version      string
+}
+
+type SchemaGenerationSchema struct {
+	GenerationID int64
+	Name         string
+	Version      string
 }
 
 type SchemaVersion struct {

@@ -30,6 +30,7 @@ type OutboxEvent struct {
 	Nonce              uuid.UUID      `json:"nonce,omitempty"`
 	Timespans          [][2]time.Time `json:"timespans,omitempty"`
 	Labels             []string       `json:"labels,omitempty"`
+	SchemaGeneration   int64          `json:"schema_generation,omitempty"`
 }
 
 type ACLEntry struct {
@@ -38,10 +39,11 @@ type ACLEntry struct {
 }
 
 type EventlogExtra struct {
-	AttachedObjects []string       `json:"attached_objects,omitempty"`
-	DetachedObjects []string       `json:"detached_objects,omitempty"`
-	DeleteRecordID  int64          `json:"delete_record_id,omitempty"`
-	MetaDocVersion  int64          `json:"metadoc_version,omitempty"`
-	Timespans       [][2]time.Time `json:"timespans,omitempty"`
-	Labels          []string       `json:"labels,omitempty"`
+	AttachedObjects  []string       `json:"attached_objects,omitempty"`
+	DetachedObjects  []string       `json:"detached_objects,omitempty"`
+	DeleteRecordID   int64          `json:"delete_record_id,omitempty"`
+	MetaDocVersion   int64          `json:"metadoc_version,omitempty"`
+	Timespans        [][2]time.Time `json:"timespans,omitempty"`
+	Labels           []string       `json:"labels,omitempty"`
+	SchemaGeneration int64          `json:"schema_generation,omitempty"`
 }

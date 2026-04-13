@@ -25,8 +25,8 @@ require (
 	github.com/rakutentech/jwk-go v1.2.0
 	github.com/tmaxmax/go-sse v0.11.0
 	github.com/ttab/darknut v0.1.3
-	github.com/ttab/eleconf v0.2.0
-	github.com/ttab/elephant-api v0.21.3
+	github.com/ttab/eleconf v0.2.1-0.20260407125032-07bbda48a494
+	github.com/ttab/elephant-api v0.22.0
 	github.com/ttab/elephantine v0.25.0
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.9.1
@@ -36,7 +36,6 @@ require (
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v3 v3.8.0
 	github.com/viccon/sturdyc v1.1.5
-	golang.org/x/mod v0.34.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/time v0.15.0
 	google.golang.org/protobuf v1.36.11
@@ -164,6 +163,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
+	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect

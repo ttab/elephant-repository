@@ -203,6 +203,11 @@ func (a *Archiver) Run(ctx context.Context) error {
 		1*time.Hour,
 		a.runEventlogBatchArchiver)
 
+	grp.GoWithRetries("run generation archiver",
+		30, elephantine.StaticBackoff(10*time.Second),
+		1*time.Hour,
+		a.runGenerationArchiver)
+
 	return grp.Wait() //nolint: wrapcheck
 }
 

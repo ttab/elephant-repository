@@ -21,10 +21,14 @@ const (
 type Validator struct {
 	m                           sync.RWMutex
 	val                         *revisor.Validator
+	activeGenerationID          int64
+	pendingVal                  *revisor.Validator
+	pendingGenerationID         int64
 	enforcedDeprecations        EnforcedDeprecations
 	logger                      *slog.Logger
 	deprecationsCounter         prometheus.CounterVec
 	docsWithDeprecationsCounter prometheus.CounterVec
+	pendingFailureCounter       prometheus.CounterVec
 	stopChannel                 chan struct{}
 	cancel                      func()
 
@@ -33,6 +37,8 @@ type Validator struct {
 
 type ValidatorStore interface {
 	GetActiveSchemas(ctx context.Context) ([]*Schema, error)
+	GetActiveGenerationID(ctx context.Context) (int64, error)
+	GetPendingGenerationSchemas(ctx context.Context) ([]*Schema, error)
 	OnSchemaUpdate(ctx context.Context, ch chan SchemaEvent)
 	GetEnforcedDeprecations(ctx context.Context) (EnforcedDeprecations, error)
 	OnDeprecationUpdate(ctx context.Context, ch chan DeprecationEvent)
@@ -59,7 +65,7 @@ func NewValidator(
 			Help: "Number of encountered deprecations",
 		}, []string{"label"})
 	if err := metricsRegisterer.Register(v.deprecationsCounter); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
+		return nil, fmt.Errorf("register deprecations metric: %w", err)
 	}
 
 	v.docsWithDeprecationsCounter = *prometheus.NewCounterVec(
@@ -68,17 +74,26 @@ func NewValidator(
 			Help: "Number of encountered documents with deprecations",
 		}, []string{"doc_type"})
 	if err := metricsRegisterer.Register(v.docsWithDeprecationsCounter); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
+		return nil, fmt.Errorf("register docs with deprecations metric: %w", err)
+	}
+
+	v.pendingFailureCounter = *prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "elephant_pending_validation_failures_total",
+			Help: "Number of validation failures against the pending schema generation",
+		}, []string{"doc_type", "error"})
+	if err := metricsRegisterer.Register(v.pendingFailureCounter); err != nil {
+		return nil, fmt.Errorf("register pending validation metric: %w", err)
 	}
 
 	err := v.loadSchemas(ctx, loader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load schemas: %w", err)
+		return nil, fmt.Errorf("load schemas: %w", err)
 	}
 
 	err = v.loadDeprecations(ctx, loader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load deprecations: %w", err)
+		return nil, fmt.Errorf("load deprecations: %w", err)
 	}
 
 	go v.reloadLoop(ctx, logger, loader)
@@ -160,7 +175,7 @@ func (v *Validator) reloadLoop(
 func (v *Validator) loadSchemas(ctx context.Context, loader ValidatorStore) error {
 	schemas, err := loader.GetActiveSchemas(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get active schemas: %w", err)
+		return fmt.Errorf("get active schemas: %w", err)
 	}
 
 	var constraints []revisor.ConstraintSet
@@ -172,7 +187,7 @@ func (v *Validator) loadSchemas(ctx context.Context, loader ValidatorStore) erro
 	val, err := revisor.NewValidator(constraints...)
 	if err != nil {
 		return fmt.Errorf(
-			"failed to create a validator from the constraints: %w", err)
+			"create a validator from the constraints: %w", err)
 	}
 
 	variants, err := loadVariants(ctx, loader)
@@ -184,8 +199,52 @@ func (v *Validator) loadSchemas(ctx context.Context, loader ValidatorStore) erro
 		val = val.WithVariants(variants...)
 	}
 
+	// Load active generation ID.
+	genID, err := loader.GetActiveGenerationID(ctx)
+	if err != nil {
+		// Generation 0 means no generation exists yet.
+		genID = 0
+	}
+
+	// Load pending generation validator if one exists.
+	var pendingVal *revisor.Validator
+
+	var pendingGenID int64
+
+	pendingSchemas, err := loader.GetPendingGenerationSchemas(ctx)
+	if err == nil && len(pendingSchemas) > 0 {
+		var pendingConstraints []revisor.ConstraintSet
+
+		for _, s := range pendingSchemas {
+			pendingConstraints = append(pendingConstraints, s.Specification)
+		}
+
+		pVal, pErr := revisor.NewValidator(pendingConstraints...)
+		if pErr != nil {
+			v.logger.WarnContext(ctx,
+				"create pending validator",
+				elephantine.LogKeyError, pErr)
+		} else {
+			if len(variants) > 0 {
+				pVal = pVal.WithVariants(variants...)
+			}
+
+			pendingVal = pVal
+
+			// We don't have a direct method to get the pending
+			// generation ID from the store, but we can use 0 as a
+			// sentinel. The pending generation exists, so we set a
+			// non-zero value to indicate we have one. The exact ID
+			// is not needed by the validator.
+			pendingGenID = 1
+		}
+	}
+
 	v.m.Lock()
 	v.val = val
+	v.activeGenerationID = genID
+	v.pendingVal = pendingVal
+	v.pendingGenerationID = pendingGenID
 	v.m.Unlock()
 
 	return nil
@@ -223,7 +282,7 @@ func loadVariants(
 func (v *Validator) loadDeprecations(ctx context.Context, loader ValidatorStore) error {
 	deprecations, err := loader.GetEnforcedDeprecations(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get enforced deprecations: %w", err)
+		return fmt.Errorf("get enforced deprecations: %w", err)
 	}
 
 	v.m.Lock()
@@ -233,16 +292,55 @@ func (v *Validator) loadDeprecations(ctx context.Context, loader ValidatorStore)
 	return nil
 }
 
+// ValidateDocument validates a document against the active schema generation.
+// If a pending generation exists, it also runs soft validation against it,
+// logging and counting failures without rejecting the write.
 func (v *Validator) ValidateDocument(
 	ctx context.Context, document *newsdoc.Document,
 ) ([]revisor.ValidationResult, error) {
 	v.m.RLock()
 	val := v.val
+	pendingVal := v.pendingVal
 	v.m.RUnlock()
 
-	//nolint: wrapcheck
-	return val.ValidateDocument(ctx, document,
+	results, err := val.ValidateDocument(ctx, document,
 		revisor.WithDeprecationHandler(v.deprecationHandler))
+	if err != nil {
+		return nil, fmt.Errorf("validate document: %w", err)
+	}
+
+	// Soft validation against pending generation.
+	if pendingVal != nil {
+		pResults, pErr := pendingVal.ValidateDocument(ctx, document)
+		if pErr != nil {
+			v.logger.WarnContext(ctx,
+				"pending generation validation error",
+				elephantine.LogKeyError, pErr,
+				elephantine.LogKeyDocumentUUID, document.UUID)
+		} else {
+			for _, r := range pResults {
+				v.pendingFailureCounter.WithLabelValues(
+					document.Type, r.Error).Inc()
+			}
+
+			if len(pResults) > 0 {
+				v.logger.WarnContext(ctx,
+					"pending generation validation failures",
+					elephantine.LogKeyDocumentUUID, document.UUID,
+					"error_count", len(pResults))
+			}
+		}
+	}
+
+	return results, nil
+}
+
+// ActiveGenerationID returns the ID of the currently active schema generation.
+func (v *Validator) ActiveGenerationID() int64 {
+	v.m.RLock()
+	defer v.m.RUnlock()
+
+	return v.activeGenerationID
 }
 
 func (v *Validator) deprecationHandler(

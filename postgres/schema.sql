@@ -2,8 +2,9 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 17.4 (Debian 17.4-1.pgdg120+2)
--- Dumped by pg_dump version 17.4 (Debian 17.4-1.pgdg120+2)
+
+-- Dumped from database version 17.8 (Debian 17.8-1.pgdg12+1)
+-- Dumped by pg_dump version 17.8 (Debian 17.8-1.pgdg12+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -16,6 +17,17 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: schema_generation_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.schema_generation_status AS ENUM (
+    'active',
+    'pending',
+    'deactivated'
+);
+
 
 --
 -- Name: sequential_eventlog(); Type: FUNCTION; Schema: public; Owner: -
@@ -244,7 +256,8 @@ CREATE TABLE public.document_version (
     signature text,
     language text,
     "time" tstzmultirange,
-    labels text[]
+    labels text[],
+    schema_generation bigint DEFAULT 0 NOT NULL
 );
 
 
@@ -451,8 +464,7 @@ CREATE TABLE public.planning_item (
     start_date date NOT NULL,
     end_date date NOT NULL,
     priority smallint,
-    event uuid,
-    timezone text
+    event uuid
 );
 
 
@@ -510,6 +522,107 @@ ALTER TABLE public.restore_request ALTER COLUMN id ADD GENERATED ALWAYS AS IDENT
     NO MINVALUE
     NO MAXVALUE
     CACHE 1
+);
+
+
+--
+-- Name: schema_exemplar; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schema_exemplar (
+    name text NOT NULL,
+    version text NOT NULL,
+    doc_type text NOT NULL,
+    document jsonb NOT NULL
+);
+
+
+--
+-- Name: schema_generation; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schema_generation (
+    id bigint NOT NULL,
+    identity_hash text NOT NULL,
+    status public.schema_generation_status DEFAULT 'deactivated'::public.schema_generation_status NOT NULL,
+    created timestamp with time zone NOT NULL,
+    activated timestamp with time zone,
+    deactivated timestamp with time zone
+);
+
+
+--
+-- Name: schema_generation_archiver; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schema_generation_archiver (
+    id boolean DEFAULT true NOT NULL,
+    "position" bigint DEFAULT 0 NOT NULL,
+    last_signature text DEFAULT ''::text NOT NULL,
+    CONSTRAINT single_row CHECK (id)
+);
+
+
+--
+-- Name: schema_generation_event; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schema_generation_event (
+    id bigint NOT NULL,
+    generation_id bigint NOT NULL,
+    event text NOT NULL,
+    "timestamp" timestamp with time zone NOT NULL,
+    signature text
+);
+
+
+--
+-- Name: schema_generation_event_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.schema_generation_event ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.schema_generation_event_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: schema_generation_exemplar; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schema_generation_exemplar (
+    generation_id bigint NOT NULL,
+    name text NOT NULL,
+    version text NOT NULL
+);
+
+
+--
+-- Name: schema_generation_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.schema_generation ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.schema_generation_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: schema_generation_schema; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schema_generation_schema (
+    generation_id bigint NOT NULL,
+    name text NOT NULL,
+    version text NOT NULL
 );
 
 
@@ -857,6 +970,62 @@ ALTER TABLE ONLY public.purge_request
 
 ALTER TABLE ONLY public.restore_request
     ADD CONSTRAINT restore_request_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: schema_exemplar schema_exemplar_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_exemplar
+    ADD CONSTRAINT schema_exemplar_pkey PRIMARY KEY (name, version);
+
+
+--
+-- Name: schema_generation_archiver schema_generation_archiver_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_generation_archiver
+    ADD CONSTRAINT schema_generation_archiver_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: schema_generation_event schema_generation_event_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_generation_event
+    ADD CONSTRAINT schema_generation_event_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: schema_generation_exemplar schema_generation_exemplar_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_generation_exemplar
+    ADD CONSTRAINT schema_generation_exemplar_pkey PRIMARY KEY (generation_id, name);
+
+
+--
+-- Name: schema_generation schema_generation_identity_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_generation
+    ADD CONSTRAINT schema_generation_identity_hash_key UNIQUE (identity_hash);
+
+
+--
+-- Name: schema_generation schema_generation_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_generation
+    ADD CONSTRAINT schema_generation_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: schema_generation_schema schema_generation_schema_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_generation_schema
+    ADD CONSTRAINT schema_generation_schema_pkey PRIMARY KEY (generation_id, name);
 
 
 --
@@ -1209,6 +1378,46 @@ ALTER TABLE ONLY public.restore_request
 
 
 --
+-- Name: schema_generation_event schema_generation_event_generation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_generation_event
+    ADD CONSTRAINT schema_generation_event_generation_id_fkey FOREIGN KEY (generation_id) REFERENCES public.schema_generation(id);
+
+
+--
+-- Name: schema_generation_exemplar schema_generation_exemplar_generation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_generation_exemplar
+    ADD CONSTRAINT schema_generation_exemplar_generation_id_fkey FOREIGN KEY (generation_id) REFERENCES public.schema_generation(id);
+
+
+--
+-- Name: schema_generation_exemplar schema_generation_exemplar_name_version_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_generation_exemplar
+    ADD CONSTRAINT schema_generation_exemplar_name_version_fkey FOREIGN KEY (name, version) REFERENCES public.schema_exemplar(name, version);
+
+
+--
+-- Name: schema_generation_schema schema_generation_schema_generation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_generation_schema
+    ADD CONSTRAINT schema_generation_schema_generation_id_fkey FOREIGN KEY (generation_id) REFERENCES public.schema_generation(id);
+
+
+--
+-- Name: schema_generation_schema schema_generation_schema_name_version_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_generation_schema
+    ADD CONSTRAINT schema_generation_schema_name_version_fkey FOREIGN KEY (name, version) REFERENCES public.document_schema(name, version);
+
+
+--
 -- Name: status_heads status_heads_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1227,4 +1436,5 @@ ALTER TABLE ONLY public.workflow_state
 --
 -- PostgreSQL database dump complete
 --
+
 

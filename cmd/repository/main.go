@@ -376,6 +376,21 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		}
 	}
 
+	bootstrapLock, err := pg.NewJobLock(
+		dbpool, logger, "bootstrap-generation",
+		pg.JobLockOptions{})
+	if err != nil {
+		return fmt.Errorf("create bootstrap generation lock: %w", err)
+	}
+
+	err = bootstrapLock.RunWithContext(ctx,
+		func(ctx context.Context) error {
+			return repository.BootstrapGeneration(ctx, store)
+		})
+	if err != nil {
+		return fmt.Errorf("bootstrap schema generation: %w", err)
+	}
+
 	// Spec format name@version:URL
 	for _, spec := range ensureSchemas {
 		reference, rawURL, ok := strings.Cut(spec, ":")

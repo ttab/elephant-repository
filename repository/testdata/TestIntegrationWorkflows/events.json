@@ -9,7 +9,8 @@
       "updater_uri": "user://test/testintegrationworkflows",
       "type": "core/article",
       "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
       "id": "2",
@@ -77,7 +78,8 @@
       "updater_uri": "user://test/testintegrationworkflows",
       "type": "core/article",
       "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
       "id": "7",
@@ -113,7 +115,8 @@
       "updater_uri": "user://test/testintegrationworkflows",
       "type": "core/article",
       "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
       "id": "10",
@@ -150,7 +153,8 @@
       "updater_uri": "user://test/testintegrationworkflows",
       "type": "core/article",
       "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
       "id": "13",
