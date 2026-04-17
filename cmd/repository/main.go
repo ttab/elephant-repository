@@ -658,7 +658,11 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	var serverOpts []elephantine.APIServerOption
 
 	serverOpts = append(serverOpts,
-		elephantine.APIServerVersion(version))
+		elephantine.APIServerVersion(version),
+		elephantine.APIServerModules(
+			"github.com/ttab/newsdoc",
+			"github.com/ttab/revisor",
+		))
 
 	if certFile != "" {
 		serverOpts = append(serverOpts,
