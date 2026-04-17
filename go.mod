@@ -27,7 +27,7 @@ require (
 	github.com/ttab/darknut v0.1.3
 	github.com/ttab/eleconf v0.2.1-0.20260407125032-07bbda48a494
 	github.com/ttab/elephant-api v0.22.1
-	github.com/ttab/elephantine v0.25.0
+	github.com/ttab/elephantine v0.25.1-0.20260417064516-521209c85835
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.9.1
 	github.com/ttab/newsdoc v1.0.0
