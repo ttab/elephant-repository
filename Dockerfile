@@ -8,8 +8,11 @@ RUN go mod download && go mod verify
 ADD . ./
 
 ARG TARGETOS TARGETARCH
+ARG VERSION=v0.0.0-dev
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -o /build/repository ./cmd/repository
+    go build \
+      -ldflags "-X main.version=$VERSION" \
+      -o /build/repository ./cmd/repository
 
 FROM alpine:3.23
 

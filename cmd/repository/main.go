@@ -37,6 +37,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var version string // set via -ldflags at build time
+
 func main() {
 	err := godotenv.Load()
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -653,9 +655,31 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("failed to set up router: %w", err)
 	}
 
-	healthServer := elephantine.NewHealthServer(logger, profileAddr)
+	var serverOpts []elephantine.APIServerOption
 
-	healthServer.AddReadyFunction("s3", func(ctx context.Context) error {
+	serverOpts = append(serverOpts,
+		elephantine.APIServerVersion(version),
+		elephantine.APIServerModules(
+			"github.com/ttab/newsdoc",
+			"github.com/ttab/revisor",
+		))
+
+	if certFile != "" {
+		serverOpts = append(serverOpts,
+			elephantine.APIServerTLS(tlsAddr, certFile, keyFile))
+	}
+
+	srv := elephantine.NewAPIServer(logger, addr, profileAddr, serverOpts...)
+
+	if len(corsHosts) > 0 {
+		srv.CORS.Hosts = corsHosts
+	}
+
+	srv.CORS.AllowedHeaders = append(srv.CORS.AllowedHeaders, "Last-Event-ID")
+
+	srv.Mux.Handle("/", router)
+
+	srv.Health.AddReadyFunction("s3", func(ctx context.Context) error {
 		testUUID := uuid.New()
 
 		key := fmt.Sprintf(
@@ -693,52 +717,12 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		return nil
 	})
 
-	healthServer.AddReadyFunction("postgres", func(ctx context.Context) error {
+	srv.Health.AddReadyFunction("postgres", func(ctx context.Context) error {
 		q := postgres.New(dbpool)
 
 		_, err := q.GetActiveSchemas(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to read schemas: %w", err)
-		}
-
-		return nil
-	})
-
-	router.GET("/health/alive", func(
-		w http.ResponseWriter, _ *http.Request, _ httprouter.Params,
-	) {
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-
-		_, _ = fmt.Fprintln(w, "I AM ALIVE!")
-	})
-
-	healthServer.AddReadyFunction("api_liveness", func(ctx context.Context) error {
-		req, err := http.NewRequestWithContext(
-			ctx, http.MethodGet, fmt.Sprintf(
-				"http://localhost%s/health/alive",
-				addr,
-			), nil,
-		)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to create liveness check request: %w", err)
-		}
-
-		var client http.Client
-
-		res, err := client.Do(req)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to perform liveness check request: %w", err)
-		}
-
-		_ = res.Body.Close()
-
-		if res.StatusCode != http.StatusOK {
-			return fmt.Errorf(
-				"api liveness endpoint returned non-ok status: %s",
-				res.Status)
 		}
 
 		return nil
@@ -777,9 +761,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	serverGroup.Go(func() error {
 		logger.Debug("starting API server")
 
-		err := repository.ListenAndServe(
-			gCtx, addr, tlsAddr,
-			router, corsHosts, certFile, keyFile)
+		err := srv.ListenAndServe(gCtx)
 		if err != nil {
 			return fmt.Errorf("API server error: %w", err)
 		}
@@ -800,17 +782,6 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		}()
 
 		sseSubsystem.Run(gCtx)
-
-		return nil
-	})
-
-	serverGroup.Go(func() error {
-		logger.Debug("starting health server")
-
-		err := healthServer.ListenAndServe(gCtx)
-		if err != nil {
-			return fmt.Errorf("health server error: %w", err)
-		}
 
 		return nil
 	})
