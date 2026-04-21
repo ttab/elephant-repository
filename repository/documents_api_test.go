@@ -2381,6 +2381,119 @@ func TestPrune(t *testing.T) {
 	})
 }
 
+func TestPruneVariantType(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	schemasClient := tc.SchemasClient(t,
+		itest.StandardClaims(t, "schema_admin"))
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write"))
+
+	ctx := t.Context()
+
+	// Configure "timeless" as a valid variant for core/article.
+	_, err := schemasClient.ConfigureType(ctx,
+		&repository.ConfigureTypeRequest{
+			Type: "core/article",
+			Configuration: &repository.TypeConfiguration{
+				Variants: []string{"timeless"},
+			},
+		})
+	test.Must(t, err, "configure type variants")
+
+	const variantType = "core/article#timeless"
+
+	// Wait for the validator to pick up the variant configuration.
+	variantDoc := baseDocument(
+		"a1b2c3d4-1234-4f00-9abc-000000000001",
+		"article://test/variant-prune-1",
+	)
+	variantDoc.Type = variantType
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for {
+		_, err = client.Update(ctx, &repository.UpdateRequest{
+			Uuid:     variantDoc.Uuid,
+			Document: variantDoc,
+		})
+		if err == nil {
+			break
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf(
+				"timeout waiting for variant to be accepted: %v",
+				err)
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Prune a valid variant document.
+	pruneDoc := baseDocument(
+		"a1b2c3d4-1234-4f00-9abc-000000000002",
+		"article://test/variant-prune-2",
+	)
+	pruneDoc.Type = variantType
+
+	res, err := client.Prune(ctx, &repository.PruneRequest{
+		Document: pruneDoc,
+	})
+	test.Must(t, err, "prune variant document")
+
+	test.Equal(t, 0, len(res.Errors),
+		"expected no errors for a valid variant document")
+
+	if res.Document == nil {
+		t.Fatal("expected pruned document to be returned")
+	}
+
+	test.Equal(t, variantType, res.Document.Type,
+		"pruned document should preserve the variant type")
+
+	// Prune a variant document with invalid blocks.
+	pruneDoc2 := baseDocument(
+		"a1b2c3d4-1234-4f00-9abc-000000000003",
+		"article://test/variant-prune-3",
+	)
+	pruneDoc2.Type = variantType
+
+	pruneDoc2.Content = append(pruneDoc2.Content, &newsdoc.Block{
+		Type: "not-a-real/content-block",
+		Data: map[string]string{
+			"text": "this should be pruned",
+		},
+	})
+
+	res, err = client.Prune(ctx, &repository.PruneRequest{
+		Document: pruneDoc2,
+	})
+	test.Must(t, err, "prune variant document with invalid blocks")
+
+	test.Equal(t, 0, len(res.Errors),
+		"expected no errors after pruning invalid blocks from variant document")
+
+	if res.Document == nil {
+		t.Fatal("expected pruned document to be returned")
+	}
+
+	for _, c := range res.Document.Content {
+		if c.Type == "not-a-real/content-block" {
+			t.Error("invalid content block should have been pruned")
+		}
+	}
+}
+
 func TestUUIDNormalisation(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()

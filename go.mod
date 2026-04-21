@@ -31,7 +31,7 @@ require (
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.9.1
 	github.com/ttab/newsdoc v1.0.0
-	github.com/ttab/revisor v0.11.2
+	github.com/ttab/revisor v1.0.0
 	github.com/ttab/revisorschemas v1.4.2
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v3 v3.8.0
