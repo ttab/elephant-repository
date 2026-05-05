@@ -170,6 +170,55 @@ func (q *Queries) BulkGetAttachments(ctx context.Context, documents []uuid.UUID)
 	return items, nil
 }
 
+const bulkGetDeliverableInfo = `-- name: BulkGetDeliverableInfo :many
+SELECT DISTINCT ON (pd.document)
+       pd.document AS deliverable_uuid,
+       pa.planning_item AS planning_uuid,
+       pd.assignment AS assignment_uuid,
+       pi.event AS event_uuid
+FROM planning_deliverable pd
+     JOIN planning_assignment pa
+          ON pd.assignment = pa.uuid
+     JOIN planning_item pi
+          ON pa.planning_item = pi.uuid
+     JOIN document d
+          ON d.uuid = pi.uuid
+WHERE pd.document = ANY($1::uuid[])
+ORDER BY pd.document, d.updated DESC
+`
+
+type BulkGetDeliverableInfoRow struct {
+	DeliverableUuid uuid.UUID
+	PlanningUuid    uuid.UUID
+	AssignmentUuid  uuid.UUID
+	EventUuid       pgtype.UUID
+}
+
+func (q *Queries) BulkGetDeliverableInfo(ctx context.Context, uuids []uuid.UUID) ([]BulkGetDeliverableInfoRow, error) {
+	rows, err := q.db.Query(ctx, bulkGetDeliverableInfo, uuids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkGetDeliverableInfoRow
+	for rows.Next() {
+		var i BulkGetDeliverableInfoRow
+		if err := rows.Scan(
+			&i.DeliverableUuid,
+			&i.PlanningUuid,
+			&i.AssignmentUuid,
+			&i.EventUuid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const bulkGetDocumentACL = `-- name: BulkGetDocumentACL :many
 SELECT uuid, uri, permissions
 FROM acl

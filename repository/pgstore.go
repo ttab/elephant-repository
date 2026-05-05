@@ -2814,6 +2814,7 @@ func (s *PGDocStore) GetDeliverableInfo(ctx context.Context, id uuid.UUID) (Deli
 	info, err := s.reader.GetDeliverableInfo(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DeliverableInfo{
+			UUID:            id,
 			HasPlanningInfo: false,
 		}, nil
 	} else if err != nil {
@@ -2821,11 +2822,36 @@ func (s *PGDocStore) GetDeliverableInfo(ctx context.Context, id uuid.UUID) (Deli
 	}
 
 	return DeliverableInfo{
+		UUID:            id,
 		HasPlanningInfo: true,
 		PlanningUUID:    &info.PlanningUuid,
 		AssignmentUUID:  &info.AssignmentUuid,
 		EventUUID:       pg.ToUUIDPointer(info.EventUuid),
 	}, nil
+}
+
+// BulkGetDeliverableInfo implements DocStore.
+func (s *PGDocStore) BulkGetDeliverableInfo(
+	ctx context.Context, uuids []uuid.UUID,
+) ([]DeliverableInfo, error) {
+	rows, err := s.reader.BulkGetDeliverableInfo(ctx, uuids)
+	if err != nil {
+		return nil, fmt.Errorf("read from database: %w", err)
+	}
+
+	result := make([]DeliverableInfo, len(rows))
+
+	for i, r := range rows {
+		result[i] = DeliverableInfo{
+			UUID:            r.DeliverableUuid,
+			HasPlanningInfo: true,
+			PlanningUUID:    &r.PlanningUuid,
+			AssignmentUUID:  &r.AssignmentUuid,
+			EventUUID:       pg.ToUUIDPointer(r.EventUuid),
+		}
+	}
+
+	return result, nil
 }
 
 func pointer[T any](v T) *T {

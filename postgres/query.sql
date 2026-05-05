@@ -1037,6 +1037,22 @@ WHERE pd.document = @uuid
 ORDER BY d.updated DESC
 LIMIT 1;
 
+-- name: BulkGetDeliverableInfo :many
+SELECT DISTINCT ON (pd.document)
+       pd.document AS deliverable_uuid,
+       pa.planning_item AS planning_uuid,
+       pd.assignment AS assignment_uuid,
+       pi.event AS event_uuid
+FROM planning_deliverable pd
+     JOIN planning_assignment pa
+          ON pd.assignment = pa.uuid
+     JOIN planning_item pi
+          ON pa.planning_item = pi.uuid
+     JOIN document d
+          ON d.uuid = pi.uuid
+WHERE pd.document = ANY(@uuids::uuid[])
+ORDER BY pd.document, d.updated DESC;
+
 -- name: CreateUpload :exec
 INSERT INTO upload(id, created_at, created_by, meta)
 VALUES (@id, @created_at, @created_by, @meta);

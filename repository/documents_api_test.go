@@ -281,6 +281,21 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		EventUuid:       eventUUID,
 	}, deliverableInfo, "get expected deliverable info")
 
+	bulkInfo, err := client.BulkGetDeliverableInfo(ctx, &repository.BulkGetDeliverableInfoRequest{
+		Uuids: []string{docUUID, planningUUID},
+	})
+	test.Must(t, err, "bulk get deliverable info")
+	test.EqualMessage(t, &repository.BulkGetDeliverableInfoResponse{
+		Items: []*repository.DeliverableInfo{
+			{
+				Uuid:           docUUID,
+				PlanningUuid:   planningUUID,
+				AssignmentUuid: assignmentUUID,
+				EventUuid:      eventUUID,
+			},
+		},
+	}, bulkInfo, "get expected bulk deliverable info")
+
 	t0 := time.Now()
 
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
