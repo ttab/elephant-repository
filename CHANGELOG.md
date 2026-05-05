@@ -17,7 +17,7 @@ Changes:
 
 ## [v1.6.3] - 2026-04-21
 
-- add test for pruning variant document types (#573)
+- bump revisor to v1.0.0 to fix variant type resolution during pruning; add test verifying that documents with variant types (e.g. `core/article#timeless`) can be pruned (#573)
 
 ## [v1.6.2] - 2026-04-21
 
@@ -50,7 +50,6 @@ Changes:
 
 ## [v1.5.1] - 2026-03-27
 
-- update the readme
 - move reporting tables to `schema/reporting_tables.json`
 - resolve `GetDeliverableInfo` ambiguity for multi-planning-item deliverables (#560)
 
@@ -62,14 +61,12 @@ Changes:
 
 Changes:
 
-- variant separator change (#551)
 - add partial document support to the socket API (#548)
 - implement support for subset expressions for partial doc fetching (#546)
 - archive signing keys and batch eventlog items to S3 (#541)
 - add support for connecting through PgBouncer (#543)
-- make it possible to configure type variants (#542)
+- make it possible to configure type variants (#542 #551)
 - docstream observability (#535)
-- update the old elephant presentation
 
 ## [v1.4.0] - 2026-01-19
 
@@ -110,7 +107,7 @@ Changes:
 
 ## [v1.3.2] - 2025-11-26
 
-- update darknut
+- update darknut to v0.1.3 — fix handling of string and bool pointers when decoding documents, and add an `optional` option
 
 ## [v1.3.1] - 2025-11-20
 
@@ -173,7 +170,7 @@ Changes:
 
 ## [v1.1.0] - 2025-07-21
 
-- extend schema API (#446)
+- extend schema API: list schemas without their bodies, return only changed schemas from `GetAllActive`, expose registered meta types, and fix workflow 404 handling (#446)
 
 ## [v1.0.1] - 2025-06-17
 
