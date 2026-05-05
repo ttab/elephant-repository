@@ -26,7 +26,7 @@ require (
 	github.com/tmaxmax/go-sse v0.11.0
 	github.com/ttab/darknut v0.1.3
 	github.com/ttab/eleconf v1.1.0
-	github.com/ttab/elephant-api v0.22.3-0.20260505090136-af660e3460ab
+	github.com/ttab/elephant-api v0.22.3
 	github.com/ttab/elephantine v0.26.1
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.9.1
@@ -118,7 +118,7 @@ require (
 	github.com/klauspost/compress v1.18.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
-	github.com/magefile/mage v1.15.0 // indirect
+	github.com/magefile/mage v1.17.2 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/minio/minio-go/v7 v7.0.97 // indirect
