@@ -391,7 +391,7 @@ func testingAPIServer(
 	schemas := opts.Schemas
 
 	if !opts.NoCoreSchemas {
-		core, err := repository.LoadEmbeddedSchemaSet("core", "core-metadoc", "core-planning")
+		core, err := repository.LoadEmbeddedSchemaSet("se.ecms", "se.ecms.metadoc", "se.ecms.planning")
 		test.Must(t, err, "load core schemas")
 
 		schemas = append(schemas, core...)

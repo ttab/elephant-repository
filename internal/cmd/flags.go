@@ -18,7 +18,6 @@ type BackendConfig struct {
 	S3Insecure        bool
 	NoArchiver        bool
 	ArchiverCount     int
-	NoCoreSchema      bool
 	NoEventlogBuilder bool
 	NoEventsink       bool
 	NoReporter        bool
