@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -31,7 +30,6 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/langos"
-	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/sync/errgroup"
@@ -90,10 +88,6 @@ func main() {
 				Sources: cli.EnvVars("DEFAULT_TIMEZONE"),
 				Value:   "Europe/Stockholm",
 			},
-			&cli.StringSliceFlag{
-				Name:    "ensure-schema",
-				Sources: cli.EnvVars("ENSURE_SCHEMA"),
-			},
 			//nolint:gosec // G101: Development default, not a real credential.
 			&cli.StringFlag{
 				Name:    "db",
@@ -143,11 +137,6 @@ func main() {
 				Name:    "tolerate-eventlog-gaps",
 				Usage:   "Tolerate eventlog gaps when archiving",
 				Sources: cli.EnvVars("TOLERATE_EVENTLOG_GAPS"),
-			},
-			&cli.BoolFlag{
-				Name:    "no-core-schema",
-				Usage:   "Don't register the built in core schema",
-				Sources: cli.EnvVars("NO_CORE_SCHEMA"),
 			},
 			&cli.BoolFlag{
 				Name:    "no-archiver",
@@ -223,7 +212,6 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		keyFile         = c.String("key-file")
 		profileAddr     = c.String("profile-addr")
 		logLevel        = c.String("log-level")
-		ensureSchemas   = c.StringSlice("ensure-schema")
 		defaultLanguage = c.String("default-language")
 		defaultTimezone = c.String("default-timezone")
 		noCharCounter   = c.Bool("no-charcounter")
@@ -370,14 +358,6 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	go store.RunListener(stopCtx, pubsubPool)
 	go store.RunCleaner(stopCtx, 5*time.Minute)
 
-	if !conf.NoCoreSchema {
-		err = repository.EnsureCoreSchema(ctx, store)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to ensure core schema: %w", err)
-		}
-	}
-
 	bootstrapLock, err := pg.NewJobLock(
 		dbpool, logger, "bootstrap-generation",
 		pg.JobLockOptions{})
@@ -391,49 +371,6 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		})
 	if err != nil {
 		return fmt.Errorf("bootstrap schema generation: %w", err)
-	}
-
-	// Spec format name@version:URL
-	for _, spec := range ensureSchemas {
-		reference, rawURL, ok := strings.Cut(spec, ":")
-		if !ok {
-			return errors.New("expected a specification in the format name@version:URL")
-		}
-
-		name, version, ok := strings.Cut(reference, "@")
-		if !ok {
-			return errors.New("expected a specification in the format name@version:URL")
-		}
-
-		uri, err := url.Parse(rawURL)
-		if err != nil {
-			return fmt.Errorf("invalid URL for the schema %s: %w", name, err)
-		}
-
-		var schema revisor.ConstraintSet
-
-		switch uri.Scheme {
-		case "file":
-			err := elephantine.UnmarshalFile(uri.Opaque, &schema)
-			if err != nil {
-				return fmt.Errorf("failed to load the schema file for %s: %w",
-					name, err)
-			}
-		case "http", "https":
-			err := elephantine.UnmarshalHTTPResource(rawURL, &schema)
-			if err != nil {
-				return fmt.Errorf("failed to load the schema %s over HTTP(S): %w",
-					name, err)
-			}
-		default:
-			return fmt.Errorf("unknown schema URL scheme %q", uri.Scheme)
-		}
-
-		err = repository.EnsureSchema(ctx, store, name, version, schema)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to ensure %s schema: %w", name, err)
-		}
 	}
 
 	validator, err := repository.NewValidator(
