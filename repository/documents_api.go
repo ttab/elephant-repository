@@ -413,6 +413,92 @@ func (a *DocumentsService) GetDeliverableInfo(
 	return &res, nil
 }
 
+func (a *DocumentsService) BulkGetDeliverableInfo(
+	ctx context.Context, req *repository.BulkGetDeliverableInfoRequest,
+) (*repository.BulkGetDeliverableInfoResponse, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(req.Uuids) == 0 {
+		return nil, twirp.RequiredArgumentError("uuids")
+	}
+
+	if len(req.Uuids) > 200 {
+		return nil, twirp.InvalidArgumentError("uuids",
+			"limited to 200 documents")
+	}
+
+	uuids := make([]uuid.UUID, len(req.Uuids))
+
+	for i, raw := range req.Uuids {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return nil, twirp.InvalidArgument.Errorf(
+				"uuids: the %dnth UUID is invalid: %v", i, err)
+		}
+
+		uuids[i] = id
+	}
+
+	aclBypass := auth.Claims.HasAnyScope(
+		ScopeDocumentReadAll, ScopeDocumentAdmin)
+
+	if !aclBypass {
+		ident := append([]string{auth.Claims.Subject}, auth.Claims.Units...)
+
+		permitted, err := a.store.BulkCheckPermissions(ctx,
+			BulkCheckPermissionRequest{
+				UUIDs:       uuids,
+				GranteeURIs: ident,
+				Permissions: []Permission{ReadPermission},
+			})
+		if err != nil {
+			return nil, twirp.InternalErrorf("check ACL access: %v", err)
+		}
+
+		uuids = permitted
+	}
+
+	if len(uuids) == 0 {
+		return &repository.BulkGetDeliverableInfoResponse{}, nil
+	}
+
+	infos, err := a.store.BulkGetDeliverableInfo(ctx, uuids)
+	if err != nil {
+		return nil, twirp.InternalErrorf("load deliverable info: %v", err)
+	}
+
+	res := repository.BulkGetDeliverableInfoResponse{
+		Items: make([]*repository.DeliverableInfo, 0, len(infos)),
+	}
+
+	for _, info := range infos {
+		item := &repository.DeliverableInfo{
+			Uuid: info.UUID.String(),
+		}
+
+		if info.PlanningUUID != nil {
+			item.PlanningUuid = info.PlanningUUID.String()
+		}
+
+		if info.AssignmentUUID != nil {
+			item.AssignmentUuid = info.AssignmentUUID.String()
+		}
+
+		if info.EventUUID != nil {
+			item.EventUuid = info.EventUUID.String()
+		}
+
+		res.Items = append(res.Items, item)
+	}
+
+	return &res, nil
+}
+
 // GetStatus implements repository.Documents.
 func (a *DocumentsService) GetStatus(
 	ctx context.Context, req *repository.GetStatusRequest,

@@ -129,6 +129,9 @@ type DocStore interface {
 	GetDeliverableInfo(
 		ctx context.Context, uuid uuid.UUID,
 	) (DeliverableInfo, error)
+	BulkGetDeliverableInfo(
+		ctx context.Context, uuids []uuid.UUID,
+	) ([]DeliverableInfo, error)
 	CreateUpload(ctx context.Context, upload Upload) error
 	GetAttachments(
 		ctx context.Context,
@@ -165,6 +168,7 @@ type TypeConfiguration struct {
 }
 
 type DeliverableInfo struct {
+	UUID            uuid.UUID
 	HasPlanningInfo bool
 	PlanningUUID    *uuid.UUID
 	AssignmentUUID  *uuid.UUID
