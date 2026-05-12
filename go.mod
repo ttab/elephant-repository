@@ -1,13 +1,13 @@
 module github.com/ttab/elephant-repository
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.16
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.45.25
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.100.1
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.101.0
 	github.com/aws/smithy-go v1.25.1
 	github.com/expr-lang/expr v1.17.8
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -25,7 +25,7 @@ require (
 	github.com/tmaxmax/go-sse v0.11.0
 	github.com/ttab/darknut v0.1.3
 	github.com/ttab/eleconf v1.1.1
-	github.com/ttab/elephant-api v0.22.3
+	github.com/ttab/elephant-api v0.22.4
 	github.com/ttab/elephantine v0.26.1
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.9.1
