@@ -594,6 +594,23 @@ type LockResult struct {
 	Expires time.Time
 }
 
+// LockConflictError is returned by Lock when the document is already
+// locked. It carries the existing lock's holder info so handlers can
+// surface useful diagnostics — typically as twirp error metadata.
+//
+// Embeds DocStoreError so IsDocStoreErrorCode(err, ErrCodeDocumentLock)
+// continues to work.
+type LockConflictError struct {
+	DocStoreError
+	Holder Lock
+}
+
+// Unwrap exposes the embedded DocStoreError so errors.As walks down
+// to it when callers ask for a DocStoreError specifically.
+func (e *LockConflictError) Unwrap() error {
+	return e.DocStoreError
+}
+
 type UpdateLockRequest struct {
 	UUID  uuid.UUID
 	TTL   int32
