@@ -1548,9 +1548,8 @@ func (a *DocumentsService) Get(
 			"cannot be a negative number")
 	}
 
-	if req.Lock {
-		return nil, twirp.Unimplemented.Error(
-			"locking is not implemented yet")
+	if req.AcquireLock != nil && req.AcquireLock.Ttl == 0 {
+		return nil, twirp.RequiredArgumentError("acquire_lock.ttl")
 	}
 
 	if req.Version > 0 && req.Status != "" {
@@ -1578,6 +1577,13 @@ func (a *DocumentsService) Get(
 		return nil, err
 	}
 
+	if req.AcquireLock != nil {
+		err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// TODO: This is a bit wasteful to request for all document loads.
 	meta, err := a.store.GetDocumentMeta(ctx, docUUID)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
@@ -1590,6 +1596,34 @@ func (a *DocumentsService) Get(
 	if meta.SystemLock != "" {
 		return nil, twirp.FailedPrecondition.Errorf(
 			"document is locked for %q", meta.SystemLock)
+	}
+
+	var lockGrant *repository.LockGrant
+
+	if req.AcquireLock != nil {
+		lock, err := a.store.Lock(ctx, LockRequest{
+			UUID:    docUUID,
+			TTL:     req.AcquireLock.Ttl,
+			URI:     auth.Claims.Subject,
+			App:     req.AcquireLock.App,
+			Comment: req.AcquireLock.Comment,
+		})
+
+		switch {
+		case IsDocStoreErrorCode(err, ErrCodeDeleteLock), IsDocStoreErrorCode(err, ErrCodeNotFound):
+			return nil, twirp.FailedPrecondition.Error("could not find the document")
+		case IsDocStoreErrorCode(err, ErrCodeBadRequest):
+			return nil, twirp.InvalidArgument.Error(err.Error())
+		case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
+			return nil, lockConflictTwirp(err)
+		case err != nil:
+			return nil, fmt.Errorf("could not obtain lock: %w", err)
+		}
+
+		lockGrant = &repository.LockGrant{
+			Token:   lock.Token,
+			Expires: lock.Expires.Format(time.RFC3339),
+		}
 	}
 
 	var (
@@ -1636,6 +1670,7 @@ func (a *DocumentsService) Get(
 		Version:        version,
 		IsMetaDocument: meta.MainDocument != "",
 		MainDocument:   meta.MainDocument,
+		Lock:           lockGrant,
 	}
 
 	if req.MetaDocument != repository.GetMetaDoc_META_ONLY {
