@@ -2145,7 +2145,7 @@ func TestGetWithLock(t *testing.T) {
 	t.Run("acquires lock alongside get", func(t *testing.T) {
 		res, err := writeClient.Get(ctx, &repository.GetDocumentRequest{
 			Uuid: docUUID,
-			AcquireLock: &repository.AcquireLock{
+			Lock: &repository.AcquireLock{
 				Ttl:     500,
 				App:     "test-app",
 				Comment: "while editing",
@@ -2179,7 +2179,7 @@ func TestGetWithLock(t *testing.T) {
 
 		_, err := otherClient.Get(ctx, &repository.GetDocumentRequest{
 			Uuid: docUUID,
-			AcquireLock: &repository.AcquireLock{
+			Lock: &repository.AcquireLock{
 				Ttl: 500,
 				App: "rival-app",
 			},
@@ -2201,8 +2201,8 @@ func TestGetWithLock(t *testing.T) {
 
 	t.Run("missing ttl rejected", func(t *testing.T) {
 		_, err := writeClient.Get(ctx, &repository.GetDocumentRequest{
-			Uuid:        docUUID,
-			AcquireLock: &repository.AcquireLock{},
+			Uuid: docUUID,
+			Lock: &repository.AcquireLock{},
 		})
 		isTwirpError(t, err, "missing ttl",
 			twirp.InvalidArgument)
@@ -2214,7 +2214,7 @@ func TestGetWithLock(t *testing.T) {
 
 		_, err := readClient.Get(ctx, &repository.GetDocumentRequest{
 			Uuid: docUUID,
-			AcquireLock: &repository.AcquireLock{
+			Lock: &repository.AcquireLock{
 				Ttl: 500,
 			},
 		})

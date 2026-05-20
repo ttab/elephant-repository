@@ -1548,8 +1548,8 @@ func (a *DocumentsService) Get(
 			"cannot be a negative number")
 	}
 
-	if req.AcquireLock != nil && req.AcquireLock.Ttl == 0 {
-		return nil, twirp.RequiredArgumentError("acquire_lock.ttl")
+	if req.Lock != nil && req.Lock.Ttl == 0 {
+		return nil, twirp.RequiredArgumentError("lock.ttl")
 	}
 
 	if req.Version > 0 && req.Status != "" {
@@ -1577,7 +1577,7 @@ func (a *DocumentsService) Get(
 		return nil, err
 	}
 
-	if req.AcquireLock != nil {
+	if req.Lock != nil {
 		err = a.accessCheck(ctx, auth, docUUID, WritePermission)
 		if err != nil {
 			return nil, err
@@ -1600,13 +1600,13 @@ func (a *DocumentsService) Get(
 
 	var lockGrant *repository.LockGrant
 
-	if req.AcquireLock != nil {
+	if req.Lock != nil {
 		lock, err := a.store.Lock(ctx, LockRequest{
 			UUID:    docUUID,
-			TTL:     req.AcquireLock.Ttl,
+			TTL:     req.Lock.Ttl,
 			URI:     auth.Claims.Subject,
-			App:     req.AcquireLock.App,
-			Comment: req.AcquireLock.Comment,
+			App:     req.Lock.App,
+			Comment: req.Lock.Comment,
 		})
 
 		switch {
