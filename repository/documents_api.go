@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"iter"
 	"maps"
@@ -1547,9 +1548,8 @@ func (a *DocumentsService) Get(
 			"cannot be a negative number")
 	}
 
-	if req.Lock {
-		return nil, twirp.Unimplemented.Error(
-			"locking is not implemented yet")
+	if req.Lock != nil && req.Lock.Ttl == 0 {
+		return nil, twirp.RequiredArgumentError("lock.ttl")
 	}
 
 	if req.Version > 0 && req.Status != "" {
@@ -1577,6 +1577,13 @@ func (a *DocumentsService) Get(
 		return nil, err
 	}
 
+	if req.Lock != nil {
+		err = a.accessCheck(ctx, auth, docUUID, WritePermission)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// TODO: This is a bit wasteful to request for all document loads.
 	meta, err := a.store.GetDocumentMeta(ctx, docUUID)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
@@ -1589,6 +1596,34 @@ func (a *DocumentsService) Get(
 	if meta.SystemLock != "" {
 		return nil, twirp.FailedPrecondition.Errorf(
 			"document is locked for %q", meta.SystemLock)
+	}
+
+	var lockGrant *repository.LockGrant
+
+	if req.Lock != nil {
+		lock, err := a.store.Lock(ctx, LockRequest{
+			UUID:    docUUID,
+			TTL:     req.Lock.Ttl,
+			URI:     auth.Claims.Subject,
+			App:     req.Lock.App,
+			Comment: req.Lock.Comment,
+		})
+
+		switch {
+		case IsDocStoreErrorCode(err, ErrCodeDeleteLock), IsDocStoreErrorCode(err, ErrCodeNotFound):
+			return nil, twirp.FailedPrecondition.Error("could not find the document")
+		case IsDocStoreErrorCode(err, ErrCodeBadRequest):
+			return nil, twirp.InvalidArgument.Error(err.Error())
+		case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
+			return nil, lockConflictTwirp(err)
+		case err != nil:
+			return nil, fmt.Errorf("could not obtain lock: %w", err)
+		}
+
+		lockGrant = &repository.LockGrant{
+			Token:   lock.Token,
+			Expires: lock.Expires.Format(time.RFC3339),
+		}
 	}
 
 	var (
@@ -1635,6 +1670,7 @@ func (a *DocumentsService) Get(
 		Version:        version,
 		IsMetaDocument: meta.MainDocument != "",
 		MainDocument:   meta.MainDocument,
+		Lock:           lockGrant,
 	}
 
 	if req.MetaDocument != repository.GetMetaDoc_META_ONLY {
@@ -2692,14 +2728,44 @@ func (a *DocumentsService) Lock(
 	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
 		return nil, twirp.InvalidArgument.Error(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
-		return nil, twirp.FailedPrecondition.Error("the document is locked by someone else")
+		return nil, lockConflictTwirp(err)
 	case err != nil:
 		return nil, fmt.Errorf("could not obtain lock: %w", err)
 	}
 
 	return &repository.LockResponse{
-		Token: lock.Token,
+		Token:   lock.Token,
+		Expires: lock.Expires.Format(time.RFC3339),
 	}, nil
+}
+
+// lockConflictTwirp wraps a LockConflictError as a
+// twirp.FailedPrecondition error with metadata describing the
+// existing lock's holder. Clients compare lock_holder_sub against
+// their own subject to distinguish "I already hold this" from "held
+// by someone else".
+func lockConflictTwirp(err error) twirp.Error {
+	var conflict *LockConflictError
+	if !errors.As(err, &conflict) {
+		return twirp.FailedPrecondition.Error("the document is locked")
+	}
+
+	twerr := twirp.FailedPrecondition.Error("the document is locked").
+		WithMeta("lock_holder_sub", conflict.Holder.URI)
+
+	if conflict.Holder.App != "" {
+		twerr = twerr.WithMeta("lock_app", conflict.Holder.App)
+	}
+
+	if conflict.Holder.Comment != "" {
+		twerr = twerr.WithMeta("lock_comment", conflict.Holder.Comment)
+	}
+
+	if !conflict.Holder.Expires.IsZero() {
+		twerr = twerr.WithMeta("lock_expires", conflict.Holder.Expires.Format(time.RFC3339))
+	}
+
+	return twerr
 }
 
 // ExtendLock extends the expiration of an existing lock.

@@ -3537,7 +3537,13 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 		}
 
 		if info.Lock.Token != "" {
-			return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
+			return &LockConflictError{
+				DocStoreError: DocStoreError{
+					code: ErrCodeDocumentLock,
+					msg:  "document locked",
+				},
+				Holder: info.Lock,
+			}
 		}
 
 		err = q.DeleteExpiredDocumentLock(ctx, postgres.DeleteExpiredDocumentLockParams{

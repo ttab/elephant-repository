@@ -2119,6 +2119,110 @@ func TestDocumentLocking(t *testing.T) {
 	test.Must(t, err, "unlock non-existing document")
 }
 
+func TestGetWithLock(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+	ctx := t.Context()
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	writeClient := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete"))
+
+	const (
+		docUUID = "1ae3b9b1-2c8e-4a7d-bd6a-3a2f3a2f3a2f"
+		docURI  = "article://test/get-with-lock"
+	)
+
+	_, err := writeClient.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: baseDocument(docUUID, docURI),
+	})
+	test.Must(t, err, "create test article")
+
+	t.Run("acquires lock alongside get", func(t *testing.T) {
+		res, err := writeClient.Get(ctx, &repository.GetDocumentRequest{
+			Uuid: docUUID,
+			Lock: &repository.AcquireLock{
+				Ttl:     500,
+				App:     "test-app",
+				Comment: "while editing",
+			},
+		})
+		test.Must(t, err, "get with lock")
+		test.NotNil(t, res.Lock, "lock should be returned")
+		test.Equal(t, false, res.Lock.Token == "", "lock token should be set")
+		test.Equal(t, false, res.Lock.Expires == "", "lock expires should be set")
+
+		_, perr := time.Parse(time.RFC3339, res.Lock.Expires)
+		test.Must(t, perr, "expires is RFC3339")
+
+		meta, err := writeClient.GetMeta(ctx, &repository.GetMetaRequest{
+			Uuid: docUUID,
+		})
+		test.Must(t, err, "fetch document meta")
+		test.NotNil(t, meta.Meta.Lock, "lock should be visible on meta")
+		test.Equal(t, "test-app", meta.Meta.Lock.App, "app stored on lock")
+		test.Equal(t, "while editing", meta.Meta.Lock.Comment,
+			"comment stored on lock")
+		test.Equal(t, "user://test/testgetwithlock",
+			meta.Meta.Lock.Uri, "lock holder URI matches caller")
+	})
+
+	t.Run("conflict carries holder metadata", func(t *testing.T) {
+		// doc_admin bypasses ACL so the second user reaches the lock
+		// path and gets a real conflict instead of a permission error.
+		otherClient := tc.DocumentsClient(t,
+			itest.Claims(t, "other-user", "doc_admin"))
+
+		_, err := otherClient.Get(ctx, &repository.GetDocumentRequest{
+			Uuid: docUUID,
+			Lock: &repository.AcquireLock{
+				Ttl: 500,
+				App: "rival-app",
+			},
+		})
+
+		var twerr twirp.Error
+		if !errors.As(err, &twerr) {
+			t.Fatalf("expected twirp error, got %T: %v", err, err)
+		}
+
+		test.Equal(t, twirp.FailedPrecondition, twerr.Code(),
+			"conflict should be FailedPrecondition")
+		test.Equal(t, "user://test/testgetwithlock",
+			twerr.Meta("lock_holder_sub"),
+			"lock_holder_sub identifies the existing holder")
+		test.Equal(t, "test-app", twerr.Meta("lock_app"),
+			"lock_app exposed via metadata")
+	})
+
+	t.Run("missing ttl rejected", func(t *testing.T) {
+		_, err := writeClient.Get(ctx, &repository.GetDocumentRequest{
+			Uuid: docUUID,
+			Lock: &repository.AcquireLock{},
+		})
+		isTwirpError(t, err, "missing ttl",
+			twirp.InvalidArgument)
+	})
+
+	t.Run("read-only scope rejected", func(t *testing.T) {
+		readClient := tc.DocumentsClient(t,
+			itest.Claims(t, "reader", "doc_read"))
+
+		_, err := readClient.Get(ctx, &repository.GetDocumentRequest{
+			Uuid: docUUID,
+			Lock: &repository.AcquireLock{
+				Ttl: 500,
+			},
+		})
+		isTwirpError(t, err, "read-only client cannot acquire lock",
+			twirp.PermissionDenied)
+	})
+}
+
 func TestIntegrationStatsOverview(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
