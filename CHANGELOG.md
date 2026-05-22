@@ -4,6 +4,12 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
+## [v1.7.1] - 2026-05-22
+
+- Lock conflicts on the `Lock` RPC now surface the existing holder's identity via twirp error metadata (`lock_holder_sub`, `lock_app`, `lock_comment`, `lock_expires`) instead of collapsing to an opaque "locked by someone else" message. Clients compare `lock_holder_sub` against their own JWT subject to distinguish "I already hold this" from "held by someone else". The success path of `LockResponse` now also carries `Expires` (RFC3339). (#584)
+- Implement lock acquisition on `Get`: the previously stubbed `Lock` field on `GetDocumentRequest` now performs a real lock acquisition with TTL validation, write-permission check, and the same conflict-metadata propagation as the standalone `Lock` RPC. A successful response carries the granted lock token and expiry in `GetDocumentResponse.Lock`. Bumps elephant-api to v0.23.0. (#584)
+- Bump Go to 1.26.3 and update direct dependencies (`aws-sdk-go-v2/service/s3` to v1.101.0, golangci-lint action pinned to v2.11.4). (#585)
+
 ## [v1.7.0] - 2026-05-05
 
 **Breaking:**
