@@ -41,7 +41,7 @@ type TestContext struct {
 	SigningKey       *ecdsa.PrivateKey
 	Server           *httptest.Server
 	Validator        *repository.Validator
-	WorkflowProvider repository.WorkflowProvider
+	WorkflowProvider *repository.Workflows
 	Documents        rpc.Documents
 	Schemas          rpc.Schemas
 	Workflows        rpc.Workflows

@@ -186,18 +186,37 @@ func (w *Workflows) HasStatus(docType string, name string) bool {
 	return ok && !status.Disabled
 }
 
+// HasStatusRule reports whether a status rule with the given name is currently
+// loaded for the document type. It is primarily intended for tests that need
+// to wait for a rule to propagate from the database to the provider.
+func (w *Workflows) HasStatusRule(docType string, name string) bool {
+	w.m.RLock()
+	defer w.m.RUnlock()
+
+	for _, rules := range w.rules {
+		for _, r := range rules {
+			if r.Type == docType && r.Name == name {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func typeScopedKey(docType string, name string) string {
 	return docType + ":" + name
 }
 
 type StatusRuleInput struct {
-	Name        string
-	Status      Status
-	Update      DocumentUpdate
-	Document    newsdoc.Document
-	VersionMeta newsdoc.DataMap
-	Heads       map[string]StatusHead
-	User        elephantine.JWTClaims
+	Name          string
+	Status        Status
+	Update        DocumentUpdate
+	Document      newsdoc.Document
+	VersionMeta   newsdoc.DataMap
+	Heads         map[string]StatusHead
+	User          elephantine.JWTClaims
+	WorkflowState WorkflowState
 }
 
 type StatusRuleViolation struct {

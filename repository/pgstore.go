@@ -2186,8 +2186,9 @@ func (s *PGDocStore) Update(
 			}
 
 			input, err := s.buildStatusRuleInput(
-				ctx, q, state.Request.UUID, stat.Name, status,
-				state.DocumentUpdate, state.Doc, state.Request.Meta, statusHeads,
+				ctx, q, state.Request.UUID, state.Type, stat.Name, status,
+				state.DocumentUpdate, state.Doc, state.Request.Meta,
+				statusHeads, wState,
 			)
 			if err != nil {
 				return nil, err
@@ -3038,14 +3039,16 @@ func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
 
 func (s *PGDocStore) buildStatusRuleInput(
 	ctx context.Context, q *postgres.Queries,
-	uuid uuid.UUID, name string, status Status, up DocumentUpdate,
-	d *newsdoc.Document, versionMeta newsdoc.DataMap, statusHeads map[string]StatusHead,
+	uuid uuid.UUID, docType string, name string, status Status,
+	up DocumentUpdate, d *newsdoc.Document, versionMeta newsdoc.DataMap,
+	statusHeads map[string]StatusHead, wState WorkflowState,
 ) (StatusRuleInput, error) {
 	input := StatusRuleInput{
-		Name:   name,
-		Status: status,
-		Update: up,
-		Heads:  statusHeads,
+		Name:          name,
+		Status:        status,
+		Update:        up,
+		Heads:         statusHeads,
+		WorkflowState: wState,
 	}
 
 	auth, ok := elephantine.GetAuthInfo(ctx)
@@ -3069,6 +3072,13 @@ func (s *PGDocStore) buildStatusRuleInput(
 
 		input.VersionMeta = meta
 		input.Document = *d
+	}
+
+	// Make sure the document type is available even when no concrete
+	// version is loaded (e.g. unpublish requests with status version -1).
+	// EvaluateRules matches rules by Document.Type.
+	if input.Document.Type == "" {
+		input.Document.Type = docType
 	}
 
 	return input, nil

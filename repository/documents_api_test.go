@@ -1801,6 +1801,109 @@ or Heads.approved_legal.Version == Status.Version`,
 		"should publish the second version now that legal has approved")
 }
 
+func TestIntegrationStatusRuleWorkflowState(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	ctx := t.Context()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	workflowClient := tc.WorkflowsClient(t,
+		itest.StandardClaims(t, "workflow_admin"))
+
+	_, err := workflowClient.SetWorkflow(ctx, &repository.SetWorkflowRequest{
+		Type: "core/article",
+		Workflow: &repository.DocumentWorkflow{
+			StepZero:           "draft",
+			Checkpoint:         "usable",
+			NegativeCheckpoint: "unpublished",
+			Steps:              []string{"draft", "done"},
+		},
+	})
+	test.Must(t, err, "create article workflow")
+
+	const ruleName = "unpublish-requires-prior-publish"
+
+	_, err = workflowClient.CreateStatusRule(ctx, &repository.CreateStatusRuleRequest{
+		Rule: &repository.StatusRule{
+			Type:        "core/article",
+			Name:        ruleName,
+			Description: "Unpublish is only allowed when previously published",
+			Expression: `Status.Version != -1
+or WorkflowState.LastCheckpoint == "usable"`,
+			AppliesTo: []string{"usable"},
+		},
+	})
+	test.Must(t, err, "create unpublish rule")
+
+	// Wait until the workflow provider picks up the rule.
+	t0 := time.Now()
+	workflowDeadline := time.After(2 * time.Second)
+
+	for {
+		if tc.WorkflowProvider.HasStatusRule("core/article", ruleName) {
+			t.Logf("had to wait %v for workflow update",
+				time.Since(t0))
+
+			break
+		}
+
+		select {
+		case <-workflowDeadline:
+			t.Fatal("workflow rule didn't propagate in time")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete"))
+
+	const (
+		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI  = "article://test/123"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	res, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.Must(t, err, "create article")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*repository.StatusUpdate{
+			{Name: "usable", Version: -1},
+		},
+	})
+	test.MustNot(t, err,
+		"unpublish before publish should be blocked by workflow rule")
+
+	if !strings.Contains(err.Error(), ruleName) {
+		t.Fatalf("error message should mention %q, got: %s",
+			ruleName, err.Error())
+	}
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*repository.StatusUpdate{
+			{Name: "usable", Version: res.Version},
+		},
+	})
+	test.Must(t, err, "publish the document")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*repository.StatusUpdate{
+			{Name: "usable", Version: -1},
+		},
+	})
+	test.Must(t, err, "unpublish after publish is allowed")
+}
+
 func TestIntegrationACL(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
