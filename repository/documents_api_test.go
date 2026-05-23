@@ -1240,8 +1240,9 @@ func TestIntegrationBulkCrud(t *testing.T) {
 				Creator: testUserURI,
 			},
 		},
-		CreatorUri: "user://test/testintegrationbulkcrud",
-		UpdaterUri: "user://test/testintegrationbulkcrud",
+		CreatorUri:    "user://test/testintegrationbulkcrud",
+		UpdaterUri:    "user://test/testintegrationbulkcrud",
+		WorkflowState: "usable",
 	}
 
 	cmpDiffB := cmp.Diff(&wantMetaB, metaB.Meta,

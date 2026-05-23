@@ -348,9 +348,10 @@ func (wf DocumentWorkflow) Step(state WorkflowState, step WorkflowStep) Workflow
 	checkpoint := wf.Configuration.Checkpoint
 	negCheckpoint := wf.Configuration.NegativeCheckpoint
 
-	isCheckpoint := step.Status != nil && step.Status.Name == checkpoint
+	isCheckpoint := checkpoint != "" && step.Status != nil && step.Status.Name == checkpoint
 	isStep := step.Status != nil && slices.Contains(wf.Configuration.Steps, step.Status.Name)
-	atCheckpoint := state.Step == checkpoint || state.Step == negCheckpoint
+	atCheckpoint := (checkpoint != "" && state.Step == checkpoint) ||
+		(negCheckpoint != "" && state.Step == negCheckpoint)
 
 	// Creating a new version when at a checkpoint resets the step to zero.
 	if step.Version > 0 && atCheckpoint {

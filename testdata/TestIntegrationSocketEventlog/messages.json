@@ -76,6 +76,7 @@
             "updater_uri": "user://test/testintegrationsocketeventlog",
             "type": "core/article",
             "language": "sv-se",
+            "workflow_state": "draft",
             "document_nonce": "00000000-0000-0000-0000-000000000000",
             "schema_generation": "1"
           },
@@ -114,20 +115,6 @@
         {
           "event": {
             "id": "5",
-            "event": "workflow",
-            "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437",
-            "timestamp": "2023-01-10T20:06:37+01:00",
-            "version": "1",
-            "updater_uri": "user://test/testintegrationsocketeventlog",
-            "type": "core/article",
-            "language": "sv-se",
-            "workflow_state": "draft",
-            "document_nonce": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "event": {
-            "id": "6",
             "event": "document",
             "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
             "timestamp": "2023-01-10T20:06:37+01:00",
@@ -159,7 +146,7 @@
         },
         {
           "event": {
-            "id": "7",
+            "id": "6",
             "event": "document",
             "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
             "timestamp": "2023-01-10T20:06:37+01:00",

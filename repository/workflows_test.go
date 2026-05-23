@@ -2,16 +2,208 @@ package repository_test
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-repository/internal"
 	itest "github.com/ttab/elephant-repository/internal/test"
+	repo "github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine/test"
 )
+
+type stubWorkflowLoader struct {
+	statuses  []repo.DocumentStatus
+	workflows []repo.DocumentWorkflow
+}
+
+func (l *stubWorkflowLoader) GetStatuses(
+	_ context.Context, docType string,
+) ([]repo.DocumentStatus, error) {
+	if docType == "" {
+		return l.statuses, nil
+	}
+
+	var matching []repo.DocumentStatus
+
+	for _, s := range l.statuses {
+		if s.Type == docType {
+			matching = append(matching, s)
+		}
+	}
+
+	return matching, nil
+}
+
+func (l *stubWorkflowLoader) GetStatusRules(
+	_ context.Context,
+) ([]repo.StatusRule, error) {
+	return nil, nil
+}
+
+func (l *stubWorkflowLoader) SetDocumentWorkflow(
+	_ context.Context, _ repo.DocumentWorkflow,
+) error {
+	return errors.New("not implemented")
+}
+
+func (l *stubWorkflowLoader) GetDocumentWorkflows(
+	_ context.Context,
+) ([]repo.DocumentWorkflow, error) {
+	return l.workflows, nil
+}
+
+func (l *stubWorkflowLoader) GetDocumentWorkflow(
+	_ context.Context, docType string,
+) (repo.DocumentWorkflow, error) {
+	for _, wf := range l.workflows {
+		if wf.Type == docType {
+			return wf, nil
+		}
+	}
+
+	return repo.DocumentWorkflow{}, errors.New("not found")
+}
+
+func (l *stubWorkflowLoader) DeleteDocumentWorkflow(
+	_ context.Context, _ string,
+) error {
+	return errors.New("not implemented")
+}
+
+func (l *stubWorkflowLoader) OnWorkflowUpdate(
+	_ context.Context, _ chan repo.WorkflowEvent,
+) {
+}
+
+func TestImplicitWorkflow(t *testing.T) {
+	t.Parallel()
+
+	loader := &stubWorkflowLoader{
+		statuses: []repo.DocumentStatus{
+			{Type: "core/article", Name: "draft"},
+			{Type: "core/article", Name: "done"},
+			{Type: "core/article", Name: "usable"},
+			{Type: "core/article", Name: "retired", Disabled: true},
+			{Type: "core/image", Name: "usable"},
+		},
+		workflows: []repo.DocumentWorkflow{
+			{
+				Type: "core/article-with-explicit",
+				Configuration: repo.DocumentWorkflowConfiguration{
+					StepZero:           "draft",
+					Checkpoint:         "usable",
+					NegativeCheckpoint: "unpublished",
+					Steps:              []string{"draft", "done"},
+				},
+			},
+		},
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+
+	workflows, err := repo.NewWorkflows(ctx,
+		slog.New(test.NewLogHandler(t, slog.LevelInfo)), loader)
+	test.Must(t, err, "build workflows")
+
+	t.Run("implicit workflow with multiple statuses", func(t *testing.T) {
+		wf, ok := workflows.GetDocumentWorkflow("core/article")
+		test.Equal(t, true, ok,
+			"implicit workflow should exist for type with statuses")
+		test.Equal(t, "core/article", wf.Type, "workflow type")
+		test.Equal(t, "", wf.Configuration.Checkpoint,
+			"implicit workflow has no checkpoint")
+		test.Equal(t, "", wf.Configuration.NegativeCheckpoint,
+			"implicit workflow has no negative checkpoint")
+		test.Equal(t, "", wf.Configuration.StepZero,
+			"implicit workflow has no step zero")
+
+		expected := []string{"draft", "done", "usable"}
+		got := slices.Clone(wf.Configuration.Steps)
+		slices.Sort(got)
+		slices.Sort(expected)
+
+		test.EqualDiff(t, expected, got,
+			"implicit workflow steps mirror configured statuses (disabled excluded)")
+	})
+
+	t.Run("implicit workflow with single status", func(t *testing.T) {
+		wf, ok := workflows.GetDocumentWorkflow("core/image")
+		test.Equal(t, true, ok, "implicit workflow should exist")
+		test.EqualDiff(t, []string{"usable"}, wf.Configuration.Steps,
+			"single status becomes the only step")
+	})
+
+	t.Run("no implicit workflow when no statuses configured", func(t *testing.T) {
+		_, ok := workflows.GetDocumentWorkflow("core/unknown")
+		test.Equal(t, false, ok,
+			"types without statuses get no workflow")
+	})
+
+	t.Run("explicit workflow takes precedence", func(t *testing.T) {
+		wf, ok := workflows.GetDocumentWorkflow("core/article-with-explicit")
+		test.Equal(t, true, ok, "explicit workflow should exist")
+		test.Equal(t, "usable", wf.Configuration.Checkpoint,
+			"explicit workflow keeps its checkpoint")
+		test.EqualDiff(t, []string{"draft", "done"}, wf.Configuration.Steps,
+			"explicit steps are preserved")
+	})
+
+	t.Run("implicit workflow steps drive state transitions", func(t *testing.T) {
+		wf, ok := workflows.GetDocumentWorkflow("core/article")
+		test.Equal(t, true, ok, "implicit workflow exists")
+
+		state := wf.Start()
+		test.Equal(t, "", state.Step, "start step is empty for implicit workflow")
+
+		state = wf.Step(state, repo.WorkflowStep{
+			Status: &repo.StatusUpdate{Name: "done", Version: 1},
+		})
+		test.Equal(t, "done", state.Step,
+			"status transitions advance implicit step")
+
+		state = wf.Step(state, repo.WorkflowStep{
+			Status: &repo.StatusUpdate{Name: "usable", Version: 1},
+		})
+		test.Equal(t, "usable", state.Step,
+			"every configured status counts as a step")
+		test.Equal(t, "", state.LastCheckpoint,
+			"implicit workflow never records a checkpoint")
+
+		// A new version with no checkpoint configured must not reset
+		// the recorded step back to empty.
+		state = wf.Step(state, repo.WorkflowStep{Version: 2})
+		test.Equal(t, "usable", state.Step,
+			"version bumps don't reset step when no checkpoint is configured")
+	})
+
+	t.Run("explicit workflow without checkpoint", func(t *testing.T) {
+		wf := repo.DocumentWorkflow{
+			Type: "core/note",
+			Configuration: repo.DocumentWorkflowConfiguration{
+				Steps: []string{"draft", "done"},
+			},
+		}
+
+		state := wf.Start()
+		state = wf.Step(state, repo.WorkflowStep{
+			Status: &repo.StatusUpdate{Name: "done", Version: 1},
+		})
+		test.Equal(t, "done", state.Step,
+			"explicit workflow without checkpoint advances step")
+		test.Equal(t, "", state.LastCheckpoint,
+			"checkpoint-less workflow does not record a checkpoint")
+
+		state = wf.Step(state, repo.WorkflowStep{Version: 2})
+		test.Equal(t, "done", state.Step,
+			"version bumps don't reset step without a checkpoint")
+	})
+}
 
 func TestIntegrationWorkflows(t *testing.T) {
 	if testing.Short() {
@@ -111,7 +303,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	})
 	test.Must(t, err, "update article after usable")
 
-	events := collectEventlog(t, client, 13, 5*time.Second)
+	events := collectEventlog(t, client, 8, 5*time.Second)
 	eventsGolden := filepath.Join("testdata", t.Name(), "events.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, events, eventsGolden,

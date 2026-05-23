@@ -172,10 +172,11 @@ func TestIntegrationSocket(t *testing.T) {
 	status, err := resp.AwaitDocumentStatus(subCall, lossUUID, "usable", 1, 2*time.Second)
 	test.Must(t, err, "get loss article status message")
 
-	workflow, err := resp.AwaitWorkflowState(subCall, lossUUID, "usable", 2*time.Second)
-	test.Must(t, err, "get loss article workflow message")
+	test.Equal(t, "usable",
+		status.DocumentUpdate.Event.WorkflowState,
+		"workflow state is folded into the loss article status event")
 
-	keyResp = append(keyResp, status, workflow)
+	keyResp = append(keyResp, status)
 
 	beachPlanUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
 
@@ -209,10 +210,11 @@ func TestIntegrationSocket(t *testing.T) {
 	beachStatus, err := resp.AwaitDocumentStatus(subCall, beachUUID, "usable", 1, 2*time.Second)
 	test.Must(t, err, "get beach article status message")
 
-	beachWorkflow, err := resp.AwaitWorkflowState(subCall, beachUUID, "usable", 2*time.Second)
-	test.Must(t, err, "get beach article workflow message")
+	test.Equal(t, "usable",
+		beachStatus.DocumentUpdate.Event.WorkflowState,
+		"workflow state is folded into the beach article status event")
 
-	keyResp = append(keyResp, beachStatus, beachWorkflow)
+	keyResp = append(keyResp, beachStatus)
 
 	// Move the beach planning out of time range
 	writeDoc(t, client, docsDir, "beach_plan_v3", nil)
@@ -818,27 +820,6 @@ func (rc *responseCollection) AwaitDocumentStatus(
 
 		return evt.Event == "status" && evt.Uuid == docUUID &&
 			evt.Status == status && evt.StatusId == id
-	}, timeout)
-	if err != nil {
-		return nil, err
-	}
-
-	return resp, nil
-}
-
-func (rc *responseCollection) AwaitWorkflowState(
-	callID string,
-	docUUID string, state string,
-	timeout time.Duration,
-) (*repositorysocket.Response, error) {
-	resp, err := rc.AwaitResponse(callID, func(resp *repositorysocket.Response) bool {
-		if resp.DocumentUpdate == nil || resp.DocumentUpdate.Event == nil {
-			return false
-		}
-
-		evt := resp.DocumentUpdate.Event
-
-		return evt.Event == "workflow" && evt.Uuid == docUUID && evt.WorkflowState == state
 	}, timeout)
 	if err != nil {
 		return nil, err

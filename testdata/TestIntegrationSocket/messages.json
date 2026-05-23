@@ -26,6 +26,7 @@
                 ]
               }
             ],
+            "workflow_state": "usable",
             "creator_uri": "user://test/testintegrationsocket",
             "updater_uri": "user://test/testintegrationsocket",
             "nonce": "00000000-0000-0000-0000-000000000000",
@@ -149,37 +150,13 @@
     "document_update": {
       "set_name": "planning",
       "event": {
-        "id": "8",
+        "id": "7",
         "event": "status",
         "uuid": "f7eb1d2d-0814-4027-b857-fa21d2f16805",
         "timestamp": "2023-01-10T20:06:37+01:00",
         "version": "1",
         "status": "usable",
         "status_id": "1",
-        "updater_uri": "user://test/testintegrationsocket",
-        "type": "core/article",
-        "language": "sv-se",
-        "document_nonce": "00000000-0000-0000-0000-000000000000",
-        "timespans": [
-          {
-            "from": "2025-11-14T05:53:05Z",
-            "to": "2025-11-14T05:53:05Z"
-          }
-        ]
-      },
-      "included": true
-    }
-  },
-  {
-    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
-    "document_update": {
-      "set_name": "planning",
-      "event": {
-        "id": "9",
-        "event": "workflow",
-        "uuid": "f7eb1d2d-0814-4027-b857-fa21d2f16805",
-        "timestamp": "2023-01-10T20:06:37+01:00",
-        "version": "1",
         "updater_uri": "user://test/testintegrationsocket",
         "type": "core/article",
         "language": "sv-se",
@@ -201,7 +178,7 @@
     "document_update": {
       "set_name": "planning",
       "event": {
-        "id": "10",
+        "id": "8",
         "event": "document",
         "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
         "timestamp": "2023-01-10T20:06:37+01:00",
@@ -316,7 +293,7 @@
     "document_update": {
       "set_name": "planning",
       "event": {
-        "id": "15",
+        "id": "12",
         "event": "document",
         "uuid": "a9791252-6e7a-40b2-bc0b-129d25df17b8",
         "timestamp": "2023-01-10T20:06:37+01:00",
@@ -469,37 +446,13 @@
     "document_update": {
       "set_name": "planning",
       "event": {
-        "id": "16",
+        "id": "13",
         "event": "status",
         "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437",
         "timestamp": "2023-01-10T20:06:37+01:00",
         "version": "1",
         "status": "usable",
         "status_id": "1",
-        "updater_uri": "user://test/testintegrationsocket",
-        "type": "core/article",
-        "language": "sv-se",
-        "document_nonce": "00000000-0000-0000-0000-000000000000",
-        "timespans": [
-          {
-            "from": "2025-11-14T12:34:52Z",
-            "to": "2025-11-14T12:34:52Z"
-          }
-        ]
-      },
-      "included": true
-    }
-  },
-  {
-    "call_id": "d063e44a-866c-47c5-9ba5-f10bffd753ed",
-    "document_update": {
-      "set_name": "planning",
-      "event": {
-        "id": "17",
-        "event": "workflow",
-        "uuid": "85428a43-963e-443b-9700-9fdb5dfcb437",
-        "timestamp": "2023-01-10T20:06:37+01:00",
-        "version": "1",
         "updater_uri": "user://test/testintegrationsocket",
         "type": "core/article",
         "language": "sv-se",

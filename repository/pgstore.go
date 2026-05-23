@@ -2009,6 +2009,7 @@ func (s *PGDocStore) Update(
 		)
 
 		workflow, hasWorkflow := workflows.GetDocumentWorkflow(state.Type)
+		trackWorkflow := hasWorkflow && !state.IsMetaDoc
 
 		if hasWorkflow {
 			s, err := loadWorkflowState(ctx, q, workflow, state.UUID)
@@ -2104,11 +2105,21 @@ func (s *PGDocStore) Update(
 
 			// Queue up the document version event for the eventlog.
 			evts = append(evts, evt)
+			docEvtIdx := len(evts) - 1
 
 			// Progress workflow state.
+			preState := wState
 			wState = workflow.Step(wState, WorkflowStep{
 				Version: version,
 			})
+
+			// Fold workflow state onto the document event when the
+			// version bump either creates the workflow record or
+			// resets the step via a checkpoint.
+			if trackWorkflow && (initialCreate || !wState.Equal(preState)) {
+				evts[docEvtIdx].WorkflowStep = wState.Step
+				evts[docEvtIdx].WorkflowCheckpoint = wState.LastCheckpoint
+			}
 		}
 
 		var metaDocVersion int64
@@ -2278,6 +2289,8 @@ func (s *PGDocStore) Update(
 				Labels:           state.Labels,
 			})
 
+			statusEvtIdx := len(evts) - 1
+
 			// Progress workflow state
 			oldState := wState
 			wState = workflow.Step(wState, WorkflowStep{
@@ -2289,6 +2302,11 @@ func (s *PGDocStore) Update(
 			if !wState.Equal(oldState) {
 				lastStatusName = pointer(stat.Name)
 				lastStatusID = pointer(status.ID)
+
+				if trackWorkflow {
+					evts[statusEvtIdx].WorkflowStep = wState.Step
+					evts[statusEvtIdx].WorkflowCheckpoint = wState.LastCheckpoint
+				}
 			}
 		}
 
@@ -2333,7 +2351,11 @@ func (s *PGDocStore) Update(
 			})
 		}
 
-		if !state.IsMetaDoc && hasWorkflow && (initialCreate || !wState.Equal(startWState)) {
+		// The workflow state is persisted once per update with the final
+		// state; the matching transition is folded onto the document or
+		// status event that caused it above. No separate workflow event is
+		// emitted.
+		if trackWorkflow && (initialCreate || !wState.Equal(startWState)) {
 			err := q.ChangeWorkflowState(ctx,
 				postgres.ChangeWorkflowStateParams{
 					UUID:            state.UUID,
@@ -2350,26 +2372,6 @@ func (s *PGDocStore) Update(
 			if err != nil {
 				return nil, fmt.Errorf("update workflow state: %w", err)
 			}
-
-			// Queue up the event for the workflow update.
-			evts = append(evts, postgres.OutboxEvent{
-				Event:              string(TypeWorkflow),
-				UUID:               state.Request.UUID,
-				Nonce:              state.Nonce,
-				Version:            state.Version,
-				Timestamp:          state.Created,
-				Updater:            state.Creator,
-				Type:               state.Type,
-				Language:           state.Language,
-				MainDocument:       state.Request.MainDocument,
-				MainDocumentType:   state.MainDocType,
-				WorkflowStep:       wState.Step,
-				WorkflowCheckpoint: wState.LastCheckpoint,
-				// TODO: previous step?
-				SystemState: state.SystemState,
-				Timespans:   TimespansAsTuples(state.Timespans),
-				Labels:      state.Labels,
-			})
 		}
 	}
 
