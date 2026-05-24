@@ -39,6 +39,12 @@ type PGDocStoreOptions struct {
 	DeleteTimeout      time.Duration
 	TypeConfigurations *TypeConfigurations
 	DefaultTZ          *time.Location
+	// EmitWorkflowEvent re-enables the separate "workflow" outbox event
+	// alongside the workflow_state/workflow_checkpoint fields that are
+	// folded onto the triggering document or status event. Intended as a
+	// transition aid for consumers that still depend on the standalone
+	// event; expected to be removed in a future release.
+	EmitWorkflowEvent bool
 }
 
 func NewPGDocStore(
@@ -2354,8 +2360,9 @@ func (s *PGDocStore) Update(
 
 		// The workflow state is persisted once per update with the final
 		// state; the matching transition is folded onto the document or
-		// status event that caused it above. No separate workflow event is
-		// emitted.
+		// status event that caused it above. The separate workflow event
+		// is only emitted when EmitWorkflowEvent is set, to ease the
+		// transition of consumers that still depend on it.
 		if trackWorkflow && (initialCreate || !wState.Equal(startWState)) {
 			err := q.ChangeWorkflowState(ctx,
 				postgres.ChangeWorkflowStateParams{
@@ -2372,6 +2379,26 @@ func (s *PGDocStore) Update(
 				})
 			if err != nil {
 				return nil, fmt.Errorf("update workflow state: %w", err)
+			}
+
+			if s.opts.EmitWorkflowEvent {
+				evts = append(evts, postgres.OutboxEvent{
+					Event:              string(TypeWorkflow),
+					UUID:               state.Request.UUID,
+					Nonce:              state.Nonce,
+					Version:            state.Version,
+					Timestamp:          state.Created,
+					Updater:            state.Creator,
+					Type:               state.Type,
+					Language:           state.Language,
+					MainDocument:       state.Request.MainDocument,
+					MainDocumentType:   state.MainDocType,
+					WorkflowStep:       wState.Step,
+					WorkflowCheckpoint: wState.LastCheckpoint,
+					SystemState:        state.SystemState,
+					Timespans:          TimespansAsTuples(state.Timespans),
+					Labels:             state.Labels,
+				})
 			}
 		}
 	}

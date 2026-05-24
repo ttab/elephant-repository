@@ -177,6 +177,7 @@ type testingServerOptions struct {
 	ConfigDirectory    string
 	Schemas            []eleconf.LoadedSchema
 	NoCoreSchemas      bool
+	EmitWorkflowEvent  bool
 }
 
 func testingAPIServer(
@@ -223,6 +224,7 @@ func testingAPIServer(
 			DeleteTimeout:      1 * time.Second,
 			MetricsCalculators: inMet,
 			TypeConfigurations: typeConf,
+			EmitWorkflowEvent:  opts.EmitWorkflowEvent,
 		})
 	test.Must(t, err, "create doc store")
 

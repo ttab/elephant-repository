@@ -322,6 +322,104 @@ func TestIntegrationWorkflows(t *testing.T) {
 		ignoreUUIDField("nonce"))
 }
 
+func TestIntegrationWorkflowEventEmission(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunEventlogBuilder: true,
+		EmitWorkflowEvent:  true,
+	})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
+	wflowClient := tc.WorkflowsClient(t,
+		itest.StandardClaims(t, "workflow_admin"))
+
+	ctx := t.Context()
+
+	_, err := wflowClient.SetWorkflow(ctx, &repository.SetWorkflowRequest{
+		Type: "core/article",
+		Workflow: &repository.DocumentWorkflow{
+			StepZero:           "draft",
+			Checkpoint:         "usable",
+			NegativeCheckpoint: "unpublished",
+			Steps:              []string{"draft", "done"},
+		},
+	})
+	test.Must(t, err, "create workflow")
+
+	waitDeadline := time.Now().Add(2 * time.Second)
+
+	for {
+		if time.Now().After(waitDeadline) {
+			t.Fatal("timed out waiting for workflow to propagate")
+		}
+
+		wf, ok := tc.WorkflowProvider.GetDocumentWorkflow("core/article")
+		if ok && wf.Configuration.Checkpoint == "usable" {
+			break
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	const (
+		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI  = "article://test/123"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	res, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.Must(t, err, "create article")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Status: []*repository.StatusUpdate{
+			{Name: "usable", Version: res.Version},
+		},
+	})
+	test.Must(t, err, "set usable status")
+
+	// doc + ACL + doc-workflow + status + status-workflow = 5 events.
+	events := collectEventlog(t, client, 5, 5*time.Second)
+
+	var (
+		workflowEvents []*repository.EventlogItem
+		statusEvent    *repository.EventlogItem
+	)
+
+	for _, e := range events.Items {
+		switch e.Event {
+		case "workflow":
+			workflowEvents = append(workflowEvents, e)
+		case "status":
+			statusEvent = e
+		}
+	}
+
+	test.Equal(t, 2, len(workflowEvents),
+		"flag re-enables the standalone workflow events")
+
+	if statusEvent == nil {
+		t.Fatal("expected a status event")
+	}
+
+	test.Equal(t, "usable", statusEvent.WorkflowState,
+		"workflow state is still folded onto the status event")
+	test.Equal(t, "usable", statusEvent.WorkflowCheckpoint,
+		"workflow checkpoint is still folded onto the status event")
+}
+
 func collectEventlog(
 	t *testing.T, client repository.Documents,
 	minCount int, timeout time.Duration,
