@@ -33,7 +33,7 @@ require (
 	github.com/ttab/revisor v1.0.0
 	github.com/ttab/revisorschemas v1.5.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	github.com/urfave/cli/v3 v3.8.0
+	github.com/urfave/cli/v3 v3.9.0
 	github.com/viccon/sturdyc v1.1.5
 	golang.org/x/sync v0.20.0
 	golang.org/x/time v0.15.0
