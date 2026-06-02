@@ -46,7 +46,18 @@ func (s *PGDocStore) RunCleaner(ctx context.Context, period time.Duration) {
 func (s *PGDocStore) removeExpiredLocks(ctx context.Context) error {
 	s.logger.Debug("removing expired document locks")
 
-	cutoff := pg.Time(time.Now().Add(5 * time.Minute))
+	// Cutoff lags `now` by 5m so the cleaner only sweeps locks that
+	// have already been expired for at least that long. Request
+	// handlers filter live-lock reads on `l.expires > now`, so an
+	// expired row is already invisible to writers; the cleaner is
+	// the janitor that reclaims the storage after a grace period.
+	//
+	// The previous value was `now + 5m`, which inverted the intent
+	// and deleted any lock whose remaining lease was under 5m —
+	// every freshly-acquired ≤5m TTL lock was eligible on the next
+	// cleaner tick, surfacing to holders as spurious "document
+	// locked" / "not locked" errors right after acquire.
+	cutoff := pg.Time(time.Now().Add(-5 * time.Minute))
 
 	err := pg.WithTX(ctx, s.pool, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
