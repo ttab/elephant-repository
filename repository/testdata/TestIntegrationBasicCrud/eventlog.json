@@ -6,18 +6,6 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "1",
-      "updater_uri": "user://test/testintegrationbasiccrud",
-      "type": "core/article",
-      "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000",
-      "schema_generation": "1"
-    },
-    {
-      "id": "2",
-      "event": "acl",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "1",
       "acl": [
         {
           "uri": "user://test/testintegrationbasiccrud",
@@ -30,10 +18,11 @@
       "updater_uri": "user://test/testintegrationbasiccrud",
       "type": "core/article",
       "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
-      "id": "3",
+      "id": "2",
       "event": "document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -45,20 +34,8 @@
       "schema_generation": "1"
     },
     {
-      "id": "4",
+      "id": "3",
       "event": "document",
-      "uuid": "88040be2-2e30-4f34-8a9e-3f4802bab8cd",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "1",
-      "updater_uri": "user://test/testintegrationbasiccrud",
-      "type": "core/planning-item",
-      "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000",
-      "schema_generation": "1"
-    },
-    {
-      "id": "5",
-      "event": "acl",
       "uuid": "88040be2-2e30-4f34-8a9e-3f4802bab8cd",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "1",
@@ -74,10 +51,11 @@
       "updater_uri": "user://test/testintegrationbasiccrud",
       "type": "core/planning-item",
       "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
-      "id": "6",
+      "id": "4",
       "event": "delete_document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",

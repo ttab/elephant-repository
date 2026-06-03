@@ -6,18 +6,6 @@
       "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "1",
-      "updater_uri": "user://test/testpurge",
-      "type": "core/article",
-      "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000",
-      "schema_generation": "1"
-    },
-    {
-      "id": "2",
-      "event": "acl",
-      "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "1",
       "acl": [
         {
           "uri": "user://test/testpurge",
@@ -30,10 +18,11 @@
       "updater_uri": "user://test/testpurge",
       "type": "core/article",
       "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
-      "id": "3",
+      "id": "2",
       "event": "delete_document",
       "uuid": "366e9e80-1b9a-4ec6-8eed-a13922dc1e93",
       "timestamp": "2023-01-10T20:06:37+01:00",

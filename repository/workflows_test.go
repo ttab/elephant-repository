@@ -303,7 +303,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 	})
 	test.Must(t, err, "update article after usable")
 
-	events := collectEventlog(t, client, 8, 5*time.Second)
+	events := collectEventlog(t, client, 7, 5*time.Second)
 	eventsGolden := filepath.Join("testdata", t.Name(), "events.json")
 
 	test.TestMessageAgainstGolden(t, regenerate, events, eventsGolden,
@@ -390,8 +390,10 @@ func TestIntegrationWorkflowEventEmission(t *testing.T) {
 	})
 	test.Must(t, err, "set usable status")
 
-	// doc + ACL + doc-workflow + status + status-workflow = 5 events.
-	events := collectEventlog(t, client, 5, 5*time.Second)
+	// doc (ACL folded in) + doc-workflow + status + status-workflow = 4
+	// events. EmitACLEvent is not set, so the creation ACL folds onto the
+	// document event rather than emitting a standalone "acl" event.
+	events := collectEventlog(t, client, 4, 5*time.Second)
 
 	var (
 		workflowEvents []*repository.EventlogItem
@@ -418,6 +420,145 @@ func TestIntegrationWorkflowEventEmission(t *testing.T) {
 		"workflow state is still folded onto the status event")
 	test.Equal(t, "usable", statusEvent.WorkflowCheckpoint,
 		"workflow checkpoint is still folded onto the status event")
+}
+
+func TestIntegrationACLEventFolding(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunEventlogBuilder: true,
+	})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
+
+	ctx := t.Context()
+
+	const (
+		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI  = "article://test/123"
+		grantee = "user://test/colleague"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	// Create the document together with an explicit ACL.
+	_, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+		Acl: []*repository.ACLEntry{
+			// Empty URI grants the caller, so it retains write access.
+			{Permissions: []string{"r", "w"}},
+			{Uri: grantee, Permissions: []string{"r"}},
+		},
+	})
+	test.Must(t, err, "create article with ACL")
+
+	// The ACL is folded onto the document event, so the create only emits
+	// a single event.
+	events := collectEventlog(t, client, 1, 5*time.Second)
+
+	test.Equal(t, 1, len(events.Items),
+		"the create folds the ACL into a single document event")
+
+	created := events.Items[0]
+
+	test.Equal(t, "document", created.Event,
+		"the create emits a document event")
+
+	if len(created.Acl) == 0 {
+		t.Fatal("expected the ACL to be folded onto the document event")
+	}
+
+	// An ACL update on its own still emits a standalone acl event.
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Acl: []*repository.ACLEntry{
+			{Uri: grantee, Permissions: []string{"r", "w"}},
+		},
+	})
+	test.Must(t, err, "update ACL on its own")
+
+	events = collectEventlog(t, client, 2, 5*time.Second)
+
+	aclEvent := events.Items[len(events.Items)-1]
+
+	test.Equal(t, "acl", aclEvent.Event,
+		"an ACL update without a document update emits a standalone acl event")
+}
+
+func TestIntegrationACLEventEmission(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunEventlogBuilder: true,
+		EmitACLEvent:       true,
+	})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
+
+	ctx := t.Context()
+
+	const (
+		docUUID = "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5"
+		docURI  = "article://test/123"
+		grantee = "user://test/colleague"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	_, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+		Acl: []*repository.ACLEntry{
+			// Empty URI grants the caller, so it retains write access.
+			{Permissions: []string{"r", "w"}},
+			{Uri: grantee, Permissions: []string{"r"}},
+		},
+	})
+	test.Must(t, err, "create article with ACL")
+
+	// document (ACL folded in) + standalone acl = 2 events.
+	events := collectEventlog(t, client, 2, 5*time.Second)
+
+	var (
+		docEvent *repository.EventlogItem
+		aclEvent *repository.EventlogItem
+	)
+
+	for _, e := range events.Items {
+		switch e.Event {
+		case "document":
+			docEvent = e
+		case "acl":
+			aclEvent = e
+		}
+	}
+
+	if docEvent == nil {
+		t.Fatal("expected a document event")
+	}
+
+	if len(docEvent.Acl) == 0 {
+		t.Fatal("the ACL is still folded onto the document event")
+	}
+
+	if aclEvent == nil {
+		t.Fatal("flag re-enables the standalone acl event")
+	}
 }
 
 func collectEventlog(

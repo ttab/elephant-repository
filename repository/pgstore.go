@@ -45,6 +45,12 @@ type PGDocStoreOptions struct {
 	// transition aid for consumers that still depend on the standalone
 	// event; expected to be removed in a future release.
 	EmitWorkflowEvent bool
+	// EmitACLEvent re-enables the separate "acl" outbox event even when the
+	// ACL update accompanies a document version, where it is otherwise
+	// folded onto the document event. Intended as a transition aid for
+	// consumers that still depend on the standalone event; expected to be
+	// removed in a future release.
+	EmitACLEvent bool
 }
 
 func NewPGDocStore(
@@ -2012,6 +2018,10 @@ func (s *PGDocStore) Update(
 			initialCreate bool
 			startWState   WorkflowState
 			wState        WorkflowState
+			// docEvtIdx is the index of the document version event in
+			// evts, or -1 if this update doesn't create a new version.
+			// Used to fold an accompanying ACL update onto it.
+			docEvtIdx = -1
 		)
 
 		workflow, hasWorkflow := workflows.GetDocumentWorkflow(state.Type)
@@ -2111,7 +2121,7 @@ func (s *PGDocStore) Update(
 
 			// Queue up the document version event for the eventlog.
 			evts = append(evts, evt)
-			docEvtIdx := len(evts) - 1
+			docEvtIdx = len(evts) - 1
 
 			// Progress workflow state.
 			preState := wState
@@ -2339,23 +2349,35 @@ func (s *PGDocStore) Update(
 				}
 			}
 
-			// Queue up the event for the ACL update.
-			evts = append(evts, postgres.OutboxEvent{
-				Event:            string(TypeACLUpdate),
-				UUID:             state.Request.UUID,
-				Version:          state.Version,
-				Nonce:            state.Nonce,
-				Timestamp:        state.Created,
-				Updater:          state.Creator,
-				Type:             state.Type,
-				ACL:              entries,
-				Language:         state.Language,
-				MainDocument:     state.Request.MainDocument,
-				MainDocumentType: state.MainDocType,
-				SystemState:      state.SystemState,
-				Timespans:        TimespansAsTuples(state.Timespans),
-				Labels:           state.Labels,
-			})
+			// Fold the ACL onto the document version event when the ACL
+			// update accompanies a new version. This keeps the document
+			// and its permissions in a single event, so consumers never
+			// observe the new version before the ACL it was created with.
+			if docEvtIdx >= 0 {
+				evts[docEvtIdx].ACL = entries
+			}
+
+			// Emit the standalone ACL event when the update isn't folded
+			// onto a document event, or when EmitACLEvent forces it back
+			// for consumers still depending on the separate event.
+			if docEvtIdx < 0 || s.opts.EmitACLEvent {
+				evts = append(evts, postgres.OutboxEvent{
+					Event:            string(TypeACLUpdate),
+					UUID:             state.Request.UUID,
+					Version:          state.Version,
+					Nonce:            state.Nonce,
+					Timestamp:        state.Created,
+					Updater:          state.Creator,
+					Type:             state.Type,
+					ACL:              entries,
+					Language:         state.Language,
+					MainDocument:     state.Request.MainDocument,
+					MainDocumentType: state.MainDocType,
+					SystemState:      state.SystemState,
+					Timespans:        TimespansAsTuples(state.Timespans),
+					Labels:           state.Labels,
+				})
+			}
 		}
 
 		// The workflow state is persisted once per update with the final

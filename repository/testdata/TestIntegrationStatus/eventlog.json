@@ -6,18 +6,6 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "1",
-      "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article",
-      "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000",
-      "schema_generation": "1"
-    },
-    {
-      "id": "2",
-      "event": "acl",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "1",
       "acl": [
         {
           "uri": "user://test/testintegrationstatus",
@@ -30,10 +18,11 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     },
     {
-      "id": "3",
+      "id": "2",
       "event": "document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -45,7 +34,7 @@
       "schema_generation": "1"
     },
     {
-      "id": "4",
+      "id": "3",
       "event": "status",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -56,6 +45,20 @@
       "type": "core/article",
       "language": "en",
       "workflow_state": "done",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "4",
+      "event": "status",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "2",
+      "status": "usable",
+      "status_id": "1",
+      "updater_uri": "user://test/testintegrationstatus",
+      "type": "core/article",
+      "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -64,12 +67,12 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "2",
-      "status": "usable",
-      "status_id": "1",
+      "status": "done",
+      "status_id": "2",
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
-      "workflow_state": "usable",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -78,12 +81,12 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "2",
-      "status": "done",
+      "status": "usable",
       "status_id": "2",
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
-      "workflow_state": "done",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -92,12 +95,12 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "2",
-      "status": "usable",
-      "status_id": "2",
+      "status": "done",
+      "status_id": "3",
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
-      "workflow_state": "usable",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -106,20 +109,6 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "2",
-      "status": "done",
-      "status_id": "3",
-      "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article",
-      "language": "en",
-      "workflow_state": "done",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "9",
-      "event": "status",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "2",
       "status": "usable",
       "status_id": "3",
       "updater_uri": "user://test/testintegrationstatus",
@@ -129,7 +118,7 @@
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "id": "10",
+      "id": "9",
       "event": "document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -141,7 +130,7 @@
       "schema_generation": "1"
     },
     {
-      "id": "11",
+      "id": "10",
       "event": "status",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -152,6 +141,20 @@
       "type": "core/article",
       "language": "en",
       "workflow_state": "done",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "11",
+      "event": "status",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "3",
+      "status": "usable",
+      "status_id": "4",
+      "updater_uri": "user://test/testintegrationstatus",
+      "type": "core/article",
+      "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -160,12 +163,12 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "3",
-      "status": "usable",
-      "status_id": "4",
+      "status": "done",
+      "status_id": "5",
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
-      "workflow_state": "usable",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -174,12 +177,12 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "3",
-      "status": "done",
+      "status": "usable",
       "status_id": "5",
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
-      "workflow_state": "done",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -188,12 +191,12 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "3",
-      "status": "usable",
-      "status_id": "5",
+      "status": "done",
+      "status_id": "6",
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
-      "workflow_state": "usable",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -202,20 +205,6 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "3",
-      "status": "done",
-      "status_id": "6",
-      "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article",
-      "language": "en",
-      "workflow_state": "done",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "16",
-      "event": "status",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "3",
       "status": "usable",
       "status_id": "6",
       "updater_uri": "user://test/testintegrationstatus",
@@ -225,7 +214,7 @@
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "id": "17",
+      "id": "16",
       "event": "document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -237,7 +226,7 @@
       "schema_generation": "1"
     },
     {
-      "id": "18",
+      "id": "17",
       "event": "status",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -248,6 +237,20 @@
       "type": "core/article",
       "language": "en",
       "workflow_state": "done",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "18",
+      "event": "status",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "4",
+      "status": "usable",
+      "status_id": "7",
+      "updater_uri": "user://test/testintegrationstatus",
+      "type": "core/article",
+      "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -256,12 +259,12 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "4",
-      "status": "usable",
-      "status_id": "7",
+      "status": "done",
+      "status_id": "8",
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
-      "workflow_state": "usable",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -270,12 +273,12 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "4",
-      "status": "done",
+      "status": "usable",
       "status_id": "8",
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
-      "workflow_state": "done",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -284,20 +287,6 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "4",
-      "status": "usable",
-      "status_id": "8",
-      "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article",
-      "language": "en",
-      "workflow_state": "usable",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "22",
-      "event": "status",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "4",
       "status": "done",
       "status_id": "9",
       "updater_uri": "user://test/testintegrationstatus",
@@ -307,7 +296,7 @@
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "id": "23",
+      "id": "22",
       "event": "status",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -321,7 +310,7 @@
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "id": "24",
+      "id": "23",
       "event": "document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -333,7 +322,7 @@
       "schema_generation": "1"
     },
     {
-      "id": "25",
+      "id": "24",
       "event": "status",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -344,6 +333,20 @@
       "type": "core/article",
       "language": "en",
       "workflow_state": "done",
+      "document_nonce": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "id": "25",
+      "event": "status",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "5",
+      "status": "usable",
+      "status_id": "10",
+      "updater_uri": "user://test/testintegrationstatus",
+      "type": "core/article",
+      "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -352,12 +355,12 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "5",
-      "status": "usable",
-      "status_id": "10",
+      "status": "done",
+      "status_id": "11",
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
-      "workflow_state": "usable",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -366,12 +369,12 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "5",
-      "status": "done",
+      "status": "usable",
       "status_id": "11",
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
-      "workflow_state": "done",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -380,20 +383,6 @@
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "5",
-      "status": "usable",
-      "status_id": "11",
-      "updater_uri": "user://test/testintegrationstatus",
-      "type": "core/article",
-      "language": "en",
-      "workflow_state": "usable",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "29",
-      "event": "status",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "5",
       "status": "done",
       "status_id": "12",
       "updater_uri": "user://test/testintegrationstatus",
@@ -403,7 +392,7 @@
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "id": "30",
+      "id": "29",
       "event": "status",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -417,7 +406,7 @@
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "id": "31",
+      "id": "30",
       "event": "status",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",

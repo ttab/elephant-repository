@@ -586,8 +586,8 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 	})
 	test.Must(t, err, "update a document without a language")
 
-	// Doc + ACL
-	expectedEvents += 2
+	// Doc (ACL folded onto the document event).
+	expectedEvents++
 
 	enDoc := baseDocument(
 		"00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
@@ -631,7 +631,8 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 	})
 	test.Must(t, err, "set version two as usable")
 
-	expectedEvents += 5
+	// Create (ACL folded in) + status + doc update + status = 4 events.
+	expectedEvents += 4
 
 	// Wait until the expected events have been registered.
 	_, err = client.Eventlog(ctx,
@@ -1071,7 +1072,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	})
 	isTwirpError(t, err, "get meta doc", twirp.NotFound, twirp.FailedPrecondition)
 
-	events := collectEventlog(t, client, 10, 4*time.Second)
+	events := collectEventlog(t, client, 8, 4*time.Second)
 
 	test.TestMessageAgainstGolden(t, regenerate, events,
 		filepath.Join(testData, "eventlog.json"),
@@ -1398,7 +1399,7 @@ func TestIntegrationStatus(t *testing.T) {
 		test.IgnoreTimestamps{})
 
 	// Check that we got the expected events.
-	events := collectEventlog(t, client, 31, 5*time.Second)
+	events := collectEventlog(t, client, 30, 5*time.Second)
 
 	eventsGolden := filepath.Join("testdata", t.Name(), "eventlog.json")
 
