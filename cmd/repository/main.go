@@ -196,10 +196,10 @@ release.`,
 			},
 			&cli.BoolFlag{
 				Name: "emit-acl-event",
-				Usage: `Emit the standalone "acl" event even when the ACL update
-accompanies a document version, where it is otherwise folded onto the document
-event. Transition aid for external consumers; will be removed in a future
-release.`,
+				Usage: `Emit the legacy standalone "acl" event alongside the acl
+field that is folded onto the triggering document event. The folded field is
+always present; this flag only adds the extra event back. Transition aid for
+external consumers; will be removed in a future release.`,
 				Sources: cli.EnvVars("EMIT_ACL_EVENT"),
 			},
 		}, elephantine.AuthenticationCLIFlags()...),
