@@ -112,6 +112,7 @@
       "updater_uri": "user://test/testdeleterestore",
       "type": "core/article",
       "language": "en-gb",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -125,6 +126,7 @@
       "updater_uri": "user://test/testdeleterestore",
       "type": "core/article",
       "language": "en-gb",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {

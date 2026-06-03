@@ -70,6 +70,7 @@
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
       "language": "en-gb",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {

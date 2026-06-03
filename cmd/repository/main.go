@@ -186,6 +186,14 @@ Intended for bootstrapping disposable environments. Having this always on in
 production is a BAD IDEA! Migrations can be expensive and need to be planned.`,
 				Sources: cli.EnvVars("MIGRATE_DB"),
 			},
+			&cli.BoolFlag{
+				Name: "emit-workflow-event",
+				Usage: `Emit the legacy standalone "workflow" event alongside the
+workflow_state fields that are folded onto the triggering document or status
+event. Transition aid for external consumers; will be removed in a future
+release.`,
+				Sources: cli.EnvVars("EMIT_WORKFLOW_EVENT"),
+			},
 		}, elephantine.AuthenticationCLIFlags()...),
 	}
 
@@ -206,19 +214,20 @@ production is a BAD IDEA! Migrations can be expensive and need to be planned.`,
 
 func runServer(ctx context.Context, c *cli.Command) error {
 	var (
-		addr            = c.String("addr")
-		tlsAddr         = c.String("tls-addr")
-		certFile        = c.String("cert-file")
-		keyFile         = c.String("key-file")
-		profileAddr     = c.String("profile-addr")
-		logLevel        = c.String("log-level")
-		defaultLanguage = c.String("default-language")
-		defaultTimezone = c.String("default-timezone")
-		noCharCounter   = c.Bool("no-charcounter")
-		noWebsocket     = c.Bool("no-websocket")
-		noSSE           = c.Bool("no-sse")
-		corsHosts       = c.StringSlice("cors-host")
-		migrateDB       = c.Bool("migrate-db")
+		addr              = c.String("addr")
+		tlsAddr           = c.String("tls-addr")
+		certFile          = c.String("cert-file")
+		keyFile           = c.String("key-file")
+		profileAddr       = c.String("profile-addr")
+		logLevel          = c.String("log-level")
+		defaultLanguage   = c.String("default-language")
+		defaultTimezone   = c.String("default-timezone")
+		noCharCounter     = c.Bool("no-charcounter")
+		noWebsocket       = c.Bool("no-websocket")
+		noSSE             = c.Bool("no-sse")
+		corsHosts         = c.StringSlice("cors-host")
+		migrateDB         = c.Bool("migrate-db")
+		emitWorkflowEvent = c.Bool("emit-workflow-event")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -350,6 +359,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 			MetricsCalculators: inMet,
 			TypeConfigurations: typeConfs,
 			DefaultTZ:          defaultTZ,
+			EmitWorkflowEvent:  emitWorkflowEvent,
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)

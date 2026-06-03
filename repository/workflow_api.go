@@ -275,16 +275,14 @@ func (s *WorkflowsService) SetWorkflow(
 		return nil, twirp.RequiredArgumentError("workflow")
 	}
 
-	if req.Workflow.StepZero == "" {
-		return nil, twirp.RequiredArgumentError("workflow.step_zero")
-	}
-
-	if req.Workflow.Checkpoint == "" {
-		return nil, twirp.RequiredArgumentError("workflow.checkpoint")
-	}
-
-	if req.Workflow.NegativeCheckpoint == "" {
-		return nil, twirp.RequiredArgumentError("workflow.negative_checkpoint")
+	// Checkpoints and step zero are optional. A workflow without a
+	// checkpoint behaves like the implicit workflow: every listed step is a
+	// regular transition and no positive/negative checkpoint state is
+	// recorded.
+	if req.Workflow.Checkpoint == "" && req.Workflow.NegativeCheckpoint != "" {
+		return nil, twirp.InvalidArgumentError(
+			"workflow.checkpoint",
+			"required when negative_checkpoint is set")
 	}
 
 	err = s.store.SetDocumentWorkflow(ctx, DocumentWorkflow{

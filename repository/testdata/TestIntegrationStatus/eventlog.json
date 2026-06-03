@@ -55,6 +55,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -68,6 +69,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -81,6 +83,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -94,6 +97,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -107,6 +111,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -120,6 +125,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -145,6 +151,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -158,6 +165,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -171,6 +179,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -184,6 +193,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -197,6 +207,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -210,6 +221,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -235,6 +247,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -248,6 +261,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -261,6 +275,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -274,6 +289,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -287,6 +303,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -300,6 +317,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -325,6 +343,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -338,6 +357,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -351,6 +371,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -364,6 +385,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -377,6 +399,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -390,6 +413,7 @@
       "updater_uri": "user://test/testintegrationstatus",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {

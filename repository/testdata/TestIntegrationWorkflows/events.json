@@ -9,6 +9,7 @@
       "updater_uri": "user://test/testintegrationworkflows",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "draft",
       "document_nonce": "00000000-0000-0000-0000-000000000000",
       "schema_generation": "1"
     },
@@ -34,18 +35,6 @@
     },
     {
       "id": "3",
-      "event": "workflow",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "1",
-      "updater_uri": "user://test/testintegrationworkflows",
-      "type": "core/article",
-      "language": "en",
-      "workflow_state": "draft",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "4",
       "event": "status",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -55,18 +44,33 @@
       "updater_uri": "user://test/testintegrationworkflows",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "done",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "id": "5",
-      "event": "workflow",
+      "id": "4",
+      "event": "document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "1",
+      "version": "2",
       "updater_uri": "user://test/testintegrationworkflows",
       "type": "core/article",
       "language": "en",
-      "workflow_state": "done",
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
+    },
+    {
+      "id": "5",
+      "event": "status",
+      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "2",
+      "status": "approved",
+      "status_id": "1",
+      "updater_uri": "user://test/testintegrationworkflows",
+      "type": "core/article",
+      "language": "en",
+      "workflow_state": "approved",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -74,7 +78,7 @@
       "event": "document",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "2",
+      "version": "3",
       "updater_uri": "user://test/testintegrationworkflows",
       "type": "core/article",
       "language": "en",
@@ -86,57 +90,9 @@
       "event": "status",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "2",
-      "status": "approved",
-      "status_id": "1",
-      "updater_uri": "user://test/testintegrationworkflows",
-      "type": "core/article",
-      "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "8",
-      "event": "workflow",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "2",
-      "updater_uri": "user://test/testintegrationworkflows",
-      "type": "core/article",
-      "language": "en",
-      "workflow_state": "approved",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "9",
-      "event": "document",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "3",
-      "updater_uri": "user://test/testintegrationworkflows",
-      "type": "core/article",
-      "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000",
-      "schema_generation": "1"
-    },
-    {
-      "id": "10",
-      "event": "status",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "3",
       "status": "usable",
       "status_id": "1",
-      "updater_uri": "user://test/testintegrationworkflows",
-      "type": "core/article",
-      "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "11",
-      "event": "workflow",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "3",
       "updater_uri": "user://test/testintegrationworkflows",
       "type": "core/article",
       "language": "en",
@@ -145,20 +101,8 @@
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "id": "12",
+      "id": "8",
       "event": "document",
-      "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "4",
-      "updater_uri": "user://test/testintegrationworkflows",
-      "type": "core/article",
-      "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000",
-      "schema_generation": "1"
-    },
-    {
-      "id": "13",
-      "event": "workflow",
       "uuid": "ffa05627-be7a-4f09-8bfc-bc3361b0b0b5",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "4",
@@ -167,7 +111,8 @@
       "language": "en",
       "workflow_state": "draft",
       "workflow_checkpoint": "usable",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "1"
     }
   ]
 }

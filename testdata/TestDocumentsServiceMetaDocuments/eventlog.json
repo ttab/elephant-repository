@@ -89,6 +89,7 @@
       "updater_uri": "user://test/testdocumentsservicemetadocuments",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {

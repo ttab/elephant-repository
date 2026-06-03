@@ -21,6 +21,7 @@
           }
         }
       },
+      "workflow_state": "done",
       "creator_uri": "user://test/testintegrationstatsoverview",
       "updater_uri": "user://test/testintegrationstatsoverview"
     }

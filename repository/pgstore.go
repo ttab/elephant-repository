@@ -39,6 +39,12 @@ type PGDocStoreOptions struct {
 	DeleteTimeout      time.Duration
 	TypeConfigurations *TypeConfigurations
 	DefaultTZ          *time.Location
+	// EmitWorkflowEvent re-enables the separate "workflow" outbox event
+	// alongside the workflow_state/workflow_checkpoint fields that are
+	// folded onto the triggering document or status event. Intended as a
+	// transition aid for consumers that still depend on the standalone
+	// event; expected to be removed in a future release.
+	EmitWorkflowEvent bool
 }
 
 func NewPGDocStore(
@@ -2009,6 +2015,7 @@ func (s *PGDocStore) Update(
 		)
 
 		workflow, hasWorkflow := workflows.GetDocumentWorkflow(state.Type)
+		trackWorkflow := hasWorkflow && !state.IsMetaDoc
 
 		if hasWorkflow {
 			s, err := loadWorkflowState(ctx, q, workflow, state.UUID)
@@ -2104,11 +2111,21 @@ func (s *PGDocStore) Update(
 
 			// Queue up the document version event for the eventlog.
 			evts = append(evts, evt)
+			docEvtIdx := len(evts) - 1
 
 			// Progress workflow state.
+			preState := wState
 			wState = workflow.Step(wState, WorkflowStep{
 				Version: version,
 			})
+
+			// Fold workflow state onto the document event when the
+			// version bump either creates the workflow record or
+			// resets the step via a checkpoint.
+			if trackWorkflow && (initialCreate || !wState.Equal(preState)) {
+				evts[docEvtIdx].WorkflowStep = wState.Step
+				evts[docEvtIdx].WorkflowCheckpoint = wState.LastCheckpoint
+			}
 		}
 
 		var metaDocVersion int64
@@ -2175,8 +2192,9 @@ func (s *PGDocStore) Update(
 			}
 
 			input, err := s.buildStatusRuleInput(
-				ctx, q, state.Request.UUID, stat.Name, status,
-				state.DocumentUpdate, state.Doc, state.Request.Meta, statusHeads,
+				ctx, q, state.Request.UUID, state.Type, stat.Name, status,
+				state.DocumentUpdate, state.Doc, state.Request.Meta,
+				statusHeads, wState,
 			)
 			if err != nil {
 				return nil, err
@@ -2278,6 +2296,8 @@ func (s *PGDocStore) Update(
 				Labels:           state.Labels,
 			})
 
+			statusEvtIdx := len(evts) - 1
+
 			// Progress workflow state
 			oldState := wState
 			wState = workflow.Step(wState, WorkflowStep{
@@ -2289,6 +2309,11 @@ func (s *PGDocStore) Update(
 			if !wState.Equal(oldState) {
 				lastStatusName = pointer(stat.Name)
 				lastStatusID = pointer(status.ID)
+
+				if trackWorkflow {
+					evts[statusEvtIdx].WorkflowStep = wState.Step
+					evts[statusEvtIdx].WorkflowCheckpoint = wState.LastCheckpoint
+				}
 			}
 		}
 
@@ -2333,7 +2358,12 @@ func (s *PGDocStore) Update(
 			})
 		}
 
-		if !state.IsMetaDoc && hasWorkflow && (initialCreate || !wState.Equal(startWState)) {
+		// The workflow state is persisted once per update with the final
+		// state; the matching transition is folded onto the document or
+		// status event that caused it above. The separate workflow event
+		// is only emitted when EmitWorkflowEvent is set, to ease the
+		// transition of consumers that still depend on it.
+		if trackWorkflow && (initialCreate || !wState.Equal(startWState)) {
 			err := q.ChangeWorkflowState(ctx,
 				postgres.ChangeWorkflowStateParams{
 					UUID:            state.UUID,
@@ -2351,25 +2381,25 @@ func (s *PGDocStore) Update(
 				return nil, fmt.Errorf("update workflow state: %w", err)
 			}
 
-			// Queue up the event for the workflow update.
-			evts = append(evts, postgres.OutboxEvent{
-				Event:              string(TypeWorkflow),
-				UUID:               state.Request.UUID,
-				Nonce:              state.Nonce,
-				Version:            state.Version,
-				Timestamp:          state.Created,
-				Updater:            state.Creator,
-				Type:               state.Type,
-				Language:           state.Language,
-				MainDocument:       state.Request.MainDocument,
-				MainDocumentType:   state.MainDocType,
-				WorkflowStep:       wState.Step,
-				WorkflowCheckpoint: wState.LastCheckpoint,
-				// TODO: previous step?
-				SystemState: state.SystemState,
-				Timespans:   TimespansAsTuples(state.Timespans),
-				Labels:      state.Labels,
-			})
+			if s.opts.EmitWorkflowEvent {
+				evts = append(evts, postgres.OutboxEvent{
+					Event:              string(TypeWorkflow),
+					UUID:               state.Request.UUID,
+					Nonce:              state.Nonce,
+					Version:            state.Version,
+					Timestamp:          state.Created,
+					Updater:            state.Creator,
+					Type:               state.Type,
+					Language:           state.Language,
+					MainDocument:       state.Request.MainDocument,
+					MainDocumentType:   state.MainDocType,
+					WorkflowStep:       wState.Step,
+					WorkflowCheckpoint: wState.LastCheckpoint,
+					SystemState:        state.SystemState,
+					Timespans:          TimespansAsTuples(state.Timespans),
+					Labels:             state.Labels,
+				})
+			}
 		}
 	}
 
@@ -3036,14 +3066,16 @@ func newUpdateState(req *UpdateRequest) (*docUpdateState, error) {
 
 func (s *PGDocStore) buildStatusRuleInput(
 	ctx context.Context, q *postgres.Queries,
-	uuid uuid.UUID, name string, status Status, up DocumentUpdate,
-	d *newsdoc.Document, versionMeta newsdoc.DataMap, statusHeads map[string]StatusHead,
+	uuid uuid.UUID, docType string, name string, status Status,
+	up DocumentUpdate, d *newsdoc.Document, versionMeta newsdoc.DataMap,
+	statusHeads map[string]StatusHead, wState WorkflowState,
 ) (StatusRuleInput, error) {
 	input := StatusRuleInput{
-		Name:   name,
-		Status: status,
-		Update: up,
-		Heads:  statusHeads,
+		Name:          name,
+		Status:        status,
+		Update:        up,
+		Heads:         statusHeads,
+		WorkflowState: wState,
 	}
 
 	auth, ok := elephantine.GetAuthInfo(ctx)
@@ -3067,6 +3099,13 @@ func (s *PGDocStore) buildStatusRuleInput(
 
 		input.VersionMeta = meta
 		input.Document = *d
+	}
+
+	// Make sure the document type is available even when no concrete
+	// version is loaded (e.g. unpublish requests with status version -1).
+	// EvaluateRules matches rules by Document.Type.
+	if input.Document.Type == "" {
+		input.Document.Type = docType
 	}
 
 	return input, nil

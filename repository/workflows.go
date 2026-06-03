@@ -14,11 +14,12 @@ import (
 )
 
 type Workflows struct {
-	m         sync.RWMutex
-	vm        vm.VM
-	statuses  map[string]DocumentStatus
-	rules     map[string][]compiledRule
-	workflows map[string]DocumentWorkflow
+	m            sync.RWMutex
+	vm           vm.VM
+	statuses     map[string]DocumentStatus
+	typeStatuses map[string][]string
+	rules        map[string][]compiledRule
+	workflows    map[string]DocumentWorkflow
 }
 
 type WorkflowLoader interface {
@@ -82,10 +83,18 @@ func (w *Workflows) loadWorkflows(
 	}
 
 	statusMap := make(map[string]DocumentStatus)
+	typeStatuses := make(map[string][]string)
 
 	for i := range statuses {
 		key := typeScopedKey(statuses[i].Type, statuses[i].Name)
 		statusMap[key] = statuses[i]
+
+		if statuses[i].Disabled {
+			continue
+		}
+
+		typeStatuses[statuses[i].Type] = append(
+			typeStatuses[statuses[i].Type], statuses[i].Name)
 	}
 
 	rules, err := loader.GetStatusRules(ctx)
@@ -130,6 +139,7 @@ func (w *Workflows) loadWorkflows(
 
 	w.m.Lock()
 	w.statuses = statusMap
+	w.typeStatuses = typeStatuses
 	w.rules = ruleMap
 	w.workflows = workflowMap
 	w.m.Unlock()
@@ -137,12 +147,33 @@ func (w *Workflows) loadWorkflows(
 	return nil
 }
 
+// GetDocumentWorkflow returns the workflow for a document type. If no explicit
+// workflow has been configured an implicit workflow is synthesised from the
+// type's configured statuses: no checkpoint, all statuses accepted as steps.
+// Returns false only when the type has neither an explicit workflow nor any
+// configured statuses.
 func (w *Workflows) GetDocumentWorkflow(docType string) (DocumentWorkflow, bool) {
 	w.m.RLock()
-	wf, ok := w.workflows[docType]
-	w.m.RUnlock()
+	defer w.m.RUnlock()
 
-	return wf, ok
+	if wf, ok := w.workflows[docType]; ok {
+		return wf, true
+	}
+
+	steps := w.typeStatuses[docType]
+	if len(steps) == 0 {
+		return DocumentWorkflow{}, false
+	}
+
+	stepsCopy := make([]string, len(steps))
+	copy(stepsCopy, steps)
+
+	return DocumentWorkflow{
+		Type: docType,
+		Configuration: DocumentWorkflowConfiguration{
+			Steps: stepsCopy,
+		},
+	}, true
 }
 
 func (w *Workflows) HasStatus(docType string, name string) bool {
@@ -155,18 +186,37 @@ func (w *Workflows) HasStatus(docType string, name string) bool {
 	return ok && !status.Disabled
 }
 
+// HasStatusRule reports whether a status rule with the given name is currently
+// loaded for the document type. It is primarily intended for tests that need
+// to wait for a rule to propagate from the database to the provider.
+func (w *Workflows) HasStatusRule(docType string, name string) bool {
+	w.m.RLock()
+	defer w.m.RUnlock()
+
+	for _, rules := range w.rules {
+		for _, r := range rules {
+			if r.Type == docType && r.Name == name {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func typeScopedKey(docType string, name string) string {
 	return docType + ":" + name
 }
 
 type StatusRuleInput struct {
-	Name        string
-	Status      Status
-	Update      DocumentUpdate
-	Document    newsdoc.Document
-	VersionMeta newsdoc.DataMap
-	Heads       map[string]StatusHead
-	User        elephantine.JWTClaims
+	Name          string
+	Status        Status
+	Update        DocumentUpdate
+	Document      newsdoc.Document
+	VersionMeta   newsdoc.DataMap
+	Heads         map[string]StatusHead
+	User          elephantine.JWTClaims
+	WorkflowState WorkflowState
 }
 
 type StatusRuleViolation struct {
