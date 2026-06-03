@@ -6,6 +6,15 @@
       "uuid": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "1",
+      "acl": [
+        {
+          "uri": "user://test/testdocumentsservicemetadocuments",
+          "permissions": [
+            "r",
+            "w"
+          ]
+        }
+      ],
       "updater_uri": "user://test/testdocumentsservicemetadocuments",
       "type": "core/article",
       "language": "en",
@@ -14,8 +23,8 @@
     },
     {
       "id": "2",
-      "event": "acl",
-      "uuid": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
+      "event": "document",
+      "uuid": "92ebfc38-5a1e-40c3-b316-3d06f488526e",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "1",
       "acl": [
@@ -27,17 +36,6 @@
           ]
         }
       ],
-      "updater_uri": "user://test/testdocumentsservicemetadocuments",
-      "type": "core/article",
-      "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "3",
-      "event": "document",
-      "uuid": "92ebfc38-5a1e-40c3-b316-3d06f488526e",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "1",
       "updater_uri": "user://test/testdocumentsservicemetadocuments",
       "type": "core/article",
       "language": "en",
@@ -45,23 +43,31 @@
       "schema_generation": "2"
     },
     {
-      "id": "4",
-      "event": "acl",
-      "uuid": "92ebfc38-5a1e-40c3-b316-3d06f488526e",
+      "id": "3",
+      "event": "document",
+      "uuid": "a46aefe1-5379-5452-b9a2-29fbaaaec08a",
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "1",
-      "acl": [
-        {
-          "uri": "user://test/testdocumentsservicemetadocuments",
-          "permissions": [
-            "r",
-            "w"
-          ]
-        }
-      ],
+      "updater_uri": "user://test/testdocumentsservicemetadocuments",
+      "type": "test/metadata",
+      "language": "sv-se",
+      "main_document": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
+      "main_document_type": "core/article",
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "schema_generation": "2"
+    },
+    {
+      "id": "4",
+      "event": "status",
+      "uuid": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
+      "timestamp": "2023-01-10T20:06:37+01:00",
+      "version": "1",
+      "status": "usable",
+      "status_id": "1",
       "updater_uri": "user://test/testdocumentsservicemetadocuments",
       "type": "core/article",
       "language": "en",
+      "workflow_state": "usable",
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -69,8 +75,8 @@
       "event": "document",
       "uuid": "a46aefe1-5379-5452-b9a2-29fbaaaec08a",
       "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "1",
-      "updater_uri": "user://test/testdocumentsservicemetadocuments",
+      "version": "2",
+      "updater_uri": "user://test/wmc",
       "type": "test/metadata",
       "language": "sv-se",
       "main_document": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
@@ -85,34 +91,6 @@
       "timestamp": "2023-01-10T20:06:37+01:00",
       "version": "1",
       "status": "usable",
-      "status_id": "1",
-      "updater_uri": "user://test/testdocumentsservicemetadocuments",
-      "type": "core/article",
-      "language": "en",
-      "workflow_state": "usable",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "7",
-      "event": "document",
-      "uuid": "a46aefe1-5379-5452-b9a2-29fbaaaec08a",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "2",
-      "updater_uri": "user://test/wmc",
-      "type": "test/metadata",
-      "language": "sv-se",
-      "main_document": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
-      "main_document_type": "core/article",
-      "document_nonce": "00000000-0000-0000-0000-000000000000",
-      "schema_generation": "2"
-    },
-    {
-      "id": "8",
-      "event": "status",
-      "uuid": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
-      "timestamp": "2023-01-10T20:06:37+01:00",
-      "version": "1",
-      "status": "usable",
       "status_id": "2",
       "updater_uri": "user://test/testdocumentsservicemetadocuments",
       "type": "core/article",
@@ -120,7 +98,7 @@
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "id": "9",
+      "id": "7",
       "event": "delete_document",
       "uuid": "a46aefe1-5379-5452-b9a2-29fbaaaec08a",
       "timestamp": "2023-01-10T20:06:37+01:00",
@@ -134,7 +112,7 @@
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "id": "10",
+      "id": "8",
       "event": "delete_document",
       "uuid": "14f4ba22-f7c0-46bc-9c18-73f845a4f801",
       "timestamp": "2023-01-10T20:06:37+01:00",

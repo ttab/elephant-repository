@@ -5,6 +5,15 @@
       "event": "document",
       "uuid": "1d450529-fd98-4e4e-80c2-f70f9194737a",
       "version": "1",
+      "acl": [
+        {
+          "uri": "user://test/testintegrationdocumentlanguage",
+          "permissions": [
+            "r",
+            "w"
+          ]
+        }
+      ],
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
       "language": "sv-se",
@@ -13,8 +22,8 @@
     },
     {
       "id": "2",
-      "event": "acl",
-      "uuid": "1d450529-fd98-4e4e-80c2-f70f9194737a",
+      "event": "document",
+      "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
       "version": "1",
       "acl": [
         {
@@ -25,16 +34,6 @@
           ]
         }
       ],
-      "updater_uri": "user://test/testintegrationdocumentlanguage",
-      "type": "core/article",
-      "language": "sv-se",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "3",
-      "event": "document",
-      "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
-      "version": "1",
       "updater_uri": "user://test/testintegrationdocumentlanguage",
       "type": "core/article",
       "language": "en-gb",
@@ -42,26 +41,7 @@
       "schema_generation": "1"
     },
     {
-      "id": "4",
-      "event": "acl",
-      "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
-      "version": "1",
-      "acl": [
-        {
-          "uri": "user://test/testintegrationdocumentlanguage",
-          "permissions": [
-            "r",
-            "w"
-          ]
-        }
-      ],
-      "updater_uri": "user://test/testintegrationdocumentlanguage",
-      "type": "core/article",
-      "language": "en-gb",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "id": "5",
+      "id": "3",
       "event": "status",
       "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
       "version": "1",
@@ -74,7 +54,7 @@
       "document_nonce": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "id": "6",
+      "id": "4",
       "event": "document",
       "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
       "version": "2",
@@ -86,7 +66,7 @@
       "schema_generation": "1"
     },
     {
-      "id": "7",
+      "id": "5",
       "event": "status",
       "uuid": "00668ca7-aca9-4e7e-8958-c67d48a3e0d2",
       "version": "2",

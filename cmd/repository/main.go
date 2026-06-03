@@ -194,6 +194,14 @@ event. Transition aid for external consumers; will be removed in a future
 release.`,
 				Sources: cli.EnvVars("EMIT_WORKFLOW_EVENT"),
 			},
+			&cli.BoolFlag{
+				Name: "emit-acl-event",
+				Usage: `Emit the standalone "acl" event even when the ACL update
+accompanies a document version, where it is otherwise folded onto the document
+event. Transition aid for external consumers; will be removed in a future
+release.`,
+				Sources: cli.EnvVars("EMIT_ACL_EVENT"),
+			},
 		}, elephantine.AuthenticationCLIFlags()...),
 	}
 
@@ -228,6 +236,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		corsHosts         = c.StringSlice("cors-host")
 		migrateDB         = c.Bool("migrate-db")
 		emitWorkflowEvent = c.Bool("emit-workflow-event")
+		emitACLEvent      = c.Bool("emit-acl-event")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -360,6 +369,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 			TypeConfigurations: typeConfs,
 			DefaultTZ:          defaultTZ,
 			EmitWorkflowEvent:  emitWorkflowEvent,
+			EmitACLEvent:       emitACLEvent,
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create doc store: %w", err)

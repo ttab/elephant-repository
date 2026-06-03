@@ -139,7 +139,7 @@ func TestAssetUpload(t *testing.T) {
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("nonce"))
 
-	log := collectEventlog(t, client, 3, 5*time.Second)
+	log := collectEventlog(t, client, 2, 5*time.Second)
 
 	test.TestMessageAgainstGolden(t, regenerate, log,
 		filepath.Join(dataDir, "events.json"),
