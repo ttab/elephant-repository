@@ -4,6 +4,27 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
+## [v1.8.0] - 2026-06-04
+
+**Breaking (eventlog shape):** the changes below alter the events that external
+consumers see on the eventlog. The previous behaviour can be restored
+per-server with the flags listed; both flags only re-add the legacy standalone
+events alongside the new folded representations (the folded fields are always
+present) and are slated for removal in a future release.
+
+- Workflow state changes are no longer emitted as standalone `workflow` events. `workflow_state` and `workflow_checkpoint` are folded onto the triggering `document` or `status` event that caused them. The `workflow_state` table is still updated as before. Consumers branching on `event == "workflow"` will stop seeing those events unless `--emit-workflow-event` (`EMIT_WORKFLOW_EVENT`) is set, which re-emits the legacy standalone `workflow` event alongside the folded fields. (#590)
+- ACL updates that accompany a document version are no longer emitted as a separate `acl` event; the ACL is folded onto the `document` event's `acl` field instead. Standalone `acl` events are still emitted when an ACL is updated on its own (no new version) and on archive restore. Consumers that depended on a separate `acl` event after each create/version can restore the old behaviour with `--emit-acl-event` (`EMIT_ACL_EVENT`), which re-emits the legacy event alongside the folded field. This also fixes a minor ordering blemish: the document version event used to be emitted before the accompanying ACL event, so a consumer could observe a new version before the permissions it was created with — both are now carried by a single event. (#595)
+
+Changes:
+
+- Document types without an explicitly configured workflow now get an implicit workflow synthesised from their configured statuses: no checkpoint, every non-disabled status is a step. Checkpoint and step zero are also optional for explicitly configured workflows now — `SetWorkflow` no longer requires `step_zero`, `checkpoint`, or `negative_checkpoint`, with the constraint that `negative_checkpoint` may only be set when `checkpoint` is also set. (#590)
+- Status rules can now reference workflow state: `StatusRuleInput` carries the current `WorkflowState` (populated from the in-flight workflow tracking at rule evaluation time), enabling rules like "only allow unpublish if previously published". `buildStatusRuleInput` also defaults `Document.Type` to the doc type when no concrete version is loaded, so rules for status updates with `version = -1` (unpublish) are no longer silently skipped. (#590)
+- Dependency upgrades: Go toolchain to 1.26.3, golang base image to 1.26.4-alpine3.23, elephantine to v0.27.1, pgx to v5.10.0, urfave/cli/v3 to v3.9.0, prometheus/common to v0.68.0, the AWS SDK suite, and the `golang.org/x/{crypto,net,sys,text}` group. (#586, #589, #596)
+
+## [v1.7.2] - 2026-05-26
+
+- Fix the lock cleaner cutoff sign: `removeExpiredLocks` set its cutoff to `now + 5m` instead of `now - 5m`, so the cleaner swept locks with up to 5m of lease remaining. Freshly-acquired locks with ≤ 5m TTLs (e.g. elephant-collab's 5m default) were nearly always evicted on the next 5-minute cleaner tick, causing transient "document locked" / "not locked" errors for holders. RPC handlers and the lock-acquire path already filtered independently against the live expiry, so this was purely a storage-reclamation bug. (#594)
+
 ## [v1.7.1] - 2026-05-22
 
 - Lock conflicts on the `Lock` RPC now surface the existing holder's identity via twirp error metadata (`lock_holder_sub`, `lock_app`, `lock_comment`, `lock_expires`) instead of collapsing to an opaque "locked by someone else" message. Clients compare `lock_holder_sub` against their own JWT subject to distinguish "I already hold this" from "held by someone else". The success path of `LockResponse` now also carries `Expires` (RFC3339). (#584)
