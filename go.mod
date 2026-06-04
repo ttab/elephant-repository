@@ -26,7 +26,7 @@ require (
 	github.com/ttab/darknut v0.1.3
 	github.com/ttab/eleconf v1.1.1
 	github.com/ttab/elephant-api v0.23.0
-	github.com/ttab/elephantine v0.27.0
+	github.com/ttab/elephantine v0.27.1
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.9.1
 	github.com/ttab/newsdoc v1.0.0
@@ -85,8 +85,8 @@ require (
 	github.com/fatih/structtag v1.2.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
-	github.com/go-git/go-billy/v5 v5.8.0 // indirect
-	github.com/go-git/go-git/v5 v5.18.0 // indirect
+	github.com/go-git/go-billy/v5 v5.9.0 // indirect
+	github.com/go-git/go-git/v5 v5.19.1 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
