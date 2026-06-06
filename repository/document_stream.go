@@ -34,21 +34,28 @@ type DocumentStreamItem struct {
 // should never block as handlers are processed serially.
 type DocumentStreamHandlerFunc func(items []DocumentStreamItem)
 
-const docStreamBufSize = 100
-
-// docStreamBuf is a fixed-size circular buffer of DocumentStreamItems.
+// docStreamBuf is a fixed-capacity circular buffer of DocumentStreamItems. The
+// capacity is set at construction via newDocStreamBuf.
 type docStreamBuf struct {
-	items [docStreamBufSize]DocumentStreamItem
+	items []DocumentStreamItem
 	head  int
 	len   int
 }
 
+func newDocStreamBuf(size int) docStreamBuf {
+	return docStreamBuf{
+		items: make([]DocumentStreamItem, size),
+	}
+}
+
 // put appends an item to the buffer, overwriting the oldest when full.
 func (b *docStreamBuf) put(item DocumentStreamItem) {
-	b.items[b.head] = item
-	b.head = (b.head + 1) % docStreamBufSize
+	size := len(b.items)
 
-	if b.len < docStreamBufSize {
+	b.items[b.head] = item
+	b.head = (b.head + 1) % size
+
+	if b.len < size {
 		b.len++
 	}
 }
@@ -61,10 +68,12 @@ func (b *docStreamBuf) itemsFrom(from int64) ([]DocumentStreamItem, bool) {
 		return nil, true
 	}
 
+	size := len(b.items)
+
 	// Start is the index of the oldest item.
-	start := (b.head - b.len + docStreamBufSize) % docStreamBufSize
+	start := (b.head - b.len + size) % size
 	oldest := b.items[start].Event.ID
-	newest := b.items[(b.head-1+docStreamBufSize)%docStreamBufSize].Event.ID
+	newest := b.items[(b.head-1+size)%size].Event.ID
 
 	if from < oldest {
 		return nil, false
@@ -77,7 +86,7 @@ func (b *docStreamBuf) itemsFrom(from int64) ([]DocumentStreamItem, bool) {
 	var result []DocumentStreamItem
 
 	for i := range b.len {
-		idx := (start + i) % docStreamBufSize
+		idx := (start + i) % size
 
 		if b.items[idx].Event.ID >= from {
 			result = append(result, b.items[idx])
@@ -92,7 +101,13 @@ func NewDocumentStream(
 	log *slog.Logger,
 	registerer prometheus.Registerer,
 	store DocStore,
+	bufferSize int,
 ) (*DocumentStream, error) {
+	if bufferSize <= 0 {
+		return nil, fmt.Errorf(
+			"buffer size must be positive, got %d", bufferSize)
+	}
+
 	// Buffer of one to make sure that we always run another iteration of
 	// log consume if we get one or more events during processing.
 	ch := make(chan int64, 1)
@@ -103,6 +118,7 @@ func NewDocumentStream(
 		ctx:       ctx,
 		log:       log,
 		consumers: make(map[int64]DocumentStreamHandlerFunc),
+		buf:       newDocStreamBuf(bufferSize),
 		lastID:    -1, // Start from last event.
 		eventChan: ch,
 		store:     store,
@@ -339,12 +355,17 @@ func (s *DocumentStream) Subscribe(
 	go s.unsubscribeOnCancel(ctx, id)
 }
 
-// SubscribeFrom registers a handler and replays buffered items with
-// Event.ID >= from before delivering live events. Returns false if the
-// requested position is no longer available in the buffer. The handler will be
-// automatically unregistered when ctx or the stream context is cancelled.
+// SubscribeFrom replays buffered items with Event.ID >= from to replayHandler,
+// then registers liveHandler for subsequent live events. The replay is
+// delivered synchronously under the emit lock before liveHandler is registered,
+// so no live event can precede or interleave with the replay. This lets callers
+// treat the replay (a bounded catch-up) and the live stream differently, e.g.
+// exempt the replay from rate limiting. Returns false without subscribing if
+// the requested position is older than the buffer. liveHandler is automatically
+// unregistered when ctx or the stream context is cancelled.
 func (s *DocumentStream) SubscribeFrom(
-	ctx context.Context, from int64, handler DocumentStreamHandlerFunc,
+	ctx context.Context, from int64,
+	replayHandler, liveHandler DocumentStreamHandlerFunc,
 ) bool {
 	s.emitMu.Lock()
 	defer s.emitMu.Unlock()
@@ -359,14 +380,14 @@ func (s *DocumentStream) SubscribeFrom(
 	}
 
 	if len(replay) > 0 {
-		handler(replay)
+		replayHandler(replay)
 	}
 
 	s.serial++
 
 	id := s.serial
 
-	s.consumers[id] = handler
+	s.consumers[id] = liveHandler
 	s.mSubscribers.Set(float64(len(s.consumers)))
 
 	s.m.Unlock()
