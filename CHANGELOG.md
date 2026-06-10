@@ -4,6 +4,11 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
+## [v1.8.1] - 2026-06-10
+
+- Bump newsdoc to v1.1.0, which adds an inline child selector `#(...)` to value extractor selectors: it gates a selector on having matching descendant blocks without terminating the chain or changing what is yielded, complementing the existing terminal `#` form. (#603)
+- Dependency upgrades: Go to 1.26.4, elephant-api to v0.23.1, the AWS SDK suite, and golang.org/x/sync. (#603)
+
 ## [v1.8.0] - 2026-06-04
 
 **Breaking (eventlog shape):** the changes below alter the events that external
