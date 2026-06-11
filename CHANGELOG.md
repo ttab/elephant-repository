@@ -4,6 +4,27 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
+## [v1.9.0] - Unreleased
+
+**Behaviour change (document locks):** a document lock now only blocks
+document updates (new versions, attached objects, deletes) by default; status
+and ACL updates on a locked document are no longer blocked unless the lock was
+acquired with a higher exclusivity level. This matches the long-documented API
+behaviour, but consumers that relied on locks also blocking status or ACL
+updates must now acquire their locks with a matching exclusivity. (#604)
+
+**Migrations:**
+
+- `027_lock_exclusivity.sql` — adds an `exclusivity` column to `document_lock` (`text`, not null, default `'document'`). **Must be applied before deploying v1.9.0**: the lock queries in v1.9.0 reference the new column, so acquiring, reading, or checking document locks fails against an unmigrated database. The migration is a plain `alter table add column` with a default on a small, short-lived table, so no maintenance window is needed.
+
+Changes:
+
+- Document locks can be acquired with an exclusivity level via the new `exclusivity` field on `LockRequest` and on lock-on-Get (`AcquireLock`): `LOCK_DOCUMENT` (default, blocks document updates only), `LOCK_STATUS` (also blocks status updates), `LOCK_ACL` (also blocks ACL updates), or `LOCK_EXCLUSIVE` (blocks both). The level is exposed in `DocumentMeta.lock` and on lock conflicts via the `lock_exclusivity` error metadata key. Supplying a non-matching lock token is still rejected outright, regardless of exclusivity. (#604)
+- Eventlog websocket subscriptions can now filter by event type via the new `GetEventlog.events` field, validated against the known event types. (#597)
+- The document stream replay buffer is now slice-backed and configurable with `--eventlog-buffer-size` (`EVENTLOG_BUFFER_SIZE`, default 500). Resuming out of bounds still returns `eventlog_resume_oob`. (#597)
+- Each subscription's live stream is now rate limited with a token bucket (`--eventlog-stream-burst` 70, `--eventlog-stream-rate` 10/s). On exceed, the events that fit are emitted followed by a `rate_limited` error, and the subscription is stopped; clients are expected to resubscribe. The initial resume replay is exempt. (#597)
+- Dependency upgrades: elephant-api to v0.24.0, the AWS SDK suite, urfave/cli/v3 to v3.9.1, and the Go toolchain. (#597, #604)
+
 ## [v1.8.1] - 2026-06-10
 
 - Bump newsdoc to v1.1.0, which adds an inline child selector `#(...)` to value extractor selectors: it gates a selector on having matching descendant blocks without terminating the chain or changing what is yielded, complementing the existing terminal `#` form. (#603)
