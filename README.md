@@ -27,6 +27,14 @@ The four ACL permission types are:
 
 In most workflows documents will be shared with a group of people, but this makes it possible to work with private drafts, and share documents with individuals that are untrusted in the sense that they shouldn't have access to all your content.
 
+## Document locks
+
+Clients can take a pessimistic lock on a document with `Documents.Lock`, or as part of a `Documents.Get` request. A lock is held with a secret token for a client-set TTL, and can be extended (`Documents.ExtendLock`) and released (`Documents.Unlock`) by the token holder.
+
+While a document is locked, updates that aren't accompanied by the lock token are rejected. By default this only applies to document updates — new versions, attaching or detaching objects, and deletes — while statuses and ACLs can still be updated by others. The lock can be extended to also cover status updates, ACL updates, or both by setting the exclusivity level (`LOCK_STATUS`, `LOCK_ACL`, or `LOCK_EXCLUSIVE`) when acquiring it.
+
+A failed lock acquisition returns the current holder's identity, application, comment, expiry, and exclusivity as error metadata, so clients can tell whether they already hold the lock or should surface the conflict to the user.
+
 ## Validation schemas
 
 All document types need to be declared before they can be stored in the repository. This serves two purposes, of which the primary is to maintain data quality, the other purpose is to inform automated systems about the shape of your data. This is leveraged by the [elephant-index](https://github.com/ttab/elephant-index) to create correct mappings for OpenSearch/ElasticSearch.
@@ -66,6 +74,8 @@ All changes to a document are emitted on the eventlog, accessed through `Documen
 
 This eventlog can be used by other applications to act on changes in the repository.
 
+Workflow state changes are folded onto the `document` or `status` event that caused them as `workflow_state` and `workflow_checkpoint`, and an ACL update that accompanies a new document version is folded onto the `document` event's `acl` field. The legacy standalone `workflow` and `acl` events can be re-emitted alongside the folded representation with `--emit-workflow-event` and `--emit-acl-event`.
+
 ### Server-Sent Events (SSE)
 
 The repository exposes an SSE endpoint at `/sse` for real-time event streaming. It maintains a 200-event replay buffer so that clients that reconnect can catch up on missed events. Clients can filter events by topic using the standard SSE `Last-Event-ID` header for resumption.
@@ -75,6 +85,8 @@ SSE can be disabled with `--no-sse` / `NO_SSE`.
 ### WebSocket
 
 A WebSocket API is available at `/websocket/:token` for per-user rate-limited document streaming. Clients authenticate using JWT socket tokens. The WebSocket API supports subscribing to specific documents and receiving real-time updates.
+
+Clients can also subscribe to the eventlog itself, optionally filtered by event type. Eventlog subscriptions resume from a replay buffer sized by `--eventlog-buffer-size`, and the live stream is rate limited with a token bucket (`--eventlog-stream-burst`, `--eventlog-stream-rate`). A subscription that exceeds the rate receives the events that fit followed by a `rate_limited` error and is stopped; the client is expected to resubscribe.
 
 WebSocket support can be disabled with `--no-websocket` / `NO_WEBSOCKET`.
 
@@ -180,8 +192,12 @@ The server is configured via CLI flags and/or environment variables. Key options
 | `--asset-bucket` | `ASSET_BUCKET` | `elephant-assets` | S3 bucket for assets |
 | `--eventsink` | `EVENTSINK` | `aws-eventbridge` | Event sink type |
 | `--cors-host` | `CORS_HOSTS` | | CORS hosts to allow (supports wildcards) |
-| `--ensure-schema` | `ENSURE_SCHEMA` | | Schema specifications to ensure on startup |
+| `--eventlog-buffer-size` | `EVENTLOG_BUFFER_SIZE` | `500` | Recent eventlog events buffered for socket resume |
+| `--eventlog-stream-burst` | `EVENTLOG_STREAM_BURST` | `70` | Token-bucket burst for an eventlog subscription stream |
+| `--eventlog-stream-rate` | `EVENTLOG_STREAM_RATE` | `10` | Token-bucket rate (events/sec) for an eventlog subscription stream |
 | `--migrate-db` | `MIGRATE_DB` | `false` | Run database migrations on startup |
+| `--emit-workflow-event` | `EMIT_WORKFLOW_EVENT` | `false` | Emit legacy standalone `workflow` events alongside the folded fields |
+| `--emit-acl-event` | `EMIT_ACL_EVENT` | `false` | Emit legacy standalone `acl` events alongside the folded field |
 | `--no-eventsink` | `NO_EVENTSINK` | `false` | Disable event sink |
 | `--no-archiver` | `NO_ARCHIVER` | `false` | Disable archiver |
 | `--no-eventlog-builder` | `NO_EVENTLOG_BUILDER` | `false` | Disable eventlog builder |
@@ -189,7 +205,6 @@ The server is configured via CLI flags and/or environment variables. Key options
 | `--no-charcounter` | `NO_CHARCOUNTER` | `false` | Disable built-in character counter |
 | `--no-websocket` | `NO_WEBSOCKET` | `false` | Disable WebSocket API |
 | `--no-sse` | `NO_SSE` | `false` | Disable SSE API |
-| `--no-core-schema` | `NO_CORE_SCHEMA` | `false` | Don't register built-in core schema |
 | `--tolerate-eventlog-gaps` | `TOLERATE_EVENTLOG_GAPS` | `false` | Tolerate eventlog gaps when archiving |
 | `--oidc-config` | `OIDC_CONFIG` | | OIDC configuration URL |
 | `--jwt-audience` | `JWT_AUDIENCE` | | Expected JWT audience |
