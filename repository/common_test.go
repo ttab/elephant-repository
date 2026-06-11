@@ -179,6 +179,9 @@ type testingServerOptions struct {
 	NoCoreSchemas      bool
 	EmitWorkflowEvent  bool
 	EmitACLEvent       bool
+	// EventlogStream overrides the eventlog stream config for the socket
+	// handler. A zero BufferSize defaults to 500.
+	EventlogStream repository.EventlogStreamConfig
 }
 
 func testingAPIServer(
@@ -352,7 +355,8 @@ func testingAPIServer(
 	socket, err := repository.NewSocketHandler(
 		ctx, logger, reg,
 		store, docCache, authParser, &socketKey.PublicKey,
-		[]string{"localhost", "example.ecms.se"})
+		[]string{"localhost", "example.ecms.se"},
+		opts.EventlogStream)
 	test.Must(t, err, "set up socket handler")
 
 	err = repository.SetUpRouter(router,

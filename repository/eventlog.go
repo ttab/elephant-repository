@@ -30,6 +30,20 @@ const (
 	TypeWorkflow        EventType = "workflow"
 )
 
+// Valid reports whether e is a known, emittable event type. The empty
+// TypeEventIgnored is not considered valid.
+func (e EventType) Valid() bool {
+	switch e {
+	case TypeDocumentVersion, TypeNewStatus, TypeACLUpdate,
+		TypeDeleteDocument, TypeRestoreFinished, TypeWorkflow:
+		return true
+	case TypeEventIgnored:
+		return false
+	default:
+		return false
+	}
+}
+
 type Event struct {
 	ID                 int64          `json:"id"`
 	Event              EventType      `json:"event"`

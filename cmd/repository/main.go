@@ -33,6 +33,7 @@ import (
 	"github.com/twitchtv/twirp"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 var version string // set via -ldflags at build time
@@ -179,6 +180,24 @@ func main() {
 				Usage:   "CORS hosts to allow, supports wildcards",
 				Sources: cli.EnvVars("CORS_HOSTS"),
 			},
+			&cli.IntFlag{
+				Name:    "eventlog-buffer-size",
+				Value:   repository.DefaultEventlogBufferSize,
+				Usage:   "Number of recent eventlog events buffered for socket resume",
+				Sources: cli.EnvVars("EVENTLOG_BUFFER_SIZE"),
+			},
+			&cli.IntFlag{
+				Name:    "eventlog-stream-burst",
+				Value:   repository.DefaultEventlogStreamBurst,
+				Usage:   "Token-bucket burst for an eventlog subscription stream",
+				Sources: cli.EnvVars("EVENTLOG_STREAM_BURST"),
+			},
+			&cli.FloatFlag{
+				Name:    "eventlog-stream-rate",
+				Value:   float64(repository.DefaultEventlogStreamRate),
+				Usage:   "Token-bucket rate (events/sec) for an eventlog subscription stream",
+				Sources: cli.EnvVars("EVENTLOG_STREAM_RATE"),
+			},
 			&cli.BoolFlag{
 				Name: "migrate-db",
 				Usage: `Perform database migrations.
@@ -234,6 +253,9 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		noWebsocket       = c.Bool("no-websocket")
 		noSSE             = c.Bool("no-sse")
 		corsHosts         = c.StringSlice("cors-host")
+		eventlogBufSize   = c.Int("eventlog-buffer-size")
+		eventlogBurst     = c.Int("eventlog-stream-burst")
+		eventlogRate      = c.Float("eventlog-stream-rate")
 		migrateDB         = c.Bool("migrate-db")
 		emitWorkflowEvent = c.Bool("emit-workflow-event")
 		emitACLEvent      = c.Bool("emit-acl-event")
@@ -598,6 +620,11 @@ func runServer(ctx context.Context, c *cli.Command) error {
 			grace.CancelOnQuit(ctx), logger, prometheus.DefaultRegisterer,
 			store, docCache, auth.AuthParser, &socketKey.PublicKey,
 			corsHosts,
+			repository.EventlogStreamConfig{
+				BufferSize: eventlogBufSize,
+				Rate:       rate.Limit(eventlogRate),
+				Burst:      eventlogBurst,
+			},
 		)
 		if err != nil {
 			return fmt.Errorf("set up socket handler: %w", err)

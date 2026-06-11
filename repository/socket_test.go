@@ -19,8 +19,10 @@ import (
 	rpc "github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-api/repositorysocket"
 	itest "github.com/ttab/elephant-repository/internal/test"
+	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
+	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -947,4 +949,326 @@ func readResponse(
 	}
 
 	return &resp, true
+}
+
+// dialEventlogSocket creates a documents client and an authenticated websocket
+// session with the scopes needed to write documents and read the eventlog,
+// returning a started response collection.
+func dialEventlogSocket(
+	t *testing.T, tc TestContext,
+) (rpc.Documents, *websocket.Conn, *responseCollection) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	scopes := "doc_read doc_write eventlog_read"
+
+	client := tc.DocumentsClient(t, itest.StandardClaims(t, scopes))
+
+	serverURL, err := url.Parse(tc.Server.URL)
+	test.Must(t, err, "parse server URL")
+
+	token, err := itest.AccessToken(tc.SigningKey,
+		itest.StandardClaims(t, scopes))
+	test.Must(t, err, "create access token")
+
+	tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
+	test.Must(t, err, "get socket token")
+
+	wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
+	wsURL.Scheme = "ws"
+
+	header := http.Header{
+		"Origin": []string{"https://example.ecms.se"},
+	}
+
+	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL.String(), header)
+	test.Must(t, err, "dial websocket")
+
+	t.Cleanup(func() {
+		err := wsResp.Body.Close()
+		if err != nil && !errors.Is(err, os.ErrClosed) {
+			t.Errorf("close websocket response body: %v", err)
+		}
+	})
+
+	callID := makeCall(t, conn, &repositorysocket.Call{
+		Authenticate: &repositorysocket.Authenticate{
+			Token: token,
+		},
+	})
+
+	authResp, ok := readResponse(t, conn)
+	if !ok {
+		t.Fatal("socket was unexpectedly closed")
+	}
+
+	if authResp.CallId != callID {
+		t.Fatal("authentication response call ID mismatch")
+	}
+
+	rc := newResponseCollection()
+
+	go rc.ReadResponses(t, conn)
+
+	return client, conn, rc
+}
+
+// eventlogHasEvent reports whether resp carries an eventlog event for docUUID.
+// When eventType is non-empty the event type must also match.
+func eventlogHasEvent(
+	resp *repositorysocket.Response, docUUID string, eventType string,
+) bool {
+	if resp.Events == nil {
+		return false
+	}
+
+	for _, item := range resp.Events.Items {
+		if item.Event == nil || item.Event.Uuid != docUUID {
+			continue
+		}
+
+		if eventType == "" || item.Event.Event == eventType {
+			return true
+		}
+	}
+
+	return false
+}
+
+func TestIntegrationSocketEventlogEventTypeFilter(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	socketDir := filepath.Join("..", "testdata", "TestIntegrationSocket")
+	docsDir := filepath.Join(socketDir, "documents")
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunEventlogBuilder: true,
+		ConfigDirectory:    filepath.Join(socketDir, "config"),
+	})
+
+	client, conn, rc := dialEventlogSocket(t, tc)
+
+	// Two subscriptions on the same socket with different event-type filters.
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId: "want-document",
+		GetEventlog: &repositorysocket.GetEventlog{
+			Name:   "want-document",
+			Events: []string{"document"},
+		},
+	})
+
+	_, err := rc.AwaitResponse("want-document", nil, 2*time.Second)
+	test.Must(t, err, "subscribe want-document")
+
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId: "want-status",
+		GetEventlog: &repositorysocket.GetEventlog{
+			Name:   "want-status",
+			Events: []string{"status"},
+		},
+	})
+
+	_, err = rc.AwaitResponse("want-status", nil, 2*time.Second)
+	test.Must(t, err, "subscribe want-status")
+
+	// Writing a plain document produces a document event but no status event.
+	docUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
+
+	// want-document must receive the document event.
+	_, err = rc.AwaitResponse("want-document",
+		func(r *repositorysocket.Response) bool {
+			return eventlogHasEvent(r, docUUID, "document")
+		}, 5*time.Second)
+	test.Must(t, err, "want-document receives the document event")
+
+	// want-status must not receive anything for that document.
+	_, err = rc.AwaitResponse("want-status",
+		func(r *repositorysocket.Response) bool {
+			return eventlogHasEvent(r, docUUID, "")
+		}, time.Second)
+	if err == nil {
+		t.Fatal("want-status should not receive document events")
+	}
+}
+
+func TestIntegrationSocketEventlogRateLimit(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	socketDir := filepath.Join("..", "testdata", "TestIntegrationSocket")
+	docsDir := filepath.Join(socketDir, "documents")
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunEventlogBuilder: true,
+		ConfigDirectory:    filepath.Join(socketDir, "config"),
+		// Tiny bucket with effectively no refill so the live stream trips the
+		// limiter after a couple of events.
+		EventlogStream: repository.EventlogStreamConfig{
+			Burst: 2,
+			Rate:  rate.Limit(0.001),
+		},
+	})
+
+	client, conn, rc := dialEventlogSocket(t, tc)
+
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId:      "flood",
+		GetEventlog: &repositorysocket.GetEventlog{Name: "flood"},
+	})
+
+	_, err := rc.AwaitResponse("flood", nil, 2*time.Second)
+	test.Must(t, err, "subscribe flood")
+
+	// Flood the live stream with more events than the burst allows.
+	writeDoc(t, client, docsDir, "beach_plan_v1", nil)
+	writeDoc(t, client, docsDir, "beach", nil)
+	writeDoc(t, client, docsDir, "beach_plan_v2", nil)
+
+	for range 4 {
+		writeDoc(t, client, docsDir, "beach_plan_v3", nil)
+	}
+
+	// The subscription should be stopped with a rate_limited error. The check
+	// never matches, so AwaitResponse surfaces the error response instead.
+	_, err = rc.AwaitResponse("flood",
+		func(_ *repositorysocket.Response) bool {
+			return false
+		}, 10*time.Second)
+	if err == nil || !strings.Contains(err.Error(), "rate_limited") {
+		t.Fatalf("expected rate_limited error, got: %v", err)
+	}
+
+	// The socket should still be open: a fresh subscription must succeed.
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId:      "after-limit",
+		GetEventlog: &repositorysocket.GetEventlog{Name: "after-limit"},
+	})
+
+	_, err = rc.AwaitResponse("after-limit", nil, 2*time.Second)
+	test.Must(t, err, "subscribe after rate limit")
+}
+
+func TestIntegrationSocketEventlogResumeOOB(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	socketDir := filepath.Join("..", "testdata", "TestIntegrationSocket")
+	docsDir := filepath.Join(socketDir, "documents")
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunEventlogBuilder: true,
+		ConfigDirectory:    filepath.Join(socketDir, "config"),
+		// Tiny buffer so a handful of writes rotate the resume position out
+		// of range.
+		EventlogStream: repository.EventlogStreamConfig{BufferSize: 2},
+	})
+
+	client, conn, rc := dialEventlogSocket(t, tc)
+
+	// A live subscription lets us observe when the stream has buffered the
+	// latest events, so the resume below is reliably out of range.
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId:      "live",
+		GetEventlog: &repositorysocket.GetEventlog{Name: "live"},
+	})
+
+	_, err := rc.AwaitResponse("live", nil, 2*time.Second)
+	test.Must(t, err, "subscribe live")
+
+	beachPlanUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
+
+	writeDoc(t, client, docsDir, "beach", nil)
+	writeDoc(t, client, docsDir, "beach_plan_v2", nil)
+	writeDoc(t, client, docsDir, "beach_plan_v3", nil)
+
+	// Wait until the latest event has been buffered (buffer size 2, so the
+	// oldest buffered event is now well past event 1).
+	_, err = rc.AwaitResponse("live",
+		func(r *repositorysocket.Response) bool {
+			if r.Events == nil {
+				return false
+			}
+
+			for _, item := range r.Events.Items {
+				if item.Event != nil &&
+					item.Event.Uuid == beachPlanUUID &&
+					item.Event.Version == 3 {
+					return true
+				}
+			}
+
+			return false
+		}, 5*time.Second)
+	test.Must(t, err, "observe beach plan v3 on the live subscription")
+
+	// Resuming from event 0 is older than the buffer now holds, so it must
+	// fail with eventlog_resume_oob rather than silently dropping events.
+	afterZero := int64(0)
+
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId: "resume-old",
+		GetEventlog: &repositorysocket.GetEventlog{
+			Name:  "resume-old",
+			After: &afterZero,
+		},
+	})
+
+	_, err = rc.AwaitResponse("resume-old", nil, 2*time.Second)
+	if err == nil || !strings.Contains(err.Error(), "eventlog_resume_oob") {
+		t.Fatalf("expected eventlog_resume_oob error, got: %v", err)
+	}
+}
+
+func TestIntegrationSocketEventlogColdResume(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	socketDir := filepath.Join("..", "testdata", "TestIntegrationSocket")
+	docsDir := filepath.Join(socketDir, "documents")
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		RunEventlogBuilder: true,
+		ConfigDirectory:    filepath.Join(socketDir, "config"),
+	})
+
+	client, conn, rc := dialEventlogSocket(t, tc)
+
+	// Subscribe with a resume position against a cold (empty) buffer, before
+	// any documents are written. This is the documented post-restart case: the
+	// resume does not error, it silently proceeds live.
+	afterZero := int64(0)
+
+	makeCall(t, conn, &repositorysocket.Call{
+		CallId: "cold-resume",
+		GetEventlog: &repositorysocket.GetEventlog{
+			Name:  "cold-resume",
+			After: &afterZero,
+		},
+	})
+
+	_, err := rc.AwaitResponse("cold-resume", nil, 2*time.Second)
+	test.Must(t, err, "cold resume subscribes without an out-of-bounds error")
+
+	// Events written after subscribing are delivered live.
+	docUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
+
+	_, err = rc.AwaitResponse("cold-resume",
+		func(r *repositorysocket.Response) bool {
+			return eventlogHasEvent(r, docUUID, "document")
+		}, 5*time.Second)
+	test.Must(t, err, "cold resume receives live events")
 }

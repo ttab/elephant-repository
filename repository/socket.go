@@ -43,6 +43,43 @@ const (
 	maxMessageSize = 10 * 1024
 )
 
+// Default eventlog stream configuration values, shared between the CLI flags
+// and EventlogStreamConfig.withDefaults so the defaults live in one place.
+const (
+	DefaultEventlogBufferSize  = 500
+	DefaultEventlogStreamBurst = 70
+	DefaultEventlogStreamRate  = rate.Limit(10)
+)
+
+// EventlogStreamConfig configures eventlog subscriptions over the websocket.
+type EventlogStreamConfig struct {
+	// BufferSize is the number of recent events buffered for socket resume,
+	// forwarded to the document stream. Defaults to DefaultEventlogBufferSize.
+	BufferSize int
+	// Rate is the per-subscription event rate limit. Defaults to
+	// DefaultEventlogStreamRate.
+	Rate rate.Limit
+	// Burst is the per-subscription burst allowance. Defaults to
+	// DefaultEventlogStreamBurst.
+	Burst int
+}
+
+func (c EventlogStreamConfig) withDefaults() EventlogStreamConfig {
+	if c.BufferSize == 0 {
+		c.BufferSize = DefaultEventlogBufferSize
+	}
+
+	if c.Rate == 0 {
+		c.Rate = DefaultEventlogStreamRate
+	}
+
+	if c.Burst == 0 {
+		c.Burst = DefaultEventlogStreamBurst
+	}
+
+	return c
+}
+
 func NewSocketHandler(
 	ctx context.Context,
 	logger *slog.Logger,
@@ -52,9 +89,14 @@ func NewSocketHandler(
 	auth elephantine.AuthInfoParser,
 	socketKey *ecdsa.PublicKey,
 	corsHosts []string,
+	eventlog EventlogStreamConfig,
 ) (*SocketHandler, error) {
+	eventlog = eventlog.withDefaults()
+
+	// A zero BufferSize has been defaulted above; an explicitly negative value
+	// is a misconfiguration that NewDocumentStream rejects.
 	docStream, err := NewDocumentStream(
-		ctx, logger, metricsRegisterer, store)
+		ctx, logger, metricsRegisterer, store, eventlog.BufferSize)
 	if err != nil {
 		return nil, fmt.Errorf("create document stream: %w", err)
 	}
@@ -103,6 +145,7 @@ func NewSocketHandler(
 		auth:      auth,
 		socketKey: socketKey,
 		rate:      rateLimiterCache,
+		eventlog:  eventlog,
 	}
 
 	prom := elephantine.NewMetricsHelper(metricsRegisterer)
@@ -140,6 +183,7 @@ type SocketHandler struct {
 	auth      elephantine.AuthInfoParser
 	socketKey *ecdsa.PublicKey
 	rate      *sturdyc.Client[*rate.Limiter]
+	eventlog  EventlogStreamConfig
 
 	openSockets    prometheus.Gauge
 	socketRejected *prometheus.CounterVec
@@ -207,7 +251,8 @@ func (h *SocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	sess := NewSocketSession(
 		conn, h.log, h.store, h.cache, h.stream, h.auth,
-		h.socketCall, h.socketResponse,
+		h.socketCall, h.socketResponse, h.socketRejected,
+		h.eventlog,
 	)
 
 	h.openSockets.Inc()
@@ -224,6 +269,8 @@ func NewSocketSession(
 	authParser elephantine.AuthInfoParser,
 	socketCall *prometheus.CounterVec,
 	socketResponse *prometheus.CounterVec,
+	socketRejected *prometheus.CounterVec,
+	eventlog EventlogStreamConfig,
 ) *SocketSession {
 	return &SocketSession{
 		conn:           conn,
@@ -236,6 +283,8 @@ func NewSocketSession(
 		responses:      make(chan *responseHandle, 16),
 		sets:           make(map[string]*documentSetHandle),
 		eventlogs:      make(map[string]*eventlogHandle),
+		eventlog:       eventlog,
+		socketRejected: socketRejected,
 		socketCall:     socketCall,
 		socketResponse: socketResponse,
 	}
@@ -250,6 +299,9 @@ type SocketSession struct {
 
 	socketCall     *prometheus.CounterVec
 	socketResponse *prometheus.CounterVec
+	socketRejected *prometheus.CounterVec
+
+	eventlog EventlogStreamConfig
 
 	authExpired *time.Ticker
 
@@ -696,6 +748,17 @@ func (s *SocketSession) handleGetEventlog(
 		languages[l] = true
 	}
 
+	events := make(map[string]bool, len(req.Events))
+
+	for _, e := range req.Events {
+		if !EventType(e).Valid() {
+			return nil, SockErrorf(string(twirp.InvalidArgument),
+				"unknown event type %q", e)
+		}
+
+		events[e] = true
+	}
+
 	handleCtx, handleCancel := context.WithCancel(ctx)
 
 	handle := &eventlogHandle{
@@ -707,14 +770,18 @@ func (s *SocketSession) handleGetEventlog(
 		getAuth:   s.getAuth,
 		docTypes:  docTypes,
 		languages: languages,
+		events:    events,
 		subsets:   subsets,
-		process:   make(chan []DocumentStreamItem, 128),
-		oosErr:    make(chan struct{}),
+		limiter: rate.NewLimiter(
+			s.eventlog.Rate, s.eventlog.Burst),
+		rejected: s.socketRejected,
+		process:  make(chan eventlogBatch, 128),
+		oosErr:   make(chan struct{}),
 	}
 
 	if req.After != nil {
-		ok := s.stream.SubscribeFrom(
-			handleCtx, *req.After+1, handle.handleStreamItems)
+		ok := s.stream.SubscribeFrom(handleCtx, *req.After+1,
+			handle.handleReplayItems, handle.handleLiveItems)
 		if !ok {
 			handleCancel()
 
@@ -722,7 +789,7 @@ func (s *SocketSession) handleGetEventlog(
 				"resume position is out of bounds")
 		}
 	} else {
-		s.stream.Subscribe(handleCtx, handle.handleStreamItems)
+		s.stream.Subscribe(handleCtx, handle.handleLiveItems)
 	}
 
 	go handle.processingLoop()
@@ -752,6 +819,14 @@ func (s *SocketSession) handleCloseEventlog(
 	return &rsock.Response{}, nil
 }
 
+// eventlogBatch is a batch of stream items queued for processing. rateLimited
+// distinguishes the live stream (subject to the token bucket) from the initial
+// resume replay (a bounded catch-up that bypasses the limiter).
+type eventlogBatch struct {
+	items       []DocumentStreamItem
+	rateLimited bool
+}
+
 type eventlogHandle struct {
 	call      *CallHandle
 	ctx       context.Context
@@ -763,9 +838,20 @@ type eventlogHandle struct {
 
 	docTypes  map[string]bool
 	languages map[string]bool
+	events    map[string]bool
 	subsets   map[string][]*newsdoc.ValueExtractor
 
-	process chan []DocumentStreamItem
+	limiter *rate.Limiter
+	// rejected is the shared websocket rate-limit counter, incremented with
+	// reason="eventlog_stream" when a subscription is stopped for exceeding its
+	// rate limit.
+	rejected *prometheus.CounterVec
+
+	// process carries both replay and live batches. A subscription is stopped
+	// by the first terminal error it hits — either oos (the processing buffer
+	// overflowed) or rate_limited (the live stream exceeded its rate). The
+	// client should treat whichever arrives first as authoritative.
+	process chan eventlogBatch
 	oosErr  chan struct{}
 	oosOnce sync.Once
 }
@@ -774,11 +860,21 @@ func (h *eventlogHandle) Close() {
 	h.cancel()
 }
 
-func (h *eventlogHandle) handleStreamItems(items []DocumentStreamItem) {
+// handleReplayItems queues the resume replay, which bypasses the rate limiter.
+func (h *eventlogHandle) handleReplayItems(items []DocumentStreamItem) {
+	h.enqueue(items, false)
+}
+
+// handleLiveItems queues live events, which are rate limited.
+func (h *eventlogHandle) handleLiveItems(items []DocumentStreamItem) {
+	h.enqueue(items, true)
+}
+
+func (h *eventlogHandle) enqueue(items []DocumentStreamItem, rateLimited bool) {
 	select {
 	case <-h.oosErr:
 		return
-	case h.process <- items:
+	case h.process <- eventlogBatch{items: items, rateLimited: rateLimited}:
 	default:
 		h.oosOnce.Do(func() {
 			close(h.oosErr)
@@ -798,16 +894,22 @@ func (h *eventlogHandle) processingLoop() {
 
 			return
 		case batch := <-h.process:
-			h.processBatch(batch)
+			h.processBatch(batch.items, batch.rateLimited)
 		}
 	}
 }
 
-func (h *eventlogHandle) processBatch(items []DocumentStreamItem) {
+func (h *eventlogHandle) processBatch(
+	items []DocumentStreamItem, rateLimited bool,
+) {
 	var responseItems []*rsock.EventlogItem
 
 	for _, item := range items {
 		if len(h.docTypes) > 0 && !h.docTypes[item.Event.Type] {
+			continue
+		}
+
+		if len(h.events) > 0 && !h.events[string(item.Event.Event)] {
 			continue
 		}
 
@@ -839,11 +941,40 @@ func (h *eventlogHandle) processBatch(items []DocumentStreamItem) {
 		return
 	}
 
-	h.responder.Respond(h.ctx, h.call, &rsock.Response{
-		Events: &rsock.EventlogResponse{
-			Items: responseItems,
-		},
-	}, false)
+	// The live path spends one token per event, emitting as many as the bucket
+	// allows. The replay path is exempt. Per-item (rather than AllowN for the
+	// whole batch) avoids an oversized batch instantly tripping the limit, and
+	// leaves a clean last-delivered-id boundary for the client to resume from.
+	allowed := responseItems
+
+	if rateLimited {
+		n := 0
+
+		for n < len(responseItems) && h.limiter.Allow() {
+			n++
+		}
+
+		allowed = responseItems[:n]
+	}
+
+	if len(allowed) > 0 {
+		h.responder.Respond(h.ctx, h.call, &rsock.Response{
+			Events: &rsock.EventlogResponse{
+				Items: allowed,
+			},
+		}, false)
+	}
+
+	if rateLimited && len(allowed) < len(responseItems) {
+		h.rejected.WithLabelValues("eventlog_stream").Inc()
+
+		h.responder.Respond(h.ctx, h.call, &rsock.Response{
+			Error: SockErrorf("rate_limited",
+				"eventlog subscription exceeded rate limit; resubscribe to continue"),
+		}, false)
+
+		h.cancel()
+	}
 }
 
 func (h *eventlogHandle) hasReadPermission(docUUID uuid.UUID) bool {
