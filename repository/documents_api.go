@@ -354,11 +354,12 @@ func DocumentMetaToRPC(meta *DocumentMeta) *repository.DocumentMeta {
 
 	if meta.Lock.Expires != (time.Time{}) {
 		resp.Lock = &repository.Lock{
-			Uri:     meta.Lock.URI,
-			Created: meta.Lock.Created.Format(time.RFC3339),
-			Expires: meta.Lock.Expires.Format(time.RFC3339),
-			App:     meta.Lock.App,
-			Comment: meta.Lock.Comment,
+			Uri:         meta.Lock.URI,
+			Created:     meta.Lock.Created.Format(time.RFC3339),
+			Expires:     meta.Lock.Expires.Format(time.RFC3339),
+			App:         meta.Lock.App,
+			Comment:     meta.Lock.Comment,
+			Exclusivity: lockExclusivityToRPC(meta.Lock.Exclusivity),
 		}
 	}
 
@@ -1601,12 +1602,18 @@ func (a *DocumentsService) Get(
 	var lockGrant *repository.LockGrant
 
 	if req.Lock != nil {
+		exclusivity, err := lockExclusivityFromRPC(req.Lock.Exclusivity)
+		if err != nil {
+			return nil, twirp.InvalidArgumentError("lock.exclusivity", err.Error())
+		}
+
 		lock, err := a.store.Lock(ctx, LockRequest{
-			UUID:    docUUID,
-			TTL:     req.Lock.Ttl,
-			URI:     auth.Claims.Subject,
-			App:     req.Lock.App,
-			Comment: req.Lock.Comment,
+			UUID:        docUUID,
+			TTL:         req.Lock.Ttl,
+			URI:         auth.Claims.Subject,
+			App:         req.Lock.App,
+			Comment:     req.Lock.Comment,
+			Exclusivity: exclusivity,
 		})
 
 		switch {
@@ -2714,12 +2721,18 @@ func (a *DocumentsService) Lock(
 		return nil, twirp.RequiredArgumentError("ttl")
 	}
 
+	exclusivity, err := lockExclusivityFromRPC(req.Exclusivity)
+	if err != nil {
+		return nil, twirp.InvalidArgumentError("exclusivity", err.Error())
+	}
+
 	lock, err := a.store.Lock(ctx, LockRequest{
-		UUID:    docUUID,
-		TTL:     req.Ttl,
-		URI:     auth.Claims.Subject,
-		App:     req.App,
-		Comment: req.Comment,
+		UUID:        docUUID,
+		TTL:         req.Ttl,
+		URI:         auth.Claims.Subject,
+		App:         req.App,
+		Comment:     req.Comment,
+		Exclusivity: exclusivity,
 	})
 
 	switch {
@@ -2765,7 +2778,42 @@ func lockConflictTwirp(err error) twirp.Error {
 		twerr = twerr.WithMeta("lock_expires", conflict.Holder.Expires.Format(time.RFC3339))
 	}
 
+	if conflict.Holder.Exclusivity != "" {
+		twerr = twerr.WithMeta("lock_exclusivity", string(conflict.Holder.Exclusivity))
+	}
+
 	return twerr
+}
+
+func lockExclusivityFromRPC(
+	e repository.LockExclusivity,
+) (LockExclusivity, error) {
+	switch e {
+	case repository.LockExclusivity_LOCK_DOCUMENT:
+		return LockExclusivityDocument, nil
+	case repository.LockExclusivity_LOCK_STATUS:
+		return LockExclusivityStatus, nil
+	case repository.LockExclusivity_LOCK_ACL:
+		return LockExclusivityACL, nil
+	case repository.LockExclusivity_LOCK_EXCLUSIVE:
+		return LockExclusivityExclusive, nil
+	}
+
+	return "", fmt.Errorf("unknown lock exclusivity value %d", e)
+}
+
+func lockExclusivityToRPC(e LockExclusivity) repository.LockExclusivity {
+	switch e {
+	case LockExclusivityStatus:
+		return repository.LockExclusivity_LOCK_STATUS
+	case LockExclusivityACL:
+		return repository.LockExclusivity_LOCK_ACL
+	case LockExclusivityExclusive:
+		return repository.LockExclusivity_LOCK_EXCLUSIVE
+	case LockExclusivityDocument:
+	}
+
+	return repository.LockExclusivity_LOCK_DOCUMENT
 }
 
 // ExtendLock extends the expiration of an existing lock.

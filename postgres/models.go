@@ -134,13 +134,14 @@ type DocumentArchiveCounter struct {
 }
 
 type DocumentLock struct {
-	UUID    uuid.UUID
-	Token   string
-	Created pgtype.Timestamptz
-	Expires pgtype.Timestamptz
-	URI     pgtype.Text
-	App     pgtype.Text
-	Comment pgtype.Text
+	UUID        uuid.UUID
+	Token       string
+	Created     pgtype.Timestamptz
+	Expires     pgtype.Timestamptz
+	URI         pgtype.Text
+	App         pgtype.Text
+	Comment     pgtype.Text
+	Exclusivity string
 }
 
 type DocumentSchema struct {

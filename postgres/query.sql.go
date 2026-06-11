@@ -297,6 +297,7 @@ SELECT
         d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
+        l.exclusivity as lock_exclusivity,
         ws.step as workflow_state, ws.checkpoint as workflow_checkpoint
 FROM document as d
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > $1
@@ -328,6 +329,7 @@ type BulkGetDocumentInfoRow struct {
 	LockApp            pgtype.Text
 	LockComment        pgtype.Text
 	LockToken          pgtype.Text
+	LockExclusivity    pgtype.Text
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 }
@@ -360,6 +362,7 @@ func (q *Queries) BulkGetDocumentInfo(ctx context.Context, arg BulkGetDocumentIn
 			&i.LockApp,
 			&i.LockComment,
 			&i.LockToken,
+			&i.LockExclusivity,
 			&i.WorkflowState,
 			&i.WorkflowCheckpoint,
 		); err != nil {
@@ -1901,7 +1904,7 @@ SELECT d.uri, d.type, d.current_version, d.main_doc, d.language, d.system_state,
        d.nonce AS nonce,
        l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
-       l.token as lock_token
+       l.token as lock_token, l.exclusivity as lock_exclusivity
 FROM document as d
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > $2
 WHERE d.uuid = $1
@@ -1914,20 +1917,21 @@ type GetDocumentForUpdateParams struct {
 }
 
 type GetDocumentForUpdateRow struct {
-	URI            string
-	Type           string
-	CurrentVersion int64
-	MainDoc        pgtype.UUID
-	Language       pgtype.Text
-	SystemState    pgtype.Text
-	Nonce          uuid.UUID
-	LockUuid       pgtype.UUID
-	LockUri        pgtype.Text
-	LockCreated    pgtype.Timestamptz
-	LockExpires    pgtype.Timestamptz
-	LockApp        pgtype.Text
-	LockComment    pgtype.Text
-	LockToken      pgtype.Text
+	URI             string
+	Type            string
+	CurrentVersion  int64
+	MainDoc         pgtype.UUID
+	Language        pgtype.Text
+	SystemState     pgtype.Text
+	Nonce           uuid.UUID
+	LockUuid        pgtype.UUID
+	LockUri         pgtype.Text
+	LockCreated     pgtype.Timestamptz
+	LockExpires     pgtype.Timestamptz
+	LockApp         pgtype.Text
+	LockComment     pgtype.Text
+	LockToken       pgtype.Text
+	LockExclusivity pgtype.Text
 }
 
 func (q *Queries) GetDocumentForUpdate(ctx context.Context, arg GetDocumentForUpdateParams) (GetDocumentForUpdateRow, error) {
@@ -1948,6 +1952,7 @@ func (q *Queries) GetDocumentForUpdate(ctx context.Context, arg GetDocumentForUp
 		&i.LockApp,
 		&i.LockComment,
 		&i.LockToken,
+		&i.LockExclusivity,
 	)
 	return i, err
 }
@@ -1989,8 +1994,9 @@ SELECT
         d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
+        l.exclusivity as lock_exclusivity,
         ws.step as workflow_state, ws.checkpoint as workflow_checkpoint
-FROM document as d 
+FROM document as d
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > $1
 LEFT JOIN workflow_state AS ws ON ws.uuid = d.uuid
 WHERE d.uuid = $2
@@ -2020,6 +2026,7 @@ type GetDocumentInfoRow struct {
 	LockApp            pgtype.Text
 	LockComment        pgtype.Text
 	LockToken          pgtype.Text
+	LockExclusivity    pgtype.Text
 	WorkflowState      pgtype.Text
 	WorkflowCheckpoint pgtype.Text
 }
@@ -2046,6 +2053,7 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, arg GetDocumentInfoParams
 		&i.LockApp,
 		&i.LockComment,
 		&i.LockToken,
+		&i.LockExclusivity,
 		&i.WorkflowState,
 		&i.WorkflowCheckpoint,
 	)
@@ -4206,20 +4214,21 @@ func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) 
 
 const insertDocumentLock = `-- name: InsertDocumentLock :exec
 INSERT INTO document_lock(
-  uuid, token, created, expires, uri, app, comment
+  uuid, token, created, expires, uri, app, comment, exclusivity
 ) VALUES(
-  $1, $2, $3, $4, $5, $6, $7
+  $1, $2, $3, $4, $5, $6, $7, $8
 )
 `
 
 type InsertDocumentLockParams struct {
-	UUID    uuid.UUID
-	Token   string
-	Created pgtype.Timestamptz
-	Expires pgtype.Timestamptz
-	URI     pgtype.Text
-	App     pgtype.Text
-	Comment pgtype.Text
+	UUID        uuid.UUID
+	Token       string
+	Created     pgtype.Timestamptz
+	Expires     pgtype.Timestamptz
+	URI         pgtype.Text
+	App         pgtype.Text
+	Comment     pgtype.Text
+	Exclusivity string
 }
 
 func (q *Queries) InsertDocumentLock(ctx context.Context, arg InsertDocumentLockParams) error {
@@ -4231,6 +4240,7 @@ func (q *Queries) InsertDocumentLock(ctx context.Context, arg InsertDocumentLock
 		arg.URI,
 		arg.App,
 		arg.Comment,
+		arg.Exclusivity,
 	)
 	return err
 }
