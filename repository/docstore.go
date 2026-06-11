@@ -573,20 +573,39 @@ type ACLEntry struct {
 }
 
 type Lock struct {
-	Token   string
-	URI     string
-	Created time.Time
-	Expires time.Time
-	App     string
-	Comment string
+	Token       string
+	URI         string
+	Created     time.Time
+	Expires     time.Time
+	App         string
+	Comment     string
+	Exclusivity LockExclusivity
 }
 
+// LockExclusivity controls which operations a document lock blocks for
+// callers that don't hold the lock token. Document updates are always
+// blocked by a lock; the exclusivity level can extend the lock to also
+// cover status and ACL updates.
+type LockExclusivity string
+
+const (
+	// LockExclusivityDocument blocks document updates only.
+	LockExclusivityDocument LockExclusivity = "document"
+	// LockExclusivityStatus blocks document and status updates.
+	LockExclusivityStatus LockExclusivity = "status"
+	// LockExclusivityACL blocks document and ACL updates.
+	LockExclusivityACL LockExclusivity = "acl"
+	// LockExclusivityExclusive blocks document, status, and ACL updates.
+	LockExclusivityExclusive LockExclusivity = "exclusive"
+)
+
 type LockRequest struct {
-	UUID    uuid.UUID
-	URI     string
-	TTL     int32
-	App     string
-	Comment string
+	UUID        uuid.UUID
+	URI         string
+	TTL         int32
+	App         string
+	Comment     string
+	Exclusivity LockExclusivity
 }
 
 type LockResult struct {

@@ -197,7 +197,8 @@ CREATE TABLE public.document_lock (
     expires timestamp with time zone NOT NULL,
     uri text,
     app text,
-    comment text
+    comment text,
+    exclusivity text DEFAULT 'document'::text NOT NULL
 );
 
 

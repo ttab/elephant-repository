@@ -3,7 +3,7 @@ SELECT d.uri, d.type, d.current_version, d.main_doc, d.language, d.system_state,
        d.nonce AS nonce,
        l.uuid as lock_uuid, l.uri as lock_uri, l.created as lock_created,
        l.expires as lock_expires, l.app as lock_app, l.comment as lock_comment,
-       l.token as lock_token
+       l.token as lock_token, l.exclusivity as lock_exclusivity
 FROM document as d
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
 WHERE d.uuid = $1
@@ -107,8 +107,9 @@ SELECT
         d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
+        l.exclusivity as lock_exclusivity,
         ws.step as workflow_state, ws.checkpoint as workflow_checkpoint
-FROM document as d 
+FROM document as d
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
 LEFT JOIN workflow_state AS ws ON ws.uuid = d.uuid
 WHERE d.uuid = @uuid;
@@ -119,6 +120,7 @@ SELECT
         d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
+        l.exclusivity as lock_exclusivity,
         ws.step as workflow_state, ws.checkpoint as workflow_checkpoint
 FROM document as d
 LEFT JOIN document_lock as l ON d.uuid = l.uuid AND l.expires > @now
@@ -729,9 +731,9 @@ DELETE FROM status_rule WHERE type = @type AND name = @name;
 
 -- name: InsertDocumentLock :exec
 INSERT INTO document_lock(
-  uuid, token, created, expires, uri, app, comment
+  uuid, token, created, expires, uri, app, comment, exclusivity
 ) VALUES(
-  @uuid, @token, @created, @expires, @uri, @app, @comment
+  @uuid, @token, @created, @expires, @uri, @app, @comment, @exclusivity
 );
 
 -- name: UpdateDocumentLock :exec

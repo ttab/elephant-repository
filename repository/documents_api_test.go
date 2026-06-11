@@ -2224,6 +2224,188 @@ func TestDocumentLocking(t *testing.T) {
 	test.Must(t, err, "unlock non-existing document")
 }
 
+func TestDocumentLockExclusivity(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+	ctx := t.Context()
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write doc_delete"))
+
+	const (
+		docUUID = "3ec96c99-ed75-4a2c-bf4d-29892e6d7b7c"
+		docURI  = "article://test/lock-exclusivity"
+	)
+
+	doc := baseDocument(docUUID, docURI)
+
+	res, err := client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.Must(t, err, "create test article")
+
+	statusUpdate := []*repository.StatusUpdate{
+		{Name: "done", Version: res.Version},
+	}
+
+	aclUpdate := []*repository.ACLEntry{
+		{Uri: "user://test/other", Permissions: []string{"r"}},
+	}
+
+	// A default lock only blocks document updates.
+	lock, err := client.Lock(ctx, &repository.LockRequest{
+		Uuid: docUUID,
+		Ttl:  10000,
+	})
+	test.Must(t, err, "lock the document with default exclusivity")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.MustNot(t, err, "update a document with a default lock")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:   docUUID,
+		Status: statusUpdate,
+	})
+	test.Must(t, err, "set a status on a document with a default lock")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Acl:  aclUpdate,
+	})
+	test.Must(t, err, "update the ACL of a document with a default lock")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:      docUUID,
+		Status:    statusUpdate,
+		LockToken: "0e2e44ad-1a1c-4bc9-8a4a-44b35e3a0fcc",
+	})
+	test.MustNot(t, err, "set a status using the wrong lock token")
+
+	_, err = client.Unlock(ctx, &repository.UnlockRequest{
+		Uuid:  docUUID,
+		Token: lock.Token,
+	})
+	test.Must(t, err, "unlock the document")
+
+	// A status lock blocks status updates, but not ACL updates.
+	lock, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid:        docUUID,
+		Ttl:         10000,
+		Exclusivity: repository.LockExclusivity_LOCK_STATUS,
+	})
+	test.Must(t, err, "lock the document with status exclusivity")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:   docUUID,
+		Status: statusUpdate,
+	})
+	test.MustNot(t, err, "set a status on a status-locked document")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Acl:  aclUpdate,
+	})
+	test.Must(t, err, "update the ACL of a status-locked document")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:      docUUID,
+		Status:    statusUpdate,
+		LockToken: lock.Token,
+	})
+	test.Must(t, err, "set a status on a status-locked document with the lock token")
+
+	_, err = client.Unlock(ctx, &repository.UnlockRequest{
+		Uuid:  docUUID,
+		Token: lock.Token,
+	})
+	test.Must(t, err, "unlock the document")
+
+	// An ACL lock blocks ACL updates, but not status updates.
+	lock, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid:        docUUID,
+		Ttl:         10000,
+		Exclusivity: repository.LockExclusivity_LOCK_ACL,
+	})
+	test.Must(t, err, "lock the document with ACL exclusivity")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Acl:  aclUpdate,
+	})
+	test.MustNot(t, err, "update the ACL of an ACL-locked document")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:   docUUID,
+		Status: statusUpdate,
+	})
+	test.Must(t, err, "set a status on an ACL-locked document")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:      docUUID,
+		Acl:       aclUpdate,
+		LockToken: lock.Token,
+	})
+	test.Must(t, err, "update the ACL of an ACL-locked document with the lock token")
+
+	_, err = client.Unlock(ctx, &repository.UnlockRequest{
+		Uuid:  docUUID,
+		Token: lock.Token,
+	})
+	test.Must(t, err, "unlock the document")
+
+	// An exclusive lock blocks document, status, and ACL updates.
+	lock, err = client.Lock(ctx, &repository.LockRequest{
+		Uuid:        docUUID,
+		Ttl:         10000,
+		Exclusivity: repository.LockExclusivity_LOCK_EXCLUSIVE,
+	})
+	test.Must(t, err, "lock the document with exclusive exclusivity")
+
+	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: docUUID,
+	})
+	test.Must(t, err, "fetch document meta")
+	test.NotNil(t, meta.Meta.Lock, "document should have a lock")
+	test.Equal(t, meta.Meta.Lock.Exclusivity,
+		repository.LockExclusivity_LOCK_EXCLUSIVE,
+		"expected the lock exclusivity to be exposed in the meta")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: doc,
+	})
+	test.MustNot(t, err, "update an exclusively locked document")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:   docUUID,
+		Status: statusUpdate,
+	})
+	test.MustNot(t, err, "set a status on an exclusively locked document")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid: docUUID,
+		Acl:  aclUpdate,
+	})
+	test.MustNot(t, err, "update the ACL of an exclusively locked document")
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:      docUUID,
+		Document:  doc,
+		Status:    statusUpdate,
+		Acl:       aclUpdate,
+		LockToken: lock.Token,
+	})
+	test.Must(t, err, "perform a full update of an exclusively locked document with the lock token")
+}
+
 func TestGetWithLock(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()

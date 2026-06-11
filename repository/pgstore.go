@@ -381,7 +381,7 @@ func (s *PGDocStore) Delete(
 		return nil
 	}
 
-	lock := checkLock(mainInfo.Lock, req.LockToken)
+	lock := checkLock(mainInfo.Lock, req.LockToken, lockOps{document: true})
 	if lock == lockCheckDenied {
 		return DocStoreErrorf(ErrCodeDocumentLock, "document locked")
 	}
@@ -1480,12 +1480,13 @@ func (s *PGDocStore) GetDocumentMeta(
 		WorkflowState:      info.WorkflowState.String,
 		WorkflowCheckpoint: info.WorkflowCheckpoint.String,
 		Lock: Lock{
-			Token:   info.LockToken.String,
-			URI:     info.LockUri.String,
-			Created: info.LockCreated.Time,
-			Expires: info.LockExpires.Time,
-			App:     info.LockApp.String,
-			Comment: info.LockComment.String,
+			Token:       info.LockToken.String,
+			URI:         info.LockUri.String,
+			Created:     info.LockCreated.Time,
+			Expires:     info.LockExpires.Time,
+			App:         info.LockApp.String,
+			Comment:     info.LockComment.String,
+			Exclusivity: LockExclusivity(info.LockExclusivity.String),
 		},
 	}
 
@@ -1570,12 +1571,13 @@ func (s *PGDocStore) BulkGetDocumentMeta(
 			WorkflowState:      info.WorkflowState.String,
 			WorkflowCheckpoint: info.WorkflowCheckpoint.String,
 			Lock: Lock{
-				Token:   info.LockToken.String,
-				URI:     info.LockUri.String,
-				Created: info.LockCreated.Time,
-				Expires: info.LockExpires.Time,
-				App:     info.LockApp.String,
-				Comment: info.LockComment.String,
+				Token:       info.LockToken.String,
+				URI:         info.LockUri.String,
+				Created:     info.LockCreated.Time,
+				Expires:     info.LockExpires.Time,
+				App:         info.LockApp.String,
+				Comment:     info.LockComment.String,
+				Exclusivity: LockExclusivity(info.LockExclusivity.String),
 			},
 		}
 
@@ -1839,17 +1841,53 @@ func (s *PGDocStore) CheckPermissions(
 	return PermissionCheckAllowed, nil
 }
 
+// lockOps describes the operations that an update performs, and is used to
+// determine whether a document lock blocks the update.
+type lockOps struct {
+	document bool
+	status   bool
+	acl      bool
+}
+
 func checkLock(
 	lock Lock,
 	token string,
+	ops lockOps,
 ) checkLockResult {
-	// We only need to validate the token; the expiration has already been
-	// handled in the SQL layer.
+	// We don't need to check the expiration of the lock; that has already
+	// been handled in the SQL layer.
 	if token == lock.Token {
 		return lockCheckAllowed
 	}
 
-	return lockCheckDenied
+	// A non-matching token is always an error, regardless of what the
+	// update does: the caller believes that it holds a lock that it
+	// doesn't.
+	if token != "" {
+		return lockCheckDenied
+	}
+
+	if ops.document {
+		return lockCheckDenied
+	}
+
+	switch lock.Exclusivity {
+	case LockExclusivityDocument:
+	case LockExclusivityStatus:
+		if ops.status {
+			return lockCheckDenied
+		}
+	case LockExclusivityACL:
+		if ops.acl {
+			return lockCheckDenied
+		}
+	case LockExclusivityExclusive:
+		if ops.status || ops.acl {
+			return lockCheckDenied
+		}
+	}
+
+	return lockCheckAllowed
 }
 
 type checkLockResult int
@@ -2005,7 +2043,13 @@ func (s *PGDocStore) Update(
 			}
 		}
 
-		lock := checkLock(info.Lock, state.Request.LockToken)
+		lock := checkLock(info.Lock, state.Request.LockToken, lockOps{
+			document: state.Doc != nil ||
+				len(state.Request.AttachObjects) > 0 ||
+				len(state.Request.DetachObjects) > 0,
+			status: len(state.Request.Status) > 0,
+			acl:    len(state.Request.ACL) > 0,
+		})
 		if lock == lockCheckDenied {
 			return nil, DocStoreErrorf(ErrCodeDocumentLock, "document locked")
 		}
@@ -3575,6 +3619,10 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 	now := time.Now()
 	expires := now.Add(time.Millisecond * time.Duration(req.TTL))
 
+	if req.Exclusivity == "" {
+		req.Exclusivity = LockExclusivityDocument
+	}
+
 	res := LockResult{
 		Created: now,
 		Expires: expires,
@@ -3616,13 +3664,14 @@ func (s *PGDocStore) Lock(ctx context.Context, req LockRequest) (LockResult, err
 		}
 
 		err = q.InsertDocumentLock(ctx, postgres.InsertDocumentLockParams{
-			UUID:    req.UUID,
-			Token:   res.Token,
-			Created: pg.Time(now),
-			Expires: pg.Time(expires),
-			URI:     pg.TextOrNull(req.URI),
-			App:     pg.TextOrNull(req.App),
-			Comment: pg.TextOrNull(req.Comment),
+			UUID:        req.UUID,
+			Token:       res.Token,
+			Created:     pg.Time(now),
+			Expires:     pg.Time(expires),
+			URI:         pg.TextOrNull(req.URI),
+			App:         pg.TextOrNull(req.App),
+			Comment:     pg.TextOrNull(req.Comment),
+			Exclusivity: string(req.Exclusivity),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to insert document lock: %w", err)
@@ -3663,8 +3712,7 @@ func (s *PGDocStore) UpdateLock(ctx context.Context, req UpdateLockRequest) (Loc
 			return DocStoreErrorf(ErrCodeNoSuchLock, "not locked")
 		}
 
-		lock := checkLock(info.Lock, req.Token)
-		if lock == lockCheckDenied {
+		if req.Token != info.Lock.Token {
 			return DocStoreErrorf(ErrCodeDocumentLock, "invalid lock token")
 		}
 
@@ -4798,12 +4846,13 @@ func (s *PGDocStore) UpdatePreflight(
 		MainDocType: mainDocType,
 		Language:    info.Language.String,
 		Lock: Lock{
-			URI:     info.LockUri.String,
-			Token:   info.LockToken.String,
-			Created: info.LockCreated.Time,
-			Expires: info.LockExpires.Time,
-			App:     info.LockApp.String,
-			Comment: info.LockComment.String,
+			URI:         info.LockUri.String,
+			Token:       info.LockToken.String,
+			Created:     info.LockCreated.Time,
+			Expires:     info.LockExpires.Time,
+			App:         info.LockApp.String,
+			Comment:     info.LockComment.String,
+			Exclusivity: LockExclusivity(info.LockExclusivity.String),
 		},
 	}, nil
 }
