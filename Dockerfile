@@ -14,7 +14,7 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
       -ldflags "-X main.version=$VERSION" \
       -o /build/repository ./cmd/repository
 
-FROM alpine:3.23
+FROM alpine:3.24
 
 COPY --from=build /build/repository /usr/local/bin/repository
 
