@@ -97,7 +97,7 @@ func NewEventlogBuilder(
 	prom.CounterVec(&eb.events, prometheus.CounterOpts{
 		Name: "elephant_eventlog_events_total",
 		Help: "Number of received eventlog events.",
-	}, []string{"type", "doc_type"})
+	}, []string{"type", metricLabelDocType})
 
 	if err := prom.Err(); err != nil {
 		return nil, fmt.Errorf("register metrics: %w", err)

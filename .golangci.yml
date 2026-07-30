@@ -15,7 +15,7 @@ linters:
     - godox
     - goheader
     - gomoddirectives
-    - gomodguard
+    - gomodguard_v2
     - goprintffuncname
     - gosec
     - importas
@@ -60,7 +60,7 @@ linters:
       - legacy
       - std-error-handling
     rules:
-      - linters: [gosec]
+      - linters: [gosec, goconst]
         path: _test\.go$
       - linters: [gosec]
         path: jwt_dummy\.go$

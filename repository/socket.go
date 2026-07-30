@@ -164,7 +164,7 @@ func NewSocketHandler(
 
 	prom.CounterVec(&h.socketResponse, prometheus.CounterOpts{
 		Name: "repository_websocket_response_total",
-	}, []string{"method", "status", "response"})
+	}, []string{"method", metricLabelStatus, "response"})
 
 	if err := prom.Err(); err != nil {
 		return nil, fmt.Errorf("register metrics: %w", err)

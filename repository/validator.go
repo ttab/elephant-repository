@@ -72,7 +72,7 @@ func NewValidator(
 		prometheus.CounterOpts{
 			Name: "elephant_docs_with_deprecations_total",
 			Help: "Number of encountered documents with deprecations",
-		}, []string{"doc_type"})
+		}, []string{metricLabelDocType})
 	if err := metricsRegisterer.Register(v.docsWithDeprecationsCounter); err != nil {
 		return nil, fmt.Errorf("register docs with deprecations metric: %w", err)
 	}
@@ -81,7 +81,7 @@ func NewValidator(
 		prometheus.CounterOpts{
 			Name: "elephant_pending_validation_failures_total",
 			Help: "Number of validation failures against the pending schema generation",
-		}, []string{"doc_type", "error"})
+		}, []string{metricLabelDocType, "error"})
 	if err := metricsRegisterer.Register(v.pendingFailureCounter); err != nil {
 		return nil, fmt.Errorf("register pending validation metric: %w", err)
 	}
