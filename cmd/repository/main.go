@@ -363,6 +363,21 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		}
 	}
 
+	poolMetrics := elephantine.NewMetricsHelper(prometheus.DefaultRegisterer)
+
+	poolMetrics.Collector("main",
+		pg.NewPoolStatCollector(dbpool, "main"))
+
+	if pubsubPool != dbpool {
+		poolMetrics.Collector("pubsub",
+			pg.NewPoolStatCollector(pubsubPool, "pubsub"))
+	}
+
+	err = poolMetrics.Err()
+	if err != nil {
+		return fmt.Errorf("register connection pool metrics: %w", err)
+	}
+
 	if migrateDB {
 		logger.Info("migrating database schema")
 
