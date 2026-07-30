@@ -43,7 +43,7 @@ func TestAssetUpload(t *testing.T) {
 			"some": "random-prop",
 		},
 	})
-	test.Must(t, err, "create upload")
+	test.Mustf(t, err, "create upload")
 
 	data := "Hello World\n"
 
@@ -51,12 +51,12 @@ func TestAssetUpload(t *testing.T) {
 		http.MethodPut,
 		up.Url,
 		strings.NewReader(data))
-	test.Must(t, err, "create upload request")
+	test.Mustf(t, err, "create upload request")
 
 	req.ContentLength = int64(len(data))
 
 	res, err := http.DefaultClient.Do(req.WithContext(ctx))
-	test.Must(t, err, "make upload request")
+	test.Mustf(t, err, "make upload request")
 
 	defer res.Body.Close()
 
@@ -79,15 +79,15 @@ func TestAssetUpload(t *testing.T) {
 			"plaintext": up.Id,
 		},
 	})
-	test.Must(t, err, "create document with an attachment")
+	test.Mustf(t, err, "create document with an attachment")
 
 	// Check that the document meta shows the attached object.
 	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "get meta post-attach")
+	test.Mustf(t, err, "get meta post-attach")
 
-	test.TestMessageAgainstGolden(t, regenerate, meta,
+	test.MessageAgainstGolden(t, regenerate, meta,
 		filepath.Join(dataDir, "meta-post-attach.json"),
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("nonce"),
@@ -99,26 +99,26 @@ func TestAssetUpload(t *testing.T) {
 			AttachmentName: "plaintext",
 			DownloadLink:   true,
 		})
-	test.Must(t, err, "get download links")
+	test.Mustf(t, err, "get download links")
 
-	test.Equal(t, 1, len(downloadLinks.Attachments),
+	test.Equalf(t, 1, len(downloadLinks.Attachments),
 		"get download info for the attachment")
 
-	test.Equal(t, "my.txt", downloadLinks.Attachments[0].Filename,
+	test.Equalf(t, "my.txt", downloadLinks.Attachments[0].Filename,
 		"get the correct file name back")
 
-	test.Equal(t, "text/plain", downloadLinks.Attachments[0].ContentType,
+	test.Equalf(t, "text/plain", downloadLinks.Attachments[0].ContentType,
 		"get the correct content type back")
 
 	downloadRes, err := http.Get(downloadLinks.Attachments[0].DownloadLink)
-	test.Must(t, err, "make download request")
+	test.Mustf(t, err, "make download request")
 
 	defer downloadRes.Body.Close()
 
 	dowloadedData, err := io.ReadAll(downloadRes.Body)
-	test.Must(t, err, "read download data")
+	test.Mustf(t, err, "read download data")
 
-	test.Equal(t, data, string(dowloadedData), "get the correct data in download")
+	test.Equalf(t, data, string(dowloadedData), "get the correct data in download")
 
 	// Update the document and detach the object.
 	_, err = client.Update(ctx, &repository.UpdateRequest{
@@ -126,22 +126,22 @@ func TestAssetUpload(t *testing.T) {
 		Document:      doc,
 		DetachObjects: []string{"plaintext"},
 	})
-	test.Must(t, err, "detach object")
+	test.Mustf(t, err, "detach object")
 
 	// Check that the document meta doesn't show the attached object.
 	meta, err = client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "get meta post-detach")
+	test.Mustf(t, err, "get meta post-detach")
 
-	test.TestMessageAgainstGolden(t, regenerate, meta,
+	test.MessageAgainstGolden(t, regenerate, meta,
 		filepath.Join(dataDir, "meta-post-detach.json"),
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("nonce"))
 
 	log := collectEventlog(t, client, 2, 5*time.Second)
 
-	test.TestMessageAgainstGolden(t, regenerate, log,
+	test.MessageAgainstGolden(t, regenerate, log,
 		filepath.Join(dataDir, "events.json"),
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("document_nonce"),
@@ -176,7 +176,7 @@ func TestAssetRestore(t *testing.T) {
 			"some": "random-prop",
 		},
 	})
-	test.Must(t, err, "create upload")
+	test.Mustf(t, err, "create upload")
 
 	data := "Hello World\n"
 
@@ -184,12 +184,12 @@ func TestAssetRestore(t *testing.T) {
 		http.MethodPut,
 		up.Url,
 		strings.NewReader(data))
-	test.Must(t, err, "create upload request")
+	test.Mustf(t, err, "create upload request")
 
 	req.ContentLength = int64(len(data))
 
 	res, err := http.DefaultClient.Do(req.WithContext(ctx))
-	test.Must(t, err, "make upload request")
+	test.Mustf(t, err, "make upload request")
 
 	defer res.Body.Close()
 
@@ -212,13 +212,13 @@ func TestAssetRestore(t *testing.T) {
 			"plaintext": up.Id,
 		},
 	})
-	test.Must(t, err, "create document with an attachment")
+	test.Mustf(t, err, "create document with an attachment")
 
 	// Delete the document.
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "delete document with an attachment")
+	test.Mustf(t, err, "delete document with an attachment")
 
 	deadline := time.Now().Add(5 * time.Second)
 
@@ -247,15 +247,15 @@ func TestAssetRestore(t *testing.T) {
 	deleted, err := client.ListDeleted(ctx, &repository.ListDeletedRequest{
 		Uuid: doc.Uuid,
 	})
-	test.Must(t, err, "get deleted versions of the document")
+	test.Mustf(t, err, "get deleted versions of the document")
 
-	test.Equal(t, 1, len(deleted.Deletes), "get one delete entry")
+	test.Equalf(t, 1, len(deleted.Deletes), "get one delete entry")
 
 	_, err = client.Restore(ctx, &repository.RestoreRequest{
 		Uuid:           docUUID,
 		DeleteRecordId: deleted.Deletes[0].Id,
 	})
-	test.Must(t, err, "request a restore")
+	test.Mustf(t, err, "request a restore")
 
 	var (
 		lastID      int64
@@ -288,7 +288,7 @@ func TestAssetRestore(t *testing.T) {
 		}
 	}
 
-	test.TestMessageAgainstGolden(t, regenerate,
+	test.MessageAgainstGolden(t, regenerate,
 		&repository.GetEventlogResponse{
 			Items: events,
 		},
@@ -302,18 +302,18 @@ func TestAssetRestore(t *testing.T) {
 			AttachmentName: "plaintext",
 			DownloadLink:   true,
 		})
-	test.Must(t, err, "get download links")
+	test.Mustf(t, err, "get download links")
 
-	test.Equal(t, 1, len(downloadLinks.Attachments),
+	test.Equalf(t, 1, len(downloadLinks.Attachments),
 		"get download info for the attachment")
 
 	downloadRes, err := http.Get(downloadLinks.Attachments[0].DownloadLink)
-	test.Must(t, err, "make download request")
+	test.Mustf(t, err, "make download request")
 
 	defer downloadRes.Body.Close()
 
 	dowloadedData, err := io.ReadAll(downloadRes.Body)
-	test.Must(t, err, "read download data")
+	test.Mustf(t, err, "read download data")
 
-	test.Equal(t, data, string(dowloadedData), "get the correct data in download")
+	test.Equalf(t, data, string(dowloadedData), "get the correct data in download")
 }

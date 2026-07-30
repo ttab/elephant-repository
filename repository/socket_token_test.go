@@ -13,10 +13,10 @@ import (
 
 func TestSocketToken(t *testing.T) {
 	keyA, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-	test.Must(t, err, "create key A")
+	test.Mustf(t, err, "create key A")
 
 	keyB, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-	test.Must(t, err, "create key B")
+	test.Mustf(t, err, "create key B")
 
 	subjectA := "core://user/a"
 	subjectB := "core://user/b"
@@ -26,21 +26,21 @@ func TestSocketToken(t *testing.T) {
 	token := repository.NewSocketToken(subjectA, expires)
 
 	signedToken, err := token.Sign(keyA)
-	test.Must(t, err, "sign token")
+	test.Mustf(t, err, "sign token")
 
-	test.Equal(t, 193, len(signedToken), "token must be 193 characters long")
+	test.Equalf(t, 193, len(signedToken), "token must be 193 characters long")
 
 	verified, err := repository.VerifySocketToken(signedToken, &keyA.PublicKey)
-	test.Must(t, err, "verify socket token")
+	test.Mustf(t, err, "verify socket token")
 
 	_, err = repository.VerifySocketToken(signedToken, &keyB.PublicKey)
-	test.MustNot(t, err, "verify socket token with wrong key")
+	test.MustNotf(t, err, "verify socket token with wrong key")
 
 	if !verified.Expires.Equal(token.Expires) {
 		t.Error("verified token expiry differs from original token")
 	}
 
-	test.Equal(t, token.ID, verified.ID, "id must match")
+	test.Equalf(t, token.ID, verified.ID, "id must match")
 
 	if !verified.ValidFor(subjectA) {
 		t.Error("verified token is not valid for subject A")

@@ -57,15 +57,15 @@ func TestIntegrationSocket(t *testing.T) {
 	})
 
 	serverURL, err := url.Parse(tc.Server.URL)
-	test.Must(t, err, "parse server URL")
+	test.Mustf(t, err, "parse server URL")
 
 	token, err := itest.AccessToken(tc.SigningKey,
 		itest.StandardClaims(t, "doc_read"))
-	test.Must(t, err, "create access token")
+	test.Mustf(t, err, "create access token")
 
 	t.Run("BadOrigin", func(t *testing.T) {
 		tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
-		test.Must(t, err, "get socket token")
+		test.Mustf(t, err, "get socket token")
 
 		wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
 		wsURL.Scheme = "ws"
@@ -75,13 +75,13 @@ func TestIntegrationSocket(t *testing.T) {
 		}
 
 		_, resp, err := websocket.DefaultDialer.Dial(wsURL.String(), header)
-		test.MustNot(t, err, "dial websocket")
+		test.MustNotf(t, err, "dial websocket")
 
 		_ = resp.Body.Close()
 	})
 
 	tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
-	test.Must(t, err, "get socket token")
+	test.Mustf(t, err, "get socket token")
 
 	wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
 	wsURL.Scheme = "ws"
@@ -91,7 +91,7 @@ func TestIntegrationSocket(t *testing.T) {
 	}
 
 	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL.String(), header)
-	test.Must(t, err, "dial websocket")
+	test.Mustf(t, err, "dial websocket")
 
 	t.Cleanup(func() {
 		err := wsResp.Body.Close()
@@ -104,11 +104,11 @@ func TestIntegrationSocket(t *testing.T) {
 
 	// Immediately make a request with the same token to trigger rate limit.
 	res, err := http.Get(wsURL.String())
-	test.Must(t, err, "make throttling check request")
+	test.Mustf(t, err, "make throttling check request")
 
 	_ = res.Body.Close()
 
-	test.Equal(t, http.StatusTooManyRequests, res.StatusCode,
+	test.Equalf(t, http.StatusTooManyRequests, res.StatusCode,
 		"get a too many requests response")
 
 	callID := makeCall(t, conn, &repositorysocket.Call{
@@ -153,13 +153,13 @@ func TestIntegrationSocket(t *testing.T) {
 	var keyResp []*repositorysocket.Response
 
 	batch, err := resp.AwaitDocumentBatch(subCall, 2*time.Second)
-	test.Must(t, err, "get initial document batch")
+	test.Mustf(t, err, "get initial document batch")
 
 	initInclBatch, err := resp.AwaitInclusionBatch(subCall, 2*time.Second)
-	test.Must(t, err, "get initial inclusion batch")
+	test.Mustf(t, err, "get initial inclusion batch")
 
 	subSuccess, err := resp.AwaitResponse(subCall, nil, 2*time.Second)
-	test.Must(t, err, "subscribe to document set")
+	test.Mustf(t, err, "subscribe to document set")
 
 	keyResp = append(keyResp, batch, initInclBatch, subSuccess)
 
@@ -169,12 +169,12 @@ func TestIntegrationSocket(t *testing.T) {
 			{Name: "usable", Version: 1},
 		},
 	})
-	test.Must(t, err, "set usable status for loss article")
+	test.Mustf(t, err, "set usable status for loss article")
 
 	status, err := resp.AwaitDocumentStatus(subCall, lossUUID, "usable", 1, 2*time.Second)
-	test.Must(t, err, "get loss article status message")
+	test.Mustf(t, err, "get loss article status message")
 
-	test.Equal(t, "usable",
+	test.Equalf(t, "usable",
 		status.DocumentUpdate.Event.WorkflowState,
 		"workflow state is folded into the loss article status event")
 
@@ -183,21 +183,21 @@ func TestIntegrationSocket(t *testing.T) {
 	beachPlanUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
 
 	beachPlanV1, err := resp.AwaitDocumentUpdate(subCall, beachPlanUUID, 2*time.Second)
-	test.Must(t, err, "get beach plan v1 document message")
+	test.Mustf(t, err, "get beach plan v1 document message")
 
-	test.Equal(t, 1, beachPlanV1.DocumentUpdate.Event.Version, "get v1 of beach plan")
+	test.Equalf(t, 1, beachPlanV1.DocumentUpdate.Event.Version, "get v1 of beach plan")
 
 	beachUUID := writeDoc(t, client, docsDir, "beach", nil)
 
 	writeDoc(t, client, docsDir, "beach_plan_v2", nil)
 
 	beachPlanV2, err := resp.AwaitDocumentUpdate(subCall, beachPlanUUID, 2*time.Second)
-	test.Must(t, err, "get beach plan v2 document message")
+	test.Mustf(t, err, "get beach plan v2 document message")
 
-	test.Equal(t, 2, beachPlanV2.DocumentUpdate.Event.Version, "get v2 of beach plan")
+	test.Equalf(t, 2, beachPlanV2.DocumentUpdate.Event.Version, "get v2 of beach plan")
 
 	beachInclusion, err := resp.AwaitInclusionBatch(subCall, 2*time.Second)
-	test.Must(t, err, "get beach plan inclusion batch message")
+	test.Mustf(t, err, "get beach plan inclusion batch message")
 
 	keyResp = append(keyResp, beachPlanV1, beachPlanV2, beachInclusion)
 
@@ -207,12 +207,12 @@ func TestIntegrationSocket(t *testing.T) {
 			{Name: "usable", Version: 1},
 		},
 	})
-	test.Must(t, err, "set usable status for beach article")
+	test.Mustf(t, err, "set usable status for beach article")
 
 	beachStatus, err := resp.AwaitDocumentStatus(subCall, beachUUID, "usable", 1, 2*time.Second)
-	test.Must(t, err, "get beach article status message")
+	test.Mustf(t, err, "get beach article status message")
 
-	test.Equal(t, "usable",
+	test.Equalf(t, "usable",
 		beachStatus.DocumentUpdate.Event.WorkflowState,
 		"workflow state is folded into the beach article status event")
 
@@ -245,7 +245,7 @@ func TestIntegrationSocket(t *testing.T) {
 
 		return planRem && artRem
 	}, 2*time.Second)
-	test.Must(t, err, "get remove messages")
+	test.Mustf(t, err, "get remove messages")
 
 	_, err = client.Update(ctx, &rpc.UpdateRequest{
 		Uuid: beachUUID,
@@ -253,11 +253,11 @@ func TestIntegrationSocket(t *testing.T) {
 			{Name: "usable", Version: 1},
 		},
 	})
-	test.Must(t, err, "republish beach article")
+	test.Mustf(t, err, "republish beach article")
 
 	// Waiting a bit here to make sure that we don't get more events.
 	_, err = resp.AwaitDocumentStatus(subCall, beachUUID, "usable", 2, 2*time.Second)
-	test.MustNot(t, err, "get more events for beach article")
+	test.MustNotf(t, err, "get more events for beach article")
 
 	makeCall(t, conn, &repositorysocket.Call{
 		CallId: unsubCall,
@@ -267,10 +267,10 @@ func TestIntegrationSocket(t *testing.T) {
 	})
 
 	_, err = resp.AwaitResponse(unsubCall, nil, 2*time.Second)
-	test.Must(t, err, "close document set")
+	test.Mustf(t, err, "close document set")
 
 	err = conn.WriteMessage(websocket.CloseMessage, nil)
-	test.Must(t, err, "close socket gracefully")
+	test.Mustf(t, err, "close socket gracefully")
 
 	goldenOpts := []test.GoldenHelper{
 		test.IgnoreTimestamps{},
@@ -278,7 +278,7 @@ func TestIntegrationSocket(t *testing.T) {
 		ignoreUUIDField("document_nonce"),
 	}
 
-	test.TestMessagesAgainstGolden(t, regenerateTestFixtures(),
+	test.MessagesAgainstGolden(t, regenerateTestFixtures(),
 		keyResp, filepath.Join(dataDir, "messages.json"),
 		goldenOpts...,
 	)
@@ -289,7 +289,7 @@ func TestIntegrationSocket(t *testing.T) {
 		err = elephantine.MarshalFile(
 			filepath.Join(dataDir, "all_messages.json"),
 			resp.Responses())
-		test.Must(t, err, "write messages reference file")
+		test.Mustf(t, err, "write messages reference file")
 	}
 }
 
@@ -324,14 +324,14 @@ func TestIntegrationSocketPartial(t *testing.T) {
 	beachUUID := writeDoc(t, client, docsDir, "beach", nil)
 
 	serverURL, err := url.Parse(tc.Server.URL)
-	test.Must(t, err, "parse server URL")
+	test.Mustf(t, err, "parse server URL")
 
 	token, err := itest.AccessToken(tc.SigningKey,
 		itest.StandardClaims(t, "doc_read"))
-	test.Must(t, err, "create access token")
+	test.Mustf(t, err, "create access token")
 
 	tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
-	test.Must(t, err, "get socket token")
+	test.Mustf(t, err, "get socket token")
 
 	wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
 	wsURL.Scheme = "ws"
@@ -341,7 +341,7 @@ func TestIntegrationSocketPartial(t *testing.T) {
 	}
 
 	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL.String(), header)
-	test.Must(t, err, "dial websocket")
+	test.Mustf(t, err, "dial websocket")
 
 	t.Cleanup(func() {
 		err := wsResp.Body.Close()
@@ -388,7 +388,7 @@ func TestIntegrationSocketPartial(t *testing.T) {
 		t.Fatal("expected error response for malformed subset expression")
 	}
 
-	test.Equal(t, "invalid_argument", badSubsetResp.Error.ErrorCode,
+	test.Equalf(t, "invalid_argument", badSubsetResp.Error.ErrorCode,
 		"malformed subset error code")
 
 	if !strings.Contains(badSubsetResp.Error.ErrorMessage, "subset") {
@@ -431,7 +431,7 @@ func TestIntegrationSocketPartial(t *testing.T) {
 	// --- Verify initial batch uses subset ---
 
 	batch, err := resp.AwaitDocumentBatch(subCall, 2*time.Second)
-	test.Must(t, err, "get initial document batch")
+	test.Mustf(t, err, "get initial document batch")
 
 	db := batch.DocumentBatch
 
@@ -464,10 +464,10 @@ func TestIntegrationSocketPartial(t *testing.T) {
 		t.Fatal("expected 'value' key in initial batch subset")
 	}
 
-	test.Equal(t, "3", ev.Value, "extracted newsvalue from initial batch")
+	test.Equalf(t, "3", ev.Value, "extracted newsvalue from initial batch")
 
 	_, err = resp.AwaitResponse(subCall, nil, 2*time.Second)
-	test.Must(t, err, "subscribe to document set")
+	test.Mustf(t, err, "subscribe to document set")
 
 	// --- Write beach_plan_v2 to trigger update + inclusion ---
 
@@ -478,11 +478,11 @@ func TestIntegrationSocketPartial(t *testing.T) {
 	// Verify DocumentUpdate has subset applied for the plan update.
 	planUpdate, err := resp.AwaitDocumentUpdate(
 		subCall, beachPlanUUID, 2*time.Second)
-	test.Must(t, err, "get beach plan v2 update")
+	test.Mustf(t, err, "get beach plan v2 update")
 
 	du := planUpdate.DocumentUpdate
 
-	test.Equal(t, int64(2), du.Event.Version, "beach plan v2 version")
+	test.Equalf(t, int64(2), du.Event.Version, "beach plan v2 version")
 
 	if du.Document != nil {
 		t.Fatal("expected Document to be nil in update when subset is active")
@@ -498,13 +498,13 @@ func TestIntegrationSocketPartial(t *testing.T) {
 		t.Fatal("expected 'value' key in update subset")
 	}
 
-	test.Equal(t, "3", updateEV.Value,
+	test.Equalf(t, "3", updateEV.Value,
 		"extracted newsvalue from update")
 
 	// --- Verify inclusion batch uses inclusion subset ---
 
 	inclResp, err := resp.AwaitInclusionBatch(subCall, 2*time.Second)
-	test.Must(t, err, "get inclusion batch after plan v2")
+	test.Mustf(t, err, "get inclusion batch after plan v2")
 
 	ib := inclResp.InclusionBatch
 	if len(ib.Documents) == 0 {
@@ -544,11 +544,11 @@ func TestIntegrationSocketPartial(t *testing.T) {
 		t.Fatal("expected 'text' key in inclusion subset")
 	}
 
-	test.Equal(t, "Svenska talangerna vann i VM-debuten",
+	test.Equalf(t, "Svenska talangerna vann i VM-debuten",
 		textEV.Value, "extracted heading from included article")
 
 	err = conn.WriteMessage(websocket.CloseMessage, nil)
-	test.Must(t, err, "close socket gracefully")
+	test.Mustf(t, err, "close socket gracefully")
 }
 
 func TestIntegrationSocketEventlog(t *testing.T) {
@@ -579,14 +579,14 @@ func TestIntegrationSocketEventlog(t *testing.T) {
 	beachPlanUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
 
 	serverURL, err := url.Parse(tc.Server.URL)
-	test.Must(t, err, "parse server URL")
+	test.Mustf(t, err, "parse server URL")
 
 	token, err := itest.AccessToken(tc.SigningKey,
 		itest.StandardClaims(t, "eventlog_read doc_read"))
-	test.Must(t, err, "create access token")
+	test.Mustf(t, err, "create access token")
 
 	tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
-	test.Must(t, err, "get socket token")
+	test.Mustf(t, err, "get socket token")
 
 	wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
 	wsURL.Scheme = "ws"
@@ -596,7 +596,7 @@ func TestIntegrationSocketEventlog(t *testing.T) {
 	}
 
 	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL.String(), header)
-	test.Must(t, err, "dial websocket")
+	test.Mustf(t, err, "dial websocket")
 
 	t.Cleanup(func() {
 		err := wsResp.Body.Close()
@@ -656,7 +656,7 @@ func TestIntegrationSocketEventlog(t *testing.T) {
 
 	// Await the subscription confirmation.
 	_, err = resp.AwaitResponse(evtCall, nil, 2*time.Second)
-	test.Must(t, err, "subscribe to eventlog")
+	test.Mustf(t, err, "subscribe to eventlog")
 
 	// Write the remaining beach documents.
 	writeDoc(t, client, docsDir, "beach", nil)
@@ -679,7 +679,7 @@ func TestIntegrationSocketEventlog(t *testing.T) {
 
 		return false
 	}, 5*time.Second)
-	test.Must(t, err, "get beach plan v3 event")
+	test.Mustf(t, err, "get beach plan v3 event")
 
 	// Close the eventlog subscription.
 	makeCall(t, conn, &repositorysocket.Call{
@@ -690,10 +690,10 @@ func TestIntegrationSocketEventlog(t *testing.T) {
 	})
 
 	_, err = resp.AwaitResponse(closeCall, nil, 2*time.Second)
-	test.Must(t, err, "close eventlog subscription")
+	test.Mustf(t, err, "close eventlog subscription")
 
 	err = conn.WriteMessage(websocket.CloseMessage, nil)
-	test.Must(t, err, "close socket gracefully")
+	test.Mustf(t, err, "close socket gracefully")
 
 	// Collect all eventlog items from all Events responses into a
 	// single normalized response for stable golden comparison
@@ -721,7 +721,7 @@ func TestIntegrationSocketEventlog(t *testing.T) {
 		ignoreUUIDField("document_nonce"),
 	}
 
-	test.TestMessagesAgainstGolden(t, regenerateTestFixtures(),
+	test.MessagesAgainstGolden(t, regenerateTestFixtures(),
 		keyResp, filepath.Join(dataDir, "messages.json"),
 		goldenOpts...,
 	)
@@ -913,10 +913,10 @@ func makeCall(
 	}
 
 	data, err := proto.Marshal(call)
-	test.Must(t, err, "marshal message")
+	test.Mustf(t, err, "marshal message")
 
 	err = conn.WriteMessage(websocket.BinaryMessage, data)
-	test.Must(t, err, "write message")
+	test.Mustf(t, err, "write message")
 
 	return call.CallId
 }
@@ -931,17 +931,17 @@ func readResponse(
 		return nil, false
 	}
 
-	test.Must(t, err, "read message from websocket")
+	test.Mustf(t, err, "read message from websocket")
 
 	var resp repositorysocket.Response
 
 	switch msgType {
 	case websocket.TextMessage:
 		err := protojson.Unmarshal(data, &resp)
-		test.Must(t, err, "unmarshal json response")
+		test.Mustf(t, err, "unmarshal json response")
 	case websocket.BinaryMessage:
 		err := proto.Unmarshal(data, &resp)
-		test.Must(t, err, "unmarshal protobuf response")
+		test.Mustf(t, err, "unmarshal protobuf response")
 	case websocket.CloseMessage:
 		t.Fatal("socket was closed")
 	default:
@@ -966,14 +966,14 @@ func dialEventlogSocket(
 	client := tc.DocumentsClient(t, itest.StandardClaims(t, scopes))
 
 	serverURL, err := url.Parse(tc.Server.URL)
-	test.Must(t, err, "parse server URL")
+	test.Mustf(t, err, "parse server URL")
 
 	token, err := itest.AccessToken(tc.SigningKey,
 		itest.StandardClaims(t, scopes))
-	test.Must(t, err, "create access token")
+	test.Mustf(t, err, "create access token")
 
 	tokenResp, err := client.GetSocketToken(ctx, &rpc.GetSocketTokenRequest{})
-	test.Must(t, err, "get socket token")
+	test.Mustf(t, err, "get socket token")
 
 	wsURL := serverURL.JoinPath("websocket", tokenResp.Token)
 	wsURL.Scheme = "ws"
@@ -983,7 +983,7 @@ func dialEventlogSocket(
 	}
 
 	conn, wsResp, err := websocket.DefaultDialer.Dial(wsURL.String(), header)
-	test.Must(t, err, "dial websocket")
+	test.Mustf(t, err, "dial websocket")
 
 	t.Cleanup(func() {
 		err := wsResp.Body.Close()
@@ -1063,7 +1063,7 @@ func TestIntegrationSocketEventlogEventTypeFilter(t *testing.T) {
 	})
 
 	_, err := rc.AwaitResponse("want-document", nil, 2*time.Second)
-	test.Must(t, err, "subscribe want-document")
+	test.Mustf(t, err, "subscribe want-document")
 
 	makeCall(t, conn, &repositorysocket.Call{
 		CallId: "want-status",
@@ -1074,7 +1074,7 @@ func TestIntegrationSocketEventlogEventTypeFilter(t *testing.T) {
 	})
 
 	_, err = rc.AwaitResponse("want-status", nil, 2*time.Second)
-	test.Must(t, err, "subscribe want-status")
+	test.Mustf(t, err, "subscribe want-status")
 
 	// Writing a plain document produces a document event but no status event.
 	docUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
@@ -1084,7 +1084,7 @@ func TestIntegrationSocketEventlogEventTypeFilter(t *testing.T) {
 		func(r *repositorysocket.Response) bool {
 			return eventlogHasEvent(r, docUUID, "document")
 		}, 5*time.Second)
-	test.Must(t, err, "want-document receives the document event")
+	test.Mustf(t, err, "want-document receives the document event")
 
 	// want-status must not receive anything for that document.
 	_, err = rc.AwaitResponse("want-status",
@@ -1125,7 +1125,7 @@ func TestIntegrationSocketEventlogRateLimit(t *testing.T) {
 	})
 
 	_, err := rc.AwaitResponse("flood", nil, 2*time.Second)
-	test.Must(t, err, "subscribe flood")
+	test.Mustf(t, err, "subscribe flood")
 
 	// Flood the live stream with more events than the burst allows.
 	writeDoc(t, client, docsDir, "beach_plan_v1", nil)
@@ -1153,7 +1153,7 @@ func TestIntegrationSocketEventlogRateLimit(t *testing.T) {
 	})
 
 	_, err = rc.AwaitResponse("after-limit", nil, 2*time.Second)
-	test.Must(t, err, "subscribe after rate limit")
+	test.Mustf(t, err, "subscribe after rate limit")
 }
 
 func TestIntegrationSocketEventlogResumeOOB(t *testing.T) {
@@ -1184,7 +1184,7 @@ func TestIntegrationSocketEventlogResumeOOB(t *testing.T) {
 	})
 
 	_, err := rc.AwaitResponse("live", nil, 2*time.Second)
-	test.Must(t, err, "subscribe live")
+	test.Mustf(t, err, "subscribe live")
 
 	beachPlanUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
 
@@ -1210,7 +1210,7 @@ func TestIntegrationSocketEventlogResumeOOB(t *testing.T) {
 
 			return false
 		}, 5*time.Second)
-	test.Must(t, err, "observe beach plan v3 on the live subscription")
+	test.Mustf(t, err, "observe beach plan v3 on the live subscription")
 
 	// Resuming from event 0 is older than the buffer now holds, so it must
 	// fail with eventlog_resume_oob rather than silently dropping events.
@@ -1261,7 +1261,7 @@ func TestIntegrationSocketEventlogColdResume(t *testing.T) {
 	})
 
 	_, err := rc.AwaitResponse("cold-resume", nil, 2*time.Second)
-	test.Must(t, err, "cold resume subscribes without an out-of-bounds error")
+	test.Mustf(t, err, "cold resume subscribes without an out-of-bounds error")
 
 	// Events written after subscribing are delivered live.
 	docUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
@@ -1270,5 +1270,5 @@ func TestIntegrationSocketEventlogColdResume(t *testing.T) {
 		func(r *repositorysocket.Response) bool {
 			return eventlogHasEvent(r, docUUID, "document")
 		}, 5*time.Second)
-	test.Must(t, err, "cold resume receives live events")
+	test.Mustf(t, err, "cold resume receives live events")
 }

@@ -24,7 +24,7 @@ func TestDeleteRestore(t *testing.T) {
 	regenerate := regenerateTestFixtures()
 	dataDir := filepath.Join("..", "testdata", t.Name())
 
-	test.Must(t, os.MkdirAll(dataDir, 0o700),
+	test.Mustf(t, os.MkdirAll(dataDir, 0o700),
 		"ensure that we have a test data directory")
 
 	t.Parallel()
@@ -76,7 +76,7 @@ func TestDeleteRestore(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
 	docA2 := test.CloneMessage(docA)
 
@@ -92,20 +92,20 @@ func TestDeleteRestore(t *testing.T) {
 		Uuid:     docUUID,
 		Document: docA2,
 	})
-	test.Must(t, err, "update article")
+	test.Mustf(t, err, "update article")
 
 	// Delete gen A.
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "delete article")
+	test.Mustf(t, err, "delete article")
 
 	deletesA, err := client.ListDeleted(ctx, &repository.ListDeletedRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "list deletes")
+	test.Mustf(t, err, "list deletes")
 
-	test.Equal(t, 1, len(deletesA.Deletes), "expect one delete record")
+	test.Equalf(t, 1, len(deletesA.Deletes), "expect one delete record")
 
 	// Prepare a document B that we want to write once the delete has been
 	// processed.
@@ -166,7 +166,7 @@ func TestDeleteRestore(t *testing.T) {
 			{Name: "usable"},
 		},
 	})
-	test.Must(t, err, "update generation B")
+	test.Mustf(t, err, "update generation B")
 
 	// Attempt to restore when a document exists. Here we expect failure.
 	_, err = client.Restore(ctx, &repository.RestoreRequest{
@@ -179,19 +179,19 @@ func TestDeleteRestore(t *testing.T) {
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "delete article the second time")
+	test.Mustf(t, err, "delete article the second time")
 
 	deletesB, err := client.ListDeleted(ctx, &repository.ListDeletedRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "list deletes")
+	test.Mustf(t, err, "list deletes")
 
-	test.Equal(t, 2, len(deletesB.Deletes), "expect two delete records")
+	test.Equalf(t, 2, len(deletesB.Deletes), "expect two delete records")
 
 	// Pick out the last deleted document version (gen B).
 	record := deletesB.Deletes[0]
 
-	test.Equal(t, 2, record.Id, "expect the first record to have the ID 2")
+	test.Equalf(t, 2, record.Id, "expect the first record to have the ID 2")
 
 	var restoreStarted bool
 
@@ -253,7 +253,7 @@ func TestDeleteRestore(t *testing.T) {
 		doc = res.Document
 	}
 
-	test.EqualMessage(t, docB2, doc,
+	test.EqualMessagef(t, docB2, doc,
 		"expect to get a document that is equal to v2 of generation B of the document")
 
 	var (
@@ -289,7 +289,7 @@ func TestDeleteRestore(t *testing.T) {
 
 	goldenPath := filepath.Join(dataDir, "eventlog.json")
 
-	test.TestMessageAgainstGolden(
+	test.MessageAgainstGolden(
 		t, regenerate,
 		&repository.GetEventlogResponse{
 			Items: events,
@@ -303,11 +303,11 @@ func TestDeleteRestore(t *testing.T) {
 		Uuid:         docUUID,
 		LoadStatuses: true,
 	})
-	test.Must(t, err, "get document history")
+	test.Mustf(t, err, "get document history")
 
 	historyGoldenPath := filepath.Join(dataDir, "history.json")
 
-	test.TestMessageAgainstGolden(
+	test.MessageAgainstGolden(
 		t, regenerate, historyRes, historyGoldenPath,
 		test.IgnoreTimestamps{
 			Fields: []string{"created", "restored_at"},

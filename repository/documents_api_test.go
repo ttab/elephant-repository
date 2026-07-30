@@ -139,7 +139,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		var evt repository.EventlogItem
 
 		err := protojson.Unmarshal([]byte(e.Data), &evt)
-		test.Must(t, err, "decode SSE event %q", e.LastEventID)
+		test.Mustf(t, err, "decode SSE event %q", e.LastEventID)
 
 		sseChan <- &evt
 	})
@@ -157,8 +157,8 @@ func TestIntegrationBasicCrud(t *testing.T) {
 			After: -1,
 		})
 
-		test.Must(t, err, "get eventlog")
-		test.Equal(t, 0, len(log.Items),
+		test.Mustf(t, err, "get eventlog")
+		test.Equalf(t, 0, len(log.Items),
 			"no eventlog items should be returned")
 	})
 
@@ -173,17 +173,17 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
-	test.Equal(t, 1, res.Version, "expected this to be the first version")
+	test.Equalf(t, 1, res.Version, "expected this to be the first version")
 
 	charCount, err := mClient.GetMetrics(ctx, &repository.GetMetricsRequest{
 		Uuids: []string{doc.Uuid},
 		Kinds: []string{"charcount"},
 	})
-	test.Must(t, err, "get initial charcount")
+	test.Mustf(t, err, "get initial charcount")
 
-	test.EqualMessage(t,
+	test.EqualMessagef(t,
 		singleMetricResponse(doc.Uuid, "charcount", "", 0),
 		charCount, "get the expected metrics")
 
@@ -201,17 +201,17 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc2,
 	})
-	test.Must(t, err, "update article")
+	test.Mustf(t, err, "update article")
 
-	test.Equal(t, 2, res.Version, "expected this to be the second version")
+	test.Equalf(t, 2, res.Version, "expected this to be the second version")
 
 	charCount2, err := mClient.GetMetrics(ctx, &repository.GetMetricsRequest{
 		Uuids: []string{doc.Uuid},
 		Kinds: []string{"charcount"},
 	})
-	test.Must(t, err, "get initial charcount")
+	test.Mustf(t, err, "get initial charcount")
 
-	test.EqualMessage(t,
+	test.EqualMessagef(t,
 		singleMetricResponse(doc.Uuid, "charcount", "", 24),
 		charCount2, "get the expected metrics for second version")
 
@@ -224,7 +224,7 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		Uuid:     docUUID,
 		Document: &docTypeShift,
 	})
-	test.MustNot(t, err, "expected type change to be disallowed")
+	test.MustNotf(t, err, "expected type change to be disallowed")
 
 	docBadBlock := test.CloneMessage(doc2)
 
@@ -239,23 +239,23 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		Uuid:     docUUID,
 		Document: docBadBlock,
 	})
-	test.MustNot(t, err, "expected unknown content block to fail validation")
+	test.MustNotf(t, err, "expected unknown content block to fail validation")
 
 	currentVersion, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "get the document")
+	test.Mustf(t, err, "get the document")
 
-	test.EqualMessage(t, doc2, currentVersion.Document,
+	test.EqualMessagef(t, doc2, currentVersion.Document,
 		"expected the last document to be returned")
 
 	firstVersion, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:    docUUID,
 		Version: 1,
 	})
-	test.Must(t, err, "get the first version of the document")
+	test.Mustf(t, err, "get the first version of the document")
 
-	test.EqualMessage(t, doc, firstVersion.Document,
+	test.EqualMessagef(t, doc, firstVersion.Document,
 		"expected the first document to be returned")
 
 	const (
@@ -268,13 +268,13 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		Uuid:     planningUUID,
 		Document: basePlanningDocument(planningUUID, assignmentUUID, docUUID, eventUUID),
 	})
-	test.Must(t, err, "create planning-item")
+	test.Mustf(t, err, "create planning-item")
 
 	deliverableInfo, err := client.GetDeliverableInfo(ctx, &repository.GetDeliverableInfoRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "get deliverable info")
-	test.EqualMessage(t, &repository.GetDeliverableInfoResponse{
+	test.Mustf(t, err, "get deliverable info")
+	test.EqualMessagef(t, &repository.GetDeliverableInfoResponse{
 		HasPlanningInfo: true,
 		PlanningUuid:    planningUUID,
 		AssignmentUuid:  assignmentUUID,
@@ -284,8 +284,8 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	bulkInfo, err := client.BulkGetDeliverableInfo(ctx, &repository.BulkGetDeliverableInfoRequest{
 		Uuids: []string{docUUID, planningUUID},
 	})
-	test.Must(t, err, "bulk get deliverable info")
-	test.EqualMessage(t, &repository.BulkGetDeliverableInfoResponse{
+	test.Mustf(t, err, "bulk get deliverable info")
+	test.EqualMessagef(t, &repository.BulkGetDeliverableInfoResponse{
 		Items: []*repository.DeliverableInfo{
 			{
 				Uuid:           docUUID,
@@ -301,20 +301,20 @@ func TestIntegrationBasicCrud(t *testing.T) {
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "delete the document")
+	test.Mustf(t, err, "delete the document")
 
 	t.Logf("waited %v for delete", time.Since(t0))
 
 	_, err = client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.MustNot(t, err, "expected get to fail after delete")
+	test.MustNotf(t, err, "expected get to fail after delete")
 
 	_, err = client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:    docUUID,
 		Version: 1,
 	})
-	test.MustNot(t, err, "expected get of old version to fail after delete")
+	test.MustNotf(t, err, "expected get of old version to fail after delete")
 
 	goldenEventlog := "testdata/TestIntegrationBasicCrud/eventlog.json"
 
@@ -322,9 +322,9 @@ func TestIntegrationBasicCrud(t *testing.T) {
 		BatchSize:   50,
 		BatchWaitMs: 500,
 	})
-	test.Must(t, err, "get eventlog")
+	test.Mustf(t, err, "get eventlog")
 
-	test.TestMessageAgainstGolden(t, regenerateTestFixtures(),
+	test.MessageAgainstGolden(t, regenerateTestFixtures(),
 		events, goldenEventlog,
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("document_nonce"),
@@ -474,7 +474,7 @@ func TestIntegrationStatusPermissions(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
 	// Set a status as Mr status-guy.
 	_, err = statusClient.Update(ctx, &repository.UpdateRequest{
@@ -486,7 +486,7 @@ func TestIntegrationStatusPermissions(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "set article status")
+	test.Mustf(t, err, "set article status")
 
 	// Check that we're not letting any rando set statuses.
 	_, err = randoClient.Update(ctx, &repository.UpdateRequest{
@@ -498,7 +498,7 @@ func TestIntegrationStatusPermissions(t *testing.T) {
 			},
 		},
 	})
-	test.MustNot(t, err, "let random user set article status")
+	test.MustNotf(t, err, "let random user set article status")
 
 	// Verify that we don't let Mr status-guy mess with the contents of
 	// documents.
@@ -553,7 +553,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 			Uuid:     doc.Uuid,
 			Document: doc,
 		})
-		test.MustNot(t, err, "update a document with a invalid language")
+		test.MustNotf(t, err, "update a document with a invalid language")
 	})
 
 	t.Run("InvalidCodeFormat", func(t *testing.T) {
@@ -568,7 +568,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 			Uuid:     doc.Uuid,
 			Document: doc,
 		})
-		test.MustNot(t, err, "update a document with a malformed language code")
+		test.MustNotf(t, err, "update a document with a malformed language code")
 	})
 
 	// Document without a language
@@ -584,7 +584,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 		Uuid:     nlDoc.Uuid,
 		Document: nlDoc,
 	})
-	test.Must(t, err, "update a document without a language")
+	test.Mustf(t, err, "update a document without a language")
 
 	// Doc (ACL folded onto the document event).
 	expectedEvents++
@@ -600,7 +600,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 		Uuid:     enDoc.Uuid,
 		Document: enDoc,
 	})
-	test.Must(t, err, "update a document with a valid language and region")
+	test.Mustf(t, err, "update a document with a valid language and region")
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: enDoc.Uuid,
 		Status: []*repository.StatusUpdate{
@@ -610,7 +610,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "set version one as usable")
+	test.Mustf(t, err, "set version one as usable")
 
 	enDoc.Language = "en-US"
 
@@ -618,7 +618,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 		Uuid:     enDoc.Uuid,
 		Document: enDoc,
 	})
-	test.Must(t, err, "update a document with a new language")
+	test.Mustf(t, err, "update a document with a new language")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: enDoc.Uuid,
@@ -629,7 +629,7 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "set version two as usable")
+	test.Mustf(t, err, "set version two as usable")
 
 	// Create (ACL folded in) + status + doc update + status = 4 events.
 	expectedEvents += 4
@@ -639,21 +639,21 @@ func TestIntegrationDocumentLanguage(t *testing.T) {
 		&repository.GetEventlogRequest{
 			After: expectedEvents - 1,
 		})
-	test.Must(t, err, "wait for eventlog")
+	test.Mustf(t, err, "wait for eventlog")
 
 	log, err := client.Eventlog(ctx,
 		&repository.GetEventlogRequest{
 			After: 0,
 		})
-	test.Must(t, err, "get eventlog")
-	test.Equal(t, int(expectedEvents), len(log.Items),
+	test.Mustf(t, err, "get eventlog")
+	test.Equalf(t, int(expectedEvents), len(log.Items),
 		"get the expected number of events")
 
 	for i := range log.Items {
 		log.Items[i].Timestamp = ""
 	}
 
-	test.TestMessageAgainstGolden(t, regenerate, log,
+	test.MessageAgainstGolden(t, regenerate, log,
 		"testdata/TestIntegrationDocumentLanguage/eventlog.json",
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("document_nonce"))
@@ -681,7 +681,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	testData := filepath.Join("..", "testdata", t.Name())
 
 	err := os.MkdirAll(testData, 0o700)
-	test.Must(t, err, "ensure testdata dir")
+	test.Mustf(t, err, "ensure testdata dir")
 
 	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
 
@@ -718,13 +718,13 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	}
 
 	specPayload, err := json.Marshal(&spec)
-	test.Must(t, err, "marshal meta schema")
+	test.Mustf(t, err, "marshal meta schema")
 
 	// Get all currently active schemas so we can include them in the new
 	// generation alongside the test schema.
 	activeSchemas, err := schema.GetAllActive(ctx,
 		&repository.GetAllActiveSchemasRequest{})
-	test.Must(t, err, "get active schemas")
+	test.Mustf(t, err, "get active schemas")
 
 	genSchemas := make([]*repository.Schema, 0, len(activeSchemas.Schemas)+1)
 	genSchemas = append(genSchemas, activeSchemas.Schemas...)
@@ -738,10 +738,10 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Activation: repository.SchemaActivation_ACTIVATION_ACTIVE,
 		Schemas:    genSchemas,
 	})
-	test.Must(t, err, "register metadata schema generation")
+	test.Mustf(t, err, "register metadata schema generation")
 
 	err = tc.Validator.RefreshSchemas(ctx)
-	test.Must(t, err, "refresh schemas after generation registration")
+	test.Mustf(t, err, "refresh schemas after generation registration")
 
 	client := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read doc_write doc_delete eventlog_read"))
@@ -781,7 +781,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Uuid:     docA.Uuid,
 		Document: docA,
 	})
-	test.Must(t, err, "create a basic article")
+	test.Mustf(t, err, "create a basic article")
 
 	_, err = wMetaClient.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docB.Uuid,
@@ -796,7 +796,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Uuid:     docB.Uuid,
 		Document: docB,
 	})
-	test.Must(t, err, "create a second basic article")
+	test.Mustf(t, err, "create a second basic article")
 
 	_, err = wMetaClient.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docB.Uuid,
@@ -827,13 +827,13 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Type:      "test/metadata",
 		Exclusive: true,
 	})
-	test.Must(t, err, "register the meta type")
+	test.Mustf(t, err, "register the meta type")
 
 	preUse, err := schema.GetMetaTypes(ctx,
 		&repository.GetMetaTypesRequest{})
-	test.Must(t, err, "get current meta types")
+	test.Mustf(t, err, "get current meta types")
 
-	test.EqualMessage(t, &repository.GetMetaTypesResponse{
+	test.EqualMessagef(t, &repository.GetMetaTypesResponse{
 		Types: []*repository.MetaTypeInfo{
 			{
 				Name: "test/metadata",
@@ -845,13 +845,13 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		MainType: "core/article",
 		MetaType: "test/metadata",
 	})
-	test.Must(t, err, "register the meta type for use with articles")
+	test.Mustf(t, err, "register the meta type for use with articles")
 
 	postUse, err := schema.GetMetaTypes(ctx,
 		&repository.GetMetaTypesRequest{})
-	test.Must(t, err, "get current meta types")
+	test.Mustf(t, err, "get current meta types")
 
-	test.EqualMessage(t, &repository.GetMetaTypesResponse{
+	test.EqualMessagef(t, &repository.GetMetaTypesResponse{
 		Types: []*repository.MetaTypeInfo{
 			{
 				Name:   "test/metadata",
@@ -866,12 +866,12 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Document:           &metaDoc,
 		UpdateMetaDocument: true,
 	})
-	test.Must(t, err, "create a meta doc for a document")
+	test.Mustf(t, err, "create a meta doc for a document")
 
 	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: mRes.Uuid,
 	})
-	test.Must(t, err, "get meta information about meta doc")
+	test.Mustf(t, err, "get meta information about meta doc")
 
 	wantMeta := repository.DocumentMeta{
 		CurrentVersion: 1,
@@ -912,7 +912,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	mDocV1, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: mRes.Uuid,
 	})
-	test.Must(t, err, "be able to read meta document")
+	test.Mustf(t, err, "be able to read meta document")
 
 	wantDoc := proto.Clone(&metaDoc).(*newsdoc.Document)
 
@@ -922,7 +922,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	// From default language.
 	wantDoc.Language = "sv-se"
 
-	test.EqualMessage(t, &repository.GetDocumentResponse{
+	test.EqualMessagef(t, &repository.GetDocumentResponse{
 		Document:       wantDoc,
 		Version:        1,
 		IsMetaDocument: true,
@@ -935,7 +935,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 			{Name: "usable", Version: 1},
 		},
 	})
-	test.Must(t, err, "set a usable status")
+	test.Mustf(t, err, "set a usable status")
 
 	mDocV2 := proto.Clone(mDocV1.Document).(*newsdoc.Document)
 	mDocV2.Title = "I am the the second"
@@ -945,7 +945,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		IfMatch:  1,
 		Document: mDocV2,
 	})
-	test.Must(t, err, "be able to update a meta doc directly")
+	test.Mustf(t, err, "be able to update a meta doc directly")
 
 	sneakyDoc := proto.Clone(mDocV2).(*newsdoc.Document)
 
@@ -976,9 +976,9 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Uuid:         docA.Uuid,
 		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
 	})
-	test.Must(t, err, "be able to fetch document with meta doc")
+	test.Mustf(t, err, "be able to fetch document with meta doc")
 
-	test.EqualMessage(t, &repository.GetDocumentResponse{
+	test.EqualMessagef(t, &repository.GetDocumentResponse{
 		Document: docA,
 		Version:  1,
 		Meta: &repository.MetaDocument{
@@ -993,10 +993,10 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		MetaDocument:        repository.GetMetaDoc_META_INCLUDE,
 		MetaDocumentVersion: 1,
 	})
-	test.Must(t, err,
+	test.Mustf(t, err,
 		"be able to fetch requested version of document with requested version of meta doc")
 
-	test.EqualMessage(t, &repository.GetDocumentResponse{
+	test.EqualMessagef(t, &repository.GetDocumentResponse{
 		Document: docA,
 		Version:  1,
 		Meta: &repository.MetaDocument{
@@ -1010,9 +1010,9 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
 		Status:       "usable",
 	})
-	test.Must(t, err, "be able to fetch document with meta doc by status")
+	test.Mustf(t, err, "be able to fetch document with meta doc by status")
 
-	test.EqualMessage(t, &repository.GetDocumentResponse{
+	test.EqualMessagef(t, &repository.GetDocumentResponse{
 		Document: docA,
 		Version:  1,
 		// We expect the meta doc to reflect the version it had at the
@@ -1029,16 +1029,16 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 			{Name: "usable", Version: 1},
 		},
 	})
-	test.Must(t, err, "set a second usable status")
+	test.Mustf(t, err, "set a second usable status")
 
 	docWithStatus2, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:         docA.Uuid,
 		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
 		Status:       "usable",
 	})
-	test.Must(t, err, "be able to fetch document with meta doc by status")
+	test.Mustf(t, err, "be able to fetch document with meta doc by status")
 
-	test.EqualMessage(t, &repository.GetDocumentResponse{
+	test.EqualMessagef(t, &repository.GetDocumentResponse{
 		Document: docA,
 		Version:  1,
 		// We expect the meta doc to reflect the version it had at the
@@ -1052,7 +1052,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docA.Uuid,
 	})
-	test.Must(t, err, "delete main document")
+	test.Mustf(t, err, "delete main document")
 
 	readAllClient := tc.DocumentsClient(t,
 		itest.StandardClaims(t, "doc_read_all"))
@@ -1074,7 +1074,7 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 
 	events := collectEventlog(t, client, 8, 4*time.Second)
 
-	test.TestMessageAgainstGolden(t, regenerate, events,
+	test.MessageAgainstGolden(t, regenerate, events,
 		filepath.Join(testData, "eventlog.json"),
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("document_nonce"),
@@ -1146,9 +1146,9 @@ func TestIntegrationBulkCrud(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "create articles")
+	test.Mustf(t, err, "create articles")
 
-	test.EqualMessage(t,
+	test.EqualMessagef(t,
 		&repository.BulkUpdateResponse{
 			Updates: []*repository.UpdateResponse{
 				{
@@ -1167,17 +1167,17 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	resA, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docA.Uuid,
 	})
-	test.Must(t, err, "be able to load document A")
+	test.Mustf(t, err, "be able to load document A")
 
-	test.EqualMessage(t, docA, resA.Document,
+	test.EqualMessagef(t, docA, resA.Document,
 		"expect to get the same document A back")
 
 	resB, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docB.Uuid,
 	})
-	test.Must(t, err, "be able to load document B")
+	test.Mustf(t, err, "be able to load document B")
 
-	test.EqualMessage(t, docB, resB.Document,
+	test.EqualMessagef(t, docB, resB.Document,
 		"expect to get the same document B back")
 
 	const (
@@ -1197,7 +1197,7 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	metaA, err := client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docA.Uuid,
 	})
-	test.Must(t, err, "be able to load document A metadata")
+	test.Mustf(t, err, "be able to load document A metadata")
 
 	wantMetaA := repository.DocumentMeta{
 		Type: "core/article",
@@ -1223,7 +1223,7 @@ func TestIntegrationBulkCrud(t *testing.T) {
 	metaB, err := client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docB.Uuid,
 	})
-	test.Must(t, err, "be able to load document B metadata")
+	test.Mustf(t, err, "be able to load document B metadata")
 
 	wantMetaB := repository.DocumentMeta{
 		Type: "core/article",
@@ -1284,7 +1284,7 @@ func TestIntegrationStatus(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
 	const (
 		pageSize = 10
@@ -1302,7 +1302,7 @@ func TestIntegrationStatus(t *testing.T) {
 				Uuid:     docUUID,
 				Document: doc,
 			})
-			test.Must(t, err, "update article")
+			test.Mustf(t, err, "update article")
 		}
 
 		_, err := client.Update(ctx, &repository.UpdateRequest{
@@ -1312,7 +1312,7 @@ func TestIntegrationStatus(t *testing.T) {
 				{Name: "usable", Version: docRes.Version, Meta: meta},
 			},
 		})
-		test.Must(t, err, "set done and usable status %d", n+1)
+		test.Mustf(t, err, "set done and usable status %d", n+1)
 	}
 
 	// End with an unpublish
@@ -1328,7 +1328,7 @@ func TestIntegrationStatus(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "unpublish document")
+	test.Mustf(t, err, "unpublish document")
 
 	numStatuses++
 
@@ -1336,22 +1336,22 @@ func TestIntegrationStatus(t *testing.T) {
 		Uuid: docUUID,
 		Name: "usable",
 	})
-	test.Must(t, err, "get usable status history from head")
+	test.Mustf(t, err, "get usable status history from head")
 
-	test.Equal(t, pageSize, len(fromHeadRes.Statuses),
+	test.Equalf(t, pageSize, len(fromHeadRes.Statuses),
 		"get the expected number of statuses")
 
 	minStatus := int64(numStatuses)
 
 	for i, s := range fromHeadRes.Statuses {
-		test.Equal(t, int64(numStatuses-i), s.Id,
+		test.Equalf(t, int64(numStatuses-i), s.Id,
 			"expect the %dnth status to have the correct ID", i+1)
 
-		test.Equal(t, len(s.Meta), 1, "expect the status to have metadata")
+		test.Equalf(t, len(s.Meta), 1, "expect the status to have metadata")
 
 		metaV := s.Meta["update_number"]
 
-		test.Equal(t,
+		test.Equalf(t,
 			strconv.Itoa(int(s.Id-1)), metaV,
 			"expected the status to have a correct update_number metadata value")
 
@@ -1366,22 +1366,22 @@ func TestIntegrationStatus(t *testing.T) {
 			Name:   "usable",
 			Before: minStatus,
 		})
-	test.Must(t, err, "get next page of status history")
+	test.Mustf(t, err, "get next page of status history")
 
-	test.Equal(t, numStatuses-pageSize, len(fromLastRes.Statuses),
+	test.Equalf(t, numStatuses-pageSize, len(fromLastRes.Statuses),
 		"get the expected number of statuses")
 
 	for i, s := range fromLastRes.Statuses {
-		test.Equal(t, int64(numStatuses-i-pageSize), s.Id,
+		test.Equalf(t, int64(numStatuses-i-pageSize), s.Id,
 			"expect the %dnth status to have the correct ID", i+1)
 	}
 
 	nilStatuses, err := client.GetNilStatuses(ctx, &repository.GetNilStatusesRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "get nil statuses")
+	test.Mustf(t, err, "get nil statuses")
 
-	test.TestMessageAgainstGolden(
+	test.MessageAgainstGolden(
 		t, regenerate, nilStatuses,
 		filepath.Join("testdata", t.Name(), "nil-statuses.json"),
 		test.IgnoreTimestamps{})
@@ -1391,11 +1391,11 @@ func TestIntegrationStatus(t *testing.T) {
 		Uuid:         docUUID,
 		LoadStatuses: true,
 	})
-	test.Must(t, err, "load document history")
+	test.Mustf(t, err, "load document history")
 
 	docHistoryGolden := filepath.Join("testdata", t.Name(), "history.json")
 
-	test.TestMessageAgainstGolden(t, regenerate, docHistory, docHistoryGolden,
+	test.MessageAgainstGolden(t, regenerate, docHistory, docHistoryGolden,
 		test.IgnoreTimestamps{})
 
 	// Check that we got the expected events.
@@ -1403,14 +1403,14 @@ func TestIntegrationStatus(t *testing.T) {
 
 	eventsGolden := filepath.Join("testdata", t.Name(), "eventlog.json")
 
-	test.TestMessageAgainstGolden(t, regenerate, events, eventsGolden,
+	test.MessageAgainstGolden(t, regenerate, events, eventsGolden,
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("document_nonce"))
 
 	lastEvt, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
 		After: -1,
 	})
-	test.Must(t, err, "failed to get last event")
+	test.Mustf(t, err, "failed to get last event")
 
 	if len(lastEvt.Items) != 1 {
 		t.Fatalf("expected after=-1 to yield one event, got %d",
@@ -1421,11 +1421,11 @@ func TestIntegrationStatus(t *testing.T) {
 		&repository.GetCompactedEventlogRequest{
 			Until: lastEvt.Items[0].Id,
 		})
-	test.Must(t, err, "failed to get compacted eventlog")
+	test.Mustf(t, err, "failed to get compacted eventlog")
 
 	compactGolden := filepath.Join("testdata", t.Name(), "compact_eventlog.json")
 
-	test.TestMessageAgainstGolden(t, regenerate, compactEvents, compactGolden,
+	test.MessageAgainstGolden(t, regenerate, compactEvents, compactGolden,
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("document_nonce"))
 }
@@ -1455,12 +1455,12 @@ func TestIntegrationDeleteTimeout(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.MustNot(t, err, "expected the delete to time out")
+	test.MustNotf(t, err, "expected the delete to time out")
 
 	test.IsTwirpError(t, err, twirp.FailedPrecondition)
 }
@@ -1482,7 +1482,7 @@ func TestIntegrationStatuses(t *testing.T) {
 			Type: "core/article",
 			Name: "usable",
 		})
-	test.MustNot(t, err,
+	test.MustNotf(t, err,
 		"be able to create statues without 'workflow_admin' scope")
 
 	workflowClient := tc.WorkflowsClient(t,
@@ -1492,13 +1492,13 @@ func TestIntegrationStatuses(t *testing.T) {
 		Type: "core/article",
 		Name: "usable",
 	})
-	test.Must(t, err, "create usable status")
+	test.Mustf(t, err, "create usable status")
 
 	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
 		Type: "core/article",
 		Name: "done",
 	})
-	test.Must(t, err, "create done status")
+	test.Mustf(t, err, "create done status")
 
 	t0 := time.Now()
 	workflowDeadline := time.After(1 * time.Second)
@@ -1536,7 +1536,7 @@ func TestIntegrationStatuses(t *testing.T) {
 			{Name: "usable"},
 		},
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
 	doc2 := test.CloneMessage(doc)
 	doc2.Title = "Drafty McDraftface"
@@ -1545,7 +1545,7 @@ func TestIntegrationStatuses(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc2,
 	})
-	test.Must(t, err, "update article")
+	test.Mustf(t, err, "update article")
 
 	doc3 := test.CloneMessage(doc2)
 	doc3.Title = "More appropriate title"
@@ -1557,13 +1557,13 @@ func TestIntegrationStatuses(t *testing.T) {
 			{Name: "done"},
 		},
 	})
-	test.Must(t, err, "update article with 'done' status")
+	test.Mustf(t, err, "update article with 'done' status")
 
 	currentUsable, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:   docUUID,
 		Status: "usable",
 	})
-	test.Must(t, err, "fetch the currently published version")
+	test.Mustf(t, err, "fetch the currently published version")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
@@ -1571,11 +1571,11 @@ func TestIntegrationStatuses(t *testing.T) {
 			{Name: "whatchacallit", Version: res3.Version},
 		},
 	})
-	test.MustNot(t, err, "should fail to use unknown status")
+	test.MustNotf(t, err, "should fail to use unknown status")
 
 	test.IsTwirpError(t, err, twirp.InvalidArgument)
 
-	test.EqualMessage(t,
+	test.EqualMessagef(t,
 		&repository.GetDocumentResponse{
 			Version:  1,
 			Document: doc,
@@ -1588,7 +1588,7 @@ func TestIntegrationStatuses(t *testing.T) {
 			{Name: "usable", Version: res3.Version},
 		},
 	})
-	test.Must(t, err, "set version 3 to usable")
+	test.Mustf(t, err, "set version 3 to usable")
 }
 
 func TestIntegrationStatusRules(t *testing.T) {
@@ -1618,7 +1618,7 @@ func TestIntegrationStatusRules(t *testing.T) {
 			AppliesTo:   []string{"usable"},
 		},
 	})
-	test.Must(t, err, "create approval rule")
+	test.Mustf(t, err, "create approval rule")
 
 	_, err = workflowClient.CreateStatusRule(ctx, &repository.CreateStatusRuleRequest{
 		Rule: &repository.StatusRule{
@@ -1631,7 +1631,7 @@ or Heads.approved_legal.Version == Status.Version`,
 			AppliesTo: []string{"usable"},
 		},
 	})
-	test.Must(t, err, "create legal approval rule")
+	test.Mustf(t, err, "create legal approval rule")
 
 	_, err = workflowClient.CreateStatusRule(ctx, &repository.CreateStatusRuleRequest{
 		Rule: &repository.StatusRule{
@@ -1643,25 +1643,25 @@ or Heads.approved_legal.Version == Status.Version`,
 			AppliesTo:   []string{"usable"},
 		},
 	})
-	test.Must(t, err, "create publish permission rule")
+	test.Mustf(t, err, "create publish permission rule")
 
 	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
 		Type: "core/article",
 		Name: "approved_legal",
 	})
-	test.Must(t, err, "create approved_legal status")
+	test.Mustf(t, err, "create approved_legal status")
 
 	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
 		Type: "core/article",
 		Name: "usable",
 	})
-	test.Must(t, err, "create usable status")
+	test.Mustf(t, err, "create usable status")
 
 	_, err = workflowClient.UpdateStatus(ctx, &repository.UpdateStatusRequest{
 		Type: "core/article",
 		Name: "approved",
 	})
-	test.Must(t, err, "create approved status")
+	test.Mustf(t, err, "create approved status")
 
 	t0 := time.Now()
 	workflowDeadline := time.After(1 * time.Second)
@@ -1699,7 +1699,7 @@ or Heads.approved_legal.Version == Status.Version`,
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
 	_, err = editorClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
@@ -1707,7 +1707,7 @@ or Heads.approved_legal.Version == Status.Version`,
 			{Name: "usable", Version: createdRes.Version},
 		},
 	})
-	test.MustNot(t, err, "don't publish document without approval")
+	test.MustNotf(t, err, "don't publish document without approval")
 
 	test.IsTwirpError(t, err, twirp.InvalidArgument)
 
@@ -1722,7 +1722,7 @@ or Heads.approved_legal.Version == Status.Version`,
 			{Name: "approved", Version: createdRes.Version},
 		},
 	})
-	test.Must(t, err, "approve document")
+	test.Mustf(t, err, "approve document")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
@@ -1730,7 +1730,7 @@ or Heads.approved_legal.Version == Status.Version`,
 			{Name: "usable", Version: createdRes.Version},
 		},
 	})
-	test.MustNot(t, err, "don't allow publish without the correct scope")
+	test.MustNotf(t, err, "don't allow publish without the correct scope")
 
 	test.IsTwirpError(t, err, twirp.PermissionDenied)
 
@@ -1745,7 +1745,7 @@ or Heads.approved_legal.Version == Status.Version`,
 			{Name: "usable", Version: createdRes.Version},
 		},
 	})
-	test.Must(t, err, "publish the document")
+	test.Mustf(t, err, "publish the document")
 
 	docV2 := test.CloneMessage(doc)
 
@@ -1768,7 +1768,7 @@ or Heads.approved_legal.Version == Status.Version`,
 			},
 		},
 	})
-	test.Must(t, err, "update article")
+	test.Mustf(t, err, "update article")
 
 	_, err = editorClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
@@ -1776,7 +1776,7 @@ or Heads.approved_legal.Version == Status.Version`,
 			{Name: "usable", Version: updatedRes.Version},
 		},
 	})
-	test.MustNot(t, err,
+	test.MustNotf(t, err,
 		"should not publish the second version without legal approval")
 
 	if !strings.Contains(err.Error(), requireLegalName) {
@@ -1790,7 +1790,7 @@ or Heads.approved_legal.Version == Status.Version`,
 			{Name: "approved_legal", Version: updatedRes.Version},
 		},
 	})
-	test.Must(t, err, "set the legal approval status")
+	test.Mustf(t, err, "set the legal approval status")
 
 	_, err = editorClient.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
@@ -1798,7 +1798,7 @@ or Heads.approved_legal.Version == Status.Version`,
 			{Name: "usable", Version: updatedRes.Version},
 		},
 	})
-	test.Must(t, err,
+	test.Mustf(t, err,
 		"should publish the second version now that legal has approved")
 }
 
@@ -1823,7 +1823,7 @@ func TestIntegrationStatusRuleWorkflowState(t *testing.T) {
 			Steps:              []string{"draft", "done"},
 		},
 	})
-	test.Must(t, err, "create article workflow")
+	test.Mustf(t, err, "create article workflow")
 
 	const ruleName = "unpublish-requires-prior-publish"
 
@@ -1837,7 +1837,7 @@ or WorkflowState.LastCheckpoint == "usable"`,
 			AppliesTo: []string{"usable"},
 		},
 	})
-	test.Must(t, err, "create unpublish rule")
+	test.Mustf(t, err, "create unpublish rule")
 
 	// Wait until the workflow provider picks up the rule.
 	t0 := time.Now()
@@ -1872,7 +1872,7 @@ or WorkflowState.LastCheckpoint == "usable"`,
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
@@ -1880,7 +1880,7 @@ or WorkflowState.LastCheckpoint == "usable"`,
 			{Name: "usable", Version: -1},
 		},
 	})
-	test.MustNot(t, err,
+	test.MustNotf(t, err,
 		"unpublish before publish should be blocked by workflow rule")
 
 	if !strings.Contains(err.Error(), ruleName) {
@@ -1894,7 +1894,7 @@ or WorkflowState.LastCheckpoint == "usable"`,
 			{Name: "usable", Version: res.Version},
 		},
 	})
-	test.Must(t, err, "publish the document")
+	test.Mustf(t, err, "publish the document")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
@@ -1902,7 +1902,7 @@ or WorkflowState.LastCheckpoint == "usable"`,
 			{Name: "usable", Version: -1},
 		},
 	})
-	test.Must(t, err, "unpublish after publish is allowed")
+	test.Mustf(t, err, "unpublish after publish is allowed")
 }
 
 func TestIntegrationACL(t *testing.T) {
@@ -1943,7 +1943,7 @@ func TestIntegrationACL(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create first article")
+	test.Mustf(t, err, "create first article")
 
 	doc2 := baseDocument(doc2UUID, doc2URI)
 
@@ -1957,32 +1957,32 @@ func TestIntegrationACL(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "create second article")
+	test.Mustf(t, err, "create second article")
 
 	_, err = otherClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.MustNot(t, err, "didn't expect the other user to have read access")
+	test.MustNotf(t, err, "didn't expect the other user to have read access")
 
 	otherP1, err := otherClient.GetPermissions(ctx, &repository.GetPermissionsRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "get other users permissions for document one")
+	test.Mustf(t, err, "get other users permissions for document one")
 
-	test.EqualMessage(t, &repository.GetPermissionsResponse{}, otherP1,
+	test.EqualMessagef(t, &repository.GetPermissionsResponse{}, otherP1,
 		"expected the permissions response to verify that the other user doesn't have access")
 
 	_, err = otherClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: doc2UUID,
 	})
-	test.Must(t, err, "expected the other user to have access to document two")
+	test.Mustf(t, err, "expected the other user to have access to document two")
 
 	otherP2, err := otherClient.GetPermissions(ctx, &repository.GetPermissionsRequest{
 		Uuid: doc2UUID,
 	})
-	test.Must(t, err, "get other users permissions for document two")
+	test.Mustf(t, err, "get other users permissions for document two")
 
-	test.EqualMessage(t,
+	test.EqualMessagef(t,
 		&repository.GetPermissionsResponse{
 			Permissions: map[string]string{
 				"r": otherClaims.Subject,
@@ -1996,7 +1996,7 @@ func TestIntegrationACL(t *testing.T) {
 		Uuid:     doc2UUID,
 		Document: doc2,
 	})
-	test.MustNot(t, err,
+	test.MustNotf(t, err,
 		"didn't expect the other user to have write acces to document two")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
@@ -2008,24 +2008,24 @@ func TestIntegrationACL(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "update ACL for document one")
+	test.Mustf(t, err, "update ACL for document one")
 
 	_, err = otherClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "expected other user to be able to read document one after ACL update")
+	test.Mustf(t, err, "expected other user to be able to read document one after ACL update")
 
 	_, err = otherClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: doc2UUID,
 	})
-	test.Must(t, err, "expected the other user to have access to document two")
+	test.Mustf(t, err, "expected the other user to have access to document two")
 
 	otherP3, err := otherClient.GetPermissions(ctx, &repository.GetPermissionsRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "get other users permissions for document one")
+	test.Mustf(t, err, "get other users permissions for document one")
 
-	test.EqualMessage(t,
+	test.EqualMessagef(t,
 		&repository.GetPermissionsResponse{
 			Permissions: map[string]string{
 				"r": "unit://some/group",
@@ -2040,14 +2040,14 @@ func TestIntegrationACL(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "expected other user to be able to update document one after ACL update")
+	test.Mustf(t, err, "expected other user to be able to update document one after ACL update")
 
 	adminP, err := adminClient.GetPermissions(ctx, &repository.GetPermissionsRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "get admin users permissions for document one")
+	test.Mustf(t, err, "get admin users permissions for document one")
 
-	test.EqualMessage(t,
+	test.EqualMessagef(t,
 		&repository.GetPermissionsResponse{
 			Permissions: map[string]string{
 				"r": "scope://doc_admin",
@@ -2083,13 +2083,13 @@ func TestDocumentLocking(t *testing.T) {
 		Uuid: docUUID,
 		Ttl:  500,
 	})
-	test.MustNot(t, err, "lock non-existing article")
+	test.MustNotf(t, err, "lock non-existing article")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create test article")
+	test.Mustf(t, err, "create test article")
 
 	lock, err := client.Lock(ctx, &repository.LockRequest{
 		Uuid:    docUUID,
@@ -2097,42 +2097,42 @@ func TestDocumentLocking(t *testing.T) {
 		App:     "app",
 		Comment: "my comment",
 	})
-	test.Must(t, err, "lock the document")
+	test.Mustf(t, err, "lock the document")
 
 	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "fetch document meta")
-	test.NotNil(t, meta.Meta.Lock, "document should have a lock")
-	test.Equal(t, meta.Meta.Lock.Uri, "user://test/testdocumentlocking", "expected uri set")
-	test.Equal(t, meta.Meta.Lock.App, "app", "expected app set")
-	test.Equal(t, meta.Meta.Lock.Comment, "my comment", "expected comment set")
+	test.Mustf(t, err, "fetch document meta")
+	test.NotNilf(t, meta.Meta.Lock, "document should have a lock")
+	test.Equalf(t, meta.Meta.Lock.Uri, "user://test/testdocumentlocking", "expected uri set")
+	test.Equalf(t, meta.Meta.Lock.App, "app", "expected app set")
+	test.Equalf(t, meta.Meta.Lock.Comment, "my comment", "expected comment set")
 
 	_, err = client.Lock(ctx, &repository.LockRequest{
 		Uuid: docUUID,
 		Ttl:  500,
 	})
-	test.MustNot(t, err, "re-lock the document")
+	test.MustNotf(t, err, "re-lock the document")
 
 	_, err = client.Lock(ctx, &repository.LockRequest{
 		Uuid: docUUID,
 		Ttl:  500,
 	})
-	test.MustNot(t, err, "steal an existing lock")
+	test.MustNotf(t, err, "steal an existing lock")
 
 	_, err = client.ExtendLock(ctx, &repository.ExtendLockRequest{
 		Uuid:  docUUID,
 		Ttl:   500,
 		Token: "4ab0330e-7cd7-4a75-b1f9-5ee8b098e333",
 	})
-	test.MustNot(t, err, "extend a lock with the wrong token")
+	test.MustNotf(t, err, "extend a lock with the wrong token")
 
 	_, err = client.ExtendLock(ctx, &repository.ExtendLockRequest{
 		Uuid:  docUUID,
 		Ttl:   1,
 		Token: lock.Token,
 	})
-	test.Must(t, err, "extend an existing lock")
+	test.Mustf(t, err, "extend an existing lock")
 
 	time.Sleep(time.Millisecond * 100)
 
@@ -2141,60 +2141,60 @@ func TestDocumentLocking(t *testing.T) {
 		Ttl:   500,
 		Token: lock.Token,
 	})
-	test.MustNot(t, err, "re-lock an expired lock")
+	test.MustNotf(t, err, "re-lock an expired lock")
 
 	lock, err = client.Lock(ctx, &repository.LockRequest{
 		Uuid: docUUID,
 		Ttl:  500,
 	})
-	test.Must(t, err, "create a new lock")
+	test.Mustf(t, err, "create a new lock")
 
 	meta, err = client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "fetch document meta")
-	test.NotNil(t, meta.Meta.Lock, "document should have a lock")
+	test.Mustf(t, err, "fetch document meta")
+	test.NotNilf(t, meta.Meta.Lock, "document should have a lock")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.MustNot(t, err, "update a locked document")
+	test.MustNotf(t, err, "update a locked document")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:      docUUID,
 		Document:  doc,
 		LockToken: lock.Token,
 	})
-	test.Must(t, err, "update a locked document with the correct token")
+	test.Mustf(t, err, "update a locked document with the correct token")
 
 	_, err = client.Unlock(ctx, &repository.UnlockRequest{
 		Uuid: docUUID,
 	})
-	test.MustNot(t, err, "unlock a document without a token")
+	test.MustNotf(t, err, "unlock a document without a token")
 
 	_, err = client.Unlock(ctx, &repository.UnlockRequest{
 		Uuid:  docUUID,
 		Token: "4ab0330e-7cd7-4a75-b1f9-5ee8b098e333",
 	})
-	test.MustNot(t, err, "unlock a document with the wrong token")
+	test.MustNotf(t, err, "unlock a document with the wrong token")
 
 	_, err = client.Unlock(ctx, &repository.UnlockRequest{
 		Uuid:  docUUID,
 		Token: lock.Token,
 	})
-	test.Must(t, err, "unlock the document with the correct token")
+	test.Mustf(t, err, "unlock the document with the correct token")
 
 	_, err = client.Unlock(ctx, &repository.UnlockRequest{
 		Uuid:  docUUID,
 		Token: "4ab0330e-7cd7-4a75-b1f9-5ee8b098e333",
 	})
-	test.Must(t, err, "unlock an unlocked document with an arbitrary token")
+	test.Mustf(t, err, "unlock an unlocked document with an arbitrary token")
 
 	meta, err = client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "fetch document meta")
+	test.Mustf(t, err, "fetch document meta")
 
 	if meta.Meta.Lock != nil {
 		t.Fatalf("expected lock deleted, got: %v", meta.Meta.Lock)
@@ -2204,24 +2204,24 @@ func TestDocumentLocking(t *testing.T) {
 		Uuid: docUUID,
 		Ttl:  500,
 	})
-	test.Must(t, err, "create a new lock")
+	test.Mustf(t, err, "create a new lock")
 
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.MustNot(t, err, "delete a locked document")
+	test.MustNotf(t, err, "delete a locked document")
 
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid:      docUUID,
 		LockToken: lock.Token,
 	})
-	test.Must(t, err, "delete a locked document with the correct token")
+	test.Mustf(t, err, "delete a locked document with the correct token")
 
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid:      "59b9d054-c0ec-4a3e-ab4c-67aa5a9b5b6e",
 		LockToken: lock.Token,
 	})
-	test.Must(t, err, "unlock non-existing document")
+	test.Mustf(t, err, "unlock non-existing document")
 }
 
 func TestDocumentLockExclusivity(t *testing.T) {
@@ -2247,7 +2247,7 @@ func TestDocumentLockExclusivity(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create test article")
+	test.Mustf(t, err, "create test article")
 
 	statusUpdate := []*repository.StatusUpdate{
 		{Name: "done", Version: res.Version},
@@ -2262,38 +2262,38 @@ func TestDocumentLockExclusivity(t *testing.T) {
 		Uuid: docUUID,
 		Ttl:  10000,
 	})
-	test.Must(t, err, "lock the document with default exclusivity")
+	test.Mustf(t, err, "lock the document with default exclusivity")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.MustNot(t, err, "update a document with a default lock")
+	test.MustNotf(t, err, "update a document with a default lock")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:   docUUID,
 		Status: statusUpdate,
 	})
-	test.Must(t, err, "set a status on a document with a default lock")
+	test.Mustf(t, err, "set a status on a document with a default lock")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
 		Acl:  aclUpdate,
 	})
-	test.Must(t, err, "update the ACL of a document with a default lock")
+	test.Mustf(t, err, "update the ACL of a document with a default lock")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:      docUUID,
 		Status:    statusUpdate,
 		LockToken: "0e2e44ad-1a1c-4bc9-8a4a-44b35e3a0fcc",
 	})
-	test.MustNot(t, err, "set a status using the wrong lock token")
+	test.MustNotf(t, err, "set a status using the wrong lock token")
 
 	_, err = client.Unlock(ctx, &repository.UnlockRequest{
 		Uuid:  docUUID,
 		Token: lock.Token,
 	})
-	test.Must(t, err, "unlock the document")
+	test.Mustf(t, err, "unlock the document")
 
 	// A status lock blocks status updates, but not ACL updates.
 	lock, err = client.Lock(ctx, &repository.LockRequest{
@@ -2301,32 +2301,32 @@ func TestDocumentLockExclusivity(t *testing.T) {
 		Ttl:         10000,
 		Exclusivity: repository.LockExclusivity_LOCK_STATUS,
 	})
-	test.Must(t, err, "lock the document with status exclusivity")
+	test.Mustf(t, err, "lock the document with status exclusivity")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:   docUUID,
 		Status: statusUpdate,
 	})
-	test.MustNot(t, err, "set a status on a status-locked document")
+	test.MustNotf(t, err, "set a status on a status-locked document")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
 		Acl:  aclUpdate,
 	})
-	test.Must(t, err, "update the ACL of a status-locked document")
+	test.Mustf(t, err, "update the ACL of a status-locked document")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:      docUUID,
 		Status:    statusUpdate,
 		LockToken: lock.Token,
 	})
-	test.Must(t, err, "set a status on a status-locked document with the lock token")
+	test.Mustf(t, err, "set a status on a status-locked document with the lock token")
 
 	_, err = client.Unlock(ctx, &repository.UnlockRequest{
 		Uuid:  docUUID,
 		Token: lock.Token,
 	})
-	test.Must(t, err, "unlock the document")
+	test.Mustf(t, err, "unlock the document")
 
 	// An ACL lock blocks ACL updates, but not status updates.
 	lock, err = client.Lock(ctx, &repository.LockRequest{
@@ -2334,32 +2334,32 @@ func TestDocumentLockExclusivity(t *testing.T) {
 		Ttl:         10000,
 		Exclusivity: repository.LockExclusivity_LOCK_ACL,
 	})
-	test.Must(t, err, "lock the document with ACL exclusivity")
+	test.Mustf(t, err, "lock the document with ACL exclusivity")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
 		Acl:  aclUpdate,
 	})
-	test.MustNot(t, err, "update the ACL of an ACL-locked document")
+	test.MustNotf(t, err, "update the ACL of an ACL-locked document")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:   docUUID,
 		Status: statusUpdate,
 	})
-	test.Must(t, err, "set a status on an ACL-locked document")
+	test.Mustf(t, err, "set a status on an ACL-locked document")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:      docUUID,
 		Acl:       aclUpdate,
 		LockToken: lock.Token,
 	})
-	test.Must(t, err, "update the ACL of an ACL-locked document with the lock token")
+	test.Mustf(t, err, "update the ACL of an ACL-locked document with the lock token")
 
 	_, err = client.Unlock(ctx, &repository.UnlockRequest{
 		Uuid:  docUUID,
 		Token: lock.Token,
 	})
-	test.Must(t, err, "unlock the document")
+	test.Mustf(t, err, "unlock the document")
 
 	// An exclusive lock blocks document, status, and ACL updates.
 	lock, err = client.Lock(ctx, &repository.LockRequest{
@@ -2367,14 +2367,14 @@ func TestDocumentLockExclusivity(t *testing.T) {
 		Ttl:         10000,
 		Exclusivity: repository.LockExclusivity_LOCK_EXCLUSIVE,
 	})
-	test.Must(t, err, "lock the document with exclusive exclusivity")
+	test.Mustf(t, err, "lock the document with exclusive exclusivity")
 
 	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "fetch document meta")
-	test.NotNil(t, meta.Meta.Lock, "document should have a lock")
-	test.Equal(t, meta.Meta.Lock.Exclusivity,
+	test.Mustf(t, err, "fetch document meta")
+	test.NotNilf(t, meta.Meta.Lock, "document should have a lock")
+	test.Equalf(t, meta.Meta.Lock.Exclusivity,
 		repository.LockExclusivity_LOCK_EXCLUSIVE,
 		"expected the lock exclusivity to be exposed in the meta")
 
@@ -2382,19 +2382,19 @@ func TestDocumentLockExclusivity(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.MustNot(t, err, "update an exclusively locked document")
+	test.MustNotf(t, err, "update an exclusively locked document")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:   docUUID,
 		Status: statusUpdate,
 	})
-	test.MustNot(t, err, "set a status on an exclusively locked document")
+	test.MustNotf(t, err, "set a status on an exclusively locked document")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
 		Acl:  aclUpdate,
 	})
-	test.MustNot(t, err, "update the ACL of an exclusively locked document")
+	test.MustNotf(t, err, "update the ACL of an exclusively locked document")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:      docUUID,
@@ -2403,7 +2403,7 @@ func TestDocumentLockExclusivity(t *testing.T) {
 		Acl:       aclUpdate,
 		LockToken: lock.Token,
 	})
-	test.Must(t, err, "perform a full update of an exclusively locked document with the lock token")
+	test.Mustf(t, err, "perform a full update of an exclusively locked document with the lock token")
 }
 
 func TestGetWithLock(t *testing.T) {
@@ -2427,7 +2427,7 @@ func TestGetWithLock(t *testing.T) {
 		Uuid:     docUUID,
 		Document: baseDocument(docUUID, docURI),
 	})
-	test.Must(t, err, "create test article")
+	test.Mustf(t, err, "create test article")
 
 	t.Run("acquires lock alongside get", func(t *testing.T) {
 		res, err := writeClient.Get(ctx, &repository.GetDocumentRequest{
@@ -2438,23 +2438,23 @@ func TestGetWithLock(t *testing.T) {
 				Comment: "while editing",
 			},
 		})
-		test.Must(t, err, "get with lock")
-		test.NotNil(t, res.Lock, "lock should be returned")
-		test.Equal(t, false, res.Lock.Token == "", "lock token should be set")
-		test.Equal(t, false, res.Lock.Expires == "", "lock expires should be set")
+		test.Mustf(t, err, "get with lock")
+		test.NotNilf(t, res.Lock, "lock should be returned")
+		test.Equalf(t, false, res.Lock.Token == "", "lock token should be set")
+		test.Equalf(t, false, res.Lock.Expires == "", "lock expires should be set")
 
 		_, perr := time.Parse(time.RFC3339, res.Lock.Expires)
-		test.Must(t, perr, "expires is RFC3339")
+		test.Mustf(t, perr, "expires is RFC3339")
 
 		meta, err := writeClient.GetMeta(ctx, &repository.GetMetaRequest{
 			Uuid: docUUID,
 		})
-		test.Must(t, err, "fetch document meta")
-		test.NotNil(t, meta.Meta.Lock, "lock should be visible on meta")
-		test.Equal(t, "test-app", meta.Meta.Lock.App, "app stored on lock")
-		test.Equal(t, "while editing", meta.Meta.Lock.Comment,
+		test.Mustf(t, err, "fetch document meta")
+		test.NotNilf(t, meta.Meta.Lock, "lock should be visible on meta")
+		test.Equalf(t, "test-app", meta.Meta.Lock.App, "app stored on lock")
+		test.Equalf(t, "while editing", meta.Meta.Lock.Comment,
 			"comment stored on lock")
-		test.Equal(t, "user://test/testgetwithlock",
+		test.Equalf(t, "user://test/testgetwithlock",
 			meta.Meta.Lock.Uri, "lock holder URI matches caller")
 	})
 
@@ -2477,12 +2477,12 @@ func TestGetWithLock(t *testing.T) {
 			t.Fatalf("expected twirp error, got %T: %v", err, err)
 		}
 
-		test.Equal(t, twirp.FailedPrecondition, twerr.Code(),
+		test.Equalf(t, twirp.FailedPrecondition, twerr.Code(),
 			"conflict should be FailedPrecondition")
-		test.Equal(t, "user://test/testgetwithlock",
+		test.Equalf(t, "user://test/testgetwithlock",
 			twerr.Meta("lock_holder_sub"),
 			"lock_holder_sub identifies the existing holder")
-		test.Equal(t, "test-app", twerr.Meta("lock_app"),
+		test.Equalf(t, "test-app", twerr.Meta("lock_app"),
 			"lock_app exposed via metadata")
 	})
 
@@ -2520,7 +2520,7 @@ func TestIntegrationStatsOverview(t *testing.T) {
 		"..", "testdata", "TestIntegrationStatsOverview")
 
 	if regenerate {
-		test.Must(t, os.MkdirAll(dataDir, 0o700),
+		test.Mustf(t, os.MkdirAll(dataDir, 0o700),
 			"create test data directory")
 	}
 
@@ -2568,7 +2568,7 @@ func TestIntegrationStatsOverview(t *testing.T) {
 			{Name: "done"},
 		},
 	})
-	test.Must(t, err, "create first article")
+	test.Mustf(t, err, "create first article")
 
 	doc2 := baseDocument(doc2UUID, doc2URI)
 
@@ -2585,7 +2585,7 @@ func TestIntegrationStatsOverview(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "create second article")
+	test.Mustf(t, err, "create second article")
 
 	creationEnd := time.Now().Add(1 * time.Second).Truncate(1 * time.Second)
 
@@ -2632,15 +2632,15 @@ func TestIntegrationStatsOverview(t *testing.T) {
 			ctx := t.Context()
 
 			res, err := c.Client.GetStatusOverview(ctx, c.Req)
-			test.Must(t, err, "fetch status overview")
+			test.Mustf(t, err, "fetch status overview")
 
-			test.TestMessageAgainstGolden(t, regenerate, res,
+			test.MessageAgainstGolden(t, regenerate, res,
 				filepath.Join(dataDir, c.File),
 				test.IgnoreTimestamps{})
 
 			for _, item := range res.Items {
 				mod, err := time.Parse(time.RFC3339, item.Modified)
-				test.Must(t, err,
+				test.Mustf(t, err,
 					"return a valid modified timestamp for %s",
 					item.Uuid)
 
@@ -2657,7 +2657,7 @@ func TestIntegrationStatsOverview(t *testing.T) {
 
 				for status, s := range item.Heads {
 					created, err := time.Parse(time.RFC3339, s.Created)
-					test.Must(t, err,
+					test.Mustf(t, err,
 						"return a valid created timestamp for %q of %s",
 						status, item.Uuid)
 
@@ -2695,16 +2695,16 @@ func TestPrune(t *testing.T) {
 		res, err := client.Prune(ctx, &repository.PruneRequest{
 			Document: doc,
 		})
-		test.Must(t, err, "prune valid document")
+		test.Mustf(t, err, "prune valid document")
 
-		test.Equal(t, 0, len(res.Errors),
+		test.Equalf(t, 0, len(res.Errors),
 			"expected no errors for a valid document")
 
 		if res.Document == nil {
 			t.Fatal("expected pruned document to be returned")
 		}
 
-		test.Equal(t, docUUID, res.Document.Uuid,
+		test.Equalf(t, docUUID, res.Document.Uuid,
 			"pruned document should have the same UUID")
 	})
 
@@ -2725,9 +2725,9 @@ func TestPrune(t *testing.T) {
 		res, err := client.Prune(ctx, &repository.PruneRequest{
 			Document: doc,
 		})
-		test.Must(t, err, "prune document with invalid blocks")
+		test.Mustf(t, err, "prune document with invalid blocks")
 
-		test.Equal(t, 0, len(res.Errors),
+		test.Equalf(t, 0, len(res.Errors),
 			"expected no errors after pruning invalid blocks")
 
 		if res.Document == nil {
@@ -2759,7 +2759,7 @@ func TestPrune(t *testing.T) {
 		res, err := client.Prune(ctx, &repository.PruneRequest{
 			Document: doc,
 		})
-		test.Must(t, err, "prune document with undeclared type")
+		test.Mustf(t, err, "prune document with undeclared type")
 
 		if len(res.Errors) == 0 {
 			t.Fatal("expected errors for undeclared document type")
@@ -2782,7 +2782,7 @@ func TestPrune(t *testing.T) {
 			t.Fatalf("expected twirp error, got %T", err)
 		}
 
-		test.Equal(t, twirp.InvalidArgument, twerr.Code(),
+		test.Equalf(t, twirp.InvalidArgument, twerr.Code(),
 			"expected invalid argument error code")
 	})
 }
@@ -2814,7 +2814,7 @@ func TestPruneVariantType(t *testing.T) {
 				Variants: []string{"timeless"},
 			},
 		})
-	test.Must(t, err, "configure type variants")
+	test.Mustf(t, err, "configure type variants")
 
 	const variantType = "core/article#timeless"
 
@@ -2855,16 +2855,16 @@ func TestPruneVariantType(t *testing.T) {
 	res, err := client.Prune(ctx, &repository.PruneRequest{
 		Document: pruneDoc,
 	})
-	test.Must(t, err, "prune variant document")
+	test.Mustf(t, err, "prune variant document")
 
-	test.Equal(t, 0, len(res.Errors),
+	test.Equalf(t, 0, len(res.Errors),
 		"expected no errors for a valid variant document")
 
 	if res.Document == nil {
 		t.Fatal("expected pruned document to be returned")
 	}
 
-	test.Equal(t, variantType, res.Document.Type,
+	test.Equalf(t, variantType, res.Document.Type,
 		"pruned document should preserve the variant type")
 
 	// Prune a variant document with invalid blocks.
@@ -2884,9 +2884,9 @@ func TestPruneVariantType(t *testing.T) {
 	res, err = client.Prune(ctx, &repository.PruneRequest{
 		Document: pruneDoc2,
 	})
-	test.Must(t, err, "prune variant document with invalid blocks")
+	test.Mustf(t, err, "prune variant document with invalid blocks")
 
-	test.Equal(t, 0, len(res.Errors),
+	test.Equalf(t, 0, len(res.Errors),
 		"expected no errors after pruning invalid blocks from variant document")
 
 	if res.Document == nil {
@@ -2928,7 +2928,7 @@ func TestUUIDNormalisation(t *testing.T) {
 		Uuid:     strings.ToUpper(docUUID),
 		Document: doc,
 	})
-	test.Must(t, err, "create article, uppercase req.uuid")
+	test.Mustf(t, err, "create article, uppercase req.uuid")
 
 	doc.Uuid = strings.ToUpper(doc.Uuid)
 
@@ -2937,14 +2937,14 @@ func TestUUIDNormalisation(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "update article, uppercase doc.uuid")
+	test.Mustf(t, err, "update article, uppercase doc.uuid")
 
 	// Both uppercase.
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     strings.ToUpper(docUUID),
 		Document: doc,
 	})
-	test.Must(t, err, "update article, both uppercase")
+	test.Mustf(t, err, "update article, both uppercase")
 }
 
 func TestIntegrationGetSubset(t *testing.T) {
@@ -2990,7 +2990,7 @@ func TestIntegrationGetSubset(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
 	t.Run("AttributeExtraction", func(t *testing.T) {
 		res, err := client.Get(ctx, &repository.GetDocumentRequest{
@@ -2999,7 +2999,7 @@ func TestIntegrationGetSubset(t *testing.T) {
 				".meta(type='core/newsvalue')@{value}",
 			},
 		})
-		test.Must(t, err, "get with subset")
+		test.Mustf(t, err, "get with subset")
 
 		if res.Document != nil {
 			t.Fatal("expected Document to be nil when subset is requested")
@@ -3015,7 +3015,7 @@ func TestIntegrationGetSubset(t *testing.T) {
 			t.Fatal("expected 'value' key in extracted values")
 		}
 
-		test.Equal(t, "3", ev.Value, "extracted newsvalue")
+		test.Equalf(t, "3", ev.Value, "extracted newsvalue")
 	})
 
 	t.Run("DataExtraction", func(t *testing.T) {
@@ -3025,7 +3025,7 @@ func TestIntegrationGetSubset(t *testing.T) {
 				".content(type='core/text').data{text}",
 			},
 		})
-		test.Must(t, err, "get with data subset")
+		test.Mustf(t, err, "get with data subset")
 
 		if res.Document != nil {
 			t.Fatal("expected Document to be nil when subset is requested")
@@ -3041,7 +3041,7 @@ func TestIntegrationGetSubset(t *testing.T) {
 			t.Fatal("expected 'text' key in extracted values")
 		}
 
-		test.Equal(t, "The headline of the year", ev.Value,
+		test.Equalf(t, "The headline of the year", ev.Value,
 			"extracted text data")
 	})
 
@@ -3052,7 +3052,7 @@ func TestIntegrationGetSubset(t *testing.T) {
 				"sec=.links(rel='section')",
 			},
 		})
-		test.Must(t, err, "get with block subset")
+		test.Mustf(t, err, "get with block subset")
 
 		if res.Document != nil {
 			t.Fatal("expected Document to be nil when subset is requested")
@@ -3072,9 +3072,9 @@ func TestIntegrationGetSubset(t *testing.T) {
 			t.Fatal("expected block to be non-nil")
 		}
 
-		test.Equal(t, "core/section", ev.Block.Type,
+		test.Equalf(t, "core/section", ev.Block.Type,
 			"extracted block type")
-		test.Equal(t, sectionUUID, ev.Block.Uuid,
+		test.Equalf(t, sectionUUID, ev.Block.Uuid,
 			"extracted block uuid")
 	})
 
@@ -3086,7 +3086,7 @@ func TestIntegrationGetSubset(t *testing.T) {
 				".content(type='core/text').data{text}",
 			},
 		})
-		test.Must(t, err, "get with multiple subset expressions")
+		test.Mustf(t, err, "get with multiple subset expressions")
 
 		if res.Document != nil {
 			t.Fatal("expected Document to be nil when subset is requested")
@@ -3102,7 +3102,7 @@ func TestIntegrationGetSubset(t *testing.T) {
 		res, err := client.Get(ctx, &repository.GetDocumentRequest{
 			Uuid: docUUID,
 		})
-		test.Must(t, err, "get without subset")
+		test.Mustf(t, err, "get without subset")
 
 		if res.Document == nil {
 			t.Fatal("expected Document to be non-nil without subset")
@@ -3130,7 +3130,7 @@ func TestIntegrationGetSubset(t *testing.T) {
 			t.Fatalf("expected twirp error, got %T", err)
 		}
 
-		test.Equal(t, twirp.InvalidArgument, twerr.Code(),
+		test.Equalf(t, twirp.InvalidArgument, twerr.Code(),
 			"expected invalid argument error")
 	})
 
@@ -3141,13 +3141,13 @@ func TestIntegrationGetSubset(t *testing.T) {
 				".meta(type='nonexistent/type')@{value}",
 			},
 		})
-		test.Must(t, err, "get with non-matching subset")
+		test.Mustf(t, err, "get with non-matching subset")
 
 		if res.Document != nil {
 			t.Fatal("expected Document to be nil when subset is requested")
 		}
 
-		test.Equal(t, 0, len(res.Subset),
+		test.Equalf(t, 0, len(res.Subset),
 			"expected empty subset for non-matching expression")
 	})
 }
@@ -3180,13 +3180,13 @@ func TestIntegrationBulkGetSubset(t *testing.T) {
 		Uuid:     docUUID1,
 		Document: doc1,
 	})
-	test.Must(t, err, "create first article")
+	test.Mustf(t, err, "create first article")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID2,
 		Document: doc2,
 	})
-	test.Must(t, err, "create second article")
+	test.Mustf(t, err, "create second article")
 
 	t.Run("SubsetExtraction", func(t *testing.T) {
 		res, err := client.BulkGet(ctx, &repository.BulkGetRequest{
@@ -3198,7 +3198,7 @@ func TestIntegrationBulkGetSubset(t *testing.T) {
 				".meta(type='core/newsvalue')@{value}",
 			},
 		})
-		test.Must(t, err, "bulk get with subset")
+		test.Mustf(t, err, "bulk get with subset")
 
 		if len(res.Items) != 2 {
 			t.Fatalf("expected 2 items, got %d", len(res.Items))
@@ -3219,7 +3219,7 @@ func TestIntegrationBulkGetSubset(t *testing.T) {
 				t.Fatalf("item %d: expected 'value' key", i)
 			}
 
-			test.Equal(t, "3", ev.Value,
+			test.Equalf(t, "3", ev.Value,
 				"item %d: extracted newsvalue", i)
 		}
 	})
@@ -3242,7 +3242,7 @@ func TestIntegrationBulkGetSubset(t *testing.T) {
 			t.Fatalf("expected twirp error, got %T", err)
 		}
 
-		test.Equal(t, twirp.InvalidArgument, twerr.Code(),
+		test.Equalf(t, twirp.InvalidArgument, twerr.Code(),
 			"expected invalid argument error")
 	})
 }

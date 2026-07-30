@@ -109,18 +109,18 @@ func TestImplicitWorkflow(t *testing.T) {
 
 	workflows, err := repo.NewWorkflows(ctx,
 		slog.New(test.NewLogHandler(t, slog.LevelInfo)), loader)
-	test.Must(t, err, "build workflows")
+	test.Mustf(t, err, "build workflows")
 
 	t.Run("implicit workflow with multiple statuses", func(t *testing.T) {
 		wf, ok := workflows.GetDocumentWorkflow("core/article")
-		test.Equal(t, true, ok,
+		test.Equalf(t, true, ok,
 			"implicit workflow should exist for type with statuses")
-		test.Equal(t, "core/article", wf.Type, "workflow type")
-		test.Equal(t, "", wf.Configuration.Checkpoint,
+		test.Equalf(t, "core/article", wf.Type, "workflow type")
+		test.Equalf(t, "", wf.Configuration.Checkpoint,
 			"implicit workflow has no checkpoint")
-		test.Equal(t, "", wf.Configuration.NegativeCheckpoint,
+		test.Equalf(t, "", wf.Configuration.NegativeCheckpoint,
 			"implicit workflow has no negative checkpoint")
-		test.Equal(t, "", wf.Configuration.StepZero,
+		test.Equalf(t, "", wf.Configuration.StepZero,
 			"implicit workflow has no step zero")
 
 		expected := []string{"draft", "done", "usable"}
@@ -134,21 +134,21 @@ func TestImplicitWorkflow(t *testing.T) {
 
 	t.Run("implicit workflow with single status", func(t *testing.T) {
 		wf, ok := workflows.GetDocumentWorkflow("core/image")
-		test.Equal(t, true, ok, "implicit workflow should exist")
+		test.Equalf(t, true, ok, "implicit workflow should exist")
 		test.EqualDiff(t, []string{"usable"}, wf.Configuration.Steps,
 			"single status becomes the only step")
 	})
 
 	t.Run("no implicit workflow when no statuses configured", func(t *testing.T) {
 		_, ok := workflows.GetDocumentWorkflow("core/unknown")
-		test.Equal(t, false, ok,
+		test.Equalf(t, false, ok,
 			"types without statuses get no workflow")
 	})
 
 	t.Run("explicit workflow takes precedence", func(t *testing.T) {
 		wf, ok := workflows.GetDocumentWorkflow("core/article-with-explicit")
-		test.Equal(t, true, ok, "explicit workflow should exist")
-		test.Equal(t, "usable", wf.Configuration.Checkpoint,
+		test.Equalf(t, true, ok, "explicit workflow should exist")
+		test.Equalf(t, "usable", wf.Configuration.Checkpoint,
 			"explicit workflow keeps its checkpoint")
 		test.EqualDiff(t, []string{"draft", "done"}, wf.Configuration.Steps,
 			"explicit steps are preserved")
@@ -156,29 +156,29 @@ func TestImplicitWorkflow(t *testing.T) {
 
 	t.Run("implicit workflow steps drive state transitions", func(t *testing.T) {
 		wf, ok := workflows.GetDocumentWorkflow("core/article")
-		test.Equal(t, true, ok, "implicit workflow exists")
+		test.Equalf(t, true, ok, "implicit workflow exists")
 
 		state := wf.Start()
-		test.Equal(t, "", state.Step, "start step is empty for implicit workflow")
+		test.Equalf(t, "", state.Step, "start step is empty for implicit workflow")
 
 		state = wf.Step(state, repo.WorkflowStep{
 			Status: &repo.StatusUpdate{Name: "done", Version: 1},
 		})
-		test.Equal(t, "done", state.Step,
+		test.Equalf(t, "done", state.Step,
 			"status transitions advance implicit step")
 
 		state = wf.Step(state, repo.WorkflowStep{
 			Status: &repo.StatusUpdate{Name: "usable", Version: 1},
 		})
-		test.Equal(t, "usable", state.Step,
+		test.Equalf(t, "usable", state.Step,
 			"every configured status counts as a step")
-		test.Equal(t, "", state.LastCheckpoint,
+		test.Equalf(t, "", state.LastCheckpoint,
 			"implicit workflow never records a checkpoint")
 
 		// A new version with no checkpoint configured must not reset
 		// the recorded step back to empty.
 		state = wf.Step(state, repo.WorkflowStep{Version: 2})
-		test.Equal(t, "usable", state.Step,
+		test.Equalf(t, "usable", state.Step,
 			"version bumps don't reset step when no checkpoint is configured")
 	})
 
@@ -194,13 +194,13 @@ func TestImplicitWorkflow(t *testing.T) {
 		state = wf.Step(state, repo.WorkflowStep{
 			Status: &repo.StatusUpdate{Name: "done", Version: 1},
 		})
-		test.Equal(t, "done", state.Step,
+		test.Equalf(t, "done", state.Step,
 			"explicit workflow without checkpoint advances step")
-		test.Equal(t, "", state.LastCheckpoint,
+		test.Equalf(t, "", state.LastCheckpoint,
 			"checkpoint-less workflow does not record a checkpoint")
 
 		state = wf.Step(state, repo.WorkflowStep{Version: 2})
-		test.Equal(t, "done", state.Step,
+		test.Equalf(t, "done", state.Step,
 			"version bumps don't reset step without a checkpoint")
 	})
 }
@@ -236,7 +236,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 			Steps:              []string{"draft", "done", "approved", "withheld"},
 		},
 	})
-	test.Must(t, err, "create workflow")
+	test.Mustf(t, err, "create workflow")
 
 	waitDeadline := time.Now().Add(5 * time.Second)
 
@@ -264,7 +264,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
@@ -272,13 +272,13 @@ func TestIntegrationWorkflows(t *testing.T) {
 			{Name: "done", Version: docRes.Version},
 		},
 	})
-	test.Must(t, err, "set done status")
+	test.Mustf(t, err, "set done status")
 
 	updateRes, err := client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "update article")
+	test.Mustf(t, err, "update article")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
@@ -286,7 +286,7 @@ func TestIntegrationWorkflows(t *testing.T) {
 			{Name: "approved", Version: updateRes.Version},
 		},
 	})
-	test.Must(t, err, "set approved status")
+	test.Mustf(t, err, "set approved status")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
@@ -295,29 +295,29 @@ func TestIntegrationWorkflows(t *testing.T) {
 			{Name: "usable"},
 		},
 	})
-	test.Must(t, err, "set usable status")
+	test.Mustf(t, err, "set usable status")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "update article after usable")
+	test.Mustf(t, err, "update article after usable")
 
 	events := collectEventlog(t, client, 7, 5*time.Second)
 	eventsGolden := filepath.Join("testdata", t.Name(), "events.json")
 
-	test.TestMessageAgainstGolden(t, regenerate, events, eventsGolden,
+	test.MessageAgainstGolden(t, regenerate, events, eventsGolden,
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("document_nonce"))
 
 	meta, err := client.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "get document meta")
+	test.Mustf(t, err, "get document meta")
 
 	metaGolden := filepath.Join("testdata", t.Name(), "meta.json")
 
-	test.TestMessageAgainstGolden(t, regenerate, meta, metaGolden,
+	test.MessageAgainstGolden(t, regenerate, meta, metaGolden,
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("nonce"))
 }
@@ -352,7 +352,7 @@ func TestIntegrationWorkflowEventEmission(t *testing.T) {
 			Steps:              []string{"draft", "done"},
 		},
 	})
-	test.Must(t, err, "create workflow")
+	test.Mustf(t, err, "create workflow")
 
 	waitDeadline := time.Now().Add(2 * time.Second)
 
@@ -380,7 +380,7 @@ func TestIntegrationWorkflowEventEmission(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid: docUUID,
@@ -388,7 +388,7 @@ func TestIntegrationWorkflowEventEmission(t *testing.T) {
 			{Name: "usable", Version: res.Version},
 		},
 	})
-	test.Must(t, err, "set usable status")
+	test.Mustf(t, err, "set usable status")
 
 	// doc (ACL folded in) + doc-workflow + status + status-workflow = 4
 	// events. EmitACLEvent is not set, so the creation ACL folds onto the
@@ -409,16 +409,16 @@ func TestIntegrationWorkflowEventEmission(t *testing.T) {
 		}
 	}
 
-	test.Equal(t, 2, len(workflowEvents),
+	test.Equalf(t, 2, len(workflowEvents),
 		"flag re-enables the standalone workflow events")
 
 	if statusEvent == nil {
 		t.Fatal("expected a status event")
 	}
 
-	test.Equal(t, "usable", statusEvent.WorkflowState,
+	test.Equalf(t, "usable", statusEvent.WorkflowState,
 		"workflow state is still folded onto the status event")
-	test.Equal(t, "usable", statusEvent.WorkflowCheckpoint,
+	test.Equalf(t, "usable", statusEvent.WorkflowCheckpoint,
 		"workflow checkpoint is still folded onto the status event")
 }
 
@@ -458,18 +458,18 @@ func TestIntegrationACLEventFolding(t *testing.T) {
 			{Uri: grantee, Permissions: []string{"r"}},
 		},
 	})
-	test.Must(t, err, "create article with ACL")
+	test.Mustf(t, err, "create article with ACL")
 
 	// The ACL is folded onto the document event, so the create only emits
 	// a single event.
 	events := collectEventlog(t, client, 1, 5*time.Second)
 
-	test.Equal(t, 1, len(events.Items),
+	test.Equalf(t, 1, len(events.Items),
 		"the create folds the ACL into a single document event")
 
 	created := events.Items[0]
 
-	test.Equal(t, "document", created.Event,
+	test.Equalf(t, "document", created.Event,
 		"the create emits a document event")
 
 	if len(created.Acl) == 0 {
@@ -483,13 +483,13 @@ func TestIntegrationACLEventFolding(t *testing.T) {
 			{Uri: grantee, Permissions: []string{"r", "w"}},
 		},
 	})
-	test.Must(t, err, "update ACL on its own")
+	test.Mustf(t, err, "update ACL on its own")
 
 	events = collectEventlog(t, client, 2, 5*time.Second)
 
 	aclEvent := events.Items[len(events.Items)-1]
 
-	test.Equal(t, "acl", aclEvent.Event,
+	test.Equalf(t, "acl", aclEvent.Event,
 		"an ACL update without a document update emits a standalone acl event")
 }
 
@@ -529,7 +529,7 @@ func TestIntegrationACLEventEmission(t *testing.T) {
 			{Uri: grantee, Permissions: []string{"r"}},
 		},
 	})
-	test.Must(t, err, "create article with ACL")
+	test.Mustf(t, err, "create article with ACL")
 
 	// document (ACL folded in) + standalone acl = 2 events.
 	events := collectEventlog(t, client, 2, 5*time.Second)
@@ -583,7 +583,7 @@ func collectEventlog(
 			BatchWaitMs: 200,
 			After:       lastID,
 		})
-		test.Must(t, err, "get eventlog")
+		test.Mustf(t, err, "get eventlog")
 
 		collected = append(collected, events.Items...)
 
