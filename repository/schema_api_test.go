@@ -28,7 +28,7 @@ func TestDeprecations(t *testing.T) {
 
 	schemas, err := repository.LoadSchemasFromDir(
 		dataDir, "v1.0.0", "deprecation")
-	test.Must(t, err, "load deprecation schema")
+	test.Mustf(t, err, "load deprecation schema")
 
 	tc := testingAPIServer(t, logger, testingServerOptions{
 		Schemas:         schemas,
@@ -61,7 +61,7 @@ func TestDeprecations(t *testing.T) {
 		Uuid:     doc.Uuid,
 		Document: doc,
 	})
-	test.Must(t, err, "create a test document")
+	test.Mustf(t, err, "create a test document")
 
 	_, err = client.UpdateDeprecation(ctx, &rpc_repository.UpdateDeprecationRequest{
 		Deprecation: &rpc_repository.Deprecation{
@@ -69,11 +69,11 @@ func TestDeprecations(t *testing.T) {
 			Enforced: true,
 		},
 	})
-	test.Must(t, err, "create a deprecation")
+	test.Mustf(t, err, "create a deprecation")
 
 	deprecations, err := client.GetDeprecations(ctx, &rpc_repository.GetDeprecationsRequest{})
-	test.Must(t, err, "get deprecations")
-	test.EqualMessage(t, &rpc_repository.GetDeprecationsResponse{
+	test.Mustf(t, err, "get deprecations")
+	test.EqualMessagef(t, &rpc_repository.GetDeprecationsResponse{
 		Deprecations: []*rpc_repository.Deprecation{
 			{
 				Label:    "data-value",
@@ -108,11 +108,11 @@ func TestDeprecations(t *testing.T) {
 			Enforced: false,
 		},
 	})
-	test.Must(t, err, "update a deprecation")
+	test.Mustf(t, err, "update a deprecation")
 
 	deprecations, err = client.GetDeprecations(ctx, &rpc_repository.GetDeprecationsRequest{})
-	test.Must(t, err, "get deprecations")
-	test.EqualMessage(t, &rpc_repository.GetDeprecationsResponse{
+	test.Mustf(t, err, "get deprecations")
+	test.EqualMessagef(t, &rpc_repository.GetDeprecationsResponse{
 		Deprecations: []*rpc_repository.Deprecation{
 			{
 				Label:    "data-value",
@@ -169,14 +169,14 @@ func TestVariantValidation(t *testing.T) {
 				Variants: []string{"template"},
 			},
 		})
-	test.Must(t, err, "configure type variants")
+	test.Mustf(t, err, "configure type variants")
 
 	// Verify the configuration was stored.
 	confResp, err := schemasClient.GetTypeConfiguration(ctx,
 		&rpc_repository.GetTypeConfigurationRequest{
 			Type: "core/article",
 		})
-	test.Must(t, err, "get type configuration")
+	test.Mustf(t, err, "get type configuration")
 	test.EqualDiff(t,
 		[]string{"template"}, confResp.Configuration.Variants,
 		"expected variants to be stored")

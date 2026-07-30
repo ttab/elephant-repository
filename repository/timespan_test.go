@@ -50,22 +50,22 @@ func TestTimespan(t *testing.T) {
 			err := elephantine.UnmarshalFile(
 				filepath.Join(dataDir, tc.Document),
 				&doc)
-			test.Must(t, err, "unmarshal document")
+			test.Mustf(t, err, "unmarshal document")
 
 			err = elephantine.UnmarshalFile(
 				filepath.Join(dataDir, tc.Config),
 				&conf)
-			test.Must(t, err, "unmarshal configuration")
+			test.Mustf(t, err, "unmarshal configuration")
 
 			var result []timespanResult
 
 			for i := range conf.Times {
 				ex, err := repository.NewTimespanExtractor(
 					conf.Times[i], defaultTZ)
-				test.Must(t, err, "create extractor")
+				test.Mustf(t, err, "create extractor")
 
 				spans, err := ex.Extract(doc)
-				test.Must(t, err, "extract timespans")
+				test.Mustf(t, err, "extract timespans")
 
 				result = append(result, timespanResult{
 					Config: conf.Times[i],
@@ -75,17 +75,17 @@ func TestTimespan(t *testing.T) {
 				})
 			}
 
-			test.TestAgainstGolden(t, regenerate, result,
+			test.AgainstGolden(t, regenerate, result,
 				filepath.Join(dataDir, name+".result.json"))
 
 			docEx, err := repository.NewDocumentTimespanExtractor(
 				conf.Times, defaultTZ)
-			test.Must(t, err, "create document extractor")
+			test.Mustf(t, err, "create document extractor")
 
 			docSpans, err := docEx.Extract(doc)
-			test.Must(t, err, "extract document timestamps")
+			test.Mustf(t, err, "extract document timestamps")
 
-			test.TestAgainstGolden(t, regenerate, docSpans,
+			test.AgainstGolden(t, regenerate, docSpans,
 				filepath.Join(dataDir, name+".docspans.json"))
 		})
 	}
@@ -119,7 +119,7 @@ func TestTimespanIntegration(t *testing.T) {
 	outputDir := filepath.Join(dataDir, "golden")
 
 	err := os.MkdirAll(outputDir, 0o770)
-	test.Must(t, err, "create output dir")
+	test.Mustf(t, err, "create output dir")
 
 	ctx := t.Context()
 
@@ -147,14 +147,14 @@ func TestTimespanIntegration(t *testing.T) {
 		IncludeDocuments: true,
 		IncludeMeta:      true,
 	})
-	test.Must(t, err, "get matching events for 2025-10-28")
+	test.Mustf(t, err, "get matching events for 2025-10-28")
 
 	// The order is not defined, sort by UUID for consistency.
 	slices.SortFunc(getEvents.Matches, func(a, b *rpc.DocumentMatch) int {
 		return strings.Compare(a.Uuid, b.Uuid)
 	})
 
-	test.TestMessageAgainstGolden(t, regenerate, getEvents,
+	test.MessageAgainstGolden(t, regenerate, getEvents,
 		filepath.Join(outputDir, "2025-10-28.v1.json"),
 		test.IgnoreTimestamps{},
 		test.IgnoreField[string]{
@@ -177,9 +177,9 @@ func TestTimespanIntegration(t *testing.T) {
 		IncludeDocuments: true,
 		IncludeMeta:      true,
 	})
-	test.Must(t, err, "get matching events for 2025-10-21")
+	test.Mustf(t, err, "get matching events for 2025-10-21")
 
-	test.Equal(t, 0, len(emptyDay.Matches), "get no matches for 2025-10-21")
+	test.Equalf(t, 0, len(emptyDay.Matches), "get no matches for 2025-10-21")
 
 	// Event that occurs on 2025-10-21
 	writeDoc(t, docClient, dataDir, "woodsy", nil)
@@ -193,9 +193,9 @@ func TestTimespanIntegration(t *testing.T) {
 		IncludeDocuments: true,
 		IncludeMeta:      true,
 	})
-	test.Must(t, err, "get matching events for 2025-10-21")
+	test.Mustf(t, err, "get matching events for 2025-10-21")
 
-	test.Equal(t, 1, len(popDay.Matches), "get one match for 2025-10-21")
+	test.Equalf(t, 1, len(popDay.Matches), "get one match for 2025-10-21")
 }
 
 func writeDoc(
@@ -209,14 +209,14 @@ func writeDoc(
 
 	err := elephantine.UnmarshalFile(
 		filepath.Join(dataDir, name+".json"), &doc)
-	test.Must(t, err, "unmarshal %s document", name)
+	test.Mustf(t, err, "unmarshal %s document", name)
 
 	_, err = docClient.Update(t.Context(), &rpc.UpdateRequest{
 		Uuid:     doc.UUID,
 		Document: rpc_newsdoc.DocumentToRPC(doc),
 		Status:   status,
 	})
-	test.Must(t, err, "write %s document", name)
+	test.Mustf(t, err, "write %s document", name)
 
 	return doc.UUID
 }

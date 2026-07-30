@@ -15,13 +15,13 @@ import (
 
 func TestValidateLabel(t *testing.T) {
 	err := repo.ValidateLabel("Panda_123")
-	test.Must(t, err, "validate simple string ")
+	test.Mustf(t, err, "validate simple string ")
 
 	err = repo.ValidateLabel("panda(123)cub")
-	test.MustNot(t, err, "validate invalid chars")
+	test.MustNotf(t, err, "validate invalid chars")
 
 	err = repo.ValidateLabel(strings.Repeat("a", 1000))
-	test.MustNot(t, err, "validate too long strings")
+	test.MustNotf(t, err, "validate too long strings")
 }
 
 func TestIntegrationMetrics(t *testing.T) {
@@ -54,24 +54,24 @@ func TestIntegrationMetrics(t *testing.T) {
 		Name:        "wordcount",
 		Aggregation: repository.MetricAggregation_REPLACE,
 	})
-	test.Must(t, err, "register kind")
+	test.Mustf(t, err, "register kind")
 
 	_, err = clientAdmin.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
 		Name:        "revisions",
 		Aggregation: repository.MetricAggregation_REPLACE,
 	})
-	test.Must(t, err, "register kind")
+	test.Mustf(t, err, "register kind")
 
 	_, err = clientAdmin.RegisterKind(ctx, &repository.RegisterMetricKindRequest{
 		Name:        "revisions",
 		Aggregation: repository.MetricAggregation_INCREMENT,
 	})
-	test.Must(t, err, "register kind update")
+	test.Mustf(t, err, "register kind update")
 
 	kinds, err := clientAdmin.GetKinds(ctx, &repository.GetMetricKindsRequest{})
-	test.Must(t, err, "get kinds")
+	test.Mustf(t, err, "get kinds")
 
-	test.EqualMessage(t, &repository.GetMetricKindsResponse{
+	test.EqualMessagef(t, &repository.GetMetricKindsResponse{
 		Kinds: []*repository.MetricKind{
 			{
 				Name:        "revisions",
@@ -87,12 +87,12 @@ func TestIntegrationMetrics(t *testing.T) {
 	_, err = clientAdmin.DeleteKind(ctx, &repository.DeleteMetricKindRequest{
 		Name: "revisions",
 	})
-	test.Must(t, err, "delete kind")
+	test.Mustf(t, err, "delete kind")
 
 	kinds, err = clientAdmin.GetKinds(ctx, &repository.GetMetricKindsRequest{})
-	test.Must(t, err, "get kinds")
+	test.Mustf(t, err, "get kinds")
 
-	test.EqualMessage(t, &repository.GetMetricKindsResponse{
+	test.EqualMessagef(t, &repository.GetMetricKindsResponse{
 		Kinds: []*repository.MetricKind{
 			{
 				Name:        "wordcount",
@@ -117,7 +117,7 @@ func TestIntegrationMetrics(t *testing.T) {
 			},
 		},
 	})
-	test.Must(t, err, "create test document")
+	test.Mustf(t, err, "create test document")
 
 	clientWrite := tc.MetricsClient(t,
 		itest.StandardClaims(t, "metrics_write"))
@@ -129,7 +129,7 @@ func TestIntegrationMetrics(t *testing.T) {
 			Label: "default",
 			Value: 123,
 		})
-	test.Must(t, err, "register the metric")
+	test.Mustf(t, err, "register the metric")
 
 	clientWriteWC := tc.MetricsClient(t,
 		itest.StandardClaims(t, "metrics_write:wordcount"))
@@ -141,7 +141,7 @@ func TestIntegrationMetrics(t *testing.T) {
 			Label: "default",
 			Value: 123,
 		})
-	test.Must(t, err, "register the metric")
+	test.Mustf(t, err, "register the metric")
 
 	clientWriteRev := tc.MetricsClient(t,
 		itest.StandardClaims(t, "metrics_write:revisions"))
@@ -153,7 +153,7 @@ func TestIntegrationMetrics(t *testing.T) {
 			Label: "default",
 			Value: 123,
 		})
-	test.MustNot(t, err, "register the metric")
+	test.MustNotf(t, err, "register the metric")
 
 	// Test reading.
 
@@ -165,9 +165,9 @@ func TestIntegrationMetrics(t *testing.T) {
 			Uuids: []string{"d98d2c21-980c-4c7f-b0b5-9ed9feba291b"},
 			Kinds: []string{"wordcount"},
 		})
-	test.Must(t, err, "read metrics")
+	test.Mustf(t, err, "read metrics")
 
-	test.EqualMessage(t, &repository.GetMetricsResponse{
+	test.EqualMessagef(t, &repository.GetMetricsResponse{
 		Documents: map[string]*repository.DocumentMetrics{
 			"d98d2c21-980c-4c7f-b0b5-9ed9feba291b": {
 				Metrics: []*repository.Metric{
@@ -186,5 +186,5 @@ func TestIntegrationMetrics(t *testing.T) {
 	_, err = clientAdmin.DeleteKind(ctx, &repository.DeleteMetricKindRequest{
 		Name: "wordcount",
 	})
-	test.Must(t, err, "delete kind in use")
+	test.Mustf(t, err, "delete kind in use")
 }

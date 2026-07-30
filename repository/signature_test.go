@@ -67,7 +67,7 @@ func getTestKeys(t test.TestingT) *repository.SigningKeySet {
 	var set repository.SigningKeySet
 
 	err := json.Unmarshal([]byte(testKeys), &set)
-	test.Must(t, err, "unmarshal test keys")
+	test.Mustf(t, err, "unmarshal test keys")
 
 	return &set
 }
@@ -82,20 +82,20 @@ func TestArchiveSignature_GenerateAndVerify(t *testing.T) {
 
 	for kid, t0 := range keySelection {
 		key := keys.CurrentKey(t0)
-		test.NotNil(t, key,
+		test.NotNilf(t, key,
 			"expected there to be a current key for %v", t0)
-		test.Equal(t, kid, key.Spec.KeyID, "correct key selected")
+		test.Equalf(t, kid, key.Spec.KeyID, "correct key selected")
 
 		someData := []byte(`{"my":"json"}`)
 		hashData := sha256.Sum256(someData)
 
 		sig, err := repository.NewArchiveSignature(key, hashData)
-		test.Must(t, err, "generate signature")
-		test.Equal(t, sig.KeyID, key.Spec.KeyID,
+		test.Mustf(t, err, "generate signature")
+		test.Equalf(t, sig.KeyID, key.Spec.KeyID,
 			"correct key ID declared by signature")
 
 		err = sig.Verify(key)
-		test.Must(t, err, "verify generated signature")
+		test.Mustf(t, err, "verify generated signature")
 	}
 }
 
@@ -103,26 +103,26 @@ func TestArchiveSignature_ParseAndVerify(t *testing.T) {
 	keys := getTestKeys(t)
 
 	sig, err := repository.ParseArchiveSignature(testSignature)
-	test.Must(t, err, "parse signature")
+	test.Mustf(t, err, "parse signature")
 
 	key := keys.GetKeyByID(sig.KeyID)
-	test.NotNil(t, key, "look up key")
+	test.NotNilf(t, key, "look up key")
 
 	err = sig.Verify(key)
-	test.Must(t, err, "verify parsed signature")
+	test.Mustf(t, err, "verify parsed signature")
 }
 
 func TestArchiveSignature_ParseAndDetectBadSignature(t *testing.T) {
 	keys := getTestKeys(t)
 
 	sig, err := repository.ParseArchiveSignature(badSignature)
-	test.Must(t, err, "parse signature")
+	test.Mustf(t, err, "parse signature")
 
 	key := keys.GetKeyByID(sig.KeyID)
-	test.NotNil(t, key, "look up key")
+	test.NotNilf(t, key, "look up key")
 
 	err = sig.Verify(key)
-	test.MustNot(t, err, "expect to get error for bad signature")
+	test.MustNotf(t, err, "expect to get error for bad signature")
 }
 
 func FuzzArchiveSignatureParsing(f *testing.F) {
@@ -130,7 +130,7 @@ func FuzzArchiveSignatureParsing(f *testing.F) {
 	time := time.Date(2023, 2, 10, 0, 0, 0, 0, time.UTC)
 
 	key := keys.CurrentKey(time)
-	test.NotNil(f, key, "get current key")
+	test.NotNilf(f, key, "get current key")
 
 	f.Add(testSignature)
 	f.Add(badSignature)

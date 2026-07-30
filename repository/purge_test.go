@@ -25,7 +25,7 @@ func TestPurge(t *testing.T) {
 	regenerate := regenerateTestFixtures()
 	dataDir := filepath.Join("..", "testdata", t.Name())
 
-	test.Must(t, os.MkdirAll(dataDir, 0o700),
+	test.Mustf(t, os.MkdirAll(dataDir, 0o700),
 		"ensure that we have a test data directory")
 
 	t.Parallel()
@@ -62,19 +62,19 @@ func TestPurge(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	test.Must(t, err, "create article")
+	test.Mustf(t, err, "create article")
 
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "delete article")
+	test.Mustf(t, err, "delete article")
 
 	deletes, err := client.ListDeleted(ctx, &repository.ListDeletedRequest{
 		Uuid: docUUID,
 	})
-	test.Must(t, err, "list deletes")
+	test.Mustf(t, err, "list deletes")
 
-	test.Equal(t, 1, len(deletes.Deletes), "expect one delete record")
+	test.Equalf(t, 1, len(deletes.Deletes), "expect one delete record")
 
 	deleteRec := deletes.Deletes[0]
 
@@ -82,7 +82,7 @@ func TestPurge(t *testing.T) {
 		Uuid:           docUUID,
 		DeleteRecordId: deleteRec.Id,
 	})
-	test.Must(t, err, "purge deleted document")
+	test.Mustf(t, err, "purge deleted document")
 
 	var purgedDelete *repository.DeleteRecord
 
@@ -98,13 +98,13 @@ func TestPurge(t *testing.T) {
 		deletes, err := client.ListDeleted(ctx, &repository.ListDeletedRequest{
 			Uuid: docUUID,
 		})
-		test.Must(t, err, "list deletes")
+		test.Mustf(t, err, "list deletes")
 
-		test.Equal(t, 1, len(deletes.Deletes), "expect one delete record")
+		test.Equalf(t, 1, len(deletes.Deletes), "expect one delete record")
 
 		pd := deletes.Deletes[0]
 
-		test.Equal(t, deleteRec.Id, pd.Id, "expect the same delete record")
+		test.Equalf(t, deleteRec.Id, pd.Id, "expect the same delete record")
 
 		if pd.Purged != "" {
 			purgedDelete = pd
@@ -124,13 +124,13 @@ func TestPurge(t *testing.T) {
 			t, "purged", purgedDelete.Purged)
 
 		err := elephantine.MarshalFile(purgedPath, purgedDelete)
-		test.Must(t, err, "update golden file for eventlog")
+		test.Mustf(t, err, "update golden file for eventlog")
 	}
 
 	var wantDeleteRecord *repository.DeleteRecord
 
 	err = elephantine.UnmarshalFile(purgedPath, &wantDeleteRecord)
-	test.Must(t, err, "read golden file for purged delete record")
+	test.Mustf(t, err, "read golden file for purged delete record")
 
 	diff := cmp.Diff(
 		wantDeleteRecord, purgedDelete,
@@ -177,7 +177,7 @@ func TestPurge(t *testing.T) {
 
 	goldenPath := filepath.Join(dataDir, "eventlog.json")
 
-	test.TestMessageAgainstGolden(t, regenerate,
+	test.MessageAgainstGolden(t, regenerate,
 		&repository.GetEventlogResponse{
 			Items: events,
 		},
@@ -204,7 +204,7 @@ func (it *incrementalTime) NextTimestamp(
 	t.Helper()
 
 	_, err := time.Parse(time.RFC3339, original)
-	test.Must(t, err, "parse %s as a valid RFC3339 timestamp", name)
+	test.Mustf(t, err, "parse %s as a valid RFC3339 timestamp", name)
 
 	it.t = it.t.Add(1 * time.Second)
 
