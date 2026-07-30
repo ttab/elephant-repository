@@ -72,7 +72,8 @@ func NewEventForwarder(opts EventForwarderOptions) (*EventForwarder, error) {
 	restarts := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "elephant_event_forwarder_restarts_total",
-			Help: "Number of times the event forwarder has restarted.",
+			Help: "Restarts of the event forwarder; a growing count " +
+				"means forwarding to the sink is failing and being retried.",
 		}, []string{metricLabelName})
 	if err := opts.MetricsRegisterer.Register(restarts); err != nil {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
@@ -81,15 +82,18 @@ func NewEventForwarder(opts EventForwarderOptions) (*EventForwarder, error) {
 	skips := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "elephant_event_forwarder_skipped_total",
-			Help: "Number of times events have been skipped by the forwarder.",
+			Help: "Events the forwarder skipped rather than delivered; " +
+				"sustained growth means sink consumers are missing events, " +
+				"the reason label tells why.",
 		}, []string{metricLabelName, "type", "reason"})
 	if err := opts.MetricsRegisterer.Register(skips); err != nil {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
 
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "elephant_event_forwarder_latency_seconds",
-		Help:    "Observed time between event time and sink submission.",
+		Name: "elephant_event_forwarder_latency_seconds",
+		Help: "Time from event creation to sink delivery; rising values " +
+			"mean the forwarder is falling behind the eventlog.",
 		Buckets: prometheus.ExponentialBuckets(0.100, 2, 11),
 	}, []string{metricLabelName})
 	if err := opts.MetricsRegisterer.Register(latency); err != nil {

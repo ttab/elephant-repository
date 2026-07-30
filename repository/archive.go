@@ -108,52 +108,63 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 
 	m.Gauge(&a.eventArchiverPos, prometheus.GaugeOpts{
 		Name: "elephant_archiver_event_archiver_position",
-		Help: "Eventlog archiver position.",
+		Help: "Eventlog position the archiver has processed; a position " +
+			"that stops advancing while events are written means " +
+			"archiving has stalled.",
 	})
 
 	m.CounterVec(&a.eventsArchived, prometheus.CounterOpts{
 		Name: "elephant_event_archived_total",
-		Help: "Number of document events archived.",
+		Help: "Eventlog items archived to S3 by event type; 'error' " +
+			"statuses mean archiving is failing and being retried.",
 	}, []string{"event_type", metricLabelStatus})
 
 	m.CounterVec(&a.deletesProcessed, prometheus.CounterOpts{
 		Name: "elephant_archiver_deletes_total",
-		Help: "Number of document deletes processed.",
+		Help: "Document delete finalizations processed; 'error' statuses " +
+			"mean deletes are failing and being retried.",
 	}, []string{metricLabelStatus})
 
 	m.CounterVec(&a.deleteMoves, prometheus.CounterOpts{
 		Name: "elephant_archiver_delete_moves_total",
-		Help: "Number of objects moves as part of delete processing.",
+		Help: "S3 object moves performed as part of delete processing; " +
+			"'error' statuses mean delete finalization is failing.",
 	}, []string{metricLabelStatus})
 
 	m.CounterVec(&a.restoresProcessed, prometheus.CounterOpts{
 		Name: "elephant_archiver_restores_total",
-		Help: "Number of document restores processed.",
+		Help: "Document restores processed; 'error' statuses mean " +
+			"restores are failing and being retried.",
 	}, []string{metricLabelStatus})
 
 	m.CounterVec(&a.purgesProcessed, prometheus.CounterOpts{
 		Name: "elephant_archiver_purges_total",
-		Help: "Number of document purges processed.",
+		Help: "Document purges processed; 'error' statuses mean purges " +
+			"are failing and being retried.",
 	}, []string{metricLabelStatus})
 
 	m.CounterVec(&a.purgeDeletes, prometheus.CounterOpts{
 		Name: "elephant_archiver_purge_deletes_total",
-		Help: "Number of objects deleted as part of purge processing.",
+		Help: "S3 objects deleted as part of purge processing; 'error' " +
+			"statuses mean purged document data may remain in the archive.",
 	}, []string{metricLabelStatus})
 
 	m.CounterVec(&a.batchesCreated, prometheus.CounterOpts{
 		Name: "elephant_archiver_batches_created_total",
-		Help: "Number of event batches created.",
+		Help: "Eventlog archive batches created by batch size; a stall " +
+			"while events are archived means batch compaction has stopped.",
 	}, []string{"size", metricLabelStatus})
 
 	m.Gauge(&a.batchArchiverPos1k, prometheus.GaugeOpts{
 		Name: "elephant_archiver_batch_1k_position",
-		Help: "Eventlog batch archiver position for 1k batches.",
+		Help: "Eventlog position of the 1k batch archiver; a position " +
+			"that lags the event archiver means batching has stalled.",
 	})
 
 	m.Gauge(&a.batchArchiverPos10k, prometheus.GaugeOpts{
 		Name: "elephant_archiver_batch_10k_position",
-		Help: "Eventlog batch archiver position for 10k batches.",
+		Help: "Eventlog position of the 10k batch archiver; a position " +
+			"that lags the event archiver means batching has stalled.",
 	})
 
 	if err := m.Err(); err != nil {

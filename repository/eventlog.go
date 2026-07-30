@@ -91,12 +91,14 @@ func NewEventlogBuilder(
 
 	prom.Counter(&eb.starts, prometheus.CounterOpts{
 		Name: "elephant_eventlog_start_total",
-		Help: "Number of times the eventlog has started.",
+		Help: "Starts of the eventlog builder; more than one per process " +
+			"means the builder has crashed and restarted.",
 	})
 
 	prom.CounterVec(&eb.events, prometheus.CounterOpts{
 		Name: "elephant_eventlog_events_total",
-		Help: "Number of received eventlog events.",
+		Help: "Events built from the outbox into the eventlog; a stall " +
+			"while documents are updated means event delivery has stopped.",
 	}, []string{"type", metricLabelDocType})
 
 	if err := prom.Err(); err != nil {
