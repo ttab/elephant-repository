@@ -129,7 +129,7 @@ func NewDocumentStream(
 	prom.CounterVec(&s.mEmitEvents, prometheus.CounterOpts{
 		Name: "repository_docstream_emit_total",
 		Help: "Counts when we 'start' to emit events, and 'ok' on success, 'error' on failure.",
-	}, []string{"status"})
+	}, []string{metricLabelStatus})
 
 	prom.Gauge(&s.mPosition, prometheus.GaugeOpts{
 		Name: "repository_docstream_position",

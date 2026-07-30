@@ -114,37 +114,37 @@ func NewArchiver(opts ArchiverOptions) (*Archiver, error) {
 	m.CounterVec(&a.eventsArchived, prometheus.CounterOpts{
 		Name: "elephant_event_archived_total",
 		Help: "Number of document events archived.",
-	}, []string{"event_type", "status"})
+	}, []string{"event_type", metricLabelStatus})
 
 	m.CounterVec(&a.deletesProcessed, prometheus.CounterOpts{
 		Name: "elephant_archiver_deletes_total",
 		Help: "Number of document deletes processed.",
-	}, []string{"status"})
+	}, []string{metricLabelStatus})
 
 	m.CounterVec(&a.deleteMoves, prometheus.CounterOpts{
 		Name: "elephant_archiver_delete_moves_total",
 		Help: "Number of objects moves as part of delete processing.",
-	}, []string{"status"})
+	}, []string{metricLabelStatus})
 
 	m.CounterVec(&a.restoresProcessed, prometheus.CounterOpts{
 		Name: "elephant_archiver_restores_total",
 		Help: "Number of document restores processed.",
-	}, []string{"status"})
+	}, []string{metricLabelStatus})
 
 	m.CounterVec(&a.purgesProcessed, prometheus.CounterOpts{
 		Name: "elephant_archiver_purges_total",
 		Help: "Number of document purges processed.",
-	}, []string{"status"})
+	}, []string{metricLabelStatus})
 
 	m.CounterVec(&a.purgeDeletes, prometheus.CounterOpts{
 		Name: "elephant_archiver_purge_deletes_total",
 		Help: "Number of objects deleted as part of purge processing.",
-	}, []string{"status"})
+	}, []string{metricLabelStatus})
 
 	m.CounterVec(&a.batchesCreated, prometheus.CounterOpts{
 		Name: "elephant_archiver_batches_created_total",
 		Help: "Number of event batches created.",
-	}, []string{"size", "status"})
+	}, []string{"size", metricLabelStatus})
 
 	m.Gauge(&a.batchArchiverPos1k, prometheus.GaugeOpts{
 		Name: "elephant_archiver_batch_1k_position",

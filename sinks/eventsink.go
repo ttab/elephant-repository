@@ -17,6 +17,9 @@ import (
 	"github.com/twitchtv/twirp"
 )
 
+// metricLabelName is the Prometheus label used for the sink name.
+const metricLabelName = "name"
+
 type IncrementSkipMetricFunc func(eventType string, reason string)
 
 type EventSink interface {
@@ -70,7 +73,7 @@ func NewEventForwarder(opts EventForwarderOptions) (*EventForwarder, error) {
 		prometheus.CounterOpts{
 			Name: "elephant_event_forwarder_restarts_total",
 			Help: "Number of times the event forwarder has restarted.",
-		}, []string{"name"})
+		}, []string{metricLabelName})
 	if err := opts.MetricsRegisterer.Register(restarts); err != nil {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
@@ -79,7 +82,7 @@ func NewEventForwarder(opts EventForwarderOptions) (*EventForwarder, error) {
 		prometheus.CounterOpts{
 			Name: "elephant_event_forwarder_skipped_total",
 			Help: "Number of times events have been skipped by the forwarder.",
-		}, []string{"name", "type", "reason"})
+		}, []string{metricLabelName, "type", "reason"})
 	if err := opts.MetricsRegisterer.Register(skips); err != nil {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
@@ -88,7 +91,7 @@ func NewEventForwarder(opts EventForwarderOptions) (*EventForwarder, error) {
 		Name:    "elephant_event_forwarder_latency_seconds",
 		Help:    "Observed time between event time and sink submission.",
 		Buckets: prometheus.ExponentialBuckets(0.100, 2, 11),
-	}, []string{"name"})
+	}, []string{metricLabelName})
 	if err := opts.MetricsRegisterer.Register(latency); err != nil {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
