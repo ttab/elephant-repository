@@ -54,7 +54,8 @@ func NewScheduler(
 ) (*Scheduler, error) {
 	scheduledPub := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "elephant_scheduled_publish_total",
-		Help: "The number of attempts that have been made to publish documents",
+		Help: "Scheduled publish attempts by outcome; failures mean " +
+			"documents due for publication are not going out.",
 	}, []string{"outcome"})
 
 	err := metricsRegisterer.Register(scheduledPub)
@@ -65,7 +66,9 @@ func NewScheduler(
 
 	delayed := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "elephant_scheduled_delayed",
-		Help: "The number of documents whose scheduled publish has been delayed.",
+		Help: "Documents whose scheduled publish time has passed without " +
+			"them being published; non-zero values mean the scheduler is " +
+			"falling behind.",
 	})
 
 	err = metricsRegisterer.Register(delayed)

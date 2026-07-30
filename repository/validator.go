@@ -62,7 +62,9 @@ func NewValidator(
 	v.deprecationsCounter = *prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "elephant_deprecations_total",
-			Help: "Number of encountered deprecations",
+			Help: "Deprecated constructs encountered during document " +
+				"validation by deprecation label; growth means clients " +
+				"are still writing deprecated content.",
 		}, []string{"label"})
 	if err := metricsRegisterer.Register(v.deprecationsCounter); err != nil {
 		return nil, fmt.Errorf("register deprecations metric: %w", err)
@@ -71,7 +73,9 @@ func NewValidator(
 	v.docsWithDeprecationsCounter = *prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "elephant_docs_with_deprecations_total",
-			Help: "Number of encountered documents with deprecations",
+			Help: "Documents containing deprecated constructs by document " +
+				"type; growth means clients are still writing deprecated " +
+				"content.",
 		}, []string{metricLabelDocType})
 	if err := metricsRegisterer.Register(v.docsWithDeprecationsCounter); err != nil {
 		return nil, fmt.Errorf("register docs with deprecations metric: %w", err)
@@ -80,7 +84,9 @@ func NewValidator(
 	v.pendingFailureCounter = *prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "elephant_pending_validation_failures_total",
-			Help: "Number of validation failures against the pending schema generation",
+			Help: "Validation failures against the pending, not yet " +
+				"active, schema generation; these predict documents that " +
+				"would become invalid if the pending schemas were activated.",
 		}, []string{metricLabelDocType, "error"})
 	if err := metricsRegisterer.Register(v.pendingFailureCounter); err != nil {
 		return nil, fmt.Errorf("register pending validation metric: %w", err)

@@ -152,18 +152,27 @@ func NewSocketHandler(
 
 	prom.CounterVec(&h.socketRejected, prometheus.CounterOpts{
 		Name: "repository_websocket_rate_limited_total",
+		Help: "Websocket connections and subscriptions rejected; growth " +
+			"means clients are failing to connect or stream, the reason " +
+			"label tells why they were turned away.",
 	}, []string{"reason"})
 
 	prom.Gauge(&h.openSockets, prometheus.GaugeOpts{
 		Name: "repository_open_sockets",
+		Help: "Number of currently open websocket connections.",
 	})
 
 	prom.CounterVec(&h.socketCall, prometheus.CounterOpts{
 		Name: "repository_websocket_call_total",
+		Help: "Websocket API calls received by method; shows client " +
+			"activity and which methods drive load.",
 	}, []string{"method"})
 
 	prom.CounterVec(&h.socketResponse, prometheus.CounterOpts{
 		Name: "repository_websocket_response_total",
+		Help: "Websocket responses by method and response type; the " +
+			"status label carries the error code and is empty on " +
+			"success, so non-empty statuses mean client calls are failing.",
 	}, []string{"method", metricLabelStatus, "response"})
 
 	if err := prom.Err(); err != nil {

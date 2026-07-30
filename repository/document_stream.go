@@ -128,17 +128,21 @@ func NewDocumentStream(
 
 	prom.CounterVec(&s.mEmitEvents, prometheus.CounterOpts{
 		Name: "repository_docstream_emit_total",
-		Help: "Counts when we 'start' to emit events, and 'ok' on success, 'error' on failure.",
+		Help: "Docstream emit attempts ('start') and their outcomes " +
+			"('ok'/'error'); errors mean subscribers are not receiving " +
+			"document updates.",
 	}, []string{metricLabelStatus})
 
 	prom.Gauge(&s.mPosition, prometheus.GaugeOpts{
 		Name: "repository_docstream_position",
-		Help: "The current eventlog position of the docstream.",
+		Help: "Eventlog position the docstream has fanned out to " +
+			"subscribers; a position that stops advancing while documents " +
+			"are updated means streaming has stalled.",
 	})
 
 	prom.Gauge(&s.mSubscribers, prometheus.GaugeOpts{
 		Name: "repository_docstream_subscribers",
-		Help: "Current docstream subscribers.",
+		Help: "Number of currently connected docstream subscribers.",
 	})
 
 	err := prom.Err()
