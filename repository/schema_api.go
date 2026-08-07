@@ -38,6 +38,11 @@ func (a *SchemasService) GetDocumentTypes(
 	ctx context.Context,
 	_ *repository.GetDocumentTypesRequest,
 ) (*repository.GetDocumentTypesResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin, ScopeSchemaRead)
+	if err != nil {
+		return nil, err
+	}
+
 	schemas, err := a.store.GetActiveSchemas(ctx)
 	if err != nil {
 		return nil, twirp.InternalErrorf("get schemas: %v", err)
@@ -118,6 +123,11 @@ func (a *SchemasService) GetTypeConfiguration(
 func (a *SchemasService) GetMetaTypes(
 	ctx context.Context, _ *repository.GetMetaTypesRequest,
 ) (*repository.GetMetaTypesResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin, ScopeSchemaRead)
+	if err != nil {
+		return nil, err
+	}
+
 	types, err := a.store.GetMetaTypes(ctx)
 	if err != nil {
 		return nil, twirp.InternalErrorf("read meta type info: %v", err)
@@ -140,6 +150,11 @@ func (a *SchemasService) ListActive(
 	ctx context.Context,
 	_ *repository.ListActiveSchemasRequest,
 ) (*repository.ListActiveSchemasResponse, error) {
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin, ScopeSchemaRead)
+	if err != nil {
+		return nil, err
+	}
+
 	schemas, err := a.store.ListActiveSchemas(ctx)
 	if err != nil {
 		return nil, twirp.InternalErrorf("read schema info: %v", err)

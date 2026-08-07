@@ -3,7 +3,9 @@ package repository_test
 import (
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -324,4 +326,183 @@ func TestGenerationRegistrationActivatesExisting(t *testing.T) {
 	if !found {
 		t.Error("expected the activated generation's schema to be active")
 	}
+}
+
+// TestSchemaReadScopeRequired checks that the schema read methods reject
+// callers without a schema scope. GetDocumentTypes, GetMetaTypes and ListActive
+// used to have no scope check at all, and since the auth middleware tolerates a
+// missing Authorization header they were reachable without a token.
+func TestSchemaReadScopeRequired(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	ctx := t.Context()
+
+	// A client with document scopes but no schema scope.
+	unscoped := tc.SchemasClient(t, itest.StandardClaims(t, "doc_read doc_write"))
+
+	_, err := unscoped.GetDocumentTypes(ctx,
+		&rpc_repository.GetDocumentTypesRequest{})
+	isTwirpError(t, err, "get document types without a schema scope",
+		twirp.PermissionDenied)
+
+	_, err = unscoped.GetMetaTypes(ctx,
+		&rpc_repository.GetMetaTypesRequest{})
+	isTwirpError(t, err, "get meta types without a schema scope",
+		twirp.PermissionDenied)
+
+	_, err = unscoped.ListActive(ctx,
+		&rpc_repository.ListActiveSchemasRequest{})
+	isTwirpError(t, err, "list active schemas without a schema scope",
+		twirp.PermissionDenied)
+
+	// schema_read is enough for all three.
+	reader := tc.SchemasClient(t, itest.StandardClaims(t, "schema_read"))
+
+	_, err = reader.GetDocumentTypes(ctx,
+		&rpc_repository.GetDocumentTypesRequest{})
+	test.Mustf(t, err, "get document types with schema_read")
+
+	_, err = reader.GetMetaTypes(ctx,
+		&rpc_repository.GetMetaTypesRequest{})
+	test.Mustf(t, err, "get meta types with schema_read")
+
+	_, err = reader.ListActive(ctx,
+		&rpc_repository.ListActiveSchemasRequest{})
+	test.Mustf(t, err, "list active schemas with schema_read")
+}
+
+// TestValidateAndPruneScopeRequired checks that Validate and Prune require a
+// write scope. Both used to have no scope check, so any caller — including an
+// unauthenticated one — could have the server validate arbitrary documents.
+func TestValidateAndPruneScopeRequired(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	ctx := t.Context()
+
+	doc := baseDocument(
+		"9a1b2c3d-0000-4f00-9abc-00000000f00d",
+		"article://test/scope-check")
+
+	// doc_read alone must not be enough for either.
+	reader := tc.DocumentsClient(t, itest.StandardClaims(t, "doc_read"))
+
+	_, err := reader.Validate(ctx, &rpc_repository.ValidateRequest{
+		Document: doc,
+	})
+	isTwirpError(t, err, "validate with only doc_read",
+		twirp.PermissionDenied)
+
+	_, err = reader.Prune(ctx, &rpc_repository.PruneRequest{
+		Document: doc,
+	})
+	isTwirpError(t, err, "prune with only doc_read",
+		twirp.PermissionDenied)
+
+	// doc_write is enough for both.
+	writer := tc.DocumentsClient(t, itest.StandardClaims(t, "doc_write"))
+
+	_, err = writer.Validate(ctx, &rpc_repository.ValidateRequest{
+		Document: doc,
+	})
+	test.Mustf(t, err, "validate with doc_write")
+
+	_, err = writer.Prune(ctx, &rpc_repository.PruneRequest{
+		Document: doc,
+	})
+	test.Mustf(t, err, "prune with doc_write")
+}
+
+// TestAPIRequiresAuthentication checks that the Twirp services and the SSE
+// endpoint reject requests that carry no token, while the deliberately public
+// signing key endpoint stays reachable. A request without an Authorization
+// header used to fall through to the handler, which meant a method that forgot
+// its scope check was anonymously reachable rather than merely
+// under-protected.
+func TestAPIRequiresAuthentication(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	ctx := t.Context()
+
+	do := func(method string, path string, body string) int {
+		t.Helper()
+
+		var reader *strings.Reader
+
+		if body != "" {
+			reader = strings.NewReader(body)
+		}
+
+		var (
+			req *http.Request
+			err error
+		)
+
+		if reader != nil {
+			req, err = http.NewRequestWithContext(
+				ctx, method, tc.Server.URL+path, reader)
+		} else {
+			req, err = http.NewRequestWithContext(
+				ctx, method, tc.Server.URL+path, nil)
+		}
+
+		test.Mustf(t, err, "create %s request for %s", method, path)
+
+		if body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		res, err := tc.client.Do(req)
+		test.Mustf(t, err, "perform %s request for %s", method, path)
+
+		defer func() {
+			_ = res.Body.Close()
+		}()
+
+		return res.StatusCode
+	}
+
+	status := do(http.MethodPost,
+		"/twirp/elephant.repository.Documents/Get",
+		`{"uuid":"8090ff79-030e-419b-952e-12917cfdaaac"}`)
+	test.Equalf(t, http.StatusUnauthorized, status,
+		"reject an unauthenticated Twirp call")
+
+	status = do(http.MethodPost,
+		"/twirp/elephant.repository.Schemas/ListActive", `{}`)
+	test.Equalf(t, http.StatusUnauthorized, status,
+		"reject an unauthenticated Schemas call")
+
+	status = do(http.MethodGet, "/sse", "")
+	test.Equalf(t, http.StatusUnauthorized, status,
+		"reject an unauthenticated SSE connection")
+
+	// The signing keys are public by design: they're what makes independent
+	// verification of the archive possible.
+	status = do(http.MethodGet, "/signing-keys", "")
+	test.Equalf(t, http.StatusOK, status,
+		"serve signing keys without authentication")
 }

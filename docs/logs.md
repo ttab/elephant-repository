@@ -1,5 +1,20 @@
 # Elephant logging
 
+How log metadata works, and when to use it rather than returning detail with
+the error or creating a child logger. A convention document, not a reference to
+the fields any particular subsystem logs.
+
+| Document | What it settles |
+|---|---|
+| [README](../README.md) | Orientation and the working reference: what the repository holds, how to build and run it, and what every configuration flag does. |
+| [architecture.md](architecture.md) | How the service is built: the process model, the data flow through every worker, and the API surface. |
+| [ops.md](ops.md) | The operator's-eye view: dependencies, bootstrap order, and the failure modes with the signal that shows each one. |
+| [observability.md](observability.md) | Every metric the service exports and what a change in it means. |
+| **logs.md** (this document) | The logging conventions below. |
+
+Several failure modes in this service are visible in logs only —
+[ops.md](ops.md#not-in-place-yet) lists which.
+
 All error responses in Elephant get logged. Some log fields can be deduced from the error itself; like error message, error code, status code, and error metadata. Other information is derived from the request; like what service and method is being called, and what the sub of the client is. A third kind of contextual information is provided by the code handling the request, like the the document UUID the request acts on.
 
 To be able to add context to logs elephantine adds `WithLogMetadata()` to set up a context with log metadata. Any part of the application handling the request can then `SetLogMetadata()` and the added metadata will be included with every log entry that uses that context, not only error response logging.
