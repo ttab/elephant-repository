@@ -6,6 +6,26 @@ detail.
 
 ## [v1.9.0] - Unreleased
 
+**Breaking (authorization):** the API now requires a valid token. A request to a
+Twirp method or to `/sse` with a missing or invalid `Authorization` header is
+answered with 401, so authorization is default-deny. `GET /signing-keys` stays
+public and `GET /websocket/:token` continues to authenticate with its own socket
+token.
+
+**Breaking (authorization):** five methods now require a scope.
+`Schemas.GetDocumentTypes`, `Schemas.GetMetaTypes` and
+`Schemas.ListActive` require `schema_read` or `schema_admin`.
+`Documents.Validate` and `Documents.Prune` require `doc_write`, `doc_admin` or
+`meta_doc_write_all` — the same set as `Documents.Update`, since both are dry
+runs of the write path.
+
+Callers of these five need the scopes above and will otherwise get
+`permission_denied`. `eleconf` calls all three `Schemas` methods, so a read-only
+configuration run needs `schema_read`; an applying run already holds
+`schema_admin` for the registration calls it makes. Note the asymmetry when
+granting scopes: `Validate` and `Prune` read schemas but live on the `Documents`
+service and take *write* scopes, not `schema_read`.
+
 **Behaviour change (document locks):** a document lock now only blocks
 document updates (new versions, attached objects, deletes) by default; status
 and ACL updates on a locked document are no longer blocked unless the lock was
@@ -13,17 +33,35 @@ acquired with a higher exclusivity level. This matches the long-documented API
 behaviour, but consumers that relied on locks also blocking status or ACL
 updates must now acquire their locks with a matching exclusivity. (#604)
 
+**Behaviour change (readiness):** the `s3` readiness check is now optional, so
+an unreachable archive bucket no longer fails `/health/ready`. It previously
+returned 500 on every replica at once, deregistering the whole fleet and turning
+a degraded background dependency into a total API outage — reads and document
+writes only need Postgres. The check still runs and still reports
+`"ok": false, "optional": true` in the response body, and still drives
+`health_check_up{name="s3"}` to 0. **If you relied on the readiness probe to
+react to an archive bucket outage, you now need an alert on
+`health_check_up{name="s3"}`**, because nothing else reacts to it: the archiver
+exiting the process remains the durability guarantee, and that only kills
+replicas one at a time as the `eventlog-archiver` job lock moves between them.
+
 **Migrations:**
 
 - `027_lock_exclusivity.sql` — adds an `exclusivity` column to `document_lock` (`text`, not null, default `'document'`). **Must be applied before deploying v1.9.0**: the lock queries in v1.9.0 reference the new column, so acquiring, reading, or checking document locks fails against an unmigrated database. The migration is a plain `alter table add column` with a default on a small, short-lived table, so no maintenance window is needed.
 
 Changes:
 
+- `RegisterGeneration` now applies the requested activation to a generation that already exists. Registration is idempotent on the schema and exemplar versions, and it previously returned the existing generation's ID without activating it, so re-registering a known set of schema versions as `ACTIVATION_ACTIVE` reported success while leaving the previously active generation in place. Registrations that don't ask for activation still leave an existing generation's status alone; use `SetActive` to deactivate.
+- The new `elephant_validator_schema_generation` gauge reports the schema generation an instance is actually validating against. Validation is served from an in-memory validator that reloads on notification or every five minutes, so `ListActiveSchemas` and `GetAllActiveSchemas` (which read the database) can report a generation before any instance enforces it; compare the gauge against the active generation to spot instances serving stale schemas.
+- Failures to reload configuration are now observable rather than silent: `elephant_schema_refresh_failures_total` and `elephant_deprecation_refresh_failures_total` count failed reloads (the instance keeps enforcing what it last loaded), a failed read of the active generation ID now fails the whole schema reload instead of relabelling the validator as generation 0, and errors loading the pending generation's schemas or reading the generation ID for `GetAllActiveSchemas` are logged instead of discarded.
+- Document type configuration is now reloaded every five minutes in addition to on notification. A dropped notification previously left an instance on a stale configuration until it was restarted.
 - Document locks can be acquired with an exclusivity level via the new `exclusivity` field on `LockRequest` and on lock-on-Get (`AcquireLock`): `LOCK_DOCUMENT` (default, blocks document updates only), `LOCK_STATUS` (also blocks status updates), `LOCK_ACL` (also blocks ACL updates), or `LOCK_EXCLUSIVE` (blocks both). The level is exposed in `DocumentMeta.lock` and on lock conflicts via the `lock_exclusivity` error metadata key. Supplying a non-matching lock token is still rejected outright, regardless of exclusivity. (#604)
 - Eventlog websocket subscriptions can now filter by event type via the new `GetEventlog.events` field, validated against the known event types. (#597)
 - The document stream replay buffer is now slice-backed and configurable with `--eventlog-buffer-size` (`EVENTLOG_BUFFER_SIZE`, default 500). Resuming out of bounds still returns `eventlog_resume_oob`. (#597)
 - Each subscription's live stream is now rate limited with a token bucket (`--eventlog-stream-burst` 70, `--eventlog-stream-rate` 10/s). On exceed, the events that fit are emitted followed by a `rate_limited` error, and the subscription is stopped; clients are expected to resubscribe. The initial resume replay is exempt. (#597)
-- Dependency upgrades: elephant-api to v0.24.0, the AWS SDK suite, urfave/cli/v3 to v3.9.1, and the Go toolchain. (#597, #604)
+- The documentation is now a set with a settled division of labour: `README.md` for orientation, commands and the full configuration reference; `docs/architecture.md` for the design; `docs/ops.md` for dependencies, failure modes and what to watch; `docs/observability.md` for every exported metric and what a change in it means. `docs/permissions.md` has been corrected — it was missing `doc_restore`, `doc_purge`, `meta_doc_write_all`, `asset_upload` and `metrics_read`, and did not record that `Restore` and `Purge` perform no ACL check. Relative links and heading anchors are checked by `mage docs:links` in the lint job.
+- `Restore` and `Purge` are documented as performing no per-document ACL check. This is unchanged behaviour — the document is deleted, so there is no ACL left to check against — but it means `doc_restore` and `doc_purge` act on any deleted document and should be treated as administrative scopes.
+- Dependency upgrades: elephant-api to v0.24.0, the AWS SDK suite, urfave/cli/v3 to v3.9.1, ttab/mage to v0.10.0, and the Go toolchain. (#597, #604)
 
 ## [v1.8.1] - 2026-06-10
 

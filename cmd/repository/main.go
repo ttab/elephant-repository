@@ -678,7 +678,16 @@ func runServer(ctx context.Context, c *cli.Command) error {
 
 	srv.Mux.Handle("/", router)
 
-	srv.Health.AddReadyFunction("s3", func(ctx context.Context) error {
+	// The S3 check is optional so that an archive bucket outage doesn't take
+	// every replica out of rotation at once. The synchronous API is still
+	// substantially useful without S3 — reads and document writes only need
+	// Postgres, and it's only uploads and attachment downloads that fail — so
+	// failing readiness fleet-wide turns a degraded dependency into a total
+	// outage. The check still reports "ok": false and drives
+	// health_check_up{name="s3"} to 0, so it stays alertable; it just doesn't
+	// deregister the pod. Archiving durability is enforced by the archiver
+	// exiting the process, not by this probe.
+	srv.Health.AddOptionalReadyFunction("s3", func(ctx context.Context) error {
 		testUUID := uuid.New()
 
 		key := fmt.Sprintf(
