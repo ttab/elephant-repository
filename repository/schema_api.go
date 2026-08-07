@@ -12,6 +12,7 @@ import (
 
 	rpc_newsdoc "github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
@@ -272,7 +273,15 @@ func (a *SchemasService) GetAllActive(
 		res.Removed = append(res.Removed, requested)
 	}
 
-	genID, _ := a.store.GetActiveGenerationID(ctx)
+	genID, err := a.store.GetActiveGenerationID(ctx)
+	if err != nil {
+		// The schemas themselves are the useful part of the response, so
+		// don't fail the call over the generation ID, but don't drop the
+		// error on the floor either.
+		a.logger.ErrorContext(ctx, "failed to read active generation ID",
+			elephantine.LogKeyError, err)
+	}
+
 	res.GenerationId = genID
 
 	return &res, nil

@@ -1,6 +1,7 @@
 package repository_test
 
 import (
+	"encoding/json"
 	"log/slog"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
+	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 )
 
@@ -226,5 +228,100 @@ func TestVariantValidation(t *testing.T) {
 		t.Fatalf(
 			"expected invalid argument error for unknown variant, got: %v",
 			err)
+	}
+}
+
+// TestGenerationRegistrationActivatesExisting checks that registering a
+// generation that already exists still applies the requested activation.
+// Registration is idempotent on the schema versions, so a re-registration used
+// to return the existing generation ID without activating it, reporting success
+// while leaving the previous generation active.
+func TestGenerationRegistrationActivatesExisting(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	client := tc.SchemasClient(t, itest.StandardClaims(t, "schema_admin"))
+
+	ctx := t.Context()
+
+	active, err := client.GetAllActive(ctx,
+		&rpc_repository.GetAllActiveSchemasRequest{})
+	test.Mustf(t, err, "get active schemas")
+
+	baseline := active.GenerationId
+
+	spec := revisor.ConstraintSet{
+		Version: 1,
+		Name:    "test_reactivation",
+		Documents: []revisor.DocumentConstraint{
+			{
+				Name:     "Reactivation test document",
+				Declares: "test/reactivation",
+			},
+		},
+	}
+
+	specPayload, err := json.Marshal(&spec)
+	test.Mustf(t, err, "marshal test schema")
+
+	schemas := make([]*rpc_repository.Schema, 0, len(active.Schemas)+1)
+	schemas = append(schemas, active.Schemas...)
+	schemas = append(schemas, &rpc_repository.Schema{
+		Name:    "test/reactivation",
+		Version: "v1.0.0",
+		Spec:    string(specPayload),
+	})
+
+	// Register the generation without activating it.
+	pendingRes, err := client.RegisterGeneration(ctx,
+		&rpc_repository.RegisterGenerationRequest{
+			Activation: rpc_repository.SchemaActivation_ACTIVATION_PENDING,
+			Schemas:    schemas,
+		})
+	test.Mustf(t, err, "register pending generation")
+
+	active, err = client.GetAllActive(ctx,
+		&rpc_repository.GetAllActiveSchemasRequest{})
+	test.Mustf(t, err, "get active schemas after pending registration")
+
+	test.EqualDiff(t, baseline, active.GenerationId,
+		"expected a pending registration to leave the active generation alone")
+
+	// Re-register the same schema versions, this time asking for them to be
+	// activated.
+	activeRes, err := client.RegisterGeneration(ctx,
+		&rpc_repository.RegisterGenerationRequest{
+			Activation: rpc_repository.SchemaActivation_ACTIVATION_ACTIVE,
+			Schemas:    schemas,
+		})
+	test.Mustf(t, err, "register the same generation as active")
+
+	test.EqualDiff(t, pendingRes.GenerationId, activeRes.GenerationId,
+		"expected registration to be idempotent on the generation ID")
+
+	active, err = client.GetAllActive(ctx,
+		&rpc_repository.GetAllActiveSchemasRequest{})
+	test.Mustf(t, err, "get active schemas after activation")
+
+	test.EqualDiff(t, activeRes.GenerationId, active.GenerationId,
+		"expected the re-registered generation to become active")
+
+	var found bool
+
+	for _, s := range active.Schemas {
+		if s.Name == "test/reactivation" {
+			found = true
+		}
+	}
+
+	if !found {
+		t.Error("expected the activated generation's schema to be active")
 	}
 }

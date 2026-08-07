@@ -29,6 +29,9 @@ type Validator struct {
 	deprecationsCounter         prometheus.CounterVec
 	docsWithDeprecationsCounter prometheus.CounterVec
 	pendingFailureCounter       prometheus.CounterVec
+	generationGauge             prometheus.Gauge
+	schemaFailureCounter        prometheus.Counter
+	deprecationFailureCounter   prometheus.Counter
 	stopChannel                 chan struct{}
 	cancel                      func()
 
@@ -90,6 +93,42 @@ func NewValidator(
 		}, []string{metricLabelDocType, "error"})
 	if err := metricsRegisterer.Register(v.pendingFailureCounter); err != nil {
 		return nil, fmt.Errorf("register pending validation metric: %w", err)
+	}
+
+	v.generationGauge = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "elephant_validator_schema_generation",
+			Help: "The ID of the schema generation that this instance " +
+				"currently validates documents against; if it lags the " +
+				"active generation in the database the instance is still " +
+				"enforcing stale schemas.",
+		})
+	if err := metricsRegisterer.Register(v.generationGauge); err != nil {
+		return nil, fmt.Errorf("register schema generation metric: %w", err)
+	}
+
+	v.schemaFailureCounter = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "elephant_schema_refresh_failures_total",
+			Help: "Failed attempts to reload the active schemas; while this " +
+				"grows the instance keeps enforcing the schemas it last " +
+				"loaded successfully, so it can lag the active generation " +
+				"indefinitely.",
+		})
+	if err := metricsRegisterer.Register(v.schemaFailureCounter); err != nil {
+		return nil, fmt.Errorf("register schema refresh failure metric: %w", err)
+	}
+
+	v.deprecationFailureCounter = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "elephant_deprecation_refresh_failures_total",
+			Help: "Failed attempts to reload the enforced deprecations; " +
+				"while this grows the instance keeps using the deprecation " +
+				"enforcement it last loaded successfully.",
+		})
+	if err := metricsRegisterer.Register(v.deprecationFailureCounter); err != nil {
+		return nil, fmt.Errorf(
+			"register deprecation refresh failure metric: %w", err)
 	}
 
 	err := v.loadSchemas(ctx, loader)
@@ -158,18 +197,18 @@ func (v *Validator) reloadLoop(
 
 		err := v.loadSchemas(ctx, loader)
 		if err != nil {
-			// TODO: add handler that reacts to LogKeyCountMetric
+			v.schemaFailureCounter.Inc()
+
 			logger.ErrorContext(ctx, "failed to refresh schemas",
-				elephantine.LogKeyError, err,
-				elephantine.LogKeyCountMetric, "elephant_schema_refresh_failure_count")
+				elephantine.LogKeyError, err)
 		}
 
 		err = v.loadDeprecations(ctx, loader)
 		if err != nil {
-			// TODO: add handler that reacts to LogKeyCountMetric
+			v.deprecationFailureCounter.Inc()
+
 			logger.ErrorContext(ctx, "failed to refresh deprecations",
-				elephantine.LogKeyError, err,
-				elephantine.LogKeyCountMetric, "elephant_deprecation_refresh_failure_count")
+				elephantine.LogKeyError, err)
 		}
 
 		if refreshChan != nil {
@@ -205,11 +244,14 @@ func (v *Validator) loadSchemas(ctx context.Context, loader ValidatorStore) erro
 		val = val.WithVariants(variants...)
 	}
 
-	// Load active generation ID.
+	// Load active generation ID. A read failure has to fail the whole
+	// refresh: swapping in a validator labelled with the wrong generation
+	// would make elephant_validator_schema_generation lie about which
+	// schemas we enforce. GetActiveGenerationID reports generation 0 when no
+	// generation exists yet, that's not an error.
 	genID, err := loader.GetActiveGenerationID(ctx)
 	if err != nil {
-		// Generation 0 means no generation exists yet.
-		genID = 0
+		return fmt.Errorf("get active generation ID: %w", err)
 	}
 
 	// Load pending generation validator if one exists.
@@ -218,7 +260,16 @@ func (v *Validator) loadSchemas(ctx context.Context, loader ValidatorStore) erro
 	var pendingGenID int64
 
 	pendingSchemas, err := loader.GetPendingGenerationSchemas(ctx)
-	if err == nil && len(pendingSchemas) > 0 {
+	if err != nil {
+		// The pending generation is only used for soft validation, so a
+		// failure here mustn't stop us from refreshing the active
+		// schemas. Log it, as it would otherwise be invisible.
+		v.logger.ErrorContext(ctx,
+			"failed to load pending generation schemas",
+			elephantine.LogKeyError, err)
+	}
+
+	if len(pendingSchemas) > 0 {
 		var pendingConstraints []revisor.ConstraintSet
 
 		for _, s := range pendingSchemas {
@@ -252,6 +303,8 @@ func (v *Validator) loadSchemas(ctx context.Context, loader ValidatorStore) erro
 	v.pendingVal = pendingVal
 	v.pendingGenerationID = pendingGenID
 	v.m.Unlock()
+
+	v.generationGauge.Set(float64(genID))
 
 	return nil
 }

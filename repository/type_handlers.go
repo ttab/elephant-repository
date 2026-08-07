@@ -39,6 +39,12 @@ type TypeConfigurations struct {
 	lblExtractors map[string]*LabelsExtractor
 }
 
+// typeConfRecheckInterval is how often the type configuration is reloaded even
+// though no update notification has been received. Without it a dropped
+// notification would leave the instance on a stale configuration until it's
+// restarted.
+const typeConfRecheckInterval = 5 * time.Minute
+
 // Run initialises the configurations and listens for updates. Blocks until the
 // context is cancelled.
 func (th *TypeConfigurations) Run(ctx context.Context, store *PGDocStore) error {
@@ -73,6 +79,7 @@ func (th *TypeConfigurations) Run(ctx context.Context, store *PGDocStore) error 
 			return nil
 		case <-updates:
 		case <-retryChan:
+		case <-time.After(typeConfRecheckInterval):
 		}
 	}
 }
