@@ -20,3 +20,5 @@ jobs:
         with:
           version: v2.12.2
           args: --timeout=4m
+      - name: documentation links
+        run: go run github.com/magefile/mage docs:links

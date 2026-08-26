@@ -366,6 +366,7 @@ func testingAPIServer(
 		repository.WithMetricsAPI(metricsService, srvOpts),
 		repository.WithSSE(sse.HTTPHandler(), srvOpts),
 		repository.WithWebsocket(socket),
+		repository.WithSigningKeys(dbpool),
 	)
 	test.Mustf(t, err, "set up router")
 

@@ -2637,6 +2637,17 @@ func (a *DocumentsService) verifyMetaDocumentUpdate(
 func (a *DocumentsService) Validate(
 	ctx context.Context, req *repository.ValidateRequest,
 ) (*repository.ValidateResponse, error) {
+	// Validation is a dry run of the write path, so it takes the same scopes
+	// as Update. No ACL check: nothing is read from or written to storage,
+	// the caller supplies the document.
+	_, err := RequireAnyScope(ctx,
+		ScopeDocumentWrite, ScopeDocumentAdmin,
+		ScopeMetaDocumentWriteAll,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	if req.Document == nil {
 		return nil, twirp.RequiredArgumentError("document")
 	}
@@ -2665,6 +2676,17 @@ func (a *DocumentsService) Validate(
 func (a *DocumentsService) Prune(
 	ctx context.Context, req *repository.PruneRequest,
 ) (*repository.PruneResponse, error) {
+	// Pruning produces a document intended to be written, so it takes the
+	// same scopes as Update. No ACL check: nothing is read from or written to
+	// storage, the caller supplies the document.
+	_, err := RequireAnyScope(ctx,
+		ScopeDocumentWrite, ScopeDocumentAdmin,
+		ScopeMetaDocumentWriteAll,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	if req.Document == nil {
 		return nil, twirp.RequiredArgumentError("document")
 	}

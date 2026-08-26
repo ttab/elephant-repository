@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -86,30 +85,43 @@ type ServerOptions struct {
 	) error
 }
 
+// SetJWTValidation installs the authentication middleware used by the Twirp
+// services and the SSE endpoint. A valid token is required: every method behind
+// this middleware asserts its own scope requirement, so there is nothing left
+// that legitimately needs anonymous access, and rejecting here means a handler
+// that forgets its scope check fails closed instead of open.
+//
+// Note that this does not cover every route. GET /signing-keys is deliberately
+// public and GET /websocket/:token authenticates with its own socket token, so
+// neither goes through this middleware.
+//
+// TODO: This feels like an initial sketch that should be further developed to
+// address the JWT cacheing. Moving to elephantine's ServiceOptions and
+// ServiceAuthRequired would also put validation in a Twirp hook rather than in
+// HTTP middleware.
 func (so *ServerOptions) SetJWTValidation(parser elephantine.AuthInfoParser) {
-	// TODO: This feels like an initial sketch that should be further
-	// developed to address the JWT cacheing.
 	so.AuthMiddleware = func(
 		w http.ResponseWriter, r *http.Request, next http.Handler,
 	) error {
 		auth, err := parser.AuthInfoFromHeader(r.Header.Get("Authorization"))
-		if err != nil && !errors.Is(err, elephantine.ErrNoAuthorization) {
+		if err != nil {
 			// TODO: Move the response part to a hook instead?
 			return elephantine.HTTPErrorf(http.StatusUnauthorized,
-				"invalid authorization method: %v", err)
+				"invalid authorization: %v", err)
 		}
 
-		if auth != nil {
-			ctx := elephantine.SetAuthInfo(r.Context(), auth)
-
-			elephantine.SetLogMetadata(ctx,
-				elephantine.LogKeySubject, auth.Claims.Subject,
-			)
-
-			r = r.WithContext(ctx)
+		if auth == nil {
+			return elephantine.HTTPErrorf(http.StatusInternalServerError,
+				"invalid auth info parser response")
 		}
 
-		next.ServeHTTP(w, r)
+		ctx := elephantine.SetAuthInfo(r.Context(), auth)
+
+		elephantine.SetLogMetadata(ctx,
+			elephantine.LogKeySubject, auth.Claims.Subject,
+		)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
 
 		return nil
 	}

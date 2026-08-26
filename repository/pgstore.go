@@ -4114,9 +4114,18 @@ func (s *PGDocStore) RegisterGeneration(
 ) (_ int64, outErr error) {
 	identityHash := computeGenerationIdentityHash(req.Schemas, req.Exemplars)
 
-	// Check for existing generation with the same hash (idempotency).
+	// Check for existing generation with the same hash (idempotency). The
+	// requested activation must still be applied to it: returning the ID of a
+	// deactivated or pending generation without activating it tells the
+	// caller that the registration took effect when nothing changed.
 	existing, err := s.reader.GetSchemaGenerationByIdentityHash(ctx, identityHash)
 	if err == nil {
+		aErr := s.applyRegistrationActivation(
+			ctx, existing, req.Activation)
+		if aErr != nil {
+			return 0, aErr
+		}
+
 		return existing.ID, nil
 	}
 
@@ -4256,6 +4265,41 @@ func (s *PGDocStore) RegisterGeneration(
 	}
 
 	return genID, nil
+}
+
+// applyRegistrationActivation applies the activation requested in a
+// registration to a generation that already exists. Registrations that don't
+// ask for activation are left alone rather than deactivating the generation:
+// deactivation is the job of SetGenerationStatus, and an unspecified activation
+// is indistinguishable from an explicit deactivation by the time we get here.
+func (s *PGDocStore) applyRegistrationActivation(
+	ctx context.Context,
+	gen postgres.SchemaGeneration,
+	activation SchemaGenerationStatus,
+) error {
+	var want postgres.SchemaGenerationStatus
+
+	switch activation {
+	case GenerationStatusActive:
+		want = postgres.SchemaGenerationStatusActive
+	case GenerationStatusPending:
+		want = postgres.SchemaGenerationStatusPending
+	case GenerationStatusDeactivated:
+		return nil
+	}
+
+	if want == "" || gen.Status == want {
+		return nil
+	}
+
+	err := s.SetGenerationStatus(ctx, gen.ID, activation)
+	if err != nil {
+		return fmt.Errorf(
+			"apply %s activation to existing generation %d: %w",
+			activation, gen.ID, err)
+	}
+
+	return nil
 }
 
 func (s *PGDocStore) activateGeneration(
