@@ -500,7 +500,11 @@ gets derived from a document on write:
 * **Label expressions** produce `document.labels`.
 * **Variants** declare variant type names (`core/article#timeless`) that the
   validator resolves; they are compiled into `revisor.Variant` values and
-  attached to the validator, so a variant change is a validator rebuild.
+  attached to the validator, so a variant change is a validator rebuild. A
+  variant type is a document type in its own right — statuses, workflows and
+  documents are keyed on the full name — so `Schemas.GetDocumentTypes` lists
+  the variants of a declared type alongside it. It is the only place they are
+  listed: nothing declares a variant in a schema.
 * **Bounded collection** marks types whose membership is enumerable.
 
 Reloaded immediately on `NOTIFY type_configured`, **with a five-minute timer
