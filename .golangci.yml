@@ -51,7 +51,15 @@ linters:
         - elephantine.InvalidArgumentf(
         - (context.Context).Err(
         - github.com/ttab/elephantine/pg.WithTX(
-        - github.com/ttab/elephantine/pg.JobLock).RunWithContext(
+        - github.com/ttab/elephantine/pg/joblock.Lock).RunWithContext(
+    gomoddirectives:
+      # The Connect migration pins elephantine and elephant-api to sibling
+      # checkouts until both are tagged. Drop the local replacements, and these
+      # two settings with them, once they are.
+      replace-local: true
+      replace-allow-list:
+        - github.com/ttab/elephantine
+        - github.com/ttab/elephant-api
   exclusions:
     generated: lax
     presets:
@@ -60,6 +68,13 @@ linters:
       - legacy
       - std-error-handling
     rules:
+      # The Twirp error and hook helpers are deprecated in favour of
+      # elephantine/rpc, but they are exactly what the Twirp mount still needs
+      # while the service is dual-stack. The error flip replaces the error
+      # helpers and Twirp's retirement replaces the hooks; this exclusion goes
+      # with the last of them.
+      - linters: [staticcheck]
+        text: 'SA1019: github.com/ttab/elephantine\.(InvalidArgumentf|IsTwirpErrorCode|TwirpErrorToHTTPStatusCode|LoggingHooks|NewTwirpMetricsHooks|RequireAnyScope)'
       - linters: [gosec, goconst]
         path: _test\.go$
       - linters: [gosec]

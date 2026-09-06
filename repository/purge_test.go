@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/google/go-cmp/cmp"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
-	"github.com/twitchtv/twirp"
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
@@ -148,7 +148,7 @@ func TestPurge(t *testing.T) {
 		Uuid:           docUUID,
 		DeleteRecordId: deleteRec.Id,
 	})
-	test.IsTwirpError(t, err, twirp.InvalidArgument)
+	test.IsRPCError(t, err, connect.CodeInvalidArgument)
 
 	var (
 		lastID int64

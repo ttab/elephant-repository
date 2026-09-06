@@ -2,7 +2,6 @@ package repository_test
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/uuid"
@@ -21,10 +21,9 @@ import (
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
-	"github.com/ttab/elephantine"
+	elephantrpc "github.com/ttab/elephantine/rpc"
 	"github.com/ttab/elephantine/test"
 	"github.com/ttab/revisor"
-	"github.com/twitchtv/twirp"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -421,9 +420,9 @@ func TestIntegrationCreateCollision(t *testing.T) {
 				})
 
 			switch {
-			case elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition):
+			case elephantrpc.IsCode(err, connect.CodeFailedPrecondition):
 				t.Log("creation collision")
-			case elephantine.IsTwirpErrorCode(err, twirp.AlreadyExists):
+			case elephantrpc.IsCode(err, connect.CodeAlreadyExists):
 				t.Log("optimistic lock triggered")
 			case err != nil:
 				t.Errorf("failed to create document: %v", err)
@@ -506,7 +505,7 @@ func TestIntegrationStatusPermissions(t *testing.T) {
 		Uuid:     docUUID,
 		Document: doc,
 	})
-	itest.IsTwirpError(t, err, twirp.PermissionDenied)
+	test.IsRPCError(t, err, connect.CodePermissionDenied)
 
 	// Don't allow a status to be set for a document that doesn't exist.
 	_, err = statusClient.Update(ctx, &repository.UpdateRequest{
@@ -518,7 +517,7 @@ func TestIntegrationStatusPermissions(t *testing.T) {
 			},
 		},
 	})
-	itest.IsTwirpError(t, err, twirp.NotFound)
+	test.IsRPCError(t, err, connect.CodeNotFound)
 }
 
 func TestIntegrationDocumentLanguage(t *testing.T) {
@@ -774,8 +773,8 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Document:           &metaDoc,
 		UpdateMetaDocument: true,
 	})
-	isTwirpError(t, err, "create a meta doc for a document that doesn't exist",
-		twirp.FailedPrecondition)
+	isRPCError(t, err, "create a meta doc for a document that doesn't exist",
+		connect.CodeFailedPrecondition)
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
 		Uuid:     docA.Uuid,
@@ -787,9 +786,9 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Uuid:     docB.Uuid,
 		Document: docB,
 	})
-	isTwirpError(t, err,
+	isRPCError(t, err,
 		"client with metadata write all must not be able to create normal documents",
-		twirp.PermissionDenied,
+		connect.CodePermissionDenied,
 	)
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
@@ -802,9 +801,9 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Uuid:     docB.Uuid,
 		Document: docB,
 	})
-	isTwirpError(t, err,
+	isRPCError(t, err,
 		"client with metadata write all must not be able to update normal documents",
-		twirp.PermissionDenied,
+		connect.CodePermissionDenied,
 	)
 
 	_, err = client.Update(ctx, &repository.UpdateRequest{
@@ -813,15 +812,15 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Document:           &metaDoc,
 		UpdateMetaDocument: true,
 	})
-	isTwirpError(t, err, "create a meta doc for a document that doesn't have a configured meta type",
-		twirp.InvalidArgument)
+	isRPCError(t, err, "create a meta doc for a document that doesn't have a configured meta type",
+		connect.CodeInvalidArgument)
 
 	_, err = schema.RegisterMetaTypeUse(ctx, &repository.RegisterMetaTypeUseRequest{
 		MainType: "core/article",
 		MetaType: "test/metadata",
 	})
-	isTwirpError(t, err, "register the meta type for use before registering the type itself",
-		twirp.InvalidArgument)
+	isRPCError(t, err, "register the meta type for use before registering the type itself",
+		connect.CodeInvalidArgument)
 
 	_, err = schema.RegisterMetaType(ctx, &repository.RegisterMetaTypeRequest{
 		Type:      "test/metadata",
@@ -906,8 +905,8 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		Document:           &metaDoc,
 		UpdateMetaDocument: true,
 	})
-	isTwirpError(t, err, "must not create a meta doc for a meta doc",
-		twirp.InvalidArgument)
+	isRPCError(t, err, "must not create a meta doc for a meta doc",
+		connect.CodeInvalidArgument)
 
 	mDocV1, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: mRes.Uuid,
@@ -956,8 +955,8 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		IfMatch:  2,
 		Document: sneakyDoc,
 	})
-	isTwirpError(t, err, "must not be able to change meta doc into a normal doc",
-		twirp.InvalidArgument)
+	isRPCError(t, err, "must not be able to change meta doc into a normal doc",
+		connect.CodeInvalidArgument)
 
 	sneakyDoc2 := proto.Clone(docA).(*newsdoc.Document)
 
@@ -969,8 +968,8 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 		IfMatch:  1,
 		Document: sneakyDoc2,
 	})
-	isTwirpError(t, err, "must not be able to change a normal doc into a meta doc",
-		twirp.InvalidArgument)
+	isRPCError(t, err, "must not be able to change a normal doc into a meta doc",
+		connect.CodeInvalidArgument)
 
 	docWithMetaDoc, err := client.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:         docA.Uuid,
@@ -1065,12 +1064,12 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	_, err = readAllClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: docA.Uuid,
 	})
-	isTwirpError(t, err, "get article", twirp.NotFound, twirp.FailedPrecondition)
+	isRPCError(t, err, "get article", connect.CodeNotFound, connect.CodeFailedPrecondition)
 
 	_, err = readAllClient.Get(ctx, &repository.GetDocumentRequest{
 		Uuid: mDocV1.Document.Uuid,
 	})
-	isTwirpError(t, err, "get meta doc", twirp.NotFound, twirp.FailedPrecondition)
+	isRPCError(t, err, "get meta doc", connect.CodeNotFound, connect.CodeFailedPrecondition)
 
 	events := collectEventlog(t, client, 8, 4*time.Second)
 
@@ -1081,8 +1080,10 @@ func TestDocumentsServiceMetaDocuments(t *testing.T) {
 	)
 }
 
-func isTwirpError(
-	t *testing.T, err error, message string, code ...twirp.ErrorCode,
+// isRPCError asserts that err is an RPC error with one of the given codes,
+// whichever stack produced it.
+func isRPCError(
+	t *testing.T, err error, message string, code ...connect.Code,
 ) {
 	t.Helper()
 
@@ -1091,11 +1092,10 @@ func isTwirpError(
 			message, code)
 	}
 
-	var tErr twirp.Error
-
-	ok := errors.As(err, &tErr)
-
-	if !ok || !slices.Contains(code, tErr.Code()) {
+	match := slices.ContainsFunc(code, func(c connect.Code) bool {
+		return elephantrpc.IsCode(err, c)
+	})
+	if !match {
 		t.Fatalf("failed: %s: expected one of the error codes %q: got %v",
 			message, code, err)
 	}
@@ -1462,7 +1462,7 @@ func TestIntegrationDeleteTimeout(t *testing.T) {
 	})
 	test.MustNotf(t, err, "expected the delete to time out")
 
-	test.IsTwirpError(t, err, twirp.FailedPrecondition)
+	test.IsRPCError(t, err, connect.CodeFailedPrecondition)
 }
 
 func TestIntegrationStatuses(t *testing.T) {
@@ -1573,7 +1573,7 @@ func TestIntegrationStatuses(t *testing.T) {
 	})
 	test.MustNotf(t, err, "should fail to use unknown status")
 
-	test.IsTwirpError(t, err, twirp.InvalidArgument)
+	test.IsRPCError(t, err, connect.CodeInvalidArgument)
 
 	test.EqualMessagef(t,
 		&repository.GetDocumentResponse{
@@ -1709,7 +1709,7 @@ or Heads.approved_legal.Version == Status.Version`,
 	})
 	test.MustNotf(t, err, "don't publish document without approval")
 
-	test.IsTwirpError(t, err, twirp.InvalidArgument)
+	test.IsRPCError(t, err, connect.CodeInvalidArgument)
 
 	if !strings.Contains(err.Error(), approvalName) {
 		t.Fatalf("error message should mention %q, got: %s",
@@ -1732,7 +1732,7 @@ or Heads.approved_legal.Version == Status.Version`,
 	})
 	test.MustNotf(t, err, "don't allow publish without the correct scope")
 
-	test.IsTwirpError(t, err, twirp.PermissionDenied)
+	test.IsRPCError(t, err, connect.CodePermissionDenied)
 
 	if !strings.Contains(err.Error(), requirePublishName) {
 		t.Fatalf("error message should mention %q, got: %s",
@@ -2472,17 +2472,14 @@ func TestGetWithLock(t *testing.T) {
 			},
 		})
 
-		var twerr twirp.Error
-		if !errors.As(err, &twerr) {
-			t.Fatalf("expected twirp error, got %T: %v", err, err)
-		}
+		test.IsRPCError(t, err, connect.CodeFailedPrecondition)
 
-		test.Equalf(t, twirp.FailedPrecondition, twerr.Code(),
-			"conflict should be FailedPrecondition")
+		meta := elephantrpc.Meta(err)
+
 		test.Equalf(t, "user://test/testgetwithlock",
-			twerr.Meta("lock_holder_sub"),
+			meta["lock_holder_sub"],
 			"lock_holder_sub identifies the existing holder")
-		test.Equalf(t, "test-app", twerr.Meta("lock_app"),
+		test.Equalf(t, "test-app", meta["lock_app"],
 			"lock_app exposed via metadata")
 	})
 
@@ -2491,8 +2488,8 @@ func TestGetWithLock(t *testing.T) {
 			Uuid: docUUID,
 			Lock: &repository.AcquireLock{},
 		})
-		isTwirpError(t, err, "missing ttl",
-			twirp.InvalidArgument)
+		isRPCError(t, err, "missing ttl",
+			connect.CodeInvalidArgument)
 	})
 
 	t.Run("read-only scope rejected", func(t *testing.T) {
@@ -2505,8 +2502,8 @@ func TestGetWithLock(t *testing.T) {
 				Ttl: 500,
 			},
 		})
-		isTwirpError(t, err, "read-only client cannot acquire lock",
-			twirp.PermissionDenied)
+		isRPCError(t, err, "read-only client cannot acquire lock",
+			connect.CodePermissionDenied)
 	})
 }
 
@@ -2772,18 +2769,7 @@ func TestPrune(t *testing.T) {
 
 	t.Run("MissingDocument", func(t *testing.T) {
 		_, err := client.Prune(ctx, &repository.PruneRequest{})
-		if err == nil {
-			t.Fatal("expected error for missing document")
-		}
-
-		var twerr twirp.Error
-
-		if !errors.As(err, &twerr) {
-			t.Fatalf("expected twirp error, got %T", err)
-		}
-
-		test.Equalf(t, twirp.InvalidArgument, twerr.Code(),
-			"expected invalid argument error code")
+		test.IsRPCError(t, err, connect.CodeInvalidArgument)
 	})
 }
 
@@ -3121,17 +3107,7 @@ func TestIntegrationGetSubset(t *testing.T) {
 				".meta((type='broken')",
 			},
 		})
-		if err == nil {
-			t.Fatal("expected error for invalid expression")
-		}
-
-		var twerr twirp.Error
-		if !errors.As(err, &twerr) {
-			t.Fatalf("expected twirp error, got %T", err)
-		}
-
-		test.Equalf(t, twirp.InvalidArgument, twerr.Code(),
-			"expected invalid argument error")
+		test.IsRPCError(t, err, connect.CodeInvalidArgument)
 	})
 
 	t.Run("NoMatchReturnsEmpty", func(t *testing.T) {
@@ -3233,16 +3209,6 @@ func TestIntegrationBulkGetSubset(t *testing.T) {
 				".meta((type='broken')",
 			},
 		})
-		if err == nil {
-			t.Fatal("expected error for invalid expression")
-		}
-
-		var twerr twirp.Error
-		if !errors.As(err, &twerr) {
-			t.Fatalf("expected twirp error, got %T", err)
-		}
-
-		test.Equalf(t, twirp.InvalidArgument, twerr.Code(),
-			"expected invalid argument error")
+		test.IsRPCError(t, err, connect.CodeInvalidArgument)
 	})
 }

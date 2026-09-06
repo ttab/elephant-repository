@@ -1,6 +1,6 @@
 module github.com/ttab/elephant-repository
 
-go 1.26.5
+go 1.27.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.43.2
@@ -28,7 +28,7 @@ require (
 	github.com/ttab/elephant-api v0.24.2
 	github.com/ttab/elephantine v0.27.3
 	github.com/ttab/langos v0.1.1
-	github.com/ttab/mage v0.10.0
+	github.com/ttab/mage v0.11.2
 	github.com/ttab/newsdoc v1.1.0
 	github.com/ttab/revisor v1.0.1
 	github.com/ttab/revisorschemas v1.5.0
@@ -37,17 +37,18 @@ require (
 	github.com/viccon/sturdyc v1.1.5
 	golang.org/x/sync v0.22.0
 	golang.org/x/time v0.15.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
+	connectrpc.com/connect v1.20.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/IvanZagoskin/wkt v0.0.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
-	github.com/MicahParks/jwkset v0.11.2 // indirect
+	github.com/MicahParks/jwkset v0.11.3 // indirect
 	github.com/MicahParks/keyfunc/v3 v3.8.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
@@ -171,3 +172,7 @@ require (
 	gopkg.in/ini.v1 v1.67.3 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
+
+replace github.com/ttab/elephantine => /home/hugowett/Projects/elephantine // TODO: pin to a pushed commit
+
+replace github.com/ttab/elephant-api => /home/hugowett/Projects/elephant-api // TODO: pin to a pushed commit

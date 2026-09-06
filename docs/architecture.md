@@ -542,7 +542,7 @@ exclusivity — exclusivity narrows what an absent token blocks, not what a bad
 one does.
 
 A failed acquisition returns the holder's identity, application, comment,
-expiry and exclusivity as Twirp error metadata (`lock_holder_sub`, `lock_app`,
+expiry and exclusivity as error metadata (`lock_holder_sub`, `lock_app`,
 `lock_comment`, `lock_expires`, `lock_exclusivity`) rather than an opaque
 "locked by someone else", so a client can tell "I already hold this" from a
 real conflict.
@@ -577,10 +577,9 @@ A `MetricCalculator` can compute measurements during the write transaction.
 Write access can be narrowed to a single kind with the subscope
 `metrics_write:<kind>`.
 
-## Twirp APIs and scopes
+## The RPC API and scopes
 
-Four Twirp services under `/twirp/elephant.repository.<Service>/<Method>`,
-speaking protobuf or JSON. The service definitions live in
+Four services, each mounted twice. The service definitions live in
 [elephant-api](https://github.com/ttab/elephant-api/blob/main/repository/service.proto),
 not in this repository.
 
@@ -591,8 +590,70 @@ not in this repository.
 | `Workflows` | Statuses, status rules, per-type workflows |
 | `Metrics` | Document metric kinds and values |
 
-Plus three non-Twirp endpoints: `/sse`, `/websocket/:token`, and the
+Plus three endpoints that are not RPC: `/sse`, `/websocket/:token`, and the
 unauthenticated `GET /signing-keys`.
+
+### Two path families, one implementation
+
+| Family | Path | Protocols |
+|---|---|---|
+| Twirp | `POST /twirp/elephant.repository.<Service>/<Method>` | Twirp protobuf (`application/protobuf`) and JSON |
+| Connect | `POST /elephant.repository.<Service>/<Method>` | Connect protobuf (`application/proto`) and JSON, gRPC, gRPC-Web |
+
+The two mounts wrap the same service implementation, which has the plain
+protobuf signature `Get(ctx, *GetDocumentRequest) (*GetDocumentResponse, error)`
+on both. Neither is a proxy for the other: a call is dispatched straight to the
+handler by whichever mount received it, and both go through the same
+authentication middleware and the same scope and ACL checks. Nothing about a
+request except its wire encoding depends on which family it arrived on.
+
+The Connect mount is the API going forward; Twirp is kept for the existing
+clients and is removed in a future major release, not on a traffic timer.
+`rpc_protocol_responses_total{protocol="twirp"}` is what says whether a method
+still has Twirp callers.
+
+Connect clients send `Connect-Protocol-Version: 1` and, when they set a
+deadline, `Connect-Timeout-Ms`; both are in the CORS allow list, and the server
+does not require the version header, so `curl` and raw `fetch` keep working
+against the Connect paths. gRPC needs HTTP/2, which the plain listener
+negotiates from the connection preface — an ingress in front of the service has
+to be configured for HTTP/2 before a gRPC caller can reach it from outside.
+
+JSON on both stacks omits unpopulated fields: Twirp is mounted with
+`WithServerJSONSkipDefaults(true)` and Connect's codec is `protojson` with its
+default options, which does the same.
+
+### Error bodies
+
+The two protocols render an error differently, and a client reads the code from
+the body rather than from the HTTP status.
+
+| | Twirp | Connect |
+|---|---|---|
+| Body | `{"code":"not_found","msg":"...","meta":{"k":"v"}}` | `{"code":"not_found","message":"...","details":[...]}` |
+| Metadata | the `meta` map | an `elephantine.rpc.ErrorMeta` detail holding the same key/value map |
+
+The code strings are the same for every code the repository returns, so a
+client that branches on `code` needs no new cases. Error metadata — the
+`lock_*` keys on a lock conflict, `argument` on an invalid argument,
+`required_any_of_scopes` on a scope failure — is carried as a typed detail on
+the Connect side rather than as response headers, because our keys contain
+underscores and header names are case-folded and dropped by some proxies. A Go
+client reads it with `rpc.Meta(err)`, a TypeScript client with
+`findDetails(ErrorMeta)`.
+
+The HTTP status for a given code is the same on both stacks except for three:
+
+| Code | Twirp | Connect |
+|---|---|---|
+| `failed_precondition` | 412 | 400 |
+| `canceled` | 408 | 499 |
+| `deadline_exceeded` | 408 | 504 |
+
+`failed_precondition` is the one that matters here: document locks, system
+locks and workflow rule violations return it, so anything that counted 412s to
+find lock conflicts has to read the RPC code instead — see
+[observability.md](observability.md#rpc-metrics-on-two-stacks).
 
 ### Scopes
 
@@ -629,27 +690,32 @@ Every method except the unimplemented `Documents.Evict` requires a scope.
 `Documents.Validate` and `Documents.Prune` take the same write scopes as
 `Update`, because both are dry runs of the write path rather than reads.
 
-**A valid token is required before a request reaches any Twirp handler.**
+**A valid token is required before a request reaches any RPC handler**, on
+either path family and in any of the protocols Connect serves.
 `SetJWTValidation` rejects a request with no or invalid `Authorization` header
 with a 401 rather than passing it on, so authorization is default-deny: a handler
 that forgot its scope check would fail closed. That is belt and braces, not a
 substitute — the scope check is still part of writing a method, since the
 middleware knows nothing about which scope a method needs.
 
+Being HTTP middleware rather than a Twirp hook is what makes that hold for both
+stacks: it puts the `AuthInfo` on the request context and the handler only ever
+reads `elephantine.GetAuthInfo`, so it has no idea which protocol carried the
+call.
+
 The middleware does not cover every route, and the exceptions are deliberate:
 
 | Route | Authentication |
 |---|---|
 | `POST /twirp/…` | Middleware requires a valid token, then the handler asserts its scope |
+| `POST /elephant.repository.…` | The same middleware and the same handler, for Connect, gRPC and gRPC-Web |
 | `GET /sse` | Same middleware; the `token` query parameter is copied into the `Authorization` header first, so a browser client that cannot set headers still authenticates |
 | `GET /websocket/:token` | Bypasses the middleware — the socket token in the path is verified against the server's socket key, and the session then authenticates with a JWT |
 | `GET /signing-keys` | Bypasses the middleware. Public by design: it is what makes independent verification of the archive possible |
 
 The middleware validates on every request; there is no JWT caching, which is
-noted as a `TODO` at the call site. Moving to elephantine's `ServiceOptions` with
-`ServiceAuthRequired` would put this in a Twirp hook instead of HTTP middleware —
-see [pending work](../README.md#pending-work). See also
-[ops.md](ops.md#security).
+noted as a `TODO` at the call site — see
+[pending work](../README.md#pending-work). See also [ops.md](ops.md#security).
 
 `repository/permissions.go` is the authority for the scope constants;
 [permissions.md](permissions.md) has the per-method matrix.

@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
-	"github.com/ttab/elephantine"
+	elephantrpc "github.com/ttab/elephantine/rpc"
 	"github.com/ttab/elephantine/test"
-	"github.com/twitchtv/twirp"
 )
 
 func TestAssetUpload(t *testing.T) {
@@ -233,9 +233,9 @@ func TestAssetRestore(t *testing.T) {
 			Uuid: docUUID,
 		})
 		//nolint: gocritic
-		if elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition) {
+		if elephantrpc.IsCode(err, connect.CodeFailedPrecondition) {
 			continue
-		} else if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
+		} else if elephantrpc.IsCode(err, connect.CodeNotFound) {
 			break
 		} else if err != nil {
 			t.Fatalf("failed to check document delete status: %v", err)

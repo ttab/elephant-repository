@@ -13,7 +13,7 @@ import (
 	"github.com/ttab/elephant-api/repository"
 	repo "github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
-	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
 	"github.com/twitchtv/twirp"
 )
 
@@ -141,9 +141,9 @@ func (r *EventForwarder) run(ctx context.Context) {
 			return
 		}
 
-		jobLock, err := pg.NewJobLock(
+		jobLock, err := joblock.New(
 			r.db, r.logger, "forwarder",
-			pg.JobLockOptions{
+			joblock.Options{
 				PingInterval:  10 * time.Second,
 				StaleAfter:    1 * time.Minute,
 				CheckInterval: 20 * time.Second,

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
@@ -29,6 +30,8 @@ import (
 	"github.com/ttab/elephant-repository/sinks"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
+	"github.com/ttab/elephantine/rpc"
 	"github.com/ttab/langos"
 	"github.com/twitchtv/twirp"
 	"github.com/urfave/cli/v3"
@@ -301,10 +304,10 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	s3Conf.HTTPClient = &http.Client{
 		Timeout: 1 * time.Minute,
 		Transport: &http.Transport{
-			Dial: (&net.Dialer{
+			DialContext: (&net.Dialer{
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
-			}).Dial,
+			}).DialContext,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ResponseHeaderTimeout: 10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
@@ -415,9 +418,9 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	go store.RunListener(stopCtx, pubsubPool)
 	go store.RunCleaner(stopCtx, 5*time.Minute)
 
-	bootstrapLock, err := pg.NewJobLock(
+	bootstrapLock, err := joblock.New(
 		dbpool, logger, "bootstrap-generation",
-		pg.JobLockOptions{})
+		joblock.Options{})
 	if err != nil {
 		return fmt.Errorf("create bootstrap generation lock: %w", err)
 	}
@@ -485,10 +488,10 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		}
 
 		go func() {
-			err := pg.RunInJobLock(ctx,
+			err := joblock.Run(ctx,
 				dbpool, log,
 				"eventlog-builder", "eventlog-builder",
-				pg.JobLockOptions{},
+				joblock.Options{},
 				func(ctx context.Context) error {
 					return builder.Run(ctx)
 				})
@@ -573,10 +576,10 @@ func runServer(ctx context.Context, c *cli.Command) error {
 
 			err := scheduler.RunInJobLock(
 				ctx, nil,
-				func() (*pg.JobLock, error) {
-					return pg.NewJobLock(
+				func() (*joblock.Lock, error) {
+					return joblock.New(
 						dbpool, logger, "scheduler",
-						pg.JobLockOptions{})
+						joblock.Options{})
 				})
 			if err != nil {
 				logger.Error(
@@ -598,13 +601,30 @@ func runServer(ctx context.Context, c *cli.Command) error {
 
 	metrics, err := elephantine.NewTwirpMetricsHooks()
 	if err != nil {
-		return fmt.Errorf("failed to create twirp metrics hook: %w", err)
+		return fmt.Errorf("create twirp metrics hook: %w", err)
 	}
 
 	opts.Hooks = twirp.ChainHooks(
 		elephantine.LoggingHooks(logger),
 		metrics,
 	)
+
+	// The Connect interceptor observes the same collectors as the Twirp
+	// hooks above, so each RPC metric is registered once however many
+	// stacks are mounted.
+	connectMetrics, err := rpc.MetricsInterceptor(prometheus.DefaultRegisterer)
+	if err != nil {
+		return fmt.Errorf("create connect metrics interceptor: %w", err)
+	}
+
+	// Outermost first. LegacyTwirpErrors is innermost so that the handlers'
+	// Twirp errors are already translated when logging and metrics read the
+	// code off them; it goes away with the error flip.
+	opts.Interceptors = []connect.Interceptor{
+		connectMetrics,
+		rpc.LoggingInterceptor(logger),
+		rpc.LegacyTwirpErrors(),
+	}
 
 	routerOpts := []repository.RouterOption{
 		repository.WithDocumentsAPI(docService, opts),

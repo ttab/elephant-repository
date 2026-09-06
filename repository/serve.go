@@ -8,12 +8,15 @@ import (
 	"net/http"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/julienschmidt/httprouter"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	"github.com/ttab/elephant-repository/internal"
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/rpc"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/sync/errgroup"
 )
@@ -43,7 +46,11 @@ func ListenAndServe(
 		AllowInsecureLocalhost: true,
 		Hosts:                  corsHosts,
 		AllowedMethods:         []string{"GET", "POST"},
-		AllowedHeaders:         []string{"Authorization", "Content-Type", "Last-Event-ID"},
+		AllowedHeaders: []string{
+			"Authorization", "Content-Type", "Last-Event-ID",
+			// Sent by every browser Connect client.
+			"Connect-Protocol-Version", "Connect-Timeout-Ms",
+		},
 	}, handler)
 
 	grp, gCtx := errgroup.WithContext(ctx)
@@ -79,26 +86,59 @@ func ListenAndServe(
 }
 
 type ServerOptions struct {
-	Hooks          *twirp.ServerHooks
+	// Hooks are the Twirp server hooks used for the /twirp/ mount.
+	Hooks *twirp.ServerHooks
+	// Interceptors are the Connect interceptors used for the Connect
+	// mount. They are applied outermost first, so the innermost one is the
+	// last in the slice, and that is where rpc.LegacyTwirpErrors belongs:
+	// it has to translate a handler's Twirp error before the logging and
+	// metrics interceptors read the code off it.
+	Interceptors   []connect.Interceptor
 	AuthMiddleware func(
 		w http.ResponseWriter, r *http.Request, next http.Handler,
 	) error
 }
 
-// SetJWTValidation installs the authentication middleware used by the Twirp
-// services and the SSE endpoint. A valid token is required: every method behind
-// this middleware asserts its own scope requirement, so there is nothing left
-// that legitimately needs anonymous access, and rejecting here means a handler
-// that forgets its scope check fails closed instead of open.
+// twirpOptions are the server options every Twirp mount is created with. The
+// interceptor translates a *connect.Error returned by a handler into the Twirp
+// error the protocol can render, which is what lets a handler speak one error
+// vocabulary while both stacks are mounted.
+func (so *ServerOptions) twirpOptions() []any {
+	return []any{
+		twirp.WithServerJSONSkipDefaults(true),
+		twirp.WithServerHooks(so.Hooks),
+		twirp.WithServerInterceptors(rpc.TwirpInterceptor()),
+	}
+}
+
+// connectOptions are the handler options every Connect mount is created with.
+func (so *ServerOptions) connectOptions() []connect.HandlerOption {
+	if len(so.Interceptors) == 0 {
+		return nil
+	}
+
+	return []connect.HandlerOption{
+		connect.WithInterceptors(so.Interceptors...),
+	}
+}
+
+// SetJWTValidation installs the authentication middleware used by the RPC
+// services, on both the Twirp and the Connect mount, and by the SSE endpoint. A
+// valid token is required: every method behind this middleware asserts its own
+// scope requirement, so there is nothing left that legitimately needs anonymous
+// access, and rejecting here means a handler that forgets its scope check fails
+// closed instead of open.
+//
+// Being HTTP middleware rather than a Twirp hook is what makes it protocol
+// neutral: the handler only ever reads elephantine.GetAuthInfo, so Twirp,
+// Connect, gRPC and gRPC-Web are all authenticated by the same code.
 //
 // Note that this does not cover every route. GET /signing-keys is deliberately
 // public and GET /websocket/:token authenticates with its own socket token, so
 // neither goes through this middleware.
 //
 // TODO: This feels like an initial sketch that should be further developed to
-// address the JWT cacheing. Moving to elephantine's ServiceOptions and
-// ServiceAuthRequired would also put validation in a Twirp hook rather than in
-// HTTP middleware.
+// address the JWT cacheing.
 func (so *ServerOptions) SetJWTValidation(parser elephantine.AuthInfoParser) {
 	so.AuthMiddleware = func(
 		w http.ResponseWriter, r *http.Request, next http.Handler,
@@ -135,12 +175,14 @@ func WithDocumentsAPI(
 ) RouterOption {
 	return func(router *httprouter.Router) error {
 		api := repository.NewDocumentsServer(
-			service,
-			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(opts.Hooks),
-		)
+			service, opts.twirpOptions()...)
 
 		registerAPI(router, opts, api)
+
+		path, handler := repositoryconnect.NewDocumentsServiceHandler(
+			service, opts.connectOptions()...)
+
+		registerConnectAPI(router, opts, path, handler)
 
 		return nil
 	}
@@ -152,12 +194,14 @@ func WithSchemasAPI(
 ) RouterOption {
 	return func(router *httprouter.Router) error {
 		api := repository.NewSchemasServer(
-			service,
-			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(opts.Hooks),
-		)
+			service, opts.twirpOptions()...)
 
 		registerAPI(router, opts, api)
+
+		path, handler := repositoryconnect.NewSchemasServiceHandler(
+			service, opts.connectOptions()...)
+
+		registerConnectAPI(router, opts, path, handler)
 
 		return nil
 	}
@@ -169,12 +213,14 @@ func WithWorkflowsAPI(
 ) RouterOption {
 	return func(router *httprouter.Router) error {
 		api := repository.NewWorkflowsServer(
-			service,
-			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(opts.Hooks),
-		)
+			service, opts.twirpOptions()...)
 
 		registerAPI(router, opts, api)
+
+		path, handler := repositoryconnect.NewWorkflowsServiceHandler(
+			service, opts.connectOptions()...)
+
+		registerConnectAPI(router, opts, path, handler)
 
 		return nil
 	}
@@ -228,12 +274,14 @@ func WithMetricsAPI(
 ) RouterOption {
 	return func(router *httprouter.Router) error {
 		api := repository.NewMetricsServer(
-			service,
-			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(opts.Hooks),
-		)
+			service, opts.twirpOptions()...)
 
 		registerAPI(router, opts, api)
+
+		path, handler := repositoryconnect.NewMetricsServiceHandler(
+			service, opts.connectOptions()...)
+
+		registerConnectAPI(router, opts, path, handler)
 
 		return nil
 	}
@@ -358,14 +406,33 @@ func registerAPI(
 	router *httprouter.Router, opt ServerOptions,
 	api apiServerForRouter,
 ) {
-	router.POST(api.PathPrefix()+":method", internal.RHandleFunc(func(
+	registerRPCHandler(router, opt, api.PathPrefix()+":method", api)
+}
+
+// registerConnectAPI mounts the (path, handler) pair a generated Connect
+// constructor returns. The path is the service root ("/elephant.repository.
+// Documents/"), so the method becomes a catch-all segment. Connect serves the
+// Connect, gRPC and gRPC-Web protocols on it, all of them over POST, and all of
+// them behind the same authentication middleware as the Twirp mount.
+func registerConnectAPI(
+	router *httprouter.Router, opt ServerOptions,
+	path string, handler http.Handler,
+) {
+	registerRPCHandler(router, opt, path+"*method", handler)
+}
+
+func registerRPCHandler(
+	router *httprouter.Router, opt ServerOptions,
+	route string, handler http.Handler,
+) {
+	router.POST(route, internal.RHandleFunc(func(
 		w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 	) error {
 		if opt.AuthMiddleware != nil {
-			return opt.AuthMiddleware(w, r, api)
+			return opt.AuthMiddleware(w, r, handler)
 		}
 
-		api.ServeHTTP(w, r)
+		handler.ServeHTTP(w, r)
 
 		return nil
 	}))

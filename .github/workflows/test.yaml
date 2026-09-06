@@ -19,3 +19,12 @@ jobs:
       - name: Run go tests
         run: |
           go test ./...
+      # The API suite is parameterised over the two protocol stacks, and
+      # TEST_RPC_STACK picks the one the test clients are built for. Both mounts
+      # are always served; this second run is what exercises every existing test
+      # against Connect.
+      - name: Run go tests against the Connect stack
+        env:
+          TEST_RPC_STACK: connect
+        run: |
+          go test ./repository/...

@@ -139,7 +139,7 @@ func (m *MetricsService) GetKinds(
 	}
 
 	for i := range kinds {
-		agg, err := ToMetricAggregation((kinds[i].Aggregation))
+		agg, err := ToMetricAggregation(kinds[i].Aggregation)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode aggregation: %w", err)
 		}

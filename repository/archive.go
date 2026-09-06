@@ -30,6 +30,7 @@ import (
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
 	"github.com/ttab/newsdoc"
 	"golang.org/x/sync/errgroup"
 )
@@ -234,8 +235,8 @@ func (a *Archiver) Stop(ctx context.Context) error {
 }
 
 func (a *Archiver) runEventlogArchiver(ctx context.Context) error {
-	lock, err := pg.NewJobLock(a.pool, a.logger, "eventlog-archiver",
-		pg.JobLockOptions{})
+	lock, err := joblock.New(a.pool, a.logger, "eventlog-archiver",
+		joblock.Options{})
 	if err != nil {
 		return fmt.Errorf("acquire job lock: %w", err)
 	}
