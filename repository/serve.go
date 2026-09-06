@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -110,14 +111,43 @@ func (so *ServerOptions) twirpOptions() []any {
 }
 
 // connectOptions are the handler options every Connect mount is created with.
+// The coding interceptor is innermost, so the metrics and logging interceptors
+// see the code the caller will be answered with.
 func (so *ServerOptions) connectOptions() []connect.HandlerOption {
-	if len(so.Interceptors) == 0 {
-		return nil
-	}
+	interceptors := make([]connect.Interceptor, 0, len(so.Interceptors)+1)
+	interceptors = append(interceptors, so.Interceptors...)
+	interceptors = append(interceptors, codeUncodedErrors())
 
 	return []connect.HandlerOption{
-		connect.WithInterceptors(so.Interceptors...),
+		connect.WithInterceptors(interceptors...),
 	}
+}
+
+// codeUncodedErrors gives an error that carries no RPC code the internal code,
+// which is what the Twirp mount does with it through twirp.InternalErrorWith.
+// Connect would otherwise answer with unknown, and the two stacks would
+// disagree on the code for every handler error that is a plain fmt.Errorf.
+//
+// This also keeps unknown meaning what docs/observability.md says it means: a
+// code Connect itself produced, rather than a server fault a handler returned.
+func codeUncodedErrors() connect.Interceptor {
+	return connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(
+			ctx context.Context, req connect.AnyRequest,
+		) (connect.AnyResponse, error) {
+			res, err := next(ctx, req)
+			if err == nil {
+				return res, nil
+			}
+
+			var cErr *connect.Error
+			if errors.As(err, &cErr) {
+				return nil, err
+			}
+
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+	})
 }
 
 // SetJWTValidation installs the authentication middleware used by the RPC

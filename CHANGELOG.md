@@ -40,27 +40,6 @@ Three things differ for a caller that moves:
 An ingress that routes on `/twirp/` needs a sibling rule for the new paths
 before a client can use them.
 
-**Behaviour change (request bodies):** request bodies are capped at 8 MiB on
-both listeners, which comes in with the elephantine upgrade. A request that
-declares a larger `Content-Length` is refused with `413` before it reaches a
-handler, and a body of unknown length fails on the read that passes the limit.
-Bodies were unbounded before. A document update whose serialised request exceeds
-8 MiB — a very large document, or a `BulkUpdate` of many documents — now fails
-where it used to succeed.
-
-**Behaviour change (metrics):** `rpc_requests_total`, `rpc_duration_seconds` and
-`rpc_responses_total` keep their names, labels and label values, and both mounts
-report into them, so a call is counted once whichever protocol carried it. But
-`rpc_responses_total{status}` reports the status actually sent, so a Connect
-`failed_precondition` lands on `status="400"` rather than `status="412"` — a
-panel counting 412s for lock conflicts undercounts as callers move over, and one
-counting 400s starts mixing lock conflicts with malformed requests. The
-replacement is the new
-`rpc_protocol_responses_total{service,method,protocol,code}` counter, which
-carries the RPC code itself, so lock conflicts are `code="failed_precondition"`
-regardless of protocol. Its `protocol` label (`twirp`, `connect`, `grpc`,
-`grpc-web`) is also what says whether a method still has Twirp callers.
-
 **Breaking (authorization):** the API now requires a valid token. A request to a
 Twirp method or to `/sse` with a missing or invalid `Authorization` header is
 answered with 401, so authorization is default-deny. `GET /signing-keys` stays
@@ -81,12 +60,39 @@ configuration run needs `schema_read`; an applying run already holds
 granting scopes: `Validate` and `Prune` read schemas but live on the `Documents`
 service and take *write* scopes, not `schema_read`.
 
+**Behaviour change (request bodies):** request bodies are capped at 8 MiB on
+both listeners, which comes in with the elephantine upgrade. A request that
+declares a larger `Content-Length` is refused with `413` before it reaches a
+handler, and a body of unknown length fails on the read that passes the limit.
+Bodies were unbounded before. A document update whose serialised request exceeds
+8 MiB — a very large document, or a `BulkUpdate` of many documents — now fails
+where it used to succeed.
+
 **Behaviour change (document locks):** a document lock now only blocks
 document updates (new versions, attached objects, deletes) by default; status
 and ACL updates on a locked document are no longer blocked unless the lock was
 acquired with a higher exclusivity level. This matches the long-documented API
 behaviour, but consumers that relied on locks also blocking status or ACL
 updates must now acquire their locks with a matching exclusivity. (#604)
+
+**Build:** the module now requires Go 1.27, up from Go 1.26.5, which comes in
+with the elephantine upgrade, and the release image builds on
+`golang:1.27.1-alpine3.24`. Anyone who builds the binary outside the Dockerfile
+needs a Go 1.27 toolchain; a builder pinned to 1.26 either downloads one at
+build time or fails outright, depending on `GOTOOLCHAIN`.
+
+**Behaviour change (metrics):** `rpc_requests_total`, `rpc_duration_seconds` and
+`rpc_responses_total` keep their names, labels and label values, and both mounts
+report into them, so a call is counted once whichever protocol carried it. But
+`rpc_responses_total{status}` reports the status actually sent, so a Connect
+`failed_precondition` lands on `status="400"` rather than `status="412"` — a
+panel counting 412s for lock conflicts undercounts as callers move over, and one
+counting 400s starts mixing lock conflicts with malformed requests. The
+replacement is the new
+`rpc_protocol_responses_total{service,method,protocol,code}` counter, which
+carries the RPC code itself, so lock conflicts are `code="failed_precondition"`
+regardless of protocol. Its `protocol` label (`twirp`, `connect`, `grpc`,
+`grpc-web`) is also what says whether a method still has Twirp callers.
 
 **Behaviour change (readiness):** the `s3` readiness check is now optional, so
 an unreachable archive bucket no longer fails `/health/ready`. It previously
@@ -117,9 +123,9 @@ Changes:
 - Each subscription's live stream is now rate limited with a token bucket (`--eventlog-stream-burst` 70, `--eventlog-stream-rate` 10/s). On exceed, the events that fit are emitted followed by a `rate_limited` error, and the subscription is stopped; clients are expected to resubscribe. The initial resume replay is exempt. (#597)
 - The documentation is now a set with a settled division of labour: `README.md` for orientation, commands and the full configuration reference; `docs/architecture.md` for the design; `docs/ops.md` for dependencies, failure modes and what to watch; `docs/observability.md` for every exported metric and what a change in it means. `docs/permissions.md` has been corrected — it was missing `doc_restore`, `doc_purge`, `meta_doc_write_all`, `asset_upload` and `metrics_read`, and did not record that `Restore` and `Purge` perform no ACL check. Relative links and heading anchors are checked by `mage docs:links` in the lint job.
 - `Restore` and `Purge` are documented as performing no per-document ACL check. This is unchanged behaviour — the document is deleted, so there is no ACL left to check against — but it means `doc_restore` and `doc_purge` act on any deleted document and should be treated as administrative scopes.
-- The API is served on both the Connect and the Twirp paths, as described above. Handlers construct their errors with the `elephantine/rpc` helpers, and the Twirp mount's interceptor translates them back, so a Twirp caller sees the same code, the same message and the same `meta` map as before. That equivalence is now tested rather than asserted: `TestIntegrationErrorParity` runs missing scope, not found, invalid argument, validation failure, lock conflict and failed precondition over both stacks against one server and compares code, message and every metadata key, and `TestIntegrationErrorBodies` pins the raw JSON error bodies of both. The API test suite runs against both stacks — `TEST_RPC_STACK=connect go test ./repository/...` builds every test client from the generated Connect constructors, and CI runs the suite both ways.
+- The API is served on both the Connect and the Twirp paths, as described above. Handlers construct their errors with the `elephantine/rpc` helpers, and the Twirp mount's interceptor translates them back, so a Twirp caller sees the same code, the same message and the same `meta` map as before. That equivalence is now tested rather than asserted: `TestIntegrationErrorParity` runs missing scope, not found, invalid argument, validation failure, lock conflict and failed precondition over both stacks against one server and compares code, message and every metadata key, `TestIntegrationErrorBodies` pins the raw JSON error bodies and HTTP statuses of both (including the `failed_precondition` case where Twirp answers 412 and Connect 400), and `TestUncodedErrorParity` covers a handler error that carries no code at all: Connect would default it to `unknown` where Twirp makes it `internal`, so the Connect mount codes it `internal` too. The API test suite runs against both stacks — `TEST_RPC_STACK=connect go test ./repository/...` builds every test client from the generated Connect constructors, and CI runs the suite both ways.
 - A `permission_denied` from a scope check now carries the scopes that would have been accepted as the `required_any_of_scopes` error metadata key, on both stacks. The message is unchanged. `GET /sse` answers a scope failure with the same status as before, but the plain-text body no longer has the `twirp error ` prefix in front of the code.
-- Dependency upgrades: elephantine to v0.29.0 (the `rpc` package, the shared RPC collectors, the request body cap and the job lock's move to `pg/joblock`), elephant-api to v0.25.0 (the generated Connect handlers and clients), connectrpc.com/connect v1.20.0, the AWS SDK suite, urfave/cli/v3 to v3.9.1, ttab/mage to v0.10.0, and the Go toolchain. (#597, #604)
+- Dependency upgrades: elephantine to v0.29.0 (the `rpc` package, the shared RPC collectors, the request body cap and the job lock's move to `pg/joblock`), elephant-api to v0.25.0 (the generated Connect handlers and clients), connectrpc.com/connect v1.20.0, the AWS SDK suite, urfave/cli/v3 to v3.9.1, and ttab/mage to v0.10.0. (#597, #604)
 
 ## [v1.8.1] - 2026-06-10
 

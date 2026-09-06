@@ -2,18 +2,24 @@ package repository_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/julienschmidt/httprouter"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	itest "github.com/ttab/elephant-repository/internal/test"
+	repo "github.com/ttab/elephant-repository/repository"
 	elephantrpc "github.com/ttab/elephantine/rpc"
 	"github.com/ttab/elephantine/test"
 )
@@ -241,6 +247,56 @@ func TestIntegrationErrorParity(t *testing.T) {
 	})
 }
 
+// uncodedDocuments answers Get with an error that carries no RPC code, the
+// shape of the handler returns that are still a plain fmt.Errorf on a failed
+// query. The embedded interface is nil, so every other method panics if called,
+// which is what keeps the stub honest about what it covers.
+type uncodedDocuments struct {
+	repository.Documents
+}
+
+func (uncodedDocuments) Get(
+	_ context.Context, _ *repository.GetDocumentRequest,
+) (*repository.GetDocumentResponse, error) {
+	return nil, errors.New("something the handler did not code")
+}
+
+// TestUncodedErrorParity checks that a handler error with no RPC code is
+// answered with internal on both stacks. Twirp codes it through
+// twirp.InternalErrorWith and Connect would default it to unknown, so the
+// Connect mount installs an interceptor that codes it the same way. Without
+// that the two stacks disagree for every uncoded handler error, and
+// code="unknown" stops meaning what docs/observability.md says it means.
+func TestUncodedErrorParity(t *testing.T) {
+	router := httprouter.New()
+
+	// No AuthMiddleware: the stub asserts nothing about the caller, and the
+	// point here is the error coding, not the authorization.
+	err := repo.SetUpRouter(router,
+		repo.WithDocumentsAPI(
+			uncodedDocuments{}, repo.ServerOptions{}))
+	test.Mustf(t, err, "set up the router")
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	call := func(client repository.Documents) error {
+		_, err := client.Get(t.Context(), &repository.GetDocumentRequest{
+			Uuid: "e6cbd7a0-6ff6-4c76-9a2a-8f7e2b1c0d9e",
+		})
+
+		return err
+	}
+
+	twirpErr := call(repository.NewDocumentsProtobufClient(
+		server.URL, server.Client()))
+	test.IsRPCError(t, twirpErr, connect.CodeInternal)
+
+	connectErr := call(repositoryconnect.NewDocumentsServiceClient(
+		server.Client(), server.URL))
+	test.IsRPCError(t, connectErr, connect.CodeInternal)
+}
+
 // errorResponse is the shape the error body golden files are stored in: the
 // status the stack answered with, and the parsed body.
 type errorResponse struct {
@@ -266,8 +322,23 @@ func TestIntegrationErrorBodies(t *testing.T) {
 	dataDir := filepath.Join("..", "testdata", t.Name())
 	regenerate := regenerateTestFixtures()
 
-	client := tc.authClient(t, tc.client,
-		itest.StandardClaims(t, "doc_read doc_write"))
+	claims := itest.StandardClaims(t, "doc_read doc_write doc_delete")
+
+	client := tc.authClient(t, tc.client, claims)
+
+	// The failed_precondition case deletes this document. A delete waits for
+	// the archiver to finish with the document before it takes it out, and
+	// the test server runs no archiver, so both calls end in the same failed
+	// precondition without either of them changing what the other sees.
+	deleteUUID := "5c4d3e2f-1a0b-4c9d-8e7f-6a5b4c3d2e1f"
+
+	_, err := tc.DocumentsClient(t, claims).Update(t.Context(),
+		&repository.UpdateRequest{
+			Uuid: deleteUUID,
+			Document: baseDocument(deleteUUID,
+				"article://test/error-bodies-delete"),
+		})
+	test.Mustf(t, err, "create the document to delete")
 
 	call := func(t *testing.T, path string, body string) errorResponse {
 		t.Helper()
@@ -298,31 +369,46 @@ func TestIntegrationErrorBodies(t *testing.T) {
 	}
 
 	for _, c := range []struct {
-		Name string
-		Body string
+		Name   string
+		Method string
+		Body   string
 	}{
 		{
 			// invalid_argument with an "argument" metadata key, which
 			// is the most common shape in the API.
-			Name: "invalid_argument",
-			Body: `{"uuid":""}`,
+			Name:   "invalid_argument",
+			Method: "Get",
+			Body:   `{"uuid":""}`,
 		},
 		{
 			// not_found carries no metadata, so this is the plain
 			// shape of an error body on either stack.
-			Name: "not_found",
-			Body: `{"uuid":"3f2b1a5e-6f70-4bfe-bcf5-84b3a6a9e2ea"}`,
+			Name:   "not_found",
+			Method: "Get",
+			Body:   `{"uuid":"3f2b1a5e-6f70-4bfe-bcf5-84b3a6a9e2ea"}`,
+		},
+		{
+			// failed_precondition is the one code the two stacks
+			// answer with a different HTTP status, 412 on Twirp and
+			// 400 on Connect, so the goldens are what stops either
+			// from drifting. Document locks, system locks and
+			// workflow rule violations all return it.
+			Name:   "failed_precondition",
+			Method: "Delete",
+			Body:   `{"uuid":"` + deleteUUID + `"}`,
 		},
 	} {
 		t.Run(c.Name, func(t *testing.T) {
 			twirpRes := call(t,
-				"/twirp/elephant.repository.Documents/Get", c.Body)
+				"/twirp/elephant.repository.Documents/"+c.Method,
+				c.Body)
 
 			test.AgainstGolden(t, regenerate, twirpRes,
 				filepath.Join(dataDir, c.Name+"-twirp.json"))
 
 			connectRes := call(t,
-				"/elephant.repository.Documents/Get", c.Body)
+				"/elephant.repository.Documents/"+c.Method,
+				c.Body)
 
 			test.AgainstGolden(t, regenerate, connectRes,
 				filepath.Join(dataDir, c.Name+"-connect.json"))

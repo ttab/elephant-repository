@@ -3,6 +3,7 @@ module github.com/ttab/elephant-repository
 go 1.27.0
 
 require (
+	connectrpc.com/connect v1.20.0
 	github.com/aws/aws-sdk-go-v2 v1.43.2
 	github.com/aws/aws-sdk-go-v2/config v1.32.33
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.32
@@ -41,7 +42,6 @@ require (
 )
 
 require (
-	connectrpc.com/connect v1.20.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/IvanZagoskin/wkt v0.0.1 // indirect
