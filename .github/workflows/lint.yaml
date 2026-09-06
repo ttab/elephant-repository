@@ -18,7 +18,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          version: v2.13
           args: --timeout=4m
       - name: documentation links
         run: go run github.com/magefile/mage docs:links
