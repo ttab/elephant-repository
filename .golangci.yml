@@ -54,14 +54,6 @@ linters:
         - (context.Context).Err(
         - github.com/ttab/elephantine/pg.WithTX(
         - github.com/ttab/elephantine/pg/joblock.Lock).RunWithContext(
-    gomoddirectives:
-      # The Connect migration pins elephantine and elephant-api to sibling
-      # checkouts until both are tagged. Drop the local replacements, and these
-      # two settings with them, once they are.
-      replace-local: true
-      replace-allow-list:
-        - github.com/ttab/elephantine
-        - github.com/ttab/elephant-api
   exclusions:
     generated: lax
     presets:
