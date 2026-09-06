@@ -617,14 +617,21 @@ still has Twirp callers.
 Both mounts, and the three endpoints that are not RPC, are registered on an
 `elephantine.APIServer` — the same server the rest of the fleet serves from —
 which owns the listeners, CORS, the request body cap, `/version` and
-`/health/alive`. `repository.RegisterAPIs` does the registration and is what
-`cmd/repository` and the test suite both call, so a test measures the server
-shape the service actually serves. One `elephantine.ServiceOptions` value,
-built by `NewDefaultServiceOptions`, carries the Twirp hooks, the Connect
-interceptors and the authentication middleware for every mount: the two stacks
-are configured identically by construction rather than by two chains that have
-to be kept in step, and the RPC collectors, which the stacks share, are
-registered exactly once.
+`/health/alive`. Four functions in `repository/serve.go` do the registration and
+are what `cmd/repository` and the test suite both call, so a test measures the
+server shape the service actually serves: `RegisterAPIs` mounts the four RPC
+services on both path families, and `RegisterSSE`, `RegisterWebsocket` and
+`RegisterSigningKeys` mount the endpoints that are not RPC. One
+`elephantine.ServiceOptions` value, built by `NewDefaultServiceOptions`, carries
+the Twirp hooks, the Connect interceptors and the authentication middleware for
+both RPC mounts: the two stacks are configured identically by construction
+rather than by two chains that have to be kept in step, and the RPC collectors,
+which the stacks share, are registered exactly once. Of the three endpoints that
+are not RPC only `RegisterSSE` takes the options, and it uses them for the
+authentication middleware alone; `/websocket/:token` and `/signing-keys` take
+none, which is what makes their bypass of the middleware a property of the
+registration rather than a configuration that could drift — see
+[scopes](#scopes) for the route-by-route table.
 
 Connect clients send `Connect-Protocol-Version: 1` and, when they set a
 deadline, `Connect-Timeout-Ms`; both are in the CORS allow list, and the server

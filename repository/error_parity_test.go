@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"log/slog"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -325,4 +326,72 @@ func TestIntegrationErrorBodies(t *testing.T) {
 				filepath.Join(dataDir, c.Name+"-connect.json"))
 		})
 	}
+
+	// The refusal the authentication middleware writes is the one error body
+	// in the API that no handler produces: the middleware answers before
+	// either mount runs. Which of the two shapes it writes is decided by the
+	// mount the request arrived on and not by the content type, since Twirp
+	// and Connect both speak application/json, so if that ever stops working
+	// every refusal renders as Connect. The status is 401 either way, which
+	// is why only the body catches it.
+	t.Run("unauthenticated", func(t *testing.T) {
+		// tc.client carries no credentials, so this is a caller with no
+		// Authorization header at all.
+		twirpRes := tc.postJSON(t, tc.client,
+			"/twirp/elephant.repository.Documents/Get", `{"uuid":""}`)
+
+		test.AgainstGolden(t, regenerate, twirpRes,
+			filepath.Join(dataDir, "unauthenticated-twirp.json"))
+
+		connectRes := tc.postJSON(t, tc.client,
+			"/elephant.repository.Documents/Get", `{"uuid":""}`)
+
+		test.AgainstGolden(t, regenerate, connectRes,
+			filepath.Join(dataDir, "unauthenticated-connect.json"))
+	})
+
+	// A token the parser rejects is refused by the same middleware, and has
+	// to be rendered per stack the same way. Its message carries the
+	// parser's own error, so it is held to the shape rather than pinned to
+	// a golden.
+	t.Run("invalid token", func(t *testing.T) {
+		invalid := rawTokenClient(tc.client, "not-a-token")
+
+		for _, c := range []struct {
+			Path    string
+			Message string
+			Absent  string
+		}{
+			{
+				Path:    "/twirp/elephant.repository.Documents/Get",
+				Message: "msg",
+				Absent:  "message",
+			},
+			{
+				Path:    "/elephant.repository.Documents/Get",
+				Message: "message",
+				Absent:  "msg",
+			},
+		} {
+			res := tc.postJSON(t, invalid, c.Path, `{"uuid":""}`)
+
+			test.Equalf(t, http.StatusUnauthorized, res.Status,
+				"refuse an invalid token on %s", c.Path)
+
+			code, _ := res.Body["code"].(string)
+
+			test.Equalf(t, "unauthenticated", code,
+				"report an unauthenticated caller on %s", c.Path)
+
+			_, spelled := res.Body[c.Message]
+
+			test.Equalf(t, true, spelled,
+				"spell the message %q on %s", c.Message, c.Path)
+
+			_, other := res.Body[c.Absent]
+
+			test.Equalf(t, false, other,
+				"leave out the %q key on %s", c.Absent, c.Path)
+		}
+	})
 }

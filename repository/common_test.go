@@ -131,6 +131,14 @@ func (tc *TestContext) authClient(
 	token, err := itest.AccessToken(tc.SigningKey, claims)
 	test.Mustf(t, err, "create access token")
 
+	return rawTokenClient(base, token)
+}
+
+// rawTokenClient returns a copy of the base client that presents token verbatim
+// as its bearer credential. It is how a test reaches the refusal path for a
+// token the parser rejects, which authClient cannot produce: it signs a token
+// that is valid by construction.
+func rawTokenClient(base *http.Client, token string) *http.Client {
 	next := base.Transport
 	if next == nil {
 		next = http.DefaultTransport
