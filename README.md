@@ -129,8 +129,10 @@ seconds**, because the archiver's first act is to generate and archive a signing
 key and that step runs before the retry machinery exists. Pass `--no-archiver`
 if you deliberately want to run without S3. Without MinIO's asset bucket, uploads and
 attachment downloads fail but document writes are unaffected. Without an OIDC
-provider, every authenticated call fails while
-[the five unauthenticated methods](docs/architecture.md#scopes) keep working.
+provider, every RPC call and every `/sse` connect fails with `unauthenticated`,
+since [a valid token is required before a request reaches a
+handler](docs/architecture.md#scopes); `GET /signing-keys` is the only endpoint
+that still answers.
 
 A fresh database has no active schema generation, which means **every document
 write fails validation until schemas are registered.** The server does not
@@ -317,6 +319,12 @@ JSON:
 |---|---|---|
 | Connect | `POST /elephant.repository.<Service>/<Method>` | Connect, plus gRPC and gRPC-Web in-cluster |
 | Twirp | `POST /twirp/elephant.repository.<Service>/<Method>` | Twirp |
+
+Both mounts are registered on an `elephantine.APIServer` with one set of
+service options, so they share the authentication middleware, the hooks and the
+interceptors: a call with a missing or invalid token is answered
+`unauthenticated` (401) before it reaches a handler, rendered as an error body
+of whichever protocol the caller is speaking.
 
 New clients use the Connect paths and the generated
 `repositoryconnect.New<Service>ServiceClient` constructors, which return the
@@ -595,24 +603,10 @@ with an `err` that is always nil at that point, which renders as
 `%!w(<nil>)`; it is worth fixing in the same change, since it is precisely the
 error path that becomes load-bearing.
 
-**The authentication middleware is hand-rolled and should move to elephantine's
-`ServiceOptions`.** `ServerOptions.SetJWTValidation` in `repository/serve.go`
-predates `elephantine.NewDefaultServiceOptions`, which offers the same
-default-deny behaviour through `ServiceAuthRequired`. Being HTTP middleware is
-right — that is what makes it cover the Connect mount and `/sse` as well as
-Twirp, and elephantine's own version is HTTP middleware now for the same reason
-— so what a swap would buy is the shared implementation, not a better place for
-it. One thing makes it more than a swap: elephantine answers an invalid token
-with `permission_denied` where the current middleware returns a 401, so error
-codes shift for malformed tokens. There is also no JWT caching — every request
-re-validates — which the `TODO` at the call site has noted for some time.
-
-**The Twirp mount still uses the deprecated hook helpers.**
-`elephantine.LoggingHooks` and `elephantine.NewTwirpMetricsHooks` are deprecated
-in favour of the `elephantine/rpc` interceptors, but they are what the Twirp
-mount needs for as long as it exists, so `.golangci.yml` excludes their
-deprecation warnings. Retiring Twirp removes the hooks, the exclusion and the
-last three `twitchtv/twirp` imports in the module together.
+**There is no JWT caching.** Every request re-validates its bearer token. The
+validation lives in elephantine's `AuthInfoParser` now rather than here, so
+caching is a change to make there, but this service is the one that would feel
+it: the middleware runs on every RPC call and on every `/sse` connect.
 
 **No alerting or dashboards live in this repository.** Every metric in
 [docs/observability.md](docs/observability.md) exists and nothing fires on any

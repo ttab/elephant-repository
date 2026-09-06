@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
@@ -20,7 +19,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant-repository/internal"
 	"github.com/ttab/elephant-repository/internal/cmd"
@@ -31,9 +29,7 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/elephantine/pg/joblock"
-	"github.com/ttab/elephantine/rpc"
 	"github.com/ttab/langos"
-	"github.com/twitchtv/twirp"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
@@ -593,86 +589,6 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	workflowService := repository.NewWorkflowsService(store)
 	metricsService := repository.NewMetricsService(store)
 
-	router := httprouter.New()
-
-	var opts repository.ServerOptions
-
-	opts.SetJWTValidation(auth.AuthParser)
-
-	metrics, err := elephantine.NewTwirpMetricsHooks()
-	if err != nil {
-		return fmt.Errorf("create twirp metrics hook: %w", err)
-	}
-
-	opts.Hooks = twirp.ChainHooks(
-		elephantine.LoggingHooks(logger),
-		metrics,
-	)
-
-	// The Connect interceptor observes the same collectors as the Twirp
-	// hooks above, so each RPC metric is registered once however many
-	// stacks are mounted.
-	connectMetrics, err := rpc.MetricsInterceptor(prometheus.DefaultRegisterer)
-	if err != nil {
-		return fmt.Errorf("create connect metrics interceptor: %w", err)
-	}
-
-	// Outermost first. The handlers return connect errors, so nothing has to
-	// translate them on the way out; the Twirp mount's interceptor does the
-	// translation in the other direction.
-	opts.Interceptors = []connect.Interceptor{
-		connectMetrics,
-		rpc.LoggingInterceptor(logger),
-	}
-
-	routerOpts := []repository.RouterOption{
-		repository.WithDocumentsAPI(docService, opts),
-		repository.WithSchemasAPI(schemaService, opts),
-		repository.WithWorkflowsAPI(workflowService, opts),
-		repository.WithMetricsAPI(metricsService, opts),
-		repository.WithSigningKeys(dbpool),
-	}
-
-	var sseSubsystem *repository.SSE
-
-	if !noSSE {
-		sse, err := repository.NewSSE(setupCtx, logger.With(
-			elephantine.LogKeyComponent, "sse",
-		), store)
-		if err != nil {
-			return fmt.Errorf("failed to set up SSE server: %w", err)
-		}
-
-		routerOpts = append(routerOpts,
-			repository.WithSSE(sse.HTTPHandler(), opts))
-
-		sseSubsystem = sse
-	}
-
-	if !noWebsocket {
-		socket, err := repository.NewSocketHandler(
-			grace.CancelOnQuit(ctx), logger, prometheus.DefaultRegisterer,
-			store, docCache, auth.AuthParser, &socketKey.PublicKey,
-			corsHosts,
-			repository.EventlogStreamConfig{
-				BufferSize: eventlogBufSize,
-				Rate:       rate.Limit(eventlogRate),
-				Burst:      eventlogBurst,
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("set up socket handler: %w", err)
-		}
-
-		routerOpts = append(routerOpts,
-			repository.WithWebsocket(socket))
-	}
-
-	err = repository.SetUpRouter(router, routerOpts...)
-	if err != nil {
-		return fmt.Errorf("failed to set up router: %w", err)
-	}
-
 	var serverOpts []elephantine.APIServerOption
 
 	serverOpts = append(serverOpts,
@@ -695,7 +611,54 @@ func runServer(ctx context.Context, c *cli.Command) error {
 
 	srv.CORS.AllowedHeaders = append(srv.CORS.AllowedHeaders, "Last-Event-ID")
 
-	srv.Mux.Handle("/", router)
+	// One value configures both mounts: the Twirp hooks, the Connect
+	// interceptors and the authentication middleware in front of them. The
+	// RPC collectors are shared between the stacks, so this is also what
+	// registers them, and nothing else may.
+	svcOpt, err := elephantine.NewDefaultServiceOptions(
+		logger, auth.AuthParser, prometheus.DefaultRegisterer,
+		elephantine.ServiceAuthRequired)
+	if err != nil {
+		return fmt.Errorf("set up service options: %w", err)
+	}
+
+	repository.RegisterAPIs(srv, svcOpt,
+		docService, schemaService, workflowService, metricsService)
+
+	repository.RegisterSigningKeys(srv, dbpool)
+
+	var sseSubsystem *repository.SSE
+
+	if !noSSE {
+		sse, err := repository.NewSSE(setupCtx, logger.With(
+			elephantine.LogKeyComponent, "sse",
+		), store)
+		if err != nil {
+			return fmt.Errorf("failed to set up SSE server: %w", err)
+		}
+
+		repository.RegisterSSE(srv, svcOpt, sse.HTTPHandler())
+
+		sseSubsystem = sse
+	}
+
+	if !noWebsocket {
+		socket, err := repository.NewSocketHandler(
+			grace.CancelOnQuit(ctx), logger, prometheus.DefaultRegisterer,
+			store, docCache, auth.AuthParser, &socketKey.PublicKey,
+			corsHosts,
+			repository.EventlogStreamConfig{
+				BufferSize: eventlogBufSize,
+				Rate:       rate.Limit(eventlogRate),
+				Burst:      eventlogBurst,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("set up socket handler: %w", err)
+		}
+
+		repository.RegisterWebsocket(srv, socket)
+	}
 
 	// The S3 check is optional so that an archive bucket outage doesn't take
 	// every replica out of rotation at once. The synchronous API is still

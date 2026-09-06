@@ -34,8 +34,11 @@ whichever protocol carried the call. See
 
 Three gates, in order:
 
-1. **A valid token.** The auth middleware rejects a request with a missing or
-   invalid `Authorization` header with a 401 before the handler runs. Only
+1. **A valid token.** The auth middleware — elephantine's, installed by
+   `NewDefaultServiceOptions` with `ServiceAuthRequired` — answers a request
+   with a missing or invalid `Authorization` header with `unauthenticated`
+   (401) before the handler runs, rendered in the protocol the caller is
+   speaking. A missing token and an invalid one are the same answer. Only
    `GET /signing-keys` and `GET /websocket/:token` bypass it.
 2. **The scope check.** `RequireAnyScope` requires the caller to hold at least
    one of the listed scopes; a token without a matching scope is
@@ -184,6 +187,6 @@ being able to write any other.
 
 | Endpoint | Scopes (any of) |
 |---|---|
-| `GET /sse` | A valid token, then `eventlog_read` or `doc_admin`. The token may be passed as a `token` query parameter as well as a bearer header — it is copied into the header before the middleware runs. |
+| `GET /sse` | A valid token, then `eventlog_read` or `doc_admin`. The token may be passed as a `token` query parameter as well as a bearer header — it is copied into the header before the middleware runs. A missing or invalid token is answered `401` with a Connect-shaped JSON error body. |
 | `GET /websocket/:token` | A socket token from `Documents.GetSocketToken`, signed with the server's socket key. Bypasses the auth middleware; the session then authenticates with a JWT, and per-document reads honour `doc_read_all`. |
 | `GET /signing-keys` | None. Public by design — it is what makes independent archive verification possible. |

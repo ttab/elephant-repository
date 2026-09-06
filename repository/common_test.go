@@ -10,17 +10,14 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tmaxmax/go-sse"
 	"github.com/ttab/eleconf"
@@ -30,9 +27,7 @@ import (
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg/joblock"
-	elephantrpc "github.com/ttab/elephantine/rpc"
 	"github.com/ttab/elephantine/test"
-	"github.com/twitchtv/twirp"
 )
 
 func regenerateTestFixtures() bool {
@@ -81,13 +76,28 @@ type TestContext struct {
 	// Stack is the protocol stack the client constructors build for.
 	Stack            rpcStack
 	SigningKey       *ecdsa.PrivateKey
-	Server           *httptest.Server
+	Server           testServer
 	Validator        *repository.Validator
 	WorkflowProvider *repository.Workflows
 	Documents        rpc.Documents
 	Schemas          rpc.Schemas
 	Workflows        rpc.Workflows
 	Env              itest.Environment
+}
+
+// testServer is the handle the suite has on the API server: the base URL to
+// call it at, and the client to call it with. elephantine.NewTestAPIServer owns
+// the underlying httptest server now, so this is what keeps the tests
+// addressing it the way they always have.
+type testServer struct {
+	URL string
+
+	client *http.Client
+}
+
+// Client returns the client the test server is reachable with.
+func (s testServer) Client() *http.Client {
+	return s.client
 }
 
 // bearerTransport attaches an access token to every request. Both stacks
@@ -441,32 +451,8 @@ func testingAPIServer(
 	workflowService := repository.NewWorkflowsService(store)
 	metricsService := repository.NewMetricsService(store)
 
-	router := httprouter.New()
-
 	jwtKey, err := itest.NewSigningKey()
 	test.Mustf(t, err, "create signing key")
-
-	var srvOpts repository.ServerOptions
-
-	// Both stacks are wired up with their metrics, which is also what
-	// asserts that they share the collectors: registering the same RPC
-	// metric twice against reg would fail here.
-	twirpMetrics, err := elephantine.NewTwirpMetricsHooks(
-		elephantine.WithTwirpMetricsRegisterer(reg))
-	test.Mustf(t, err, "create twirp metrics hooks")
-
-	srvOpts.Hooks = twirp.ChainHooks(
-		elephantine.LoggingHooks(logger),
-		twirpMetrics,
-	)
-
-	connectMetrics, err := elephantrpc.MetricsInterceptor(reg)
-	test.Mustf(t, err, "create connect metrics interceptor")
-
-	srvOpts.Interceptors = []connect.Interceptor{
-		connectMetrics,
-		elephantrpc.LoggingInterceptor(logger),
-	}
 
 	authParser := elephantine.NewStaticAuthInfoParser(
 		t.Context(),
@@ -475,7 +461,24 @@ func testingAPIServer(
 			Issuer: "test",
 		})
 
-	srvOpts.SetJWTValidation(authParser)
+	// The test server is built by the same registration code main.go uses,
+	// so the suite measures the server shape the service actually serves:
+	// one set of service options in front of both mounts, the same
+	// fail-closed authentication middleware, the same request body cap and
+	// the same plaintext protocols — the last of which is what makes gRPC
+	// reachable at all, and what TestIntegrationGRPC would otherwise be
+	// measuring the test server for rather than the service.
+	srv, client := elephantine.NewTestAPIServer(t, logger,
+		elephantine.APIServerCORSHosts("localhost", "example.ecms.se"))
+
+	srv.CORS.AllowedHeaders = append(srv.CORS.AllowedHeaders, "Last-Event-ID")
+
+	// Both stacks are wired up with their metrics against reg, which is also
+	// what asserts that they share the collectors: registering the same RPC
+	// metric twice would fail here.
+	svcOpt, err := elephantine.NewDefaultServiceOptions(
+		logger, authParser, reg, elephantine.ServiceAuthRequired)
+	test.Mustf(t, err, "set up service options")
 
 	socket, err := repository.NewSocketHandler(
 		ctx, logger, reg,
@@ -484,30 +487,19 @@ func testingAPIServer(
 		opts.EventlogStream)
 	test.Mustf(t, err, "set up socket handler")
 
-	err = repository.SetUpRouter(router,
-		repository.WithDocumentsAPI(docService, srvOpts),
-		repository.WithSchemasAPI(schemaService, srvOpts),
-		repository.WithWorkflowsAPI(workflowService, srvOpts),
-		repository.WithMetricsAPI(metricsService, srvOpts),
-		repository.WithSSE(sse.HTTPHandler(), srvOpts),
-		repository.WithWebsocket(socket),
-		repository.WithSigningKeys(dbpool),
-	)
-	test.Mustf(t, err, "set up router")
+	repository.RegisterAPIs(srv, svcOpt,
+		docService, schemaService, workflowService, metricsService)
+	repository.RegisterSSE(srv, svcOpt, sse.HTTPHandler())
+	repository.RegisterWebsocket(srv, socket)
+	repository.RegisterSigningKeys(srv, dbpool)
 
-	server := httptest.NewUnstartedServer(router)
+	err = srv.ListenAndServe(t.Context())
+	test.Mustf(t, err, "start the API server")
 
-	// The production plaintext listener serves HTTP/2 alongside HTTP/1.1,
-	// which is what makes gRPC reachable at all. Say the same here, or
-	// TestIntegrationGRPC would be measuring the test server rather than
-	// the service.
-	server.Config.Protocols = elephantine.PlaintextProtocols()
-
-	server.Start()
-
-	t.Cleanup(server.Close)
-
-	client := server.Client()
+	server := testServer{
+		URL:    "http://" + srv.Addr(),
+		client: client,
+	}
 
 	client.Timeout = 5 * time.Second
 

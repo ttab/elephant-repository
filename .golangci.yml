@@ -62,12 +62,6 @@ linters:
       - legacy
       - std-error-handling
     rules:
-      # The Twirp hooks are deprecated in favour of the elephantine/rpc
-      # interceptors, but they are exactly what the Twirp mount still needs
-      # while the service is dual-stack. Twirp's retirement removes both the
-      # hooks and this exclusion.
-      - linters: [staticcheck]
-        text: 'SA1019: github.com/ttab/elephantine\.(LoggingHooks|NewTwirpMetricsHooks)'
       # A test that checks what the server answered passes the RPC error
       # through verbatim; wrapping it would only get in the way.
       - linters: [wrapcheck]

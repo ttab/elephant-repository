@@ -282,6 +282,16 @@ that mount removed; that is the number to read before a major release drops it.
 A `protocol` of `other` means connect-go negotiated a protocol this service does
 not have a label for, which should not happen and is worth a look.
 
+**A refused call is counted now.** The authentication middleware answers a
+request with a missing or invalid token itself, before it reaches a Twirp hook
+or a Connect interceptor, and reports that response into
+`rpc_responses_total{status="401"}` and
+`rpc_protocol_responses_total{code="unauthenticated"}`, as well as logging it. A
+burst of 401s is therefore visible where it previously left no trace at all. It
+is deliberately absent from `rpc_requests_total`: a refused call has always been
+counted as a response and not as a request. `/sse` is the exception, since its
+path names no RPC procedure — a refusal there is logged but not counted.
+
 Growth in `code="unknown"` is worth an alert of its own. Every handler error
 carries an RPC code — a server fault is returned as `internal` — so `unknown` is a code
 connect-go itself produced — a malformed request frame, or a client that

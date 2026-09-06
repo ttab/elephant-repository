@@ -586,10 +586,11 @@ read ACL. Those two scopes are the whole access-control model for anything
 holding them; treat them as administrative.
 
 **A valid token is required for every RPC call, on either path family, and for
-`/sse`** — the auth
-middleware answers 401 rather than passing an unauthenticated request to the
-handler. Every method except the unimplemented `Documents.Evict` then asserts its
-own scope requirement on top.
+`/sse`** — the auth middleware, elephantine's `ServiceOptions` middleware with
+`ServiceAuthRequired`, answers `unauthenticated` (401) rather than passing an
+unauthenticated request to the handler, and renders that error in the protocol
+the caller is speaking. Every method except the unimplemented `Documents.Evict`
+then asserts its own scope requirement on top.
 
 Two routes intentionally bypass that middleware: `GET /signing-keys`, which is
 public so that the archive can be verified independently, and

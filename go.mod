@@ -18,7 +18,6 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jackc/tern/v2 v2.4.1
 	github.com/joho/godotenv v1.5.1
-	github.com/julienschmidt/httprouter v1.3.0
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/prometheus/client_golang v1.24.1
@@ -115,6 +114,7 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jellydator/ttlcache/v3 v3.4.1 // indirect
+	github.com/julienschmidt/httprouter v1.3.0 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
 	github.com/klauspost/compress v1.20.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect

@@ -614,6 +614,18 @@ clients and is removed in a future major release, not on a traffic timer.
 `rpc_protocol_responses_total{protocol="twirp"}` is what says whether a method
 still has Twirp callers.
 
+Both mounts, and the three endpoints that are not RPC, are registered on an
+`elephantine.APIServer` — the same server the rest of the fleet serves from —
+which owns the listeners, CORS, the request body cap, `/version` and
+`/health/alive`. `repository.RegisterAPIs` does the registration and is what
+`cmd/repository` and the test suite both call, so a test measures the server
+shape the service actually serves. One `elephantine.ServiceOptions` value,
+built by `NewDefaultServiceOptions`, carries the Twirp hooks, the Connect
+interceptors and the authentication middleware for every mount: the two stacks
+are configured identically by construction rather than by two chains that have
+to be kept in step, and the RPC collectors, which the stacks share, are
+registered exactly once.
+
 Connect clients send `Connect-Protocol-Version: 1` and, when they set a
 deadline, `Connect-Timeout-Ms`; both are in the CORS allow list, and the server
 does not require the version header, so `curl` and raw `fetch` keep working
@@ -735,17 +747,31 @@ Every method except the unimplemented `Documents.Evict` requires a scope.
 `Update`, because both are dry runs of the write path rather than reads.
 
 **A valid token is required before a request reaches any RPC handler**, on
-either path family and in any of the protocols Connect serves.
-`SetJWTValidation` rejects a request with no or invalid `Authorization` header
-with a 401 rather than passing it on, so authorization is default-deny: a handler
-that forgot its scope check would fail closed. That is belt and braces, not a
-substitute — the scope check is still part of writing a method, since the
-middleware knows nothing about which scope a method needs.
+either path family and in any of the protocols Connect serves. The middleware
+is elephantine's, installed by `NewDefaultServiceOptions(…,
+elephantine.ServiceAuthRequired)`, and it fails closed: a request with a
+missing or invalid `Authorization` header is answered `unauthenticated` (401)
+before it reaches a handler, an interceptor or a Twirp hook, so authorization is
+default-deny and a handler that forgot its scope check would fail closed. That
+is belt and braces, not a substitute — the scope check is still part of writing
+a method, since the middleware knows nothing about which scope a method needs.
+
+A missing token and an invalid one are the same answer: the caller could not be
+identified either way. `permission_denied` is for a caller we *did* identify and
+that lacks a scope, which is what `rpc.RequireAnyScope` returns.
 
 Being HTTP middleware rather than a Twirp hook is what makes that hold for both
 stacks: it puts the `AuthInfo` on the request context and the handler only ever
 reads `elephantine.GetAuthInfo`, so it has no idea which protocol carried the
-call.
+call. The error it writes is rendered in the protocol the caller is speaking —
+`connect.NewErrorWriter` for Connect, gRPC and gRPC-Web, `twirp.WriteError` for
+Twirp — so each client parses the body its own runtime expects. Because it
+answers before the body is read, an unauthenticated caller cannot make a replica
+unmarshal a request body at all.
+
+The safety net behind it is a Twirp hook and a Connect interceptor that refuse a
+call reaching a handler with no authenticated caller on its context. They only
+fire for a mount that skips the middleware, and nothing here does.
 
 The middleware does not cover every route, and the exceptions are deliberate:
 
@@ -753,12 +779,11 @@ The middleware does not cover every route, and the exceptions are deliberate:
 |---|---|
 | `POST /twirp/…` | Middleware requires a valid token, then the handler asserts its scope |
 | `POST /elephant.repository.…` | The same middleware and the same handler, for Connect and for the in-cluster gRPC and gRPC-Web callers |
-| `GET /sse` | Same middleware; the `token` query parameter is copied into the `Authorization` header first, so a browser client that cannot set headers still authenticates |
+| `GET /sse` | Same middleware; the `token` query parameter is copied into the `Authorization` header first, so a browser client that cannot set headers still authenticates. A refusal is rendered as a Connect error body, since the endpoint carries nothing that says which RPC protocol the caller speaks |
 | `GET /websocket/:token` | Bypasses the middleware — the socket token in the path is verified against the server's socket key, and the session then authenticates with a JWT |
 | `GET /signing-keys` | Bypasses the middleware. Public by design: it is what makes independent verification of the archive possible |
 
-The middleware validates on every request; there is no JWT caching, which is
-noted as a `TODO` at the call site — see
+The middleware validates on every request; there is no JWT caching — see
 [pending work](../README.md#pending-work). See also [ops.md](ops.md#security).
 
 `repository/permissions.go` is the authority for the scope constants;
