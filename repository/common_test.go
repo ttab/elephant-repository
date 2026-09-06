@@ -1,10 +1,13 @@
 package repository_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -127,6 +130,47 @@ func (tc *TestContext) authClient(
 	client.Transport = bearerTransport{token: token, next: next}
 
 	return &client
+}
+
+// rpcResponse is the shape the raw response body goldens are stored in: the
+// status the stack answered with, and the parsed body.
+type rpcResponse struct {
+	Status int            `json:"status"`
+	Body   map[string]any `json:"body"`
+}
+
+// postJSON makes a JSON call against a raw path, the way a caller that does not
+// use a generated client does, and returns what came back. It is what the body
+// goldens are taken from, so it must not go through a client that would parse
+// the response into a message: the point of those goldens is the JSON itself.
+func (tc *TestContext) postJSON(
+	t *testing.T, client *http.Client, path string, body string,
+) rpcResponse {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(),
+		http.MethodPost, tc.Server.URL+path,
+		bytes.NewBufferString(body))
+	test.Mustf(t, err, "create the request")
+
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := client.Do(req)
+	test.Mustf(t, err, "perform the request")
+
+	defer func() {
+		_ = res.Body.Close()
+	}()
+
+	data, err := io.ReadAll(res.Body)
+	test.Mustf(t, err, "read the response body")
+
+	out := rpcResponse{Status: res.StatusCode}
+
+	err = json.Unmarshal(data, &out.Body)
+	test.Mustf(t, err, "unmarshal the response body %q", string(data))
+
+	return out
 }
 
 func (tc *TestContext) SSEConnect(
@@ -451,7 +495,15 @@ func testingAPIServer(
 	)
 	test.Mustf(t, err, "set up router")
 
-	server := httptest.NewServer(router)
+	server := httptest.NewUnstartedServer(router)
+
+	// The production plaintext listener serves HTTP/2 alongside HTTP/1.1,
+	// which is what makes gRPC reachable at all. Say the same here, or
+	// TestIntegrationGRPC would be measuring the test server rather than
+	// the service.
+	server.Config.Protocols = elephantine.PlaintextProtocols()
+
+	server.Start()
 
 	t.Cleanup(server.Close)
 

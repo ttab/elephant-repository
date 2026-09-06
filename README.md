@@ -315,18 +315,22 @@ JSON:
 
 | Family | Path | Protocols |
 |---|---|---|
-| Connect | `POST /elephant.repository.<Service>/<Method>` | Connect, gRPC, gRPC-Web |
+| Connect | `POST /elephant.repository.<Service>/<Method>` | Connect, plus gRPC and gRPC-Web in-cluster |
 | Twirp | `POST /twirp/elephant.repository.<Service>/<Method>` | Twirp |
 
 New clients use the Connect paths and the generated
 `repositoryconnect.New<Service>ServiceClient` constructors, which return the
 same Go interfaces the Twirp clients do. The Twirp mount is kept for the clients
 that already use it and goes away in a future major release. The two differ in
-the shape of an error body and in the HTTP status for three codes — see
-[docs/architecture.md](docs/architecture.md#error-bodies).
+the shape of an error body, in the HTTP status for three codes, and in how a
+JSON field name is spelled — Connect answers `refType` where Twirp answers
+`ref_type`. See [docs/architecture.md](docs/architecture.md#error-bodies) and
+[JSON field names differ between the
+stacks](docs/architecture.md#json-field-names-differ-between-the-stacks).
 
 The examples below use the Connect paths; drop in the `/twirp` prefix to call
-the same method on the other mount.
+the same method on the other mount, remembering that the response spells its
+multi-word field names in `snake_case` there.
 
 ### Fetching a document
 

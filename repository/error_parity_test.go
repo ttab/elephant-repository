@@ -1,11 +1,7 @@
 package repository_test
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
 	"log/slog"
-	"net/http"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -241,13 +237,6 @@ func TestIntegrationErrorParity(t *testing.T) {
 	})
 }
 
-// errorResponse is the shape the error body golden files are stored in: the
-// status the stack answered with, and the parsed body.
-type errorResponse struct {
-	Status int            `json:"status"`
-	Body   map[string]any `json:"body"`
-}
-
 // TestIntegrationErrorBodies pins the raw JSON error bodies of both stacks.
 // The Twirp body is what existing consumers parse and may not move; the
 // Connect body is what the ErrorMeta detail is rendered as, and is the shape
@@ -284,32 +273,10 @@ func TestIntegrationErrorBodies(t *testing.T) {
 		})
 	test.Mustf(t, err, "create the document to delete")
 
-	call := func(t *testing.T, path string, body string) errorResponse {
+	call := func(t *testing.T, path string, body string) rpcResponse {
 		t.Helper()
 
-		req, err := http.NewRequestWithContext(t.Context(),
-			http.MethodPost, tc.Server.URL+path,
-			bytes.NewBufferString(body))
-		test.Mustf(t, err, "create the request")
-
-		req.Header.Set("Content-Type", "application/json")
-
-		res, err := client.Do(req)
-		test.Mustf(t, err, "perform the request")
-
-		defer func() {
-			_ = res.Body.Close()
-		}()
-
-		data, err := io.ReadAll(res.Body)
-		test.Mustf(t, err, "read the response body")
-
-		out := errorResponse{Status: res.StatusCode}
-
-		err = json.Unmarshal(data, &out.Body)
-		test.Mustf(t, err, "unmarshal the response body %q", string(data))
-
-		return out
+		return tc.postJSON(t, client, path, body)
 	}
 
 	for _, c := range []struct {

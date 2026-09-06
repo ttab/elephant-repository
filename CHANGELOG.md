@@ -9,14 +9,14 @@ detail.
 **New API surface (Connect):** every method is now served a second time, on
 `POST /elephant.repository.<Service>/<Method>` in addition to
 `POST /twirp/elephant.repository.<Service>/<Method>`. The new paths speak the
-[Connect](https://connectrpc.com/) protocol, gRPC and gRPC-Web, in protobuf or
-JSON. Both mounts wrap the same handlers behind the same authentication
-middleware and the same scope and ACL checks, so nothing about a call except its
-wire encoding depends on which family it arrived on, and no scope, message or
-event changed. **The Twirp paths are unchanged and stay** — they are removed in
-a future major release, not on a traffic timer.
+[Connect](https://connectrpc.com/) protocol in protobuf or JSON, and, to callers
+inside the cluster, gRPC and gRPC-Web. Both mounts wrap the same handlers behind
+the same authentication middleware and the same scope and ACL checks, so nothing
+about a call but its encoding depends on which family it arrived on, and no
+scope, message or event changed. **The Twirp paths are unchanged and stay** —
+they are removed in a future major release, not on a traffic timer.
 
-Three things differ for a caller that moves:
+Four things differ for a caller that moves:
 
 - The error body is `{"code":"not_found","message":"...","details":[…]}`
   instead of `{"code":"not_found","msg":"...","meta":{…}}`. The code strings are
@@ -31,11 +31,25 @@ Three things differ for a caller that moves:
   the one that matters, since document locks, system locks and workflow rule
   violations return it — **anything keyed on 412 at an ingress, in a dashboard
   or in a client has to read the RPC code instead**.
+- **A JSON response spells its field names differently.** Connect marshals with
+  protojson's defaults, so a field declared `ref_type` comes back as `refType`;
+  Twirp marshals with `UseProtoNames` and keeps `ref_type`. Requests are
+  unaffected, since protojson accepts either spelling on both stacks, and so are
+  the generated Go, `@protobuf-ts` and `connect-es` clients, which parse into the
+  message type. **A caller that reads a JSON response by hand with `fetch` or
+  `curl` and changes only the path prefix gets a `200` and reads `undefined` for
+  every multi-word field.** This is deliberate: the standard Connect encoding is
+  what every Connect runtime and generated client assumes, so the mount does not
+  install a `UseProtoNames` codec to make Connect look like Twirp.
 - Connect clients send `Connect-Protocol-Version` and `Connect-Timeout-Ms`,
   which are now in the CORS allow list. The server does not require the version
-  header, so `curl` and raw `fetch` keep working. gRPC needs HTTP/2, so an
-  ingress in front of the service has to be configured for it before a gRPC
-  caller can reach the service from outside.
+  header, so `curl` and raw `fetch` keep working.
+
+gRPC and gRPC-Web are served on the Connect paths, and the plaintext listener
+now speaks HTTP/2 as well as HTTP/1.1 so that a gRPC client can reach it at all.
+**That reach ends at the cluster**: the ingress speaks HTTP/1.1 to its targets
+and no gRPC target group is provided, so gRPC is a way for another service to
+call this one and is not offered to external callers.
 
 An ingress that routes on `/twirp/` needs a sibling rule for the new paths
 before a client can use them.
@@ -75,11 +89,11 @@ acquired with a higher exclusivity level. This matches the long-documented API
 behaviour, but consumers that relied on locks also blocking status or ACL
 updates must now acquire their locks with a matching exclusivity. (#604)
 
-**Build:** the module now requires Go 1.27, up from Go 1.26.5, which comes in
-with the elephantine upgrade, and the release image builds on
+**Build:** the module's `go` directive is `1.27.1`, the latest patch of the 1.27
+line, up from Go 1.26.5, and the release image builds on
 `golang:1.27.1-alpine3.24`. Anyone who builds the binary outside the Dockerfile
-needs a Go 1.27 toolchain; a builder pinned to 1.26 either downloads one at
-build time or fails outright, depending on `GOTOOLCHAIN`.
+needs a toolchain at least that new; a builder pinned to an older one either
+downloads it at build time or fails outright, depending on `GOTOOLCHAIN`.
 
 **Behaviour change (metrics):** `rpc_requests_total`, `rpc_duration_seconds` and
 `rpc_responses_total` keep their names, labels and label values, and both mounts
@@ -123,10 +137,11 @@ Changes:
 - Each subscription's live stream is now rate limited with a token bucket (`--eventlog-stream-burst` 70, `--eventlog-stream-rate` 10/s). On exceed, the events that fit are emitted followed by a `rate_limited` error, and the subscription is stopped; clients are expected to resubscribe. The initial resume replay is exempt. (#597)
 - The documentation is now a set with a settled division of labour: `README.md` for orientation, commands and the full configuration reference; `docs/architecture.md` for the design; `docs/ops.md` for dependencies, failure modes and what to watch; `docs/observability.md` for every exported metric and what a change in it means. `docs/permissions.md` has been corrected — it was missing `doc_restore`, `doc_purge`, `meta_doc_write_all`, `asset_upload` and `metrics_read`, and did not record that `Restore` and `Purge` perform no ACL check. Relative links and heading anchors are checked by `mage docs:links` in the lint job.
 - `Restore` and `Purge` are documented as performing no per-document ACL check. This is unchanged behaviour — the document is deleted, so there is no ACL left to check against — but it means `doc_restore` and `doc_purge` act on any deleted document and should be treated as administrative scopes.
-- The API is served on both the Connect and the Twirp paths, as described above. Handlers construct their errors with the `elephantine/rpc` helpers, and the Twirp mount's interceptor translates them back, so a Twirp caller sees the same code, the same message and the same `meta` map as before. That equivalence is now tested rather than asserted: `TestIntegrationErrorParity` runs missing scope, not found, invalid argument, validation failure, lock conflict and failed precondition over both stacks against one server and compares code, message and every metadata key, `TestIntegrationErrorBodies` pins the raw JSON error bodies and HTTP statuses of both (including the `failed_precondition` case where Twirp answers 412 and Connect 400), and `TestUncodedErrorParity` covers a handler error that carries no code at all: Connect would default it to `unknown` where Twirp makes it `internal`, so the Connect mount codes it `internal` too. The API test suite runs against both stacks — `TEST_RPC_STACK=connect go test ./repository/...` builds every test client from the generated Connect constructors, and CI runs the suite both ways.
+- The API is served on both the Connect and the Twirp paths, as described above. Handlers construct their errors with the `elephantine/rpc` helpers, and the Twirp mount's interceptor translates them back, so a Twirp caller sees the same code, the same message and the same `meta` map as before. That equivalence is now tested rather than asserted: `TestIntegrationErrorParity` runs missing scope, not found, invalid argument, validation failure, lock conflict and failed precondition over both stacks against one server and compares code, message and every metadata key, `TestIntegrationErrorBodies` pins the raw JSON error bodies and HTTP statuses of both (including the `failed_precondition` case where Twirp answers 412 and Connect 400), and `TestIntegrationSuccessBodies` pins a success body per stack, which is what the JSON field-name difference is held to. An uncoded handler error is not translated by anything: every handler codes its own errors at the return site, a failed query or marshalling failure included, because the two stacks default an uncoded error differently — Twirp to `internal`, Connect to `unknown` — and the handler is the one place that knows which is right. The API test suite runs against both stacks — `TEST_RPC_STACK=connect go test ./repository/...` builds every test client from the generated Connect constructors, and CI runs the suite both ways.
+- The plaintext listener is built with `elephantine.PlaintextProtocols()`, so it serves HTTP/1.1 and unencrypted HTTP/2 side by side rather than HTTP/1.1 alone. That is what makes the gRPC protocol the Connect mount serves reachable at all; without it a gRPC client fails on the connection with nothing in the logs to say why. The two are told apart by the HTTP/2 connection preface, so Twirp, SSE, the websocket upgrade and every other HTTP/1.1 caller are unaffected, and `TestIntegrationGRPC` calls the API over gRPC so the setting cannot be dropped unnoticed.
 - Every handler error now carries an RPC code. The failed-query and marshalling paths that returned a plain Go error, which Twirp reported as `internal`, return `internal` explicitly on both stacks. One code changed as a result: `Metrics.RegisterMetricKind` answers an aggregation value it does not know with `invalid_argument` rather than `internal`, since it is the caller's value that is wrong.
 - A `permission_denied` from a scope check now carries the scopes that would have been accepted as the `required_any_of_scopes` error metadata key, on both stacks. The message is unchanged. `GET /sse` answers a scope failure with the same status as before, but the plain-text body no longer has the `twirp error ` prefix in front of the code.
-- Dependency upgrades: elephantine to v0.29.0 (the `rpc` package, the shared RPC collectors, the request body cap and the job lock's move to `pg/joblock`), elephant-api to v0.25.0 (the generated Connect handlers and clients), connectrpc.com/connect v1.20.0, the AWS SDK suite, urfave/cli/v3 to v3.9.1, and ttab/mage to v0.10.0. (#597, #604)
+- Dependency upgrades: elephantine to v0.29.0 (the `rpc` package, the shared RPC collectors, the request body cap and the job lock's move to `pg/joblock`), elephant-api to v0.25.0 (the generated Connect handlers and clients), connectrpc.com/connect v1.20.0, the AWS SDK suite, urfave/cli/v3 to v3.11.0, minio-go to v7.3.0, MicahParks/keyfunc to v3.8.2, ttab/mage, and the Prometheus and `golang.org/x` support modules. (#597, #604)
 
 ## [v1.8.1] - 2026-06-10
 

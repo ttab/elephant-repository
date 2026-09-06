@@ -598,14 +598,16 @@ unauthenticated `GET /signing-keys`.
 | Family | Path | Protocols |
 |---|---|---|
 | Twirp | `POST /twirp/elephant.repository.<Service>/<Method>` | Twirp protobuf (`application/protobuf`) and JSON |
-| Connect | `POST /elephant.repository.<Service>/<Method>` | Connect protobuf (`application/proto`) and JSON, gRPC, gRPC-Web |
+| Connect | `POST /elephant.repository.<Service>/<Method>` | Connect protobuf (`application/proto`) and JSON, plus gRPC and gRPC-Web in-cluster |
 
 The two mounts wrap the same service implementation, which has the plain
 protobuf signature `Get(ctx, *GetDocumentRequest) (*GetDocumentResponse, error)`
 on both. Neither is a proxy for the other: a call is dispatched straight to the
 handler by whichever mount received it, and both go through the same
 authentication middleware and the same scope and ACL checks. Nothing about a
-request except its wire encoding depends on which family it arrived on.
+request but its encoding depends on which family it arrived on — and the
+encoding does differ, in the error body and, for JSON, in how a field name is
+spelled.
 
 The Connect mount is the API going forward; Twirp is kept for the existing
 clients and is removed in a future major release, not on a traffic timer.
@@ -615,13 +617,38 @@ still has Twirp callers.
 Connect clients send `Connect-Protocol-Version: 1` and, when they set a
 deadline, `Connect-Timeout-Ms`; both are in the CORS allow list, and the server
 does not require the version header, so `curl` and raw `fetch` keep working
-against the Connect paths. gRPC needs HTTP/2, which the plain listener
-negotiates from the connection preface — an ingress in front of the service has
-to be configured for HTTP/2 before a gRPC caller can reach it from outside.
+against the Connect paths.
 
-JSON on both stacks omits unpopulated fields: Twirp is mounted with
-`WithServerJSONSkipDefaults(true)` and Connect's codec is `protojson` with its
-default options, which does the same.
+gRPC needs HTTP/2, which Go negotiates through the TLS ALPN handshake and
+nowhere else, so the plaintext listener is built with
+`elephantine.PlaintextProtocols()` — HTTP/1.1 and unencrypted HTTP/2 side by
+side, told apart by the HTTP/2 connection preface, which leaves Twirp, SSE, the
+websocket upgrade and every other HTTP/1.1 caller alone. Without that the
+listener answers HTTP/1.1 only and a gRPC client cannot connect at all, with
+nothing in the logs to say why; `TestIntegrationGRPC` is what keeps it set.
+**gRPC and gRPC-Web reach only inside the cluster.** The ingress speaks HTTP/1.1
+to its targets and no gRPC target group is provided, so they are a way for one
+service to call this one and are not offered to external callers (decision 14 in
+`CONNECT_MIGRATION.md`).
+
+#### JSON field names differ between the stacks
+
+Both stacks omit unpopulated fields — Twirp is mounted with
+`WithServerJSONSkipDefaults(true)` and Connect's `protojson` codec does the same
+by default — but **they spell field names differently in responses**. Twirp
+marshals with `UseProtoNames`, so a field declared `ref_type` comes back as
+`ref_type`. Connect marshals with protojson's defaults, so the same field comes
+back as `refType`. Requests are unaffected: protojson accepts either spelling on
+both stacks.
+
+This is deliberate (decision 9): the standard Connect encoding is what every
+Connect runtime and every generated client assumes, so the mount does not
+install a `UseProtoNames` codec to make Connect look like Twirp. It reaches the
+callers that read a JSON response by hand with `fetch` or `curl` — one that
+changes only the path prefix gets a `200` and reads `undefined` for every
+multi-word field. The generated clients, Go, `@protobuf-ts` and `connect-es`,
+parse into the message type and are unaffected. `TestIntegrationSuccessBodies`
+pins a success body per stack, so a change in either spelling is a visible diff.
 
 ### Error bodies
 
@@ -725,7 +752,7 @@ The middleware does not cover every route, and the exceptions are deliberate:
 | Route | Authentication |
 |---|---|
 | `POST /twirp/…` | Middleware requires a valid token, then the handler asserts its scope |
-| `POST /elephant.repository.…` | The same middleware and the same handler, for Connect, gRPC and gRPC-Web |
+| `POST /elephant.repository.…` | The same middleware and the same handler, for Connect and for the in-cluster gRPC and gRPC-Web callers |
 | `GET /sse` | Same middleware; the `token` query parameter is copied into the `Authorization` header first, so a browser client that cannot set headers still authenticates |
 | `GET /websocket/:token` | Bypasses the middleware — the socket token in the path is verified against the server's socket key, and the session then authenticates with a JWT |
 | `GET /signing-keys` | Bypasses the middleware. Public by design: it is what makes independent verification of the archive possible |

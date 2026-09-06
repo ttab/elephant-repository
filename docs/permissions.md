@@ -25,8 +25,9 @@ same scopes through the session's JWT.
 ## How a call is authorised
 
 The matrix below is per method, not per protocol. Each service is mounted twice
-— on `/twirp/…` and on `/elephant.repository.…`, the latter serving Connect,
-gRPC and gRPC-Web — and both mounts sit behind the same authentication
+— on `/twirp/…` and on `/elephant.repository.…`, the latter serving Connect and,
+to callers inside the cluster, gRPC and gRPC-Web — and both mounts sit behind
+the same authentication
 middleware and dispatch to the same handler, so the same three gates apply
 whichever protocol carried the call. See
 [architecture.md](architecture.md#two-path-families-one-implementation).

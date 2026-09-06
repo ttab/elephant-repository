@@ -70,10 +70,18 @@ func ListenAndServe(
 		})
 	}
 
+	// The plaintext listener has to say that it serves HTTP/2 as well as
+	// HTTP/1.1: Go negotiates HTTP/2 through the TLS ALPN handshake and
+	// nowhere else, so without this it answers HTTP/1.1 only and the gRPC
+	// protocol the Connect mount serves cannot be spoken to it at all. The
+	// two are told apart by the HTTP/2 connection preface, so Twirp, SSE,
+	// the websocket upgrade and every other HTTP/1.1 caller are unaffected.
+	// The TLS listener negotiates HTTP/2 by itself.
 	server := http.Server{
 		Addr:              addr,
 		Handler:           corsHandler,
 		ReadHeaderTimeout: 5 * time.Second,
+		Protocols:         elephantine.PlaintextProtocols(),
 	}
 
 	grp.Go(func() error {
