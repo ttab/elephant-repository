@@ -1002,7 +1002,7 @@ func (a *DocumentsService) eventlogWaitLoop(
 		case <-timeout:
 			return res, nil
 		case <-ctx.Done():
-			return nil, rpc.Errorf(connect.CodeCanceled, "context cancelled")
+			return nil, waitEndedError(ctx)
 		case <-newEvent:
 		}
 
@@ -1033,6 +1033,21 @@ func (a *DocumentsService) eventlogWaitLoop(
 			batchTimeout = time.After(waitBatch)
 		}
 	}
+}
+
+// waitEndedError is the error a long poll that was ended by its context is
+// answered with. A deadline and a cancellation are different things to a
+// caller: a deadline is the wait the caller asked for running out, which is
+// what Connect-Timeout-Ms turns into, and it is answered deadline_exceeded so
+// that the caller can tell it from the client going away. Only an actual
+// cancellation is canceled.
+func waitEndedError(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return rpc.Errorf(connect.CodeDeadlineExceeded,
+			"the deadline for the call was exceeded")
+	}
+
+	return rpc.Errorf(connect.CodeCanceled, "context cancelled")
 }
 
 func RPCToEvent(evt *repository.EventlogItem) (Event, error) {

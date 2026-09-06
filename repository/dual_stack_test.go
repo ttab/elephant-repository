@@ -2,9 +2,11 @@ package repository_test
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -204,4 +206,59 @@ func unencryptedHTTP2Client() *http.Client {
 			Protocols: &protocols,
 		},
 	}
+}
+
+// TestIntegrationConnectDeadline checks that a call ended by the deadline the
+// caller set is answered deadline_exceeded, and not canceled. Twirp had no
+// timeout header and ignored the deadline entirely; Connect turns
+// Connect-Timeout-Ms into the handler's context deadline, so the eventlog long
+// poll — the one RPC in the service that waits — is where the difference shows.
+// A caller that retries a timeout but gives up on a cancellation cannot tell
+// the two apart if both come back canceled.
+func TestIntegrationConnectDeadline(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{
+		Stack: stackConnect,
+	})
+
+	client := tc.authClient(t, tc.client,
+		itest.StandardClaims(t, "eventlog_read"))
+
+	// The wait is far longer than the deadline, and the test server runs no
+	// eventlog builder, so nothing but the deadline can end the call.
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost,
+		tc.Server.URL+"/elephant.repository.Documents/Eventlog",
+		strings.NewReader(`{"after":0,"waitMs":10000}`))
+	test.Mustf(t, err, "create the request")
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Connect-Protocol-Version", "1")
+	req.Header.Set("Connect-Timeout-Ms", "300")
+
+	res, err := client.Do(req)
+	test.Mustf(t, err, "perform the request")
+
+	defer func() {
+		_ = res.Body.Close()
+	}()
+
+	body, err := io.ReadAll(res.Body)
+	test.Mustf(t, err, "read the response body")
+
+	var payload struct {
+		Code string `json:"code"`
+	}
+
+	err = json.Unmarshal(body, &payload)
+	test.Mustf(t, err, "unmarshal the error body %q", string(body))
+
+	test.Equalf(t, "deadline_exceeded", payload.Code,
+		"report the deadline rather than a cancellation")
+	test.Equalf(t, http.StatusGatewayTimeout, res.StatusCode,
+		"answer a deadline with 504")
 }

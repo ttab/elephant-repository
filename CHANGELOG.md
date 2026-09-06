@@ -74,6 +74,15 @@ configuration run needs `schema_read`; an applying run already holds
 granting scopes: `Validate` and `Prune` read schemas but live on the `Documents`
 service and take *write* scopes, not `schema_read`.
 
+**Behaviour change (eventlog long poll):** `Documents.Eventlog` answers
+`deadline_exceeded` when the wait was ended by the caller's deadline, and
+`canceled` only when the caller went away. It answered `canceled` for both. This
+is visible on the Connect paths, where a client's deadline travels as
+`Connect-Timeout-Ms` and becomes the handler's context deadline — Twirp had no
+timeout header and ignored the deadline entirely — so a client that retries a
+timeout but gives up on a cancellation could not previously tell the two apart.
+`deadline_exceeded` is `504` on Connect and `408` on Twirp.
+
 **Behaviour change (request bodies):** request bodies are capped at 8 MiB on
 both listeners, which comes in with the elephantine upgrade. A request that
 declares a larger `Content-Length` is refused with `413` before it reaches a
