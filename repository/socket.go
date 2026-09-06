@@ -15,13 +15,13 @@ import (
 	"sync"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 	rsock "github.com/ttab/elephant-api/repositorysocket"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/newsdoc"
-	"github.com/twitchtv/twirp"
 	"github.com/viccon/sturdyc"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
@@ -447,7 +447,7 @@ func (s *SocketSession) readLoop(ctx context.Context) (outErr error) {
 		if callHandle.Call.CallId == "" {
 			s.Respond(ctx, callHandle, &rsock.Response{
 				Error: &rsock.Error{
-					ErrorCode:    string(twirp.InvalidArgument),
+					ErrorCode:    connect.CodeInvalidArgument.String(),
 					ErrorMessage: "call_id is required",
 				},
 			}, true)
@@ -464,7 +464,7 @@ func (s *SocketSession) readLoop(ctx context.Context) (outErr error) {
 		if auth == nil && callHandle.Call.Authenticate == nil {
 			s.Respond(ctx, callHandle, &rsock.Response{
 				Error: &rsock.Error{
-					ErrorCode:    string(twirp.Unauthenticated),
+					ErrorCode:    connect.CodeUnauthenticated.String(),
 					ErrorMessage: "Missing or expired authentication token",
 				},
 			}, true)
@@ -527,7 +527,7 @@ func (s *SocketSession) runHandler(ctx context.Context, call *CallHandle) bool {
 		handler = s.handleCloseEventlog
 	default:
 		s.Respond(ctx, call, &rsock.Response{
-			Error: SockErrorf(string(twirp.InvalidArgument), "unknown call type"),
+			Error: SockErrorf(connect.CodeInvalidArgument.String(), "unknown call type"),
 		}, false)
 
 		return false
@@ -540,7 +540,7 @@ func (s *SocketSession) runHandler(ctx context.Context, call *CallHandle) bool {
 	resp, rErr = handler(ctx, call)
 	if rErr != nil {
 		// We always bail immediately on authentication errors.
-		final := rErr.ErrorCode == string(twirp.Unauthenticated)
+		final := rErr.ErrorCode == connect.CodeUnauthenticated.String()
 
 		s.Respond(ctx, call, &rsock.Response{
 			Error: rErr,
@@ -571,7 +571,7 @@ func (s *SocketSession) handleAuthenticate(
 	auth, err := s.authParser.AuthInfoFromToken(req.Token)
 	if err != nil {
 		return nil, SockErrorf(
-			string(twirp.Unauthenticated),
+			connect.CodeUnauthenticated.String(),
 			"Invalid token")
 	}
 
@@ -586,12 +586,12 @@ func (s *SocketSession) handleGetDocuments(
 	req := callHandle.Call.GetDocuments
 
 	if req.SetName == "" {
-		return nil, SockErrorf(string(twirp.InvalidArgument),
+		return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 			"set_name is required")
 	}
 
 	if req.Type == "" {
-		return nil, SockErrorf(string(twirp.InvalidArgument),
+		return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 			"type is required")
 	}
 
@@ -600,7 +600,7 @@ func (s *SocketSession) handleGetDocuments(
 	if req.Timespan != nil {
 		ts, err := TimespanFromRPC(req.Timespan)
 		if err != nil {
-			return nil, SockErrorf(string(twirp.InvalidArgument),
+			return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 				"invalid timespan: %v", err)
 		}
 
@@ -612,7 +612,7 @@ func (s *SocketSession) handleGetDocuments(
 	for _, extr := range req.Include {
 		inc, err := newsdoc.ValueExtractorFromString(extr)
 		if err != nil {
-			return nil, SockErrorf(string(twirp.InvalidArgument),
+			return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 				"invalid include extractor %q: %v", extr, err)
 		}
 
@@ -624,7 +624,7 @@ func (s *SocketSession) handleGetDocuments(
 	for i, expr := range req.Subset {
 		ve, err := newsdoc.ValueExtractorFromString(expr)
 		if err != nil {
-			return nil, SockErrorf(string(twirp.InvalidArgument),
+			return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 				"invalid subset expression subset[%d]: %v", i, err)
 		}
 
@@ -637,7 +637,7 @@ func (s *SocketSession) handleGetDocuments(
 		for i, expr := range sub.GetExpressions() {
 			ve, err := newsdoc.ValueExtractorFromString(expr)
 			if err != nil {
-				return nil, SockErrorf(string(twirp.InvalidArgument),
+				return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 					"invalid inclusion subset expression for %q[%d]: %v",
 					docType, i, err)
 			}
@@ -674,7 +674,7 @@ func (s *SocketSession) handleGetDocuments(
 	if err != nil {
 		handle.Close()
 
-		return nil, SockErrorf(string(twirp.Internal),
+		return nil, SockErrorf(connect.CodeInternal.String(),
 			"initialise document set: %v", err)
 	}
 
@@ -691,7 +691,7 @@ func (s *SocketSession) handleCloseDocumentSet(
 	req := callHandle.Call.CloseDocumentSet
 
 	if req.SetName == "" {
-		return nil, SockErrorf(string(twirp.InvalidArgument),
+		return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 			"set_name is required")
 	}
 
@@ -712,12 +712,12 @@ func (s *SocketSession) handleGetEventlog(
 
 	auth, _ := s.getAuth()
 	if !auth.Claims.HasScope(ScopeEventlogRead) {
-		return nil, SockErrorf(string(twirp.PermissionDenied),
+		return nil, SockErrorf(connect.CodePermissionDenied.String(),
 			"the %s scope is required", ScopeEventlogRead)
 	}
 
 	if req.Name == "" {
-		return nil, SockErrorf(string(twirp.InvalidArgument),
+		return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 			"name is required")
 	}
 
@@ -727,7 +727,7 @@ func (s *SocketSession) handleGetEventlog(
 		for i, expr := range sub.GetExpressions() {
 			ve, err := newsdoc.ValueExtractorFromString(expr)
 			if err != nil {
-				return nil, SockErrorf(string(twirp.InvalidArgument),
+				return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 					"invalid type subset expression for %q[%d]: %v",
 					docType, i, err)
 			}
@@ -761,7 +761,7 @@ func (s *SocketSession) handleGetEventlog(
 
 	for _, e := range req.Events {
 		if !EventType(e).Valid() {
-			return nil, SockErrorf(string(twirp.InvalidArgument),
+			return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 				"unknown event type %q", e)
 		}
 
@@ -814,7 +814,7 @@ func (s *SocketSession) handleCloseEventlog(
 	req := callHandle.Call.CloseEventlog
 
 	if req.Name == "" {
-		return nil, SockErrorf(string(twirp.InvalidArgument),
+		return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 			"name is required")
 	}
 
@@ -1071,7 +1071,7 @@ func (s *SocketSession) writeLoop(ctx context.Context) error {
 			// message isn't tied to a specific call.
 			s.Respond(ctx, nil, &rsock.Response{
 				Error: &rsock.Error{
-					ErrorCode:    string(twirp.Unauthenticated),
+					ErrorCode:    connect.CodeUnauthenticated.String(),
 					ErrorMessage: "Authentication expired",
 				},
 			}, true)

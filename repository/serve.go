@@ -90,9 +90,7 @@ type ServerOptions struct {
 	Hooks *twirp.ServerHooks
 	// Interceptors are the Connect interceptors used for the Connect
 	// mount. They are applied outermost first, so the innermost one is the
-	// last in the slice, and that is where rpc.LegacyTwirpErrors belongs:
-	// it has to translate a handler's Twirp error before the logging and
-	// metrics interceptors read the code off it.
+	// last in the slice.
 	Interceptors   []connect.Interceptor
 	AuthMiddleware func(
 		w http.ResponseWriter, r *http.Request, next http.Handler,

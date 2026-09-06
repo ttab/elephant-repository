@@ -665,7 +665,7 @@ func ignoreUUIDField(name string) test.GoldenHelper {
 		Validator: func(v string) error {
 			_, err := uuid.Parse(v)
 
-			return err //nolint: wrapcheck
+			return err
 		},
 	}
 }

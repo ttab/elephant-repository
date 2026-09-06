@@ -625,6 +625,17 @@ default options, which does the same.
 
 ### Error bodies
 
+Handlers return one error type, `*connect.Error`, built through the
+`elephantine/rpc` helpers (`rpc.NotFound`, `rpc.InvalidArgument`,
+`rpc.FailedPreconditionf`, `rpc.WithMeta`, and the rest). Nothing in the
+service constructs a Twirp error any more. The Twirp mount is given
+`rpc.TwirpInterceptor()`, which translates the handler's error into the Twirp
+error the protocol renders — code for code, message unchanged, and the
+`ErrorMeta` detail flattened back into Twirp's `meta` map — so a Twirp caller
+sees exactly the error it saw before the flip. `TestIntegrationErrorParity`
+runs the same failing calls over both stacks and asserts that, and
+`TestIntegrationErrorBodies` pins the raw JSON bodies of both.
+
 The two protocols render an error differently, and a client reads the code from
 the body rather than from the HTTP status.
 

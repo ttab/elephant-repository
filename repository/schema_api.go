@@ -10,12 +10,13 @@ import (
 	"log/slog"
 	"time"
 
+	"connectrpc.com/connect"
 	rpc_newsdoc "github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/rpc"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
-	"github.com/twitchtv/twirp"
 )
 
 func NewSchemasService(logger *slog.Logger, store SchemaStore) *SchemasService {
@@ -45,7 +46,7 @@ func (a *SchemasService) GetDocumentTypes(
 
 	schemas, err := a.store.GetActiveSchemas(ctx)
 	if err != nil {
-		return nil, twirp.InternalErrorf("get schemas: %v", err)
+		return nil, rpc.Internalf("get schemas: %v", err)
 	}
 
 	// Variant types like "core/article#timeless" are configured through the
@@ -56,7 +57,7 @@ func (a *SchemasService) GetDocumentTypes(
 	// configuration that has been made for a variant.
 	configs, err := a.store.GetTypeConfigurations(ctx)
 	if err != nil {
-		return nil, twirp.InternalErrorf("get type configurations: %v", err)
+		return nil, rpc.Internalf("get type configurations: %v", err)
 	}
 
 	var declared []string
@@ -93,17 +94,17 @@ func (a *SchemasService) ConfigureType(
 	}
 
 	if req.Type == "" {
-		return nil, twirp.RequiredArgumentError("type")
+		return nil, rpc.RequiredArgument("type")
 	}
 
 	if req.Configuration == nil {
-		return nil, twirp.RequiredArgumentError("configuration")
+		return nil, rpc.RequiredArgument("configuration")
 	}
 
 	err = a.store.ConfigureType(ctx, req.Type,
 		typeConfigurationFromRPC(req.Configuration))
 	if err != nil {
-		return nil, twirp.InternalErrorf("store type configuration: %v", err)
+		return nil, rpc.Internalf("store type configuration: %v", err)
 	}
 
 	return &repository.ConfigureTypeResponse{}, nil
@@ -121,12 +122,12 @@ func (a *SchemasService) GetTypeConfiguration(
 	}
 
 	if req.Type == "" {
-		return nil, twirp.RequiredArgumentError("type")
+		return nil, rpc.RequiredArgument("type")
 	}
 
 	conf, err := a.store.GetTypeConfiguration(ctx, req.Type)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-		return nil, twirp.NewErrorf(twirp.NotFound,
+		return nil, rpc.Errorf(connect.CodeNotFound,
 			"could not find type configuration: %v", err)
 	}
 
@@ -146,7 +147,7 @@ func (a *SchemasService) GetMetaTypes(
 
 	types, err := a.store.GetMetaTypes(ctx)
 	if err != nil {
-		return nil, twirp.InternalErrorf("read meta type info: %v", err)
+		return nil, rpc.Internalf("read meta type info: %v", err)
 	}
 
 	var res repository.GetMetaTypesResponse
@@ -173,7 +174,7 @@ func (a *SchemasService) ListActive(
 
 	schemas, err := a.store.ListActiveSchemas(ctx)
 	if err != nil {
-		return nil, twirp.InternalErrorf("read schema info: %v", err)
+		return nil, rpc.Internalf("read schema info: %v", err)
 	}
 
 	res := repository.ListActiveSchemasResponse{
@@ -204,7 +205,7 @@ func (a *SchemasService) RegisterMetaType(
 	}
 
 	if req.Type == "" {
-		return nil, twirp.RequiredArgumentError("type")
+		return nil, rpc.RequiredArgument("type")
 	}
 
 	err = a.store.RegisterMetaType(ctx, req.Type, req.Exclusive)
@@ -225,16 +226,16 @@ func (a *SchemasService) RegisterMetaTypeUse(
 	}
 
 	if req.MainType == "" {
-		return nil, twirp.RequiredArgumentError("main_type")
+		return nil, rpc.RequiredArgument("main_type")
 	}
 
 	if req.MetaType == "" {
-		return nil, twirp.RequiredArgumentError("meta_type")
+		return nil, rpc.RequiredArgument("meta_type")
 	}
 
 	err = a.store.RegisterMetaTypeUse(ctx, req.MainType, req.MetaType)
 	if errors.As(err, &DocStoreError{}) {
-		return nil, twirp.InvalidArgument.Error(err.Error())
+		return nil, rpc.Errorf(connect.CodeInvalidArgument, "%w", err)
 	} else if err != nil {
 		return nil, fmt.Errorf("register meta type use: %w", err)
 	}
@@ -367,12 +368,12 @@ func (a *SchemasService) Get(
 	}
 
 	if req.Name == "" {
-		return nil, twirp.RequiredArgumentError("name")
+		return nil, rpc.RequiredArgument("name")
 	}
 
 	schema, err := a.store.GetSchema(ctx, req.Name, req.Version)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"retrieve schema: %w", err)
 	}
 
@@ -399,7 +400,7 @@ func (a *SchemasService) RegisterGeneration(
 	}
 
 	if len(req.Schemas) == 0 {
-		return nil, twirp.RequiredArgumentError("schemas")
+		return nil, rpc.RequiredArgument("schemas")
 	}
 
 	activation := GenerationStatusDeactivated
@@ -419,11 +420,11 @@ func (a *SchemasService) RegisterGeneration(
 
 	for _, s := range req.Schemas {
 		if s.Name == "" {
-			return nil, twirp.RequiredArgumentError("schemas[].name")
+			return nil, rpc.RequiredArgument("schemas[].name")
 		}
 
 		if s.Version == "" {
-			return nil, twirp.RequiredArgumentError("schemas[].version")
+			return nil, rpc.RequiredArgument("schemas[].version")
 		}
 
 		var spec revisor.ConstraintSet
@@ -431,7 +432,7 @@ func (a *SchemasService) RegisterGeneration(
 		if s.Spec != "" {
 			err = json.Unmarshal([]byte(s.Spec), &spec)
 			if err != nil {
-				return nil, twirp.InvalidArgument.Errorf(
+				return nil, rpc.Errorf(connect.CodeInvalidArgument,
 					"invalid schema spec for %q: %v", s.Name, err)
 			}
 		}
@@ -451,7 +452,7 @@ func (a *SchemasService) RegisterGeneration(
 
 		canonical, cErr := json.Marshal(doc)
 		if cErr != nil {
-			return nil, twirp.InvalidArgument.Errorf(
+			return nil, rpc.Errorf(connect.CodeInvalidArgument,
 				"canonicalize exemplar: %v", cErr)
 		}
 
@@ -481,7 +482,7 @@ func (a *SchemasService) RegisterGeneration(
 
 		val, vErr := revisor.NewValidator(constraints...)
 		if vErr != nil {
-			return nil, twirp.InvalidArgument.Errorf(
+			return nil, rpc.Errorf(connect.CodeInvalidArgument,
 				"schemas cannot form a valid validator: %v", vErr)
 		}
 
@@ -489,7 +490,7 @@ func (a *SchemasService) RegisterGeneration(
 			var doc newsdoc.Document
 
 			if uErr := json.Unmarshal(ex.Document, &doc); uErr != nil {
-				return nil, twirp.InvalidArgument.Errorf(
+				return nil, rpc.Errorf(connect.CodeInvalidArgument,
 					"invalid exemplar document %q: %v",
 					ex.Name, uErr)
 			}
@@ -501,7 +502,7 @@ func (a *SchemasService) RegisterGeneration(
 			}
 
 			if len(results) > 0 {
-				return nil, twirp.InvalidArgument.Errorf(
+				return nil, rpc.Errorf(connect.CodeInvalidArgument,
 					"exemplar %q has %d validation errors: %s",
 					ex.Name, len(results), results[0].String())
 			}
@@ -532,7 +533,7 @@ func (a *SchemasService) SetActive(
 	}
 
 	if req.GenerationId == 0 {
-		return nil, twirp.RequiredArgumentError("generation_id")
+		return nil, rpc.RequiredArgument("generation_id")
 	}
 
 	var activation SchemaGenerationStatus
@@ -545,7 +546,7 @@ func (a *SchemasService) SetActive(
 	case repository.SchemaActivation_ACTIVATION_DEACTIVATED:
 		activation = GenerationStatusDeactivated
 	case repository.SchemaActivation_ACTIVATION_UNKNOWN:
-		return nil, twirp.InvalidArgumentError(
+		return nil, rpc.InvalidArgument(
 			"activation", "invalid activation value")
 	}
 
@@ -553,9 +554,9 @@ func (a *SchemasService) SetActive(
 
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
-		return nil, twirp.InvalidArgument.Error(err.Error())
+		return nil, rpc.Errorf(connect.CodeInvalidArgument, "%w", err)
 	case IsDocStoreErrorCode(err, ErrCodeNotFound):
-		return nil, twirp.NotFound.Error(err.Error())
+		return nil, rpc.NotFound(err.Error())
 	case err != nil:
 		return nil, fmt.Errorf("set generation status: %w", err)
 	}
@@ -598,7 +599,7 @@ func (a *SchemasService) GetExemplars(
 	}
 
 	if req.GenerationId == 0 {
-		return nil, twirp.RequiredArgumentError("generation_id")
+		return nil, rpc.RequiredArgument("generation_id")
 	}
 
 	exemplars, err := a.store.GetExemplars(ctx, req.GenerationId, req.Known)
@@ -675,7 +676,7 @@ func (a *SchemasService) GetDeprecations(
 
 	deprecations, err := a.store.GetDeprecations(ctx)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"list deprecations: %w", err)
 	}
 
@@ -700,7 +701,7 @@ func (a *SchemasService) UpdateDeprecation(
 	}
 
 	if req.Deprecation.Label == "" {
-		return nil, twirp.RequiredArgumentError("deprecation.label")
+		return nil, rpc.RequiredArgument("deprecation.label")
 	}
 
 	err = a.store.UpdateDeprecation(ctx, Deprecation{

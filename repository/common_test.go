@@ -422,7 +422,6 @@ func testingAPIServer(
 	srvOpts.Interceptors = []connect.Interceptor{
 		connectMetrics,
 		elephantrpc.LoggingInterceptor(logger),
-		elephantrpc.LegacyTwirpErrors(),
 	}
 
 	authParser := elephantine.NewStaticAuthInfoParser(

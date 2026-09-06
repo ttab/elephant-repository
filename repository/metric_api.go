@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"regexp"
 
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/ttab/elephant-api/repository"
-	"github.com/twitchtv/twirp"
+	"github.com/ttab/elephantine/rpc"
 )
 
 const labelMaxlen = 64
@@ -75,7 +76,7 @@ func (m *MetricsService) GetMetrics(
 	}
 
 	if len(req.Uuids) == 0 {
-		return nil, twirp.RequiredArgumentError("uuids")
+		return nil, rpc.RequiredArgument("uuids")
 	}
 
 	uuids := make([]uuid.UUID, len(req.Uuids))
@@ -83,7 +84,7 @@ func (m *MetricsService) GetMetrics(
 	for i := range req.Uuids {
 		u, err := uuid.Parse(req.Uuids[i])
 		if err != nil {
-			return nil, twirp.InvalidArgument.Errorf("invalid UUID: %w", err)
+			return nil, rpc.Errorf(connect.CodeInvalidArgument, "invalid UUID: %w", err)
 		}
 
 		uuids[i] = u
@@ -92,7 +93,7 @@ func (m *MetricsService) GetMetrics(
 	metrics, err := m.store.GetMetrics(ctx,
 		uuids, req.Kinds)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"read metrics from store: %w", err)
 	}
 
@@ -182,11 +183,11 @@ func (m *MetricsService) RegisterKind(
 	}
 
 	if req.Name == "" {
-		return nil, twirp.RequiredArgumentError("name")
+		return nil, rpc.RequiredArgument("name")
 	}
 
 	if req.Aggregation == 0 {
-		return nil, twirp.RequiredArgumentError("aggregation")
+		return nil, rpc.RequiredArgument("aggregation")
 	}
 
 	agg, err := ToAggregation(req.Aggregation)
@@ -221,18 +222,18 @@ func (m *MetricsService) RegisterMetric(
 	}
 
 	if req.Kind == "" {
-		return nil, twirp.RequiredArgumentError("kind")
+		return nil, rpc.RequiredArgument("kind")
 	}
 
 	err = ValidateLabel(req.Label)
 	if err != nil {
-		return nil, twirp.InvalidArgument.Errorf("invalid argument: %w", err)
+		return nil, rpc.Errorf(connect.CodeInvalidArgument, "invalid argument: %w", err)
 	}
 
 	// TODO: the metric kinds are very cacheable.
 	kind, err := m.store.GetMetricKind(ctx, req.Kind)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-		return nil, twirp.FailedPrecondition.Error(err.Error())
+		return nil, rpc.FailedPreconditionf("%w", err)
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to get metric kind: %w", err)
 	}
@@ -259,7 +260,7 @@ func (m *MetricsService) RegisterMetric(
 	}
 
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-		return nil, twirp.FailedPrecondition.Error(err.Error())
+		return nil, rpc.FailedPreconditionf("%w", err)
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}

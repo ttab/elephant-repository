@@ -12,11 +12,10 @@ import (
 )
 
 // TestSocketErrorCodes locks down the error-code vocabulary the websocket
-// protocol borrows from Twirp. The socket answers with the Twirp code strings
-// today and will be switched to the Connect ones with the rest of the error
-// flip; that switch may not change a single string a client sees, because the
-// socket protocol has no version negotiation and a client matches on the
-// string.
+// protocol borrows from the RPC stacks. The socket now spells its codes with
+// connect.Code, and every string it emits has to stay the one Twirp used,
+// because the socket protocol has no version negotiation and a client matches
+// on the string.
 func TestSocketErrorCodes(t *testing.T) {
 	for _, c := range []struct {
 		Twirp   twirp.ErrorCode
@@ -33,10 +32,9 @@ func TestSocketErrorCodes(t *testing.T) {
 	}
 }
 
-// TestIntegrationDualStackParity runs the same calls over both stacks against
-// one server and checks that they answer the same way. It is what keeps the
-// Twirp mount honest while the handlers still speak the Twirp error vocabulary
-// and the Connect mount translates it.
+// TestIntegrationDualStackParity checks that a successful call answers the
+// same way on both stacks. The error paths are covered in depth by
+// TestIntegrationErrorParity.
 func TestIntegrationDualStackParity(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -83,53 +81,4 @@ func TestIntegrationDualStackParity(t *testing.T) {
 		"report the same version on both stacks")
 	test.Equalf(t, twirpRes.Document.Title, connectRes.Document.Title,
 		"report the same document on both stacks")
-
-	// The error cases are the interesting half: code, message and metadata
-	// all have to survive the translation.
-	noScopeClaims := itest.Claims(t, "nobody", "")
-
-	for _, c := range []struct {
-		Name    string
-		Request *repository.GetDocumentRequest
-		Code    connect.Code
-	}{
-		{
-			Name:    "missing uuid",
-			Request: &repository.GetDocumentRequest{},
-			Code:    connect.CodeInvalidArgument,
-		},
-		{
-			Name: "unknown document",
-			Request: &repository.GetDocumentRequest{
-				Uuid: "3f2b1a5e-6f70-4bfe-bcf5-84b3a6a9e2ea",
-			},
-			Code: connect.CodeNotFound,
-		},
-	} {
-		t.Run(c.Name, func(t *testing.T) {
-			_, twirpErr := twirpClient.Get(ctx, c.Request)
-			test.IsRPCError(t, twirpErr, c.Code)
-
-			_, connectErr := connectClient.Get(ctx, c.Request)
-			test.IsRPCError(t, connectErr, c.Code)
-
-			test.ErrorParity(t, twirpErr, connectErr)
-		})
-	}
-
-	t.Run("missing scope", func(t *testing.T) {
-		req := repository.GetDocumentRequest{Uuid: docUUID}
-
-		_, twirpErr := tc.DocumentsClient(t, noScopeClaims).Get(ctx, &req)
-		test.IsRPCError(t, twirpErr, connect.CodePermissionDenied)
-
-		_, connectErr := connectTC.DocumentsClient(
-			t, noScopeClaims).Get(ctx, &req)
-		test.IsRPCError(t, connectErr, connect.CodePermissionDenied)
-
-		// The scope error carries the scopes the method wanted as
-		// metadata; that is the metadata path the ErrorMeta detail has
-		// to preserve.
-		test.ErrorParity(t, twirpErr, connectErr)
-	})
 }

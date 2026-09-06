@@ -603,17 +603,12 @@ with `permission_denied` where the current middleware returns a 401, so error
 codes shift for malformed tokens. There is also no JWT caching — every request
 re-validates — which the `TODO` at the call site has noted for some time.
 
-**The handlers still speak the Twirp error vocabulary.** They return
-`twirp.Error` values that `rpc.LegacyTwirpErrors()` translates for the Connect
-mount, which is the transitional state step 1 of the Connect migration leaves
-behind. Step 2 replaces the roughly 300 `twirp.*` error constructions with the
-`elephantine/rpc` helpers, drops that interceptor and the socket protocol's
-`string(twirp.<Code>)` spellings, and switches `sinks/eventsink.go` and
-`repository/sse.go` off `elephantine.IsTwirpErrorCode` and
-`TwirpErrorToHTTPStatusCode`. Note that the last of those changes what `/sse`
-answers a `failed_precondition` with, from 412 to 400, so it is a decision
-rather than a rename. Until it lands, `.golangci.yml` excludes the deprecation
-warnings for those helpers.
+**The Twirp mount still uses the deprecated hook helpers.**
+`elephantine.LoggingHooks` and `elephantine.NewTwirpMetricsHooks` are deprecated
+in favour of the `elephantine/rpc` interceptors, but they are what the Twirp
+mount needs for as long as it exists, so `.golangci.yml` excludes their
+deprecation warnings. Retiring Twirp removes the hooks, the exclusion and the
+last three `twitchtv/twirp` imports in the module together.
 
 **No alerting or dashboards live in this repository.** Every metric in
 [docs/observability.md](docs/observability.md) exists and nothing fires on any

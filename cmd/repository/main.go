@@ -617,13 +617,12 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("create connect metrics interceptor: %w", err)
 	}
 
-	// Outermost first. LegacyTwirpErrors is innermost so that the handlers'
-	// Twirp errors are already translated when logging and metrics read the
-	// code off them; it goes away with the error flip.
+	// Outermost first. The handlers return connect errors, so nothing has to
+	// translate them on the way out; the Twirp mount's interceptor does the
+	// translation in the other direction.
 	opts.Interceptors = []connect.Interceptor{
 		connectMetrics,
 		rpc.LoggingInterceptor(logger),
-		rpc.LegacyTwirpErrors(),
 	}
 
 	routerOpts := []repository.RouterOption{

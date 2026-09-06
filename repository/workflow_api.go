@@ -7,7 +7,7 @@ import (
 
 	"github.com/expr-lang/expr"
 	"github.com/ttab/elephant-api/repository"
-	"github.com/twitchtv/twirp"
+	"github.com/ttab/elephantine/rpc"
 )
 
 type WorkflowsService struct {
@@ -34,27 +34,27 @@ func (s *WorkflowsService) CreateStatusRule(
 	}
 
 	if req.Rule == nil {
-		return nil, twirp.RequiredArgumentError("rule")
+		return nil, rpc.RequiredArgument("rule")
 	}
 
 	if req.Rule.Type == "" {
-		return nil, twirp.RequiredArgumentError("rule.type")
+		return nil, rpc.RequiredArgument("rule.type")
 	}
 
 	if req.Rule.Name == "" {
-		return nil, twirp.RequiredArgumentError("rule.name")
+		return nil, rpc.RequiredArgument("rule.name")
 	}
 
 	if req.Rule.Description == "" {
-		return nil, twirp.RequiredArgumentError("rule.description")
+		return nil, rpc.RequiredArgument("rule.description")
 	}
 
 	if req.Rule.Expression == "" {
-		return nil, twirp.RequiredArgumentError("rule.expression")
+		return nil, rpc.RequiredArgument("rule.expression")
 	}
 
 	if len(req.Rule.AppliesTo) == 0 {
-		return nil, twirp.RequiredArgumentError("rule.applies_to")
+		return nil, rpc.RequiredArgument("rule.applies_to")
 	}
 
 	_, err = expr.Compile(req.Rule.Expression,
@@ -62,7 +62,7 @@ func (s *WorkflowsService) CreateStatusRule(
 		expr.AsBool(),
 	)
 	if err != nil {
-		return nil, twirp.InvalidArgumentError(
+		return nil, rpc.InvalidArgument(
 			"rule.expression", err.Error())
 	}
 
@@ -75,7 +75,7 @@ func (s *WorkflowsService) CreateStatusRule(
 		Expression:  req.Rule.Expression,
 	})
 	if err != nil {
-		return nil, twirp.InternalErrorf("failed to store rule: %v", err)
+		return nil, rpc.Internalf("failed to store rule: %v", err)
 	}
 
 	return &repository.CreateStatusRuleResponse{}, nil
@@ -91,16 +91,16 @@ func (s *WorkflowsService) DeleteStatusRule(
 	}
 
 	if req.Type == "" {
-		return nil, twirp.RequiredArgumentError("type")
+		return nil, rpc.RequiredArgument("type")
 	}
 
 	if req.Name == "" {
-		return nil, twirp.RequiredArgumentError("name")
+		return nil, rpc.RequiredArgument("name")
 	}
 
 	err = s.store.DeleteStatusRule(ctx, req.Type, req.Name)
 	if err != nil {
-		return nil, twirp.InternalErrorf("failed to delete rule: %v", err)
+		return nil, rpc.Internalf("failed to delete rule: %v", err)
 	}
 
 	return &repository.DeleteStatusRuleResponse{}, nil
@@ -116,11 +116,11 @@ func (s *WorkflowsService) UpdateStatus(
 	}
 
 	if req.Type == "" {
-		return nil, twirp.RequiredArgumentError("type")
+		return nil, rpc.RequiredArgument("type")
 	}
 
 	if req.Name == "" {
-		return nil, twirp.RequiredArgumentError("name")
+		return nil, rpc.RequiredArgument("name")
 	}
 
 	err = s.store.UpdateStatus(ctx, UpdateStatusRequest{
@@ -129,7 +129,7 @@ func (s *WorkflowsService) UpdateStatus(
 		Disabled: req.Disabled,
 	})
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"failed to update status: %w", err)
 	}
 
@@ -147,7 +147,7 @@ func (s *WorkflowsService) GetStatusRules(
 
 	res, err := s.store.GetStatusRules(ctx)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"failed to read from store: %v", err)
 	}
 
@@ -180,7 +180,7 @@ func (s *WorkflowsService) GetStatuses(
 
 	res, err := s.store.GetStatuses(ctx, req.Type)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"failed to read from store: %v", err)
 	}
 
@@ -208,12 +208,12 @@ func (s *WorkflowsService) DeleteWorkflow(
 	}
 
 	if req.Type == "" {
-		return nil, twirp.RequiredArgumentError("type")
+		return nil, rpc.RequiredArgument("type")
 	}
 
 	err = s.store.DeleteDocumentWorkflow(ctx, req.Type)
 	if err != nil {
-		return nil, twirp.InternalErrorf("delete workflow: %v", err)
+		return nil, rpc.Internalf("delete workflow: %v", err)
 	}
 
 	slog.Warn("document workflow deleted",
@@ -234,14 +234,14 @@ func (s *WorkflowsService) GetWorkflow(
 	}
 
 	if req.Type == "" {
-		return nil, twirp.RequiredArgumentError("type")
+		return nil, rpc.RequiredArgument("type")
 	}
 
 	wf, err := s.store.GetDocumentWorkflow(ctx, req.Type)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-		return nil, twirp.NotFoundError("no workflow defined")
+		return nil, rpc.NotFound("no workflow defined")
 	} else if err != nil {
-		return nil, twirp.InternalErrorf("load workflow: %v", err)
+		return nil, rpc.Internalf("load workflow: %v", err)
 	}
 
 	flow := repository.DocumentWorkflow{
@@ -268,11 +268,11 @@ func (s *WorkflowsService) SetWorkflow(
 	}
 
 	if req.Type == "" {
-		return nil, twirp.RequiredArgumentError("type")
+		return nil, rpc.RequiredArgument("type")
 	}
 
 	if req.Workflow == nil {
-		return nil, twirp.RequiredArgumentError("workflow")
+		return nil, rpc.RequiredArgument("workflow")
 	}
 
 	// Checkpoints and step zero are optional. A workflow without a
@@ -280,7 +280,7 @@ func (s *WorkflowsService) SetWorkflow(
 	// regular transition and no positive/negative checkpoint state is
 	// recorded.
 	if req.Workflow.Checkpoint == "" && req.Workflow.NegativeCheckpoint != "" {
-		return nil, twirp.InvalidArgumentError(
+		return nil, rpc.InvalidArgument(
 			"workflow.checkpoint",
 			"required when negative_checkpoint is set")
 	}
@@ -297,7 +297,7 @@ func (s *WorkflowsService) SetWorkflow(
 		UpdaterURI: auth.Claims.Subject,
 	})
 	if err != nil {
-		return nil, twirp.InternalErrorf("store workflow: %v", err)
+		return nil, rpc.Internalf("store workflow: %v", err)
 	}
 
 	slog.Warn("document workflow updated",
