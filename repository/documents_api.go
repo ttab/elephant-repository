@@ -846,7 +846,7 @@ func (a *DocumentsService) CompactedEventlog(
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return &repository.GetCompactedEventlogResponse{}, nil
 	} else if err != nil {
-		return nil, fmt.Errorf(
+		return nil, rpc.Internalf(
 			"failed to get the latest event ID: %w", err)
 	}
 
@@ -884,7 +884,7 @@ func (a *DocumentsService) CompactedEventlog(
 
 	evts, err := a.store.GetCompactedEventlog(ctx, cr)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, rpc.Internalf(
 			"failed to read eventlog from database: %w", err)
 	}
 
@@ -1335,7 +1335,7 @@ func (a *DocumentsService) ListDeleted(
 
 	deleted, err := a.store.ListDeleteRecords(ctx, docUUID, req.BeforeId, beforeTime)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list delete records: %w", err)
+		return nil, rpc.Internalf("failed to list delete records: %w", err)
 	}
 
 	res := repository.ListDeletedResponse{
@@ -1625,7 +1625,7 @@ func (a *DocumentsService) Get(
 		case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
 			return nil, lockConflictError(err)
 		case err != nil:
-			return nil, fmt.Errorf("could not obtain lock: %w", err)
+			return nil, rpc.Internalf("could not obtain lock: %w", err)
 		}
 
 		lockGrant = &repository.LockGrant{
@@ -2027,7 +2027,7 @@ func (a *DocumentsService) GetMeta(
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, rpc.NotFound("the document doesn't exist")
 	} else if err != nil {
-		return nil, fmt.Errorf("failed to load basic metadata: %w", err)
+		return nil, rpc.Internalf("failed to load basic metadata: %w", err)
 	}
 
 	return &repository.GetMetaResponse{
@@ -2231,7 +2231,7 @@ func (a *DocumentsService) buildUpdateRequest(
 
 		validationResult, err := a.validator.ValidateDocument(ctx, &doc)
 		if err != nil {
-			return nil, fmt.Errorf("unable to validate document %w", err)
+			return nil, rpc.Internalf("unable to validate document %w", err)
 		}
 
 		if len(validationResult) > 0 {
@@ -2766,7 +2766,7 @@ func (a *DocumentsService) Lock(
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
 		return nil, lockConflictError(err)
 	case err != nil:
-		return nil, fmt.Errorf("could not obtain lock: %w", err)
+		return nil, rpc.Internalf("could not obtain lock: %w", err)
 	}
 
 	return &repository.LockResponse{
@@ -2888,7 +2888,7 @@ func (a *DocumentsService) ExtendLock(
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
 		return nil, rpc.FailedPreconditionf("the doument is locked by someone else")
 	case err != nil:
-		return nil, fmt.Errorf("could not obtain lock: %w", err)
+		return nil, rpc.Internalf("could not obtain lock: %w", err)
 	}
 
 	return &repository.LockResponse{
@@ -2932,7 +2932,7 @@ func (a *DocumentsService) Unlock(
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
 		return nil, rpc.FailedPreconditionf("the document is locked by someone else")
 	case err != nil:
-		return nil, fmt.Errorf("could not unlock document: %w", err)
+		return nil, rpc.Internalf("could not unlock document: %w", err)
 	}
 
 	return &repository.UnlockResponse{}, nil

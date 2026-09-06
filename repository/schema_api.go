@@ -210,7 +210,7 @@ func (a *SchemasService) RegisterMetaType(
 
 	err = a.store.RegisterMetaType(ctx, req.Type, req.Exclusive)
 	if err != nil {
-		return nil, fmt.Errorf("register meta type: %w", err)
+		return nil, rpc.Internalf("register meta type: %w", err)
 	}
 
 	return &repository.RegisterMetaTypeResponse{}, nil
@@ -237,7 +237,7 @@ func (a *SchemasService) RegisterMetaTypeUse(
 	if errors.As(err, &DocStoreError{}) {
 		return nil, rpc.Errorf(connect.CodeInvalidArgument, "%w", err)
 	} else if err != nil {
-		return nil, fmt.Errorf("register meta type use: %w", err)
+		return nil, rpc.Internalf("register meta type use: %w", err)
 	}
 
 	return &repository.RegisterMetaTypeUseResponse{}, nil
@@ -254,7 +254,7 @@ func (a *SchemasService) GetAllActive(
 
 	changed, err := a.waitForSchemaChange(ctx, req.Known, req.WaitSeconds)
 	if err != nil {
-		return nil, fmt.Errorf("wait for schema changes: %w", err)
+		return nil, rpc.Internalf("wait for schema changes: %w", err)
 	}
 
 	if !changed && req.OnlyChanged {
@@ -265,7 +265,7 @@ func (a *SchemasService) GetAllActive(
 
 	schemas, err := a.store.GetActiveSchemas(ctx)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, rpc.Internalf(
 			"retrieve active schemas: %w", err)
 	}
 
@@ -283,7 +283,7 @@ func (a *SchemasService) GetAllActive(
 
 		data, err := json.Marshal(schemas[i].Specification)
 		if err != nil {
-			return nil, fmt.Errorf(
+			return nil, rpc.Internalf(
 				"marshal %q@%s specification for response: %w",
 				schemas[i].Name, schemas[i].Version, err)
 		}
@@ -379,7 +379,7 @@ func (a *SchemasService) Get(
 
 	data, err := json.Marshal(schema.Specification)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, rpc.Internalf(
 			"marshal specification for response: %w",
 			err)
 	}
@@ -497,7 +497,7 @@ func (a *SchemasService) RegisterGeneration(
 
 			results, vErr := val.ValidateDocument(ctx, &doc)
 			if vErr != nil {
-				return nil, fmt.Errorf(
+				return nil, rpc.Internalf(
 					"validate exemplar %q: %w", ex.Name, vErr)
 			}
 
@@ -515,7 +515,7 @@ func (a *SchemasService) RegisterGeneration(
 		Exemplars:  exemplars,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("register generation: %w", err)
+		return nil, rpc.Internalf("register generation: %w", err)
 	}
 
 	return &repository.RegisterGenerationResponse{
@@ -558,7 +558,7 @@ func (a *SchemasService) SetActive(
 	case IsDocStoreErrorCode(err, ErrCodeNotFound):
 		return nil, rpc.NotFound(err.Error())
 	case err != nil:
-		return nil, fmt.Errorf("set generation status: %w", err)
+		return nil, rpc.Internalf("set generation status: %w", err)
 	}
 
 	return &repository.SetActiveSchemasResponse{}, nil
@@ -575,7 +575,7 @@ func (a *SchemasService) ListGenerations(
 
 	generations, err := a.store.ListGenerations(ctx, req.Before)
 	if err != nil {
-		return nil, fmt.Errorf("list generations: %w", err)
+		return nil, rpc.Internalf("list generations: %w", err)
 	}
 
 	items := make([]*repository.SchemaGeneration, 0, len(generations))
@@ -604,7 +604,7 @@ func (a *SchemasService) GetExemplars(
 
 	exemplars, err := a.store.GetExemplars(ctx, req.GenerationId, req.Known)
 	if err != nil {
-		return nil, fmt.Errorf("get exemplars: %w", err)
+		return nil, rpc.Internalf("get exemplars: %w", err)
 	}
 
 	items := make([]*repository.Exemplar, 0, len(exemplars))
@@ -613,7 +613,7 @@ func (a *SchemasService) GetExemplars(
 		var doc newsdoc.Document
 
 		if uErr := json.Unmarshal(ex.Document, &doc); uErr != nil {
-			return nil, fmt.Errorf(
+			return nil, rpc.Internalf(
 				"unmarshal exemplar %q: %w", ex.Name, uErr)
 		}
 
@@ -709,7 +709,7 @@ func (a *SchemasService) UpdateDeprecation(
 		Enforced: req.Deprecation.Enforced,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("update deprecation: %w", err)
+		return nil, rpc.Internalf("update deprecation: %w", err)
 	}
 
 	return &repository.UpdateDeprecationResponse{}, nil

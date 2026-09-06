@@ -136,13 +136,13 @@ func (m *MetricsService) GetKinds(
 
 	kinds, err := m.store.GetMetricKinds(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get metric kinds: %w", err)
+		return nil, rpc.Internalf("failed to get metric kinds: %w", err)
 	}
 
 	for i := range kinds {
 		agg, err := ToMetricAggregation(kinds[i].Aggregation)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode aggregation: %w", err)
+			return nil, rpc.Internalf("failed to decode aggregation: %w", err)
 		}
 
 		res.Kinds = append(res.Kinds, &repository.MetricKind{
@@ -166,7 +166,7 @@ func (m *MetricsService) DeleteKind(
 
 	err = m.store.DeleteMetricKind(ctx, req.Name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to delete metric kind: %w", err)
+		return nil, rpc.Internalf("failed to delete metric kind: %w", err)
 	}
 
 	return &repository.DeleteMetricKindResponse{}, nil
@@ -192,12 +192,12 @@ func (m *MetricsService) RegisterKind(
 
 	agg, err := ToAggregation(req.Aggregation)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode aggregation: %w", err)
+		return nil, rpc.InvalidArgument("aggregation", err.Error())
 	}
 
 	err = m.store.RegisterMetricKind(ctx, req.Name, agg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to register metric kind: %w", err)
+		return nil, rpc.Internalf("failed to register metric kind: %w", err)
 	}
 
 	return &repository.RegisterMetricKindResponse{}, nil
@@ -235,7 +235,7 @@ func (m *MetricsService) RegisterMetric(
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, rpc.FailedPreconditionf("%w", err)
 	} else if err != nil {
-		return nil, fmt.Errorf("failed to get metric kind: %w", err)
+		return nil, rpc.Internalf("failed to get metric kind: %w", err)
 	}
 
 	switch kind.Aggregation {
@@ -256,13 +256,13 @@ func (m *MetricsService) RegisterMetric(
 		})
 
 	case AggregationNone:
-		return nil, fmt.Errorf("unknown metric kind aggregation: %v", kind.Aggregation)
+		return nil, rpc.Internalf("unknown metric kind aggregation: %v", kind.Aggregation)
 	}
 
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, rpc.FailedPreconditionf("%w", err)
 	} else if err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
+		return nil, rpc.Internalf("failed to register metric: %w", err)
 	}
 
 	return &repository.RegisterMetricResponse{}, nil

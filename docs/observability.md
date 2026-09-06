@@ -282,8 +282,8 @@ that mount removed; that is the number to read before a major release drops it.
 A `protocol` of `other` means connect-go negotiated a protocol this service does
 not have a label for, which should not happen and is worth a look.
 
-Growth in `code="unknown"` is worth an alert of its own. A handler error that
-carries no RPC code is coded `internal` on both stacks, so `unknown` is a code
+Growth in `code="unknown"` is worth an alert of its own. Every handler error
+carries an RPC code — a server fault is returned as `internal` — so `unknown` is a code
 connect-go itself produced — a malformed request frame, or a client that
 disconnected in a way the protocol could not classify — rather than a rejected
 request.

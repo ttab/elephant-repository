@@ -645,14 +645,13 @@ the body rather than from the HTTP status.
 | Metadata | the `meta` map | an `elephantine.rpc.ErrorMeta` detail holding the same key/value map |
 
 The code strings are the same for every code the repository returns, so a
-client that branches on `code` needs no new cases. That includes a handler
-error that carries no code at all — a plain `fmt.Errorf` on a failed query, of
-which there are still a few dozen. Twirp codes those `internal` through
-`twirp.InternalErrorWith`, and Connect would default them to `unknown`, so the
-Connect mount is given an interceptor of its own (`codeUncodedErrors` in
-`serve.go`, innermost, so the metrics and logging interceptors see the code the
-caller gets) that codes them `internal` too. `TestUncodedErrorParity` holds that
-in place. Error metadata — the
+client that branches on `code` needs no new cases. Every handler error carries
+a code: a failed query or a marshalling failure is returned as
+`rpc.Internalf(...)`, never as a bare `fmt.Errorf`, because the two stacks
+default an uncoded error differently (Twirp to `internal`, Connect to
+`unknown`) and the handler is the one place that knows which code is right.
+There is deliberately no interceptor patching codes onto errors on the way out.
+Error metadata — the
 `lock_*` keys on a lock conflict, `argument` on an invalid argument,
 `required_any_of_scopes` on a scope failure — is carried as a typed detail on
 the Connect side rather than as response headers, because our keys contain
