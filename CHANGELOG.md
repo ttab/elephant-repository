@@ -112,6 +112,15 @@ acquired with a higher exclusivity level. This matches the long-documented API
 behaviour, but consumers that relied on locks also blocking status or ACL
 updates must now acquire their locks with a matching exclusivity. (#604)
 
+**Behaviour change (prune):** `Documents.Prune` now reports `count` and
+`minCount` violations for block collections that are empty or absent, which it
+previously skipped, and the prune cascade removes a block that is missing a
+required nested collection. Both cases were silently accepted before, so a
+consumer that treats a non-empty prune result as "this document does not
+satisfy the schemas" will start rejecting documents that are missing a required
+block. This comes from revisor, and `Documents.Validate` reported these
+violations all along — it is prune that was lenient.
+
 **Build:** the module's `go` directive is `1.27.1`, the latest patch of the 1.27
 line, up from Go 1.26.5, and the release image builds on
 `golang:1.27.1-alpine3.24`. Anyone who builds the binary outside the Dockerfile
@@ -172,7 +181,7 @@ Changes:
 - The plaintext listener is built with `elephantine.PlaintextProtocols()`, so it serves HTTP/1.1 and unencrypted HTTP/2 side by side rather than HTTP/1.1 alone. That is what makes the gRPC protocol the Connect mount serves reachable at all; without it a gRPC client fails on the connection with nothing in the logs to say why. The two are told apart by the HTTP/2 connection preface, so Twirp, SSE, the websocket upgrade and every other HTTP/1.1 caller are unaffected, and `TestIntegrationGRPC` calls the API over gRPC so the setting cannot be dropped unnoticed.
 - Every handler error now carries an RPC code. The failed-query and marshalling paths that returned a plain Go error, which Twirp reported as `internal`, return `internal` explicitly on both stacks. One code changed as a result: `Metrics.RegisterMetricKind` answers an aggregation value it does not know with `invalid_argument` rather than `internal`, since it is the caller's value that is wrong.
 - A `permission_denied` from a scope check now carries the scopes that would have been accepted as the `required_any_of_scopes` error metadata key, on both stacks. The message is unchanged. `GET /sse` answers a scope failure with the same status as before, but the plain-text body no longer has the `twirp error ` prefix in front of the code.
-- Dependency upgrades: elephantine to v0.29.1 (the `rpc` package, the shared RPC collectors, the request body cap and the job lock's move to `pg/joblock`), elephant-api to v0.25.0 (the generated Connect handlers and clients), connectrpc.com/connect v1.20.0, the AWS SDK suite, urfave/cli/v3 to v3.11.0, minio-go to v7.3.0, MicahParks/keyfunc to v3.8.2, ttab/mage, and the Prometheus and `golang.org/x` support modules. (#597, #604)
+- Dependency upgrades: elephantine to v0.29.1 (the `rpc` package, the shared RPC collectors, the request body cap and the job lock's move to `pg/joblock`), elephant-api to v0.25.0 (the generated Connect handlers and clients), connectrpc.com/connect v1.20.0, revisor to v1.0.3 (the prune change above), revisorschemas to v1.5.3, tern to v2.4.3, the AWS SDK suite, urfave/cli/v3 to v3.11.0, minio-go to v7.3.0, MicahParks/keyfunc to v3.8.2, ttab/mage to v0.14.0, and the OpenTelemetry, Prometheus and `golang.org/x` support modules. (#597, #604)
 
 ## [v1.8.1] - 2026-06-10
 
