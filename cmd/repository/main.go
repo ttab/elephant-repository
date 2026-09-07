@@ -582,7 +582,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	}
 
 	schemaService := repository.NewSchemasService(logger, store)
-	workflowService := repository.NewWorkflowsService(store)
+	workflowService := repository.NewWorkflowsService(logger, store)
 	metricsService := repository.NewMetricsService(store)
 
 	var serverOpts []elephantine.APIServerOption

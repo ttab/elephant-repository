@@ -11,12 +11,14 @@ import (
 )
 
 type WorkflowsService struct {
-	store WorkflowStore
+	logger *slog.Logger
+	store  WorkflowStore
 }
 
-func NewWorkflowsService(store WorkflowStore) *WorkflowsService {
+func NewWorkflowsService(logger *slog.Logger, store WorkflowStore) *WorkflowsService {
 	return &WorkflowsService{
-		store: store,
+		logger: logger,
+		store:  store,
 	}
 }
 
@@ -216,7 +218,7 @@ func (s *WorkflowsService) DeleteWorkflow(
 		return nil, rpc.Internalf("delete workflow: %v", err)
 	}
 
-	slog.Warn("document workflow deleted",
+	s.logger.WarnContext(ctx, "document workflow deleted",
 		"user", auth.Claims.Subject,
 		"doc_type", req.Type,
 	)
@@ -300,7 +302,7 @@ func (s *WorkflowsService) SetWorkflow(
 		return nil, rpc.Internalf("store workflow: %v", err)
 	}
 
-	slog.Warn("document workflow updated",
+	s.logger.WarnContext(ctx, "document workflow updated",
 		"user", auth.Claims.Subject,
 		"doc_type", req.Type,
 	)

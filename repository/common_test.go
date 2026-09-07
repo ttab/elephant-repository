@@ -530,7 +530,7 @@ func testingAPIServer(
 	test.Mustf(t, err, "create documents service")
 
 	schemaService := repository.NewSchemasService(logger, store)
-	workflowService := repository.NewWorkflowsService(store)
+	workflowService := repository.NewWorkflowsService(logger, store)
 	metricsService := repository.NewMetricsService(store)
 
 	jwtKey, err := itest.NewSigningKey()
