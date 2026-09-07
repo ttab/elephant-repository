@@ -317,11 +317,13 @@ func TestIntegrationBasicCrud(t *testing.T) {
 
 	goldenEventlog := "testdata/TestIntegrationBasicCrud/eventlog.json"
 
-	events, err := client.Eventlog(ctx, &repository.GetEventlogRequest{
-		BatchSize:   50,
-		BatchWaitMs: 500,
-	})
-	test.Mustf(t, err, "get eventlog")
+	// The eventlog is built from the outbox by a background worker, so the
+	// delete event is not in the log the moment Delete returns. A single
+	// read cannot wait for it either: the long poll arms its batch timeout
+	// as soon as the first read finds any events, so it returns whatever is
+	// already built and the delete only ever had BatchWaitMs to appear.
+	// Collect until all four events are in.
+	events := collectEventlog(t, client, 4, 10*time.Second)
 
 	test.MessageAgainstGolden(t, regenerateTestFixtures(),
 		events, goldenEventlog,
