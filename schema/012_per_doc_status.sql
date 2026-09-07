@@ -1,7 +1,13 @@
+-- The not-null constraints are named after the table this becomes, rather than
+-- after status_new, so that the schema dump doesn't depend on the server
+-- version it was taken against. PostgreSQL 18 catalogues not-null constraints,
+-- so they carry a name, and pg_dump has to spell out any name that differs
+-- from the one it derives from the table -- which the names this table is
+-- renamed away from do. PostgreSQL 17 accepts the names and discards them.
 CREATE TABLE status_new(
-       type text NOT NULL,
-       name text NOT NULL,
-       disabled bool NOT NULL DEFAULT false,
+       type text CONSTRAINT status_type_not_null NOT NULL,
+       name text CONSTRAINT status_name_not_null NOT NULL,
+       disabled bool CONSTRAINT status_disabled_not_null NOT NULL DEFAULT false,
        PRIMARY KEY(type, name)
 );
 

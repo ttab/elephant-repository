@@ -28,7 +28,7 @@ require (
 	github.com/ttab/elephant-api v0.24.3-0.20260906073425-1cf6a221024e
 	github.com/ttab/elephantine v0.29.0
 	github.com/ttab/langos v0.1.1
-	github.com/ttab/mage v0.13.1
+	github.com/ttab/mage v0.14.0
 	github.com/ttab/newsdoc v1.1.0
 	github.com/ttab/revisor v1.0.1
 	github.com/ttab/revisorschemas v1.5.0

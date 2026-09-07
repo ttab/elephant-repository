@@ -3,8 +3,6 @@
 --
 
 
--- Dumped from database version 17.8 (Debian 17.8-1.pgdg12+1)
--- Dumped by pg_dump version 17.8 (Debian 17.8-1.pgdg12+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -1027,6 +1025,14 @@ ALTER TABLE ONLY public.schema_generation
 
 ALTER TABLE ONLY public.schema_generation_schema
     ADD CONSTRAINT schema_generation_schema_pkey PRIMARY KEY (generation_id, name);
+
+
+--
+-- Name: schema_version schema_version_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_version
+    ADD CONSTRAINT schema_version_pkey PRIMARY KEY (version);
 
 
 --
