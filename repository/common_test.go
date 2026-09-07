@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tmaxmax/go-sse"
@@ -409,7 +408,6 @@ func testingAPIServer(
 
 	assetBucket := repository.NewAssetBucket(
 		logger,
-		s3.NewPresignClient(env.S3, s3.WithPresignExpires(15*time.Minute)),
 		env.S3,
 		env.AssetBucket,
 	)

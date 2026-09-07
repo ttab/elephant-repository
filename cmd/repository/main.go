@@ -322,9 +322,6 @@ func runServer(ctx context.Context, c *cli.Command) error {
 			"failed to create S3 client: %w", err)
 	}
 
-	presignClient := s3.NewPresignClient(s3Client,
-		s3.WithPresignExpires(15*time.Minute))
-
 	dbpool, err := pgxpool.New(ctx, conf.DB)
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)
@@ -387,8 +384,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	}
 
 	assets := repository.NewAssetBucket(
-		logger, presignClient,
-		s3Client, conf.AssetBucket)
+		logger, s3Client, conf.AssetBucket)
 
 	var inMet []repository.MetricCalculator
 

@@ -14,12 +14,33 @@ import (
 	"github.com/ttab/elephantine"
 )
 
+// assetURLExpiry is how long a presigned upload or download URL stays valid.
+const assetURLExpiry = 15 * time.Minute
+
 func NewAssetBucket(
 	log *slog.Logger,
-	presign *s3.PresignClient,
 	client *s3.Client,
 	name string,
 ) *AssetBucket {
+	// The presign client is built here rather than passed in because a
+	// presigned URL this service hands out has to be complete on its own: it
+	// goes to a browser or a plain HTTP client, over the API, and whoever
+	// fetches it sends nothing but Host.
+	//
+	// Response checksum validation is what would break that. It is on by
+	// default, and from s3 v1.107.0 the SDK signs it as an
+	// x-amz-checksum-mode header where earlier versions put it in the query
+	// string, so the signature comes to cover a header the caller was never
+	// told to send -- which MinIO answers with AccessDenied and S3 with a
+	// signature mismatch. Validating a response checksum is only of use to a
+	// client that reads the checksum headers, and no holder of one of these
+	// URLs does.
+	presign := s3.NewPresignClient(client,
+		s3.WithPresignExpires(assetURLExpiry),
+		s3.WithPresignClientFromClientOptions(func(o *s3.Options) {
+			o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
+		}))
+
 	return &AssetBucket{
 		log:     log,
 		presign: presign,
@@ -43,7 +64,7 @@ func (ab *AssetBucket) CreateUploadURL(
 	req, err := ab.presign.PresignPutObject(ctx, &s3.PutObjectInput{
 		Bucket: &ab.name,
 		Key:    aws.String(fmt.Sprintf("uploads/%s", id)),
-	}, s3.WithPresignExpires(15*time.Minute))
+	}, s3.WithPresignExpires(assetURLExpiry))
 	if err != nil {
 		return "", fmt.Errorf("sign upload URL: %w", err)
 	}
@@ -59,7 +80,7 @@ func (ab *AssetBucket) CreateDownloadURL(
 	req, err := ab.presign.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: &ab.name,
 		Key:    aws.String(ab.objKey(document, name)),
-	}, s3.WithPresignExpires(15*time.Minute))
+	}, s3.WithPresignExpires(assetURLExpiry))
 	if err != nil {
 		return "", fmt.Errorf("sign download URL: %w", err)
 	}
