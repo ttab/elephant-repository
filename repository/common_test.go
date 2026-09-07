@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -83,6 +84,10 @@ type TestContext struct {
 	Schemas          rpc.Schemas
 	Workflows        rpc.Workflows
 	Env              itest.Environment
+
+	// workers tracks the goroutines started on the test's behalf, both the
+	// server's background workers and the clients the helpers connect.
+	workers *workerGroup
 }
 
 // testServer is the handle the suite has on the API server: the base URL to
@@ -218,12 +223,10 @@ func (tc *TestContext) SSEConnect(
 
 	conn := client.NewConnection(req.WithContext(t.Context()))
 
-	go func() {
-		err = conn.Connect()
-		if err != nil && !errors.Is(err, context.Canceled) {
-			test.Mustf(t, err, "create connection")
-		}
-	}()
+	tc.workers.run(t.Context(), "sse client connection",
+		func(_ context.Context) error {
+			return conn.Connect()
+		})
 
 	return conn
 }
@@ -309,6 +312,78 @@ type testingServerOptions struct {
 	Stack rpcStack
 }
 
+// workerStopTimeout is how long a test waits for the background workers its
+// server runs to stop once the test context has been cancelled.
+const workerStopTimeout = 10 * time.Second
+
+// workerGroup tracks the background goroutines a test server runs so that the
+// test cannot complete while one of them is still going.
+//
+// A worker that touches *testing.T after its test has completed panics, and the
+// panic takes down the whole test binary rather than the one test: CI has
+// failed with "Log in goroutine after TestPurge has completed" from a worker
+// logging that it had stopped. The test logger drops records once the test's
+// cleanup has run, but that check cannot be atomic with the log call it guards,
+// so the only reliable fix is for no worker to be running by then.
+type workerGroup struct {
+	t  *testing.T
+	wg sync.WaitGroup
+}
+
+// newWorkerGroup registers the wait as a cleanup, so the ordering of the
+// registration is what puts the wait in the right place: cleanups run in
+// reverse order, so the wait has to be registered after the connection pool's
+// cleanup — a worker still running when the pool closes under it fails with an
+// error that says nothing about anything — and before the workers' own stop
+// functions, which have to have run before there is any point waiting.
+func newWorkerGroup(t *testing.T) *workerGroup {
+	t.Helper()
+
+	g := workerGroup{
+		t: t,
+	}
+
+	t.Cleanup(g.wait)
+
+	return &g
+}
+
+// run starts fn as a tracked worker. A cancellation is the expected way for one
+// to end and is ignored; any other error fails the test through t.Errorf, which
+// is safe to call from another goroutine, unlike the t.Fatalf behind
+// test.Mustf, which only stops the goroutine that calls it.
+func (g *workerGroup) run(
+	ctx context.Context, name string, fn func(context.Context) error,
+) {
+	g.wg.Add(1)
+
+	go func() {
+		defer g.wg.Done()
+
+		err := fn(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			g.t.Errorf("run %s: %v", name, err)
+		}
+	}()
+}
+
+func (g *workerGroup) wait() {
+	stopped := make(chan struct{})
+
+	go func() {
+		g.wg.Wait()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+	case <-time.After(workerStopTimeout):
+		g.t.Errorf(
+			"background workers did not stop within %s of the test context being cancelled",
+			workerStopTimeout)
+	}
+}
+
 func testingAPIServer(
 	t *testing.T, logger *slog.Logger, opts testingServerOptions,
 ) TestContext {
@@ -329,6 +404,8 @@ func testingAPIServer(
 		// We don't want to block cleanup waiting for pool.
 		go dbpool.Close()
 	})
+
+	workers := newWorkerGroup(t)
 
 	assetBucket := repository.NewAssetBucket(
 		logger,
@@ -358,19 +435,28 @@ func testingAPIServer(
 		})
 	test.Mustf(t, err, "create doc store")
 
-	go store.RunListener(ctx, dbpool)
+	workers.run(ctx, "document store listener",
+		func(ctx context.Context) error {
+			store.RunListener(ctx, dbpool)
 
-	go func() {
-		err := typeConf.Run(ctx, store)
-		test.Mustf(t, err, "run type configurations")
-	}()
+			return nil
+		})
+
+	workers.run(ctx, "type configurations",
+		func(ctx context.Context) error {
+			return typeConf.Run(ctx, store)
+		})
 
 	sse, err := repository.NewSSE(ctx, logger.With(
 		elephantine.LogKeyComponent, "sse",
 	), store)
 	test.Mustf(t, err, "set up SSE server")
 
-	go sse.Run(ctx)
+	workers.run(ctx, "sse server", func(ctx context.Context) error {
+		sse.Run(ctx)
+
+		return nil
+	})
 
 	t.Cleanup(sse.Stop)
 
@@ -387,12 +473,7 @@ func testingAPIServer(
 		})
 		test.Mustf(t, err, "create archiver")
 
-		go func() {
-			err = archiver.Run(ctx)
-			if !errors.Is(err, context.Canceled) {
-				test.Mustf(t, err, "run archiver")
-			}
-		}()
+		workers.run(ctx, "archiver", archiver.Run)
 
 		t.Cleanup(func() {
 			err := archiver.Stop(context.Background())
@@ -413,19 +494,14 @@ func testingAPIServer(
 			log, dbpool, reg, updates)
 		test.Mustf(t, err, "set up eventlog builder")
 
-		go func() {
-			err := joblock.Run(t.Context(),
-				dbpool, log,
-				"eventlog-builder", "eventlog-builder",
-				joblock.Options{},
-				func(ctx context.Context) error {
-					return builder.Run(ctx)
-				})
-			if err != nil {
-				log.ErrorContext(ctx, "eventlog builder has stopped",
-					elephantine.LogKeyError, err)
-			}
-		}()
+		workers.run(ctx, "eventlog builder",
+			func(ctx context.Context) error {
+				return joblock.Run(ctx,
+					dbpool, log,
+					"eventlog-builder", "eventlog-builder",
+					joblock.Options{},
+					builder.Run)
+			})
 	}
 
 	validator, err := repository.NewValidator(
@@ -527,6 +603,7 @@ func testingAPIServer(
 		Schemas:          schemaService,
 		WorkflowProvider: workflows,
 		Env:              env,
+		workers:          workers,
 	}
 
 	wf := tc.WorkflowsClient(t,
