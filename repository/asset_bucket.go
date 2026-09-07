@@ -27,14 +27,24 @@ func NewAssetBucket(
 	// goes to a browser or a plain HTTP client, over the API, and whoever
 	// fetches it sends nothing but Host.
 	//
-	// Response checksum validation is what would break that. It is on by
-	// default, and from s3 v1.107.0 the SDK signs it as an
-	// x-amz-checksum-mode header where earlier versions put it in the query
-	// string, so the signature comes to cover a header the caller was never
+	// Response checksum validation is what would break that, and it is on
+	// by default. s3 v1.107.0 started asking for it as an
+	// x-amz-checksum-mode header, and the core this branch was first pinned
+	// to (v1.43.7) signed that header instead of hoisting it into the query
+	// string, so the signature came to cover a header the caller was never
 	// told to send -- which MinIO answers with AccessDenied and S3 with a
-	// signature mismatch. Validating a response checksum is only of use to a
-	// client that reads the checksum headers, and no holder of one of these
-	// URLs does.
+	// signature mismatch.
+	//
+	// core v1.46.0 took it back out of the signature, by excluding
+	// X-Amz-Checksum-Mode from the signer's RequiredSignedHeaders, so at the
+	// current pins the URLs are self-contained whether or not this option is
+	// set. It stays because that is an SDK implementation detail that has
+	// moved twice already, and because validating a response checksum is
+	// only of use to a client that reads the checksum headers, which no
+	// holder of one of these URLs is. TestAssetURLsAreSelfContained asserts
+	// the property rather than either mechanism, so it holds whichever way
+	// the SDK moves next -- but note that it can only fail on a core older
+	// than v1.46.0, which is the axis that actually moves this.
 	presign := s3.NewPresignClient(client,
 		s3.WithPresignExpires(assetURLExpiry),
 		s3.WithPresignClientFromClientOptions(func(o *s3.Options) {
