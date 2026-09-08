@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -184,6 +185,18 @@ func TestVariantValidation(t *testing.T) {
 	test.EqualDiff(t,
 		[]string{"template"}, confResp.Configuration.Variants,
 		"expected variants to be stored")
+
+	// The variant type must show up in the type listing, it's the only way
+	// for a client to discover that there is a type to configure statuses
+	// and workflows for.
+	typesResp, err := schemasClient.GetDocumentTypes(ctx,
+		&rpc_repository.GetDocumentTypesRequest{})
+	test.Mustf(t, err, "get document types")
+
+	if !slices.Contains(typesResp.Types, "core/article#template") {
+		t.Fatalf("expected document types to contain %q, got: %v",
+			"core/article#template", typesResp.Types)
+	}
 
 	// Wait for the validator to pick up the variant configuration, then
 	// create a document with the variant type.

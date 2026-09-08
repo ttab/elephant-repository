@@ -48,6 +48,17 @@ func (a *SchemasService) GetDocumentTypes(
 		return nil, twirp.InternalErrorf("get schemas: %v", err)
 	}
 
+	// Variant types like "core/article#timeless" are configured through the
+	// type configuration rather than declared in a schema, but they are
+	// document types in their own right: statuses, workflows and documents
+	// are all keyed on the full type name. List them alongside the declared
+	// types, otherwise a client enumerating types never sees the
+	// configuration that has been made for a variant.
+	configs, err := a.store.GetTypeConfigurations(ctx)
+	if err != nil {
+		return nil, twirp.InternalErrorf("get type configurations: %v", err)
+	}
+
 	var declared []string
 
 	for _, sc := range schemas {
@@ -57,6 +68,11 @@ func (a *SchemasService) GetDocumentTypes(
 			}
 
 			declared = append(declared, doc.Declares)
+
+			for _, variant := range configs[doc.Declares].Variants {
+				declared = append(declared,
+					doc.Declares+"#"+variant)
+			}
 		}
 	}
 
