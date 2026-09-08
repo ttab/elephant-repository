@@ -583,6 +583,19 @@ func (s *PGDocStore) insertDeleteRecord(
 	return recordID, nil
 }
 
+// newGenerationNonce mints the nonce for a new document generation. UUIDv7 is
+// used so that the generations of a document sort in creation order, but that
+// only holds for generations created after this was introduced: nonces minted
+// before it are random v4 and keep those values for ever.
+func newGenerationNonce() (uuid.UUID, error) {
+	nonce, err := uuid.NewV7()
+	if err != nil {
+		return uuid.UUID{}, fmt.Errorf("generate nonce: %w", err)
+	}
+
+	return nonce, nil
+}
+
 func (s *PGDocStore) RestoreDocument(
 	ctx context.Context, docUUID uuid.UUID, deleteRecordID int64,
 	creator string, acl []ACLEntry,
@@ -647,11 +660,16 @@ func (s *PGDocStore) RestoreDocument(
 			"document is currently locked for %q", state.String)
 	}
 
+	nonce, err := newGenerationNonce()
+	if err != nil {
+		return err
+	}
+
 	// Insert a placeholder document row vith the state restoring and
 	// version 0.
 	err = q.InsertDocument(ctx, postgres.InsertDocumentParams{
 		UUID:        docUUID,
-		Nonce:       uuid.New(),
+		Nonce:       nonce,
 		URI:         record.URI,
 		Type:        record.Type,
 		Created:     pg.Time(time.Now()),
@@ -1991,7 +2009,10 @@ func (s *PGDocStore) Update(
 		if state.Exists {
 			state.Type = info.Info.Type
 		} else {
-			state.Nonce = uuid.New()
+			state.Nonce, err = newGenerationNonce()
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		if state.Request.IfWorkflowState != "" {

@@ -121,6 +121,23 @@ satisfy the schemas" will start rejecting documents that are missing a required
 block. This comes from revisor, and `Documents.Validate` reported these
 violations all along — it is prune that was lenient.
 
+**Behaviour change (document nonces):** the nonce that identifies a
+generation of a document — the sequence of versions between a create (or a
+recreate) and a delete — is now minted as a UUIDv7 instead of a random UUIDv4.
+It is the same opaque UUID in the same places, `document_nonce` on eventlog
+items among them, so nothing has to change to read one, but the nonces of two
+generations created from this release onwards sort lexically in the order the
+generations were created. That is what lets a consumer that puts the nonce in a
+sort key — elephant-distribution's push delivery keys are the case this was
+built for — see a recreated document's new key family sort after the old one.
+**The change is forward-only:** every nonce minted before this release keeps
+its v4 value, since rewriting them would break the eventlog signature chain and
+the archived history. So cross-generation ordering is a convenience between two
+v7 nonces and never a contract, and **a consumer must keep deciding which
+generation is live from the events and the deletion markers themselves**. The
+nil (all-zeros) nonce that marks a batch import sorts before every generation
+either way.
+
 **Build:** the module's `go` directive is `1.27.1`, the latest patch of the 1.27
 line, up from Go 1.26.5, and the release image builds on
 `golang:1.27.1-alpine3.24`. Anyone who builds the binary outside the Dockerfile
@@ -166,6 +183,7 @@ Changes:
 
 - `Schemas.GetDocumentTypes` now lists variant types (`core/article#timeless`) alongside the schema-declared types they are configured on. Variants are declared through `ConfigureType`, not in a schema, so they were missing from the listing entirely, and a client that enumerates types to read their configuration never saw them. `eleconf` did exactly that when diffing workflows, and so reported the workflow of every variant type as missing and re-applied it on every run. Consumers that iterate the response should expect entries containing a `#` suffix.
 - `RegisterGeneration` now applies the requested activation to a generation that already exists. Registration is idempotent on the schema and exemplar versions, and it previously returned the existing generation's ID without activating it, so re-registering a known set of schema versions as `ACTIVATION_ACTIVE` reported success while leaving the previously active generation in place. Registrations that don't ask for activation still leave an existing generation's status alone; use `SetActive` to deactivate.
+- New generations of a document are given a UUIDv7 nonce, as described above. Nonces minted before this release are unchanged, and no migration or backfill is involved.
 - The new `elephant_validator_schema_generation` gauge reports the schema generation an instance is actually validating against. Validation is served from an in-memory validator that reloads on notification or every five minutes, so `ListActiveSchemas` and `GetAllActiveSchemas` (which read the database) can report a generation before any instance enforces it; compare the gauge against the active generation to spot instances serving stale schemas.
 - Failures to reload configuration are now observable rather than silent: `elephant_schema_refresh_failures_total` and `elephant_deprecation_refresh_failures_total` count failed reloads (the instance keeps enforcing what it last loaded), a failed read of the active generation ID now fails the whole schema reload instead of relabelling the validator as generation 0, and errors loading the pending generation's schemas or reading the generation ID for `GetAllActiveSchemas` are logged instead of discarded.
 - The audit entries written by `Workflows.SetWorkflow` and `Workflows.DeleteWorkflow` go through the service's own logger with the request context, rather than the package-level `slog` default. A package-level call carries no context, so elephantine's context handler found no log metadata on them: the two entries that record who changed a document workflow were the ones missing the request's fields.
