@@ -18,7 +18,7 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/jackc/pgx/v5"
 	"github.com/ttab/elephant-repository/postgres"
-	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
 )
 
 const (
@@ -33,8 +33,8 @@ const (
 )
 
 func (a *Archiver) runEventlogBatchArchiver(ctx context.Context) error {
-	lock, err := pg.NewJobLock(a.pool, a.logger, "eventlog-batch-archiver",
-		pg.JobLockOptions{})
+	lock, err := joblock.New(a.pool, a.logger, "eventlog-batch-archiver",
+		joblock.Options{})
 	if err != nil {
 		return fmt.Errorf("acquire job lock: %w", err)
 	}

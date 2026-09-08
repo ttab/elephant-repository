@@ -6,8 +6,10 @@ Elephant repository is a [NewsDoc](https://github.com/ttab/newsdoc) document
 repository with versioning, ACLs for permissions, archiving, validation
 schemas, workflow statuses, event output, and metrics for observability.
 
-Documents go in through a [Twirp RPC API](https://twitchtv.github.io/twirp/docs/intro.html)
-that speaks either [protobuf](https://protobuf.dev/) or plain JSON, are
+Documents go in through an RPC API served on two path families — the
+[Connect](https://connectrpc.com/) paths and, for existing clients, the
+[Twirp](https://twitchtv.github.io/twirp/docs/intro.html) ones — that speak
+either [protobuf](https://protobuf.dev/) or plain JSON, are
 validated against registered schemas, and are stored in PostgreSQL as
 sequentially numbered versions. Every change is emitted on an eventlog that
 other systems follow, and is copied to a S3-compatible store as a signed,
@@ -127,8 +129,10 @@ seconds**, because the archiver's first act is to generate and archive a signing
 key and that step runs before the retry machinery exists. Pass `--no-archiver`
 if you deliberately want to run without S3. Without MinIO's asset bucket, uploads and
 attachment downloads fail but document writes are unaffected. Without an OIDC
-provider, every authenticated call fails while
-[the five unauthenticated methods](docs/architecture.md#scopes) keep working.
+provider, every RPC call and every `/sse` connect fails with `unauthenticated`,
+since [a valid token is required before a request reaches a
+handler](docs/architecture.md#scopes); `GET /signing-keys` is the only endpoint
+that still answers.
 
 A fresh database has no active schema generation, which means **every document
 write fails validation until schemas are registered.** The server does not
@@ -155,7 +159,7 @@ Every option is a CLI flag with an environment variable equivalent. Flags win.
 
 | Flag | Env | Default | What it does |
 |---|---|---|---|
-| `--addr` | `ADDR`, `LISTEN_ADDR` | `:1080` | API listen address. Serves Twirp, SSE, websockets and `/signing-keys`. |
+| `--addr` | `ADDR`, `LISTEN_ADDR` | `:1080` | API listen address. Serves both RPC path families, SSE, websockets and `/signing-keys`. |
 | `--tls-addr` | `TLS_ADDR`, `TLS_LISTEN_ADDR` | `:1443` | TLS listen address. Only listened on when `--cert-file` is set. |
 | `--cert-file` | `TLS_CERT_PATH` | | TLS certificate. Setting it is what enables the TLS listener. |
 | `--key-file` | `TLS_KEY_PATH` | | TLS private key. |
@@ -308,14 +312,39 @@ needs instead of the whole thing.
 
 The service definitions live in
 [elephant-api](https://github.com/ttab/elephant-api/blob/main/repository/service.proto),
-not here. Every method is `POST /twirp/elephant.repository.<Service>/<Method>`
-and accepts protobuf or JSON.
+not here. Every method is served twice, and both mounts accept protobuf or
+JSON:
+
+| Family | Path | Protocols |
+|---|---|---|
+| Connect | `POST /elephant.repository.<Service>/<Method>` | Connect, plus gRPC and gRPC-Web in-cluster |
+| Twirp | `POST /twirp/elephant.repository.<Service>/<Method>` | Twirp |
+
+Both mounts are registered on an `elephantine.APIServer` with one set of
+service options, so they share the authentication middleware, the hooks and the
+interceptors: a call with a missing or invalid token is answered
+`unauthenticated` (401) before it reaches a handler, rendered as an error body
+of whichever protocol the caller is speaking.
+
+New clients use the Connect paths and the generated
+`repositoryconnect.New<Service>ServiceClient` constructors, which return the
+same Go interfaces the Twirp clients do. The Twirp mount is kept for the clients
+that already use it and goes away in a future major release. The two differ in
+the shape of an error body, in the HTTP status for three codes, and in how a
+JSON field name is spelled — Connect answers `refType` where Twirp answers
+`ref_type`. See [docs/architecture.md](docs/architecture.md#error-bodies) and
+[JSON field names differ between the
+stacks](docs/architecture.md#json-field-names-differ-between-the-stacks).
+
+The examples below use the Connect paths; drop in the `/twirp` prefix to call
+the same method on the other mount, remembering that the response spells its
+multi-word field names in `snake_case` there.
 
 ### Fetching a document
 
 ```shell
 curl --request POST \
-  --url http://localhost:1080/twirp/elephant.repository.Documents/Get \
+  --url http://localhost:1080/elephant.repository.Documents/Get \
   --header "Authorization: Bearer $TOKEN" \
   --header 'Content-Type: application/json' \
   --data '{
@@ -331,7 +360,7 @@ published rather than what is latest.
 
 ```shell
 curl --request POST \
-  --url http://localhost:1080/twirp/elephant.repository.Documents/GetMeta \
+  --url http://localhost:1080/elephant.repository.Documents/GetMeta \
   --header "Authorization: Bearer $TOKEN" \
   --header 'Content-Type: application/json' \
   --data '{
@@ -574,17 +603,10 @@ with an `err` that is always nil at that point, which renders as
 `%!w(<nil>)`; it is worth fixing in the same change, since it is precisely the
 error path that becomes load-bearing.
 
-**The authentication middleware is hand-rolled and should move to elephantine's
-`ServiceOptions`.** `ServerOptions.SetJWTValidation` in `repository/serve.go`
-predates `elephantine.NewDefaultServiceOptions`, which offers the same
-default-deny behaviour through `ServiceAuthRequired` and validates in a Twirp
-`RequestRouted` hook rather than in HTTP middleware — a better place for it,
-since the hook has the routed method in hand. Two things make it more than a
-swap: `/sse` shares the middleware and is not a Twirp route, so it needs its own
-handling; and elephantine answers an invalid token with `permission_denied`
-where the current middleware returns a 401, so error codes shift for malformed
-tokens. There is also no JWT caching — every request re-validates — which the
-`TODO` at the call site has noted for some time.
+**There is no JWT caching.** Every request re-validates its bearer token. The
+validation lives in elephantine's `AuthInfoParser` now rather than here, so
+caching is a change to make there, but this service is the one that would feel
+it: the middleware runs on every RPC call and on every `/sse` connect.
 
 **No alerting or dashboards live in this repository.** Every metric in
 [docs/observability.md](docs/observability.md) exists and nothing fires on any

@@ -1,32 +1,33 @@
 package repository_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tmaxmax/go-sse"
 	"github.com/ttab/eleconf"
 	rpc "github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
-	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
 	"github.com/ttab/elephantine/test"
-	"github.com/twitchtv/twirp"
 )
 
 func regenerateTestFixtures() bool {
@@ -35,17 +36,163 @@ func regenerateTestFixtures() bool {
 
 const bearerPrefix = "Bearer "
 
+// rpcStack names one of the two protocol stacks the API is served on. The test
+// clients are built for the stack the test context carries, so the whole suite
+// can be run against either.
+type rpcStack string
+
+const (
+	stackTwirp   rpcStack = "twirp"
+	stackConnect rpcStack = "connect"
+)
+
+// stackEnvVar selects the stack the suite runs against when a test does not ask
+// for one itself. Both stacks are always mounted; this only decides which
+// client constructors the tests get.
+const stackEnvVar = "TEST_RPC_STACK"
+
+// defaultStack is the stack the suite runs against unless TEST_RPC_STACK says
+// otherwise. Twirp is the default because it is the stack that is in production
+// use; the CI test job runs the suite a second time with TEST_RPC_STACK=connect.
+func defaultStack(t *testing.T) rpcStack {
+	t.Helper()
+
+	switch v := os.Getenv(stackEnvVar); v {
+	case "", string(stackTwirp):
+		return stackTwirp
+	case string(stackConnect):
+		return stackConnect
+	default:
+		t.Fatalf("unknown %s value %q, expected %q or %q",
+			stackEnvVar, v, stackTwirp, stackConnect)
+
+		return ""
+	}
+}
+
 type TestContext struct {
 	client *http.Client
 
+	// Stack is the protocol stack the client constructors build for.
+	Stack            rpcStack
 	SigningKey       *ecdsa.PrivateKey
-	Server           *httptest.Server
+	Server           testServer
 	Validator        *repository.Validator
 	WorkflowProvider *repository.Workflows
 	Documents        rpc.Documents
 	Schemas          rpc.Schemas
 	Workflows        rpc.Workflows
 	Env              itest.Environment
+
+	// workers tracks the goroutines started on the test's behalf, both the
+	// server's background workers and the clients the helpers connect.
+	workers *workerGroup
+}
+
+// testServer is the handle the suite has on the API server: the base URL to
+// call it at, and the client to call it with. elephantine.NewTestAPIServer owns
+// the underlying httptest server now, so this is what keeps the tests
+// addressing it the way they always have.
+type testServer struct {
+	URL string
+
+	client *http.Client
+}
+
+// Client returns the client the test server is reachable with.
+func (s testServer) Client() *http.Client {
+	return s.client
+}
+
+// bearerTransport attaches an access token to every request. Both stacks
+// authenticate with the Authorization header, so putting it in the transport
+// rather than in a Twirp client hook is what lets the two client constructors
+// share everything but the constructor call.
+type bearerTransport struct {
+	token string
+	next  http.RoundTripper
+}
+
+func (bt bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+
+	r.Header.Set("Authorization", bearerPrefix+bt.token)
+
+	res, err := bt.next.RoundTrip(r)
+	if err != nil {
+		return nil, fmt.Errorf("perform request: %w", err)
+	}
+
+	return res, nil
+}
+
+// authClient returns a copy of the base client that authenticates as claims.
+func (tc *TestContext) authClient(
+	t *testing.T, base *http.Client, claims elephantine.JWTClaims,
+) *http.Client {
+	t.Helper()
+
+	token, err := itest.AccessToken(tc.SigningKey, claims)
+	test.Mustf(t, err, "create access token")
+
+	return rawTokenClient(base, token)
+}
+
+// rawTokenClient returns a copy of the base client that presents token verbatim
+// as its bearer credential. It is how a test reaches the refusal path for a
+// token the parser rejects, which authClient cannot produce: it signs a token
+// that is valid by construction.
+func rawTokenClient(base *http.Client, token string) *http.Client {
+	next := base.Transport
+	if next == nil {
+		next = http.DefaultTransport
+	}
+
+	client := *base
+	client.Transport = bearerTransport{token: token, next: next}
+
+	return &client
+}
+
+// rpcResponse is the shape the raw response body goldens are stored in: the
+// status the stack answered with, and the parsed body.
+type rpcResponse struct {
+	Status int            `json:"status"`
+	Body   map[string]any `json:"body"`
+}
+
+// postJSON makes a JSON call against a raw path, the way a caller that does not
+// use a generated client does, and returns what came back. It is what the body
+// goldens are taken from, so it must not go through a client that would parse
+// the response into a message: the point of those goldens is the JSON itself.
+func (tc *TestContext) postJSON(
+	t *testing.T, client *http.Client, path string, body string,
+) rpcResponse {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(),
+		http.MethodPost, tc.Server.URL+path,
+		bytes.NewBufferString(body))
+	test.Mustf(t, err, "create the request")
+
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := client.Do(req)
+	test.Mustf(t, err, "perform the request")
+
+	defer func() {
+		_ = res.Body.Close()
+	}()
+
+	data, err := io.ReadAll(res.Body)
+	test.Mustf(t, err, "read the response body")
+
+	out := rpcResponse{Status: res.StatusCode}
+
+	err = json.Unmarshal(data, &out.Body)
+	test.Mustf(t, err, "unmarshal the response body %q", string(data))
+
+	return out
 }
 
 func (tc *TestContext) SSEConnect(
@@ -75,12 +222,10 @@ func (tc *TestContext) SSEConnect(
 
 	conn := client.NewConnection(req.WithContext(t.Context()))
 
-	go func() {
-		err = conn.Connect()
-		if err != nil && !errors.Is(err, context.Canceled) {
-			test.Mustf(t, err, "create connection")
-		}
-	}()
+	tc.workers.run(t.Context(), "sse client connection",
+		func(_ context.Context) error {
+			return conn.Connect()
+		})
 
 	return conn
 }
@@ -90,20 +235,14 @@ func (tc *TestContext) DocumentsClient(
 ) rpc.Documents {
 	t.Helper()
 
-	token, err := itest.AccessToken(tc.SigningKey, claims)
-	test.Mustf(t, err, "create access token")
+	client := tc.authClient(t, tc.client, claims)
 
-	docClient := rpc.NewDocumentsProtobufClient(
-		tc.Server.URL, tc.client,
-		twirp.WithClientHooks(&twirp.ClientHooks{
-			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
-				r.Header.Set("Authorization", bearerPrefix+token)
+	if tc.Stack == stackConnect {
+		return repositoryconnect.NewDocumentsServiceClient(
+			client, tc.Server.URL)
+	}
 
-				return ctx, nil
-			},
-		}))
-
-	return docClient
+	return rpc.NewDocumentsProtobufClient(tc.Server.URL, client)
 }
 
 func (tc *TestContext) WorkflowsClient(
@@ -111,20 +250,14 @@ func (tc *TestContext) WorkflowsClient(
 ) rpc.Workflows {
 	t.Helper()
 
-	token, err := itest.AccessToken(tc.SigningKey, claims)
-	test.Mustf(t, err, "create access token")
+	client := tc.authClient(t, tc.client, claims)
 
-	workflowsClient := rpc.NewWorkflowsProtobufClient(
-		tc.Server.URL, tc.client,
-		twirp.WithClientHooks(&twirp.ClientHooks{
-			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
-				r.Header.Set("Authorization", bearerPrefix+token)
+	if tc.Stack == stackConnect {
+		return repositoryconnect.NewWorkflowsServiceClient(
+			client, tc.Server.URL)
+	}
 
-				return ctx, nil
-			},
-		}))
-
-	return workflowsClient
+	return rpc.NewWorkflowsProtobufClient(tc.Server.URL, client)
 }
 
 func (tc *TestContext) SchemasClient(
@@ -132,20 +265,17 @@ func (tc *TestContext) SchemasClient(
 ) rpc.Schemas {
 	t.Helper()
 
-	token, err := itest.AccessToken(tc.SigningKey, claims)
-	test.Mustf(t, err, "create access token")
+	// The schema client deliberately uses the untimed server client:
+	// activating a generation is slower than the 5s the shared client
+	// allows.
+	client := tc.authClient(t, tc.Server.Client(), claims)
 
-	schemasClient := rpc.NewSchemasProtobufClient(
-		tc.Server.URL, tc.Server.Client(),
-		twirp.WithClientHooks(&twirp.ClientHooks{
-			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
-				r.Header.Set("Authorization", bearerPrefix+token)
+	if tc.Stack == stackConnect {
+		return repositoryconnect.NewSchemasServiceClient(
+			client, tc.Server.URL)
+	}
 
-				return ctx, nil
-			},
-		}))
-
-	return schemasClient
+	return rpc.NewSchemasProtobufClient(tc.Server.URL, client)
 }
 
 func (tc *TestContext) MetricsClient(
@@ -153,20 +283,14 @@ func (tc *TestContext) MetricsClient(
 ) rpc.Metrics {
 	t.Helper()
 
-	token, err := itest.AccessToken(tc.SigningKey, claims)
-	test.Mustf(t, err, "create access token")
+	client := tc.authClient(t, tc.client, claims)
 
-	metricsClient := rpc.NewMetricsProtobufClient(
-		tc.Server.URL, tc.client,
-		twirp.WithClientHooks(&twirp.ClientHooks{
-			RequestPrepared: func(ctx context.Context, r *http.Request) (context.Context, error) {
-				r.Header.Set("Authorization", bearerPrefix+token)
+	if tc.Stack == stackConnect {
+		return repositoryconnect.NewMetricsServiceClient(
+			client, tc.Server.URL)
+	}
 
-				return ctx, nil
-			},
-		}))
-
-	return metricsClient
+	return rpc.NewMetricsProtobufClient(tc.Server.URL, client)
 }
 
 type testingServerOptions struct {
@@ -182,6 +306,81 @@ type testingServerOptions struct {
 	// EventlogStream overrides the eventlog stream config for the socket
 	// handler. A zero BufferSize defaults to 500.
 	EventlogStream repository.EventlogStreamConfig
+	// Stack overrides the protocol stack the test clients are built for.
+	// Empty means the one TEST_RPC_STACK selects.
+	Stack rpcStack
+}
+
+// workerStopTimeout is how long a test waits for the background workers its
+// server runs to stop once the test context has been cancelled.
+const workerStopTimeout = 10 * time.Second
+
+// workerGroup tracks the background goroutines a test server runs so that the
+// test cannot complete while one of them is still going.
+//
+// A worker that touches *testing.T after its test has completed panics, and the
+// panic takes down the whole test binary rather than the one test: CI has
+// failed with "Log in goroutine after TestPurge has completed" from a worker
+// logging that it had stopped. The test logger drops records once the test's
+// cleanup has run, but that check cannot be atomic with the log call it guards,
+// so the only reliable fix is for no worker to be running by then.
+type workerGroup struct {
+	t  *testing.T
+	wg sync.WaitGroup
+}
+
+// newWorkerGroup registers the wait as a cleanup, so the ordering of the
+// registration is what puts the wait in the right place: cleanups run in
+// reverse order, so the wait has to be registered after the connection pool's
+// cleanup — a worker still running when the pool closes under it fails with an
+// error that says nothing about anything — and before the workers' own stop
+// functions, which have to have run before there is any point waiting.
+func newWorkerGroup(t *testing.T) *workerGroup {
+	t.Helper()
+
+	g := workerGroup{
+		t: t,
+	}
+
+	t.Cleanup(g.wait)
+
+	return &g
+}
+
+// run starts fn as a tracked worker. A cancellation is the expected way for one
+// to end and is ignored; any other error fails the test through t.Errorf, which
+// is safe to call from another goroutine, unlike the t.Fatalf behind
+// test.Mustf, which only stops the goroutine that calls it.
+func (g *workerGroup) run(
+	ctx context.Context, name string, fn func(context.Context) error,
+) {
+	g.wg.Add(1)
+
+	go func() {
+		defer g.wg.Done()
+
+		err := fn(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			g.t.Errorf("run %s: %v", name, err)
+		}
+	}()
+}
+
+func (g *workerGroup) wait() {
+	stopped := make(chan struct{})
+
+	go func() {
+		g.wg.Wait()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+	case <-time.After(workerStopTimeout):
+		g.t.Errorf(
+			"background workers did not stop within %s of the test context being cancelled",
+			workerStopTimeout)
+	}
 }
 
 func testingAPIServer(
@@ -205,9 +404,10 @@ func testingAPIServer(
 		go dbpool.Close()
 	})
 
+	workers := newWorkerGroup(t)
+
 	assetBucket := repository.NewAssetBucket(
 		logger,
-		s3.NewPresignClient(env.S3, s3.WithPresignExpires(15*time.Minute)),
 		env.S3,
 		env.AssetBucket,
 	)
@@ -233,19 +433,28 @@ func testingAPIServer(
 		})
 	test.Mustf(t, err, "create doc store")
 
-	go store.RunListener(ctx, dbpool)
+	workers.run(ctx, "document store listener",
+		func(ctx context.Context) error {
+			store.RunListener(ctx, dbpool)
 
-	go func() {
-		err := typeConf.Run(ctx, store)
-		test.Mustf(t, err, "run type configurations")
-	}()
+			return nil
+		})
+
+	workers.run(ctx, "type configurations",
+		func(ctx context.Context) error {
+			return typeConf.Run(ctx, store)
+		})
 
 	sse, err := repository.NewSSE(ctx, logger.With(
 		elephantine.LogKeyComponent, "sse",
 	), store)
 	test.Mustf(t, err, "set up SSE server")
 
-	go sse.Run(ctx)
+	workers.run(ctx, "sse server", func(ctx context.Context) error {
+		sse.Run(ctx)
+
+		return nil
+	})
 
 	t.Cleanup(sse.Stop)
 
@@ -262,12 +471,7 @@ func testingAPIServer(
 		})
 		test.Mustf(t, err, "create archiver")
 
-		go func() {
-			err = archiver.Run(ctx)
-			if !errors.Is(err, context.Canceled) {
-				test.Mustf(t, err, "run archiver")
-			}
-		}()
+		workers.run(ctx, "archiver", archiver.Run)
 
 		t.Cleanup(func() {
 			err := archiver.Stop(context.Background())
@@ -288,19 +492,14 @@ func testingAPIServer(
 			log, dbpool, reg, updates)
 		test.Mustf(t, err, "set up eventlog builder")
 
-		go func() {
-			err := pg.RunInJobLock(t.Context(),
-				dbpool, log,
-				"eventlog-builder", "eventlog-builder",
-				pg.JobLockOptions{},
-				func(ctx context.Context) error {
-					return builder.Run(ctx)
-				})
-			if err != nil {
-				log.ErrorContext(ctx, "eventlog builder has stopped",
-					elephantine.LogKeyError, err)
-			}
-		}()
+		workers.run(ctx, "eventlog builder",
+			func(ctx context.Context) error {
+				return joblock.Run(ctx,
+					dbpool, log,
+					"eventlog-builder", "eventlog-builder",
+					joblock.Options{},
+					builder.Run)
+			})
 	}
 
 	validator, err := repository.NewValidator(
@@ -331,17 +530,11 @@ func testingAPIServer(
 	test.Mustf(t, err, "create documents service")
 
 	schemaService := repository.NewSchemasService(logger, store)
-	workflowService := repository.NewWorkflowsService(store)
+	workflowService := repository.NewWorkflowsService(logger, store)
 	metricsService := repository.NewMetricsService(store)
-
-	router := httprouter.New()
 
 	jwtKey, err := itest.NewSigningKey()
 	test.Mustf(t, err, "create signing key")
-
-	var srvOpts repository.ServerOptions
-
-	srvOpts.Hooks = elephantine.LoggingHooks(logger)
 
 	authParser := elephantine.NewStaticAuthInfoParser(
 		t.Context(),
@@ -350,7 +543,24 @@ func testingAPIServer(
 			Issuer: "test",
 		})
 
-	srvOpts.SetJWTValidation(authParser)
+	// The test server is built by the same registration code main.go uses,
+	// so the suite measures the server shape the service actually serves:
+	// one set of service options in front of both mounts, the same
+	// fail-closed authentication middleware, the same request body cap and
+	// the same plaintext protocols — the last of which is what makes gRPC
+	// reachable at all, and what TestIntegrationGRPC would otherwise be
+	// measuring the test server for rather than the service.
+	srv, client := elephantine.NewTestAPIServer(t, logger,
+		elephantine.APIServerCORSHosts("localhost", "example.ecms.se"))
+
+	srv.CORS.AllowedHeaders = append(srv.CORS.AllowedHeaders, "Last-Event-ID")
+
+	// Both stacks are wired up with their metrics against reg, which is also
+	// what asserts that they share the collectors: registering the same RPC
+	// metric twice would fail here.
+	svcOpt, err := elephantine.NewDefaultServiceOptions(
+		logger, authParser, reg, elephantine.ServiceAuthRequired)
+	test.Mustf(t, err, "set up service options")
 
 	socket, err := repository.NewSocketHandler(
 		ctx, logger, reg,
@@ -359,27 +569,30 @@ func testingAPIServer(
 		opts.EventlogStream)
 	test.Mustf(t, err, "set up socket handler")
 
-	err = repository.SetUpRouter(router,
-		repository.WithDocumentsAPI(docService, srvOpts),
-		repository.WithSchemasAPI(schemaService, srvOpts),
-		repository.WithWorkflowsAPI(workflowService, srvOpts),
-		repository.WithMetricsAPI(metricsService, srvOpts),
-		repository.WithSSE(sse.HTTPHandler(), srvOpts),
-		repository.WithWebsocket(socket),
-		repository.WithSigningKeys(dbpool),
-	)
-	test.Mustf(t, err, "set up router")
+	repository.RegisterAPIs(srv, svcOpt,
+		docService, schemaService, workflowService, metricsService)
+	repository.RegisterSSE(srv, svcOpt, sse.HTTPHandler())
+	repository.RegisterWebsocket(srv, socket)
+	repository.RegisterSigningKeys(srv, dbpool)
 
-	server := httptest.NewServer(router)
+	err = srv.ListenAndServe(t.Context())
+	test.Mustf(t, err, "start the API server")
 
-	t.Cleanup(server.Close)
-
-	client := server.Client()
+	server := testServer{
+		URL:    "http://" + srv.Addr(),
+		client: client,
+	}
 
 	client.Timeout = 5 * time.Second
 
+	stack := opts.Stack
+	if stack == "" {
+		stack = defaultStack(t)
+	}
+
 	tc := TestContext{
 		client:           client,
+		Stack:            stack,
 		SigningKey:       jwtKey,
 		Server:           server,
 		Validator:        validator,
@@ -388,6 +601,7 @@ func testingAPIServer(
 		Schemas:          schemaService,
 		WorkflowProvider: workflows,
 		Env:              env,
+		workers:          workers,
 	}
 
 	wf := tc.WorkflowsClient(t,

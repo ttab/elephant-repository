@@ -13,15 +13,16 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	rpcdoc "github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-repository/internal"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/rpc"
 	"github.com/ttab/langos"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
-	"github.com/twitchtv/twirp"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -107,7 +108,7 @@ func (a *DocumentsService) GetSocketToken(
 
 	signedToken, err := token.Sign(a.socketKey)
 	if err != nil {
-		return nil, twirp.InternalErrorf("failed to create token: %v", err)
+		return nil, rpc.Internalf("failed to create token: %v", err)
 	}
 
 	return &repository.GetSocketTokenResponse{
@@ -136,16 +137,16 @@ func (a *DocumentsService) GetMatching(
 	}
 
 	if req.Type == "" {
-		return nil, twirp.RequiredArgumentError("type")
+		return nil, rpc.RequiredArgument("type")
 	}
 
 	if req.Filter != nil {
-		return nil, twirp.InvalidArgumentError("filter", "not implemented yet")
+		return nil, rpc.InvalidArgument("filter", "not implemented yet")
 	}
 
 	typeConf, _, err := a.docTypes.GetConfiguration(ctx, req.Type)
 	if err != nil {
-		return nil, twirp.InternalErrorf("get type configuration: %w", err)
+		return nil, rpc.Internalf("get type configuration: %w", err)
 	}
 
 	method := matchByType
@@ -155,7 +156,7 @@ func (a *DocumentsService) GetMatching(
 	}
 
 	if method == matchByType && !typeConf.BoundedCollection {
-		return nil, twirp.InvalidArgumentError("type",
+		return nil, rpc.InvalidArgument("type",
 			"is not a bounded collection type")
 	}
 
@@ -164,7 +165,7 @@ func (a *DocumentsService) GetMatching(
 	if req.Timespan != nil {
 		ts, err := TimespanFromRPC(req.Timespan)
 		if err != nil {
-			return nil, twirp.InvalidArgumentError("timespan", err.Error())
+			return nil, rpc.InvalidArgument("timespan", err.Error())
 		}
 
 		timespan = &ts
@@ -177,7 +178,7 @@ func (a *DocumentsService) GetMatching(
 		hits, err := a.store.ListDocumentsInTimeRange(
 			ctx, req.Type, *timespan, req.Labels)
 		if err != nil {
-			return nil, twirp.InternalErrorf(
+			return nil, rpc.Internalf(
 				"get documents for time range: %v", err)
 		}
 
@@ -186,7 +187,7 @@ func (a *DocumentsService) GetMatching(
 		hits, err := a.store.ListDocumentsOfType(
 			ctx, req.Type, nil, req.Labels)
 		if err != nil {
-			return nil, twirp.InternalErrorf(
+			return nil, rpc.Internalf(
 				"get documents by type range: %v", err)
 		}
 
@@ -212,7 +213,7 @@ func (a *DocumentsService) GetMatching(
 
 	allowedDocs, err := a.store.BulkCheckPermissions(ctx, permReq)
 	if err != nil {
-		return nil, twirp.InternalErrorf("perform pernissions check: %w", err)
+		return nil, rpc.Internalf("perform pernissions check: %w", err)
 	}
 
 	if len(allowedDocs) == 0 {
@@ -269,7 +270,7 @@ func (a *DocumentsService) GetMatching(
 
 	err = grp.Wait()
 	if err != nil {
-		return nil, twirp.InternalErrorf("get match data: %v", err)
+		return nil, rpc.Internalf("get match data: %v", err)
 	}
 
 	// TODO: This is probably where we would apply filters.
@@ -286,7 +287,7 @@ func (a *DocumentsService) GetMatching(
 	for doc := range documents {
 		docID, err := uuid.Parse(doc.Document.UUID)
 		if err != nil {
-			return nil, twirp.InternalErrorf(
+			return nil, rpc.Internalf(
 				"invalid document UUID: %w", err)
 		}
 
@@ -393,7 +394,7 @@ func (a *DocumentsService) GetDeliverableInfo(
 
 	info, err := a.store.GetDeliverableInfo(ctx, docUUID)
 	if err != nil {
-		return nil, twirp.InternalErrorf("load deliverable info: %v", err)
+		return nil, rpc.Internalf("load deliverable info: %v", err)
 	}
 
 	var res repository.GetDeliverableInfoResponse
@@ -426,11 +427,11 @@ func (a *DocumentsService) BulkGetDeliverableInfo(
 	}
 
 	if len(req.Uuids) == 0 {
-		return nil, twirp.RequiredArgumentError("uuids")
+		return nil, rpc.RequiredArgument("uuids")
 	}
 
 	if len(req.Uuids) > 200 {
-		return nil, twirp.InvalidArgumentError("uuids",
+		return nil, rpc.InvalidArgument("uuids",
 			"limited to 200 documents")
 	}
 
@@ -439,7 +440,7 @@ func (a *DocumentsService) BulkGetDeliverableInfo(
 	for i, raw := range req.Uuids {
 		id, err := uuid.Parse(raw)
 		if err != nil {
-			return nil, twirp.InvalidArgument.Errorf(
+			return nil, rpc.Errorf(connect.CodeInvalidArgument,
 				"uuids: the %dnth UUID is invalid: %v", i, err)
 		}
 
@@ -459,7 +460,7 @@ func (a *DocumentsService) BulkGetDeliverableInfo(
 				Permissions: []Permission{ReadPermission},
 			})
 		if err != nil {
-			return nil, twirp.InternalErrorf("check ACL access: %v", err)
+			return nil, rpc.Internalf("check ACL access: %v", err)
 		}
 
 		uuids = permitted
@@ -471,7 +472,7 @@ func (a *DocumentsService) BulkGetDeliverableInfo(
 
 	infos, err := a.store.BulkGetDeliverableInfo(ctx, uuids)
 	if err != nil {
-		return nil, twirp.InternalErrorf("load deliverable info: %v", err)
+		return nil, rpc.Internalf("load deliverable info: %v", err)
 	}
 
 	res := repository.BulkGetDeliverableInfoResponse{
@@ -527,14 +528,14 @@ func (a *DocumentsService) GetStatus(
 	}
 
 	if req.Name == "" {
-		return nil, twirp.RequiredArgumentError("name")
+		return nil, rpc.RequiredArgument("name")
 	}
 
 	status, err := a.store.GetStatus(ctx, docUUID, req.Name, req.Id)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-		return nil, twirp.NotFoundError(err.Error())
+		return nil, rpc.NotFound(err.Error())
 	} else if err != nil {
-		return nil, twirp.InternalErrorf("load status information: %v", err)
+		return nil, rpc.Internalf("load status information: %v", err)
 	}
 
 	return &repository.GetStatusResponse{
@@ -554,11 +555,11 @@ func (a *DocumentsService) GetStatusOverview(
 	}
 
 	if len(req.Uuids) == 0 {
-		return nil, twirp.RequiredArgumentError("uuids")
+		return nil, rpc.RequiredArgument("uuids")
 	}
 
 	if len(req.Uuids) > 200 {
-		return nil, twirp.InvalidArgumentError("uuids",
+		return nil, rpc.InvalidArgument("uuids",
 			"limited to 200 documents")
 	}
 
@@ -567,7 +568,7 @@ func (a *DocumentsService) GetStatusOverview(
 	for i := range req.Uuids {
 		id, err := uuid.Parse(req.Uuids[i])
 		if err != nil {
-			return nil, twirp.InvalidArgument.Errorf(
+			return nil, rpc.Errorf(connect.CodeInvalidArgument,
 				"uuids: the %dnth UUID is invalid: %v",
 				i+i, err)
 		}
@@ -590,7 +591,7 @@ func (a *DocumentsService) GetStatusOverview(
 				Permissions: []Permission{ReadPermission},
 			})
 		if err != nil {
-			return nil, twirp.InternalErrorf("check ACL access: %v", err)
+			return nil, rpc.Internalf("check ACL access: %v", err)
 		}
 
 		uuids = permitted
@@ -599,7 +600,7 @@ func (a *DocumentsService) GetStatusOverview(
 	data, err := a.store.GetStatusOverview(
 		ctx, uuids, req.Statuses, req.GetMeta)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"get overview from database: %v", err)
 	}
 
@@ -653,11 +654,11 @@ func (a *DocumentsService) GetStatusHistory(
 	}
 
 	if req.Name == "" {
-		return nil, twirp.RequiredArgumentError("name")
+		return nil, rpc.RequiredArgument("name")
 	}
 
 	if req.Before != 0 && req.Before < 2 {
-		return nil, twirp.InvalidArgumentError("before",
+		return nil, rpc.InvalidArgument("before",
 			"cannot be non-zero and less that 2")
 	}
 
@@ -665,7 +666,7 @@ func (a *DocumentsService) GetStatusHistory(
 		ctx, docUUID, req.Name, req.Before, 10,
 	)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"failed to get history from store: %w", err)
 	}
 
@@ -707,7 +708,7 @@ func (a *DocumentsService) GetNilStatuses(
 
 	stored, err := a.store.GetNilStatuses(ctx, docUUID, req.Names)
 	if err != nil {
-		return nil, twirp.InternalErrorf("read status information: %v", err)
+		return nil, rpc.Internalf("read status information: %v", err)
 	}
 
 	res := repository.GetNilStatusesResponse{
@@ -785,7 +786,7 @@ func (a *DocumentsService) GetPermissions(
 
 	acl, err := a.store.GetDocumentACL(ctx, docUUID)
 	if err != nil {
-		return nil, twirp.InternalErrorf("failed to read document ACL: %w", err)
+		return nil, rpc.Internalf("failed to read document ACL: %w", err)
 	}
 
 	subs := []string{auth.Claims.Subject}
@@ -845,7 +846,7 @@ func (a *DocumentsService) CompactedEventlog(
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
 		return &repository.GetCompactedEventlogResponse{}, nil
 	} else if err != nil {
-		return nil, fmt.Errorf(
+		return nil, rpc.Internalf(
 			"failed to get the latest event ID: %w", err)
 	}
 
@@ -871,19 +872,19 @@ func (a *DocumentsService) CompactedEventlog(
 
 	switch {
 	case cr.Until <= cr.After:
-		return nil, twirp.InvalidArgumentError("until",
+		return nil, rpc.InvalidArgument("until",
 			"until must be greater than 'after'")
 	case cr.Until > lastID:
-		return nil, twirp.InvalidArgumentError("until",
+		return nil, rpc.InvalidArgument("until",
 			"cannot be greater than the latest event ID")
 	case cr.Until-cr.After > 10000:
-		return nil, twirp.InvalidArgumentError("until",
+		return nil, rpc.InvalidArgument("until",
 			"`until` cannot be greater than `after`+10000")
 	}
 
 	evts, err := a.store.GetCompactedEventlog(ctx, cr)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, rpc.Internalf(
 			"failed to read eventlog from database: %w", err)
 	}
 
@@ -945,7 +946,7 @@ func (a *DocumentsService) Eventlog(
 		case IsDocStoreErrorCode(err, ErrCodeNotFound):
 			after = 0
 		case err != nil:
-			return nil, twirp.InternalErrorf(
+			return nil, rpc.Internalf(
 				"failed to get last event: %w", err)
 		default:
 			after = max(0, evt.ID+after)
@@ -954,7 +955,7 @@ func (a *DocumentsService) Eventlog(
 
 	evts, err := a.store.GetEventlog(ctx, after, limit)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"failed to fetch events from store: %w", err)
 	}
 
@@ -1001,7 +1002,7 @@ func (a *DocumentsService) eventlogWaitLoop(
 		case <-timeout:
 			return res, nil
 		case <-ctx.Done():
-			return nil, twirp.Canceled.Error("context cancelled")
+			return nil, waitEndedError(ctx)
 		case <-newEvent:
 		}
 
@@ -1012,7 +1013,7 @@ func (a *DocumentsService) eventlogWaitLoop(
 			limit-internal.MustInt32(len(res.Items)),
 		)
 		if err != nil {
-			return nil, twirp.InternalErrorf(
+			return nil, rpc.Internalf(
 				"failed to fetch events from store: %w", err)
 		}
 
@@ -1032,6 +1033,21 @@ func (a *DocumentsService) eventlogWaitLoop(
 			batchTimeout = time.After(waitBatch)
 		}
 	}
+}
+
+// waitEndedError is the error a long poll that was ended by its context is
+// answered with. A deadline and a cancellation are different things to a
+// caller: a deadline is the wait the caller asked for running out, which is
+// what Connect-Timeout-Ms turns into, and it is answered deadline_exceeded so
+// that the caller can tell it from the client going away. Only an actual
+// cancellation is canceled.
+func waitEndedError(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return rpc.Errorf(connect.CodeDeadlineExceeded,
+			"the deadline for the call was exceeded")
+	}
+
+	return rpc.Errorf(connect.CodeCanceled, "context cancelled")
 }
 
 func RPCToEvent(evt *repository.EventlogItem) (Event, error) {
@@ -1220,7 +1236,7 @@ func TimespanTuplesFromRPC(spans []*repository.Timespan) ([][2]time.Time, error)
 func (a *DocumentsService) Evict(
 	_ context.Context, _ *repository.EvictRequest,
 ) (*repository.EvictResponse, error) {
-	return nil, twirp.Unimplemented.Error("not implemented")
+	return nil, rpc.Errorf(connect.CodeUnimplemented, "not implemented")
 }
 
 // Delete implements repository.Documents.
@@ -1239,7 +1255,7 @@ func (a *DocumentsService) Delete(
 	}
 
 	if req.IfMatch < -1 {
-		return nil, twirp.InvalidArgumentError("if_match",
+		return nil, rpc.InvalidArgument("if_match",
 			"cannot be less than -1")
 	}
 
@@ -1249,7 +1265,7 @@ func (a *DocumentsService) Delete(
 	}
 
 	err = a.accessCheck(ctx, auth, docUUID, WritePermission)
-	if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
+	if rpc.IsCode(err, connect.CodeNotFound) {
 		// Treat a delete of a document that doesn't exist as ok.
 		return &repository.DeleteDocumentResponse{}, nil
 	} else if err != nil {
@@ -1267,15 +1283,15 @@ func (a *DocumentsService) Delete(
 
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
-		return nil, twirp.FailedPrecondition.Error(err.Error())
+		return nil, rpc.FailedPreconditionf("%w", err)
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
-		return nil, twirp.FailedPrecondition.Error("the document is locked by someone else")
+		return nil, rpc.FailedPreconditionf("the document is locked by someone else")
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
 		// Treating a delete call as a success if the delete already is
 		// in progress.
 		return &repository.DeleteDocumentResponse{}, nil
 	case err != nil:
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"failed to delete document from data store: %w", err)
 	}
 
@@ -1303,7 +1319,7 @@ func (a *DocumentsService) ListDeleted(
 	if req.Uuid != "" {
 		u, err := uuid.Parse(req.Uuid)
 		if err != nil {
-			return nil, twirp.InvalidArgumentError(
+			return nil, rpc.InvalidArgument(
 				"uuid", err.Error())
 		}
 
@@ -1315,7 +1331,7 @@ func (a *DocumentsService) ListDeleted(
 	if req.Timezone != "" {
 		l, err := time.LoadLocation(req.Timezone)
 		if err != nil {
-			return nil, twirp.InvalidArgumentError(
+			return nil, rpc.InvalidArgument(
 				"timezone", "unknown timezone")
 		}
 
@@ -1325,7 +1341,7 @@ func (a *DocumentsService) ListDeleted(
 	if req.BeforeDate != "" {
 		t, err := time.ParseInLocation("2006-01-02", req.BeforeDate, tz)
 		if err != nil {
-			return nil, twirp.InvalidArgumentError(
+			return nil, rpc.InvalidArgument(
 				"start_at_date", err.Error())
 		}
 
@@ -1334,7 +1350,7 @@ func (a *DocumentsService) ListDeleted(
 
 	deleted, err := a.store.ListDeleteRecords(ctx, docUUID, req.BeforeId, beforeTime)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list delete records: %w", err)
+		return nil, rpc.Internalf("failed to list delete records: %w", err)
 	}
 
 	res := repository.ListDeletedResponse{
@@ -1381,16 +1397,16 @@ func (a *DocumentsService) Restore(
 	}
 
 	if req.Uuid == "" {
-		return nil, twirp.RequiredArgumentError("uuid")
+		return nil, rpc.RequiredArgument("uuid")
 	}
 
 	if req.DeleteRecordId == 0 {
-		return nil, twirp.RequiredArgumentError("delete_record_id")
+		return nil, rpc.RequiredArgument("delete_record_id")
 	}
 
 	docUUID, err := uuid.Parse(req.Uuid)
 	if err != nil {
-		return nil, twirp.InvalidArgumentError(
+		return nil, rpc.InvalidArgument(
 			"uuid", err.Error())
 	}
 
@@ -1407,15 +1423,15 @@ func (a *DocumentsService) Restore(
 
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeExists):
-		return nil, twirp.AlreadyExists.Error(err.Error())
+		return nil, rpc.AlreadyExists(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
-		return nil, twirp.FailedPrecondition.Error(err.Error())
+		return nil, rpc.FailedPreconditionf("%w", err)
 	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
-		return nil, twirp.InvalidArgument.Error(err.Error())
+		return nil, rpc.Errorf(connect.CodeInvalidArgument, "%w", err)
 	case IsDocStoreErrorCode(err, ErrCodeNotFound):
-		return nil, twirp.NotFoundError(err.Error())
+		return nil, rpc.NotFound(err.Error())
 	case err != nil:
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"failed to start restore process: %v", err)
 	}
 
@@ -1435,16 +1451,16 @@ func (a *DocumentsService) Purge(
 	}
 
 	if req.Uuid == "" {
-		return nil, twirp.RequiredArgumentError("uuid")
+		return nil, rpc.RequiredArgument("uuid")
 	}
 
 	if req.DeleteRecordId == 0 {
-		return nil, twirp.RequiredArgumentError("delete_record_id")
+		return nil, rpc.RequiredArgument("delete_record_id")
 	}
 
 	docUUID, err := uuid.Parse(req.Uuid)
 	if err != nil {
-		return nil, twirp.InvalidArgumentError(
+		return nil, rpc.InvalidArgument(
 			"uuid", err.Error())
 	}
 
@@ -1454,11 +1470,11 @@ func (a *DocumentsService) Purge(
 
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
-		return nil, twirp.FailedPrecondition.Error(err.Error())
+		return nil, rpc.FailedPreconditionf("%w", err)
 	case IsDocStoreErrorCode(err, ErrCodeNotFound):
-		return nil, twirp.NotFoundError(err.Error())
+		return nil, rpc.NotFound(err.Error())
 	case err != nil:
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"failed to start purge process: %v", err)
 	}
 
@@ -1477,7 +1493,7 @@ func parseSubsetExpressions(
 	for i, expr := range expressions {
 		ve, err := newsdoc.ValueExtractorFromString(expr)
 		if err != nil {
-			return nil, twirp.InvalidArgumentError(
+			return nil, rpc.InvalidArgument(
 				fmt.Sprintf("subset[%d]", i), err.Error())
 		}
 
@@ -1545,21 +1561,21 @@ func (a *DocumentsService) Get(
 	}
 
 	if req.Version < 0 {
-		return nil, twirp.InvalidArgumentError("version",
+		return nil, rpc.InvalidArgument("version",
 			"cannot be a negative number")
 	}
 
 	if req.Lock != nil && req.Lock.Ttl == 0 {
-		return nil, twirp.RequiredArgumentError("lock.ttl")
+		return nil, rpc.RequiredArgument("lock.ttl")
 	}
 
 	if req.Version > 0 && req.Status != "" {
-		return nil, twirp.InvalidArgumentError("status",
+		return nil, rpc.InvalidArgument("status",
 			"status cannot be specified together with a version")
 	}
 
 	if req.MetaDocumentVersion > 0 && req.Status != "" {
-		return nil, twirp.InvalidArgumentError("status",
+		return nil, rpc.InvalidArgument("status",
 			"status cannot be specified together with a meta document version")
 	}
 
@@ -1588,14 +1604,14 @@ func (a *DocumentsService) Get(
 	// TODO: This is a bit wasteful to request for all document loads.
 	meta, err := a.store.GetDocumentMeta(ctx, docUUID)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-		return nil, twirp.NotFoundError("the document doesn't exist")
+		return nil, rpc.NotFound("the document doesn't exist")
 	} else if err != nil {
-		return nil, twirp.Internal.Errorf(
+		return nil, rpc.Internalf(
 			"failed to load document metadata: %w", err)
 	}
 
 	if meta.SystemLock != "" {
-		return nil, twirp.FailedPrecondition.Errorf(
+		return nil, rpc.FailedPreconditionf(
 			"document is locked for %q", meta.SystemLock)
 	}
 
@@ -1604,7 +1620,7 @@ func (a *DocumentsService) Get(
 	if req.Lock != nil {
 		exclusivity, err := lockExclusivityFromRPC(req.Lock.Exclusivity)
 		if err != nil {
-			return nil, twirp.InvalidArgumentError("lock.exclusivity", err.Error())
+			return nil, rpc.InvalidArgument("lock.exclusivity", err.Error())
 		}
 
 		lock, err := a.store.Lock(ctx, LockRequest{
@@ -1618,13 +1634,13 @@ func (a *DocumentsService) Get(
 
 		switch {
 		case IsDocStoreErrorCode(err, ErrCodeDeleteLock), IsDocStoreErrorCode(err, ErrCodeNotFound):
-			return nil, twirp.FailedPrecondition.Error("could not find the document")
+			return nil, rpc.FailedPreconditionf("could not find the document")
 		case IsDocStoreErrorCode(err, ErrCodeBadRequest):
-			return nil, twirp.InvalidArgument.Error(err.Error())
+			return nil, rpc.Errorf(connect.CodeInvalidArgument, "%w", err)
 		case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
-			return nil, lockConflictTwirp(err)
+			return nil, lockConflictError(err)
 		case err != nil:
-			return nil, fmt.Errorf("could not obtain lock: %w", err)
+			return nil, rpc.Internalf("could not obtain lock: %w", err)
 		}
 
 		lockGrant = &repository.LockGrant{
@@ -1648,19 +1664,19 @@ func (a *DocumentsService) Get(
 	case req.Status != "":
 		status, ok := meta.Statuses[req.Status]
 		if !ok {
-			return nil, twirp.NotFoundError(
+			return nil, rpc.NotFound(
 				"no such status set for the document")
 		}
 
 		version = status.Version
 		if version == -1 {
-			return nil, twirp.NotFoundError(
+			return nil, rpc.NotFound(
 				"no such status set for the document")
 		}
 
 		switch {
 		case requireMetaDoc && status.MetaDocVersion == 0:
-			return nil, twirp.NotFoundError(
+			return nil, rpc.NotFound(
 				"no meta document was set for that status")
 		case status.MetaDocVersion == 0:
 			// Signal that no meta document was present when the
@@ -1683,9 +1699,9 @@ func (a *DocumentsService) Get(
 	if req.MetaDocument != repository.GetMetaDoc_META_ONLY {
 		doc, _, err := a.store.GetDocument(ctx, docUUID, version)
 		if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-			return nil, twirp.NotFoundError("no such version")
+			return nil, rpc.NotFound("no such version")
 		} else if err != nil {
-			return nil, twirp.Internal.Errorf(
+			return nil, rpc.Internalf(
 				"failed to load document version: %w", err)
 		}
 
@@ -1708,9 +1724,9 @@ func (a *DocumentsService) Get(
 		switch {
 		case IsDocStoreErrorCode(err, ErrCodeNotFound) && !requireMetaDoc:
 		case IsDocStoreErrorCode(err, ErrCodeNotFound) && requireMetaDoc:
-			return nil, twirp.NotFoundError("no meta document present")
+			return nil, rpc.NotFound("no meta document present")
 		case err != nil:
-			return nil, twirp.Internal.Errorf(
+			return nil, rpc.Internalf(
 				"failed to load meta document: %w", err)
 		default:
 			res.Meta = &repository.MetaDocument{
@@ -1736,11 +1752,11 @@ func (a *DocumentsService) BulkGet(
 	}
 
 	if len(req.Documents) == 0 {
-		return nil, twirp.RequiredArgumentError("documents")
+		return nil, rpc.RequiredArgument("documents")
 	}
 
 	if len(req.Documents) > 200 {
-		return nil, twirp.InvalidArgumentError("documents",
+		return nil, rpc.InvalidArgument("documents",
 			"bulk loading of more than 200 documents is not allowed")
 	}
 
@@ -1754,18 +1770,18 @@ func (a *DocumentsService) BulkGet(
 
 	for i, ref := range req.Documents {
 		if ref.Uuid == "" {
-			return nil, twirp.RequiredArgumentError(
+			return nil, rpc.RequiredArgument(
 				fmt.Sprintf("documents.%d.uuid", i))
 		}
 
 		docUUID, err := uuid.Parse(ref.Uuid)
 		if err != nil {
-			return nil, twirp.InvalidArgumentError(
+			return nil, rpc.InvalidArgument(
 				fmt.Sprintf("documents.%d.uuid", i), err.Error())
 		}
 
 		if ref.Version < 0 {
-			return nil, twirp.InvalidArgumentError(
+			return nil, rpc.InvalidArgument(
 				fmt.Sprintf("documents.%d.version", i),
 				"cannot be a negative number")
 		}
@@ -1794,7 +1810,7 @@ func (a *DocumentsService) BulkGet(
 				Permissions: []Permission{ReadPermission},
 			})
 		if err != nil {
-			return nil, twirp.InternalErrorf("check ACL access: %v", err)
+			return nil, rpc.Internalf("check ACL access: %v", err)
 		}
 
 		for _, id := range p {
@@ -1816,7 +1832,7 @@ func (a *DocumentsService) BulkGet(
 
 	docs, err := a.store.BulkGetDocuments(ctx, refs)
 	if err != nil {
-		return nil, twirp.InternalErrorf("load documents: %w", err)
+		return nil, rpc.Internalf("load documents: %w", err)
 	}
 
 	resp := repository.BulkGetResponse{
@@ -1872,7 +1888,7 @@ func (a *DocumentsService) GetHistory(
 	}
 
 	if req.Before != 0 && req.Before < 2 {
-		return nil, twirp.InvalidArgumentError("before",
+		return nil, rpc.InvalidArgument("before",
 			"cannot be non-zero and less that 2")
 	}
 
@@ -1880,7 +1896,7 @@ func (a *DocumentsService) GetHistory(
 		ctx, docUUID, req.Before, 10, req.LoadStatuses,
 	)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-		return nil, twirp.NotFoundError("no such version")
+		return nil, rpc.NotFound("no such version")
 	}
 
 	var res repository.GetHistoryResponse
@@ -1970,13 +1986,13 @@ func (a *DocumentsService) accessCheck(
 		Permissions: permissions,
 	})
 	if err != nil {
-		return twirp.InternalErrorf(
+		return rpc.Internalf(
 			"failed to check document permissions: %w", err)
 	}
 
 	switch access {
 	case PermissionCheckNoSuchDocument:
-		return twirp.NotFoundError("no such document")
+		return rpc.NotFound("no such document")
 	case PermissionCheckDenied:
 		names := make([]string, len(permissions))
 
@@ -1984,11 +2000,11 @@ func (a *DocumentsService) accessCheck(
 			names[i] = permissions[i].Name()
 		}
 
-		return twirp.PermissionDenied.Errorf(
+		return rpc.PermissionDeniedf(
 			"no %s permission for the document",
 			strings.Join(names, " or "))
 	case PermissionCheckSystemLock:
-		return twirp.FailedPrecondition.Error(
+		return rpc.FailedPreconditionf(
 			"the document is temporarily locked by the system")
 	case PermissionCheckAllowed:
 	}
@@ -2024,9 +2040,9 @@ func (a *DocumentsService) GetMeta(
 
 	meta, err := a.store.GetDocumentMeta(ctx, docUUID)
 	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-		return nil, twirp.NotFoundError("the document doesn't exist")
+		return nil, rpc.NotFound("the document doesn't exist")
 	} else if err != nil {
-		return nil, fmt.Errorf("failed to load basic metadata: %w", err)
+		return nil, rpc.Internalf("failed to load basic metadata: %w", err)
 	}
 
 	return &repository.GetMetaResponse{
@@ -2036,12 +2052,12 @@ func (a *DocumentsService) GetMeta(
 
 func validateRequiredUUIDParam(v string) (uuid.UUID, error) {
 	if v == "" {
-		return uuid.Nil, twirp.RequiredArgumentError("uuid")
+		return uuid.Nil, rpc.RequiredArgument("uuid")
 	}
 
 	u, err := uuid.Parse(v)
 	if err != nil {
-		return uuid.Nil, twirp.InvalidArgumentError("uuid", err.Error())
+		return uuid.Nil, rpc.InvalidArgument("uuid", err.Error())
 	}
 
 	return u, nil
@@ -2074,7 +2090,7 @@ func (a *DocumentsService) Update(
 
 	res, err := a.store.Update(ctx, a.workflows, []*UpdateRequest{up})
 	if err != nil {
-		return nil, twirpErrorFromDocumentUpdateError(err)
+		return nil, rpcErrorFromDocumentUpdateError(err)
 	}
 
 	return &repository.UpdateResponse{
@@ -2100,7 +2116,7 @@ func (a *DocumentsService) BulkUpdate(
 	for _, update := range req.Updates {
 		isDuplicate := dedupe[update.Uuid]
 		if isDuplicate {
-			return nil, twirp.InvalidArgumentError("updates",
+			return nil, rpc.InvalidArgument("updates",
 				"a document can only be updated once in a batch")
 		}
 
@@ -2116,7 +2132,7 @@ func (a *DocumentsService) BulkUpdate(
 
 	res, err := a.store.Update(ctx, a.workflows, updates)
 	if err != nil {
-		return nil, twirpErrorFromDocumentUpdateError(err)
+		return nil, rpcErrorFromDocumentUpdateError(err)
 	}
 
 	var resp repository.BulkUpdateResponse
@@ -2132,26 +2148,26 @@ func (a *DocumentsService) BulkUpdate(
 	return &resp, nil
 }
 
-func twirpErrorFromDocumentUpdateError(err error) error {
+func rpcErrorFromDocumentUpdateError(err error) error {
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeOptimisticLock):
-		return twirp.FailedPrecondition.Error(err.Error())
+		return rpc.FailedPreconditionf("%w", err)
 	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
-		return twirp.InvalidArgumentError("document", err.Error())
+		return rpc.InvalidArgument("document", err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeFailedPrecondition):
-		return twirp.FailedPrecondition.Error(err.Error())
+		return rpc.FailedPreconditionf("%w", err)
 	case IsDocStoreErrorCode(err, ErrCodePermissionDenied):
-		return twirp.PermissionDenied.Error(err.Error())
+		return rpc.PermissionDeniedf("%w", err)
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
-		return twirp.FailedPrecondition.Error(err.Error())
+		return rpc.FailedPreconditionf("%w", err)
 	case IsDocStoreErrorCode(err, ErrCodeNotFound):
-		return twirp.NotFoundError(err.Error())
+		return rpc.NotFound(err.Error())
 	case IsDocStoreErrorCode(err, ErrCodeSystemLock):
-		return twirp.FailedPrecondition.Error(err.Error())
+		return rpc.FailedPreconditionf("%w", err)
 	case IsDocStoreErrorCode(err, ErrCodeDuplicateURI):
-		return twirp.AlreadyExists.Error(err.Error())
+		return rpc.AlreadyExists(err.Error())
 	case err != nil:
-		return twirp.InternalErrorf(
+		return rpc.Internalf(
 			"failed to update document: %w", err)
 	}
 
@@ -2177,7 +2193,7 @@ func (a *DocumentsService) buildUpdateRequest(
 		if id.OriginallyCreated != "" {
 			t, err := time.Parse(time.RFC3339, id.OriginallyCreated)
 			if err != nil {
-				return nil, twirp.InvalidArgumentError(
+				return nil, rpc.InvalidArgument(
 					"import_directive.originally_created",
 					fmt.Sprintf("invalid date: %v", err),
 				)
@@ -2206,7 +2222,7 @@ func (a *DocumentsService) buildUpdateRequest(
 		for name, idStr := range req.AttachObjects {
 			id, err := uuid.Parse(idStr)
 			if err != nil {
-				return nil, elephantine.InvalidArgumentf(
+				return nil, rpc.InvalidArgumentf(
 					"attach_objects",
 					"invalid UUID for object %q: %v",
 					name, err,
@@ -2230,19 +2246,19 @@ func (a *DocumentsService) buildUpdateRequest(
 
 		validationResult, err := a.validator.ValidateDocument(ctx, &doc)
 		if err != nil {
-			return nil, fmt.Errorf("unable to validate document %w", err)
+			return nil, rpc.Internalf("unable to validate document %w", err)
 		}
 
 		if len(validationResult) > 0 {
-			err := twirp.InvalidArgument.Errorf(
+			err := rpc.Errorf(connect.CodeInvalidArgument,
 				"the document had %d validation errors, the first one is: %v",
 				len(validationResult), validationResult[0].String())
 
-			err = err.WithMeta("err_count",
+			err = rpc.WithMeta(err, "err_count",
 				strconv.Itoa(len(validationResult)))
 
 			for i := range validationResult {
-				err = err.WithMeta(strconv.Itoa(i),
+				err = rpc.WithMeta(err, strconv.Itoa(i),
 					validationResult[i].String())
 			}
 
@@ -2256,7 +2272,7 @@ func (a *DocumentsService) buildUpdateRequest(
 		if isMetaURI(up.Document.URI) {
 			mainDoc, err := parseMetaURI(up.Document.URI)
 			if err != nil {
-				return nil, twirp.InvalidArgumentError(
+				return nil, rpc.InvalidArgument(
 					"document.uri", err.Error())
 			}
 
@@ -2345,7 +2361,7 @@ func (a *DocumentsService) verifyUpdateRequest(
 ) error {
 	if req.ImportDirective != nil && !auth.Claims.HasAnyScope(
 		ScopeDocumentImport, ScopeDocumentAdmin) {
-		return twirp.PermissionDenied.Error(
+		return rpc.PermissionDeniedf(
 			"no import directive permission")
 	}
 
@@ -2368,12 +2384,12 @@ func (a *DocumentsService) verifyUpdateRequest(
 		// a normal document.
 		mt, err := a.store.GetMetaTypeForDocument(ctx, docUUID)
 		if err != nil {
-			return twirp.InternalErrorf(
+			return rpc.Internalf(
 				"could not get meta type for document: %w", err)
 		}
 
 		if mt.IsMetaDocument {
-			return twirp.InvalidArgument.Error(
+			return rpc.Errorf(connect.CodeInvalidArgument,
 				"meta documents cannot be turned into normal documents")
 		}
 	}
@@ -2381,14 +2397,14 @@ func (a *DocumentsService) verifyUpdateRequest(
 	if req.Document == nil {
 		switch {
 		case len(req.Status) == 0 && len(req.Acl) == 0:
-			return twirp.InvalidArgumentError(
+			return rpc.InvalidArgument(
 				"document",
 				"required when no status or ACL updates are included")
 		case len(req.AttachObjects) > 0:
-			return twirp.InvalidArgumentError("attach_objects",
+			return rpc.InvalidArgument("attach_objects",
 				"objects can only be attached when creating or updating the document")
 		case len(req.DetachObjects) > 0:
-			return twirp.InvalidArgumentError("detach_objects",
+			return rpc.InvalidArgument("detach_objects",
 				"objects can only be detached updating the document")
 		}
 	}
@@ -2396,13 +2412,13 @@ func (a *DocumentsService) verifyUpdateRequest(
 	for name := range req.AttachObjects {
 		disallowed := objectNameDisallowed.FindString(name)
 		if disallowed != "" {
-			return elephantine.InvalidArgumentf("attach_objects",
+			return rpc.InvalidArgumentf("attach_objects",
 				"invalid character %q in object name", disallowed)
 		}
 	}
 
 	if req.IfMatch < -1 {
-		return twirp.InvalidArgumentError("if_match",
+		return rpc.InvalidArgument("if_match",
 			"cannot be less than -1")
 	}
 
@@ -2416,12 +2432,12 @@ func (a *DocumentsService) verifyUpdateRequest(
 		if req.Document.Uuid == "" {
 			req.Document.Uuid = docUUID.String()
 		} else if req.Document.Uuid != docUUID.String() {
-			return twirp.InvalidArgumentError("document.uuid",
+			return rpc.InvalidArgument("document.uuid",
 				"the document must have the same UUID as the request uuid")
 		}
 
 		if req.Document.Uri == "" {
-			return twirp.RequiredArgumentError("document.uri")
+			return rpc.RequiredArgument("document.uri")
 		}
 
 		if req.Document.Language == "" {
@@ -2430,16 +2446,16 @@ func (a *DocumentsService) verifyUpdateRequest(
 
 		_, err := langos.GetLanguage(req.Document.Language)
 		if err != nil {
-			return twirp.InvalidArgumentError("document.language",
+			return rpc.InvalidArgument("document.language",
 				err.Error())
 		}
 	} else if len(req.Status) > 0 {
 		// We need to know the document type if we're to set statuses.
 		t, err := a.store.GetTypeOfDocument(ctx, docUUID)
 		if IsDocStoreErrorCode(err, ErrCodeNotFound) {
-			return twirp.NotFoundError("cannot set the status of a document that doesn't exist")
+			return rpc.NotFound("cannot set the status of a document that doesn't exist")
 		} else if err != nil {
-			return twirp.InternalErrorf("check type of document: %w", err)
+			return rpc.Internalf("check type of document: %w", err)
 		}
 
 		docType = t
@@ -2447,32 +2463,32 @@ func (a *DocumentsService) verifyUpdateRequest(
 
 	for i, s := range req.Status {
 		if s == nil {
-			return twirp.InvalidArgumentError(
+			return rpc.InvalidArgument(
 				fmt.Sprintf("status.%d", i),
 				"a status cannot be nil")
 		}
 
 		if s.Name == "" {
-			return twirp.InvalidArgumentError(
+			return rpc.InvalidArgument(
 				fmt.Sprintf("status.%d.name", i),
 				"a status cannot have an empty name")
 		}
 
 		if s.Version < -1 {
-			return twirp.InvalidArgumentError(
+			return rpc.InvalidArgument(
 				fmt.Sprintf("status.%d.version", i),
 				"must be -1 or greater",
 			)
 		}
 
 		if req.Document == nil && s.Version == 0 {
-			return twirp.InvalidArgumentError(
+			return rpc.InvalidArgument(
 				fmt.Sprintf("status.%d.version", i),
 				"required when no document is included")
 		}
 
 		if !a.workflows.HasStatus(docType, s.Name) {
-			return twirp.InvalidArgumentError(
+			return rpc.InvalidArgument(
 				fmt.Sprintf("status.%d.name", i),
 				fmt.Sprintf("unknown status %q for %q",
 					s.Name, docType))
@@ -2489,7 +2505,7 @@ func (a *DocumentsService) verifyUpdateRequest(
 		// document, as meta documents don't have ACLs of their own.
 		mainUUID, err := parseMetaURI(req.Document.Uri)
 		if err != nil {
-			return twirp.InvalidArgumentError(
+			return rpc.InvalidArgument(
 				"document.uri", err.Error())
 		}
 
@@ -2518,7 +2534,7 @@ func (a *DocumentsService) verifyUpdateRequest(
 		// document is found, as we want to allow the creation of new
 		// documents.
 		err = a.accessCheck(ctx, auth, docUUID, perm...)
-		if err != nil && !elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
+		if err != nil && !rpc.IsCode(err, connect.CodeNotFound) {
 			return err
 		}
 	}
@@ -2532,14 +2548,14 @@ func (a *DocumentsService) verifyUpdateRequest(
 func verifyACLParam(acl []*repository.ACLEntry) error {
 	for i, e := range acl {
 		if e == nil {
-			return twirp.InvalidArgumentError(
+			return rpc.InvalidArgument(
 				fmt.Sprintf("acl.%d", i),
 				"an ACL entry cannot be nil")
 		}
 
 		for _, p := range e.Permissions {
 			if !IsValidPermission(Permission(p)) {
-				return twirp.InvalidArgumentError(
+				return rpc.InvalidArgument(
 					fmt.Sprintf("acl.%d.permissions", i),
 					fmt.Sprintf("%q is not a valid permission", p))
 			}
@@ -2557,22 +2573,22 @@ func (a *DocumentsService) verifyMetaDocumentUpdate(
 	directUpdate := !req.UpdateMetaDocument
 
 	if len(req.Acl) != 0 {
-		return twirp.InvalidArgumentError(
+		return rpc.InvalidArgument(
 			"acl", "cannot set ACLs on a meta document")
 	}
 
 	if len(req.Status) != 0 {
-		return twirp.InvalidArgumentError(
+		return rpc.InvalidArgument(
 			"status", "cannot set statuses on a meta document")
 	}
 
 	if req.IfMatch == 0 {
-		return twirp.InvalidArgumentError(
+		return rpc.InvalidArgument(
 			"if_match", "is required, updates of the meta document must use optimistic locks")
 	}
 
 	if req.Document == nil {
-		return twirp.RequiredArgumentError("document")
+		return rpc.RequiredArgument("document")
 	}
 
 	mainUUID := docUUID
@@ -2580,7 +2596,7 @@ func (a *DocumentsService) verifyMetaDocumentUpdate(
 	if directUpdate {
 		main, err := parseMetaURI(req.Document.Uri)
 		if err != nil {
-			return twirp.InvalidArgumentError(
+			return rpc.InvalidArgument(
 				"document.uri", err.Error())
 		}
 
@@ -2588,7 +2604,7 @@ func (a *DocumentsService) verifyMetaDocumentUpdate(
 
 		metaUUID, _ := metaIdentity(mainUUID)
 		if docUUID != metaUUID {
-			return twirp.InvalidArgumentError(
+			return rpc.InvalidArgument(
 				"uid",
 				fmt.Sprintf("uuid must be %s based on the meta URI", metaUUID))
 		}
@@ -2596,7 +2612,7 @@ func (a *DocumentsService) verifyMetaDocumentUpdate(
 		metaURI := metaURI(docUUID)
 
 		if req.Document.Uri != "" && req.Document.Uri != metaURI {
-			return twirp.InvalidArgumentError(
+			return rpc.InvalidArgument(
 				"document.uri",
 				fmt.Sprintf("document URI must be %q or empty", metaURI))
 		}
@@ -2606,27 +2622,27 @@ func (a *DocumentsService) verifyMetaDocumentUpdate(
 
 	mt, err := a.store.GetMetaTypeForDocument(ctx, mainUUID)
 	if err != nil {
-		return twirp.InternalErrorf(
+		return rpc.Internalf(
 			"could not get meta type for document: %w", err)
 	}
 
 	if !mt.Exists {
-		return twirp.FailedPrecondition.Error(
+		return rpc.FailedPreconditionf(
 			"main document doesn't exist")
 	}
 
 	if mt.IsMetaDocument {
-		return twirp.InvalidArgumentError("update_meta_document",
+		return rpc.InvalidArgument("update_meta_document",
 			"meta documents cannot have meta documents in turn")
 	}
 
 	if mt.MetaType == "" {
-		return twirp.InvalidArgument.Error(
+		return rpc.Errorf(connect.CodeInvalidArgument,
 			"document type doesn't have a configured meta document type")
 	}
 
 	if req.Document.Type != mt.MetaType {
-		return twirp.InvalidArgumentError("document.type",
+		return rpc.InvalidArgument("document.type",
 			fmt.Sprintf("the meta document type has to be %q", mt.MetaType))
 	}
 
@@ -2649,7 +2665,7 @@ func (a *DocumentsService) Validate(
 	}
 
 	if req.Document == nil {
-		return nil, twirp.RequiredArgumentError("document")
+		return nil, rpc.RequiredArgument("document")
 	}
 
 	doc := rpcdoc.DocumentFromRPC(req.Document)
@@ -2688,7 +2704,7 @@ func (a *DocumentsService) Prune(
 	}
 
 	if req.Document == nil {
-		return nil, twirp.RequiredArgumentError("document")
+		return nil, rpc.RequiredArgument("document")
 	}
 
 	doc := rpcdoc.DocumentFromRPC(req.Document)
@@ -2740,12 +2756,12 @@ func (a *DocumentsService) Lock(
 	}
 
 	if req.Ttl == 0 {
-		return nil, twirp.RequiredArgumentError("ttl")
+		return nil, rpc.RequiredArgument("ttl")
 	}
 
 	exclusivity, err := lockExclusivityFromRPC(req.Exclusivity)
 	if err != nil {
-		return nil, twirp.InvalidArgumentError("exclusivity", err.Error())
+		return nil, rpc.InvalidArgument("exclusivity", err.Error())
 	}
 
 	lock, err := a.store.Lock(ctx, LockRequest{
@@ -2759,13 +2775,13 @@ func (a *DocumentsService) Lock(
 
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock), IsDocStoreErrorCode(err, ErrCodeNotFound):
-		return nil, twirp.FailedPrecondition.Error("could not find the document")
+		return nil, rpc.FailedPreconditionf("could not find the document")
 	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
-		return nil, twirp.InvalidArgument.Error(err.Error())
+		return nil, rpc.Errorf(connect.CodeInvalidArgument, "%w", err)
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
-		return nil, lockConflictTwirp(err)
+		return nil, lockConflictError(err)
 	case err != nil:
-		return nil, fmt.Errorf("could not obtain lock: %w", err)
+		return nil, rpc.Internalf("could not obtain lock: %w", err)
 	}
 
 	return &repository.LockResponse{
@@ -2774,37 +2790,39 @@ func (a *DocumentsService) Lock(
 	}, nil
 }
 
-// lockConflictTwirp wraps a LockConflictError as a
-// twirp.FailedPrecondition error with metadata describing the
-// existing lock's holder. Clients compare lock_holder_sub against
-// their own subject to distinguish "I already hold this" from "held
-// by someone else".
-func lockConflictTwirp(err error) twirp.Error {
+// lockConflictError wraps a LockConflictError as a failed precondition error
+// with metadata describing the existing lock's holder. Clients compare
+// lock_holder_sub against their own subject to distinguish "I already hold
+// this" from "held by someone else".
+func lockConflictError(err error) error {
 	var conflict *LockConflictError
 	if !errors.As(err, &conflict) {
-		return twirp.FailedPrecondition.Error("the document is locked")
+		return rpc.FailedPreconditionf("the document is locked")
 	}
 
-	twerr := twirp.FailedPrecondition.Error("the document is locked").
-		WithMeta("lock_holder_sub", conflict.Holder.URI)
+	lErr := rpc.WithMeta(
+		rpc.FailedPreconditionf("the document is locked"),
+		"lock_holder_sub", conflict.Holder.URI)
 
 	if conflict.Holder.App != "" {
-		twerr = twerr.WithMeta("lock_app", conflict.Holder.App)
+		lErr = rpc.WithMeta(lErr, "lock_app", conflict.Holder.App)
 	}
 
 	if conflict.Holder.Comment != "" {
-		twerr = twerr.WithMeta("lock_comment", conflict.Holder.Comment)
+		lErr = rpc.WithMeta(lErr, "lock_comment", conflict.Holder.Comment)
 	}
 
 	if !conflict.Holder.Expires.IsZero() {
-		twerr = twerr.WithMeta("lock_expires", conflict.Holder.Expires.Format(time.RFC3339))
+		lErr = rpc.WithMeta(lErr, "lock_expires",
+			conflict.Holder.Expires.Format(time.RFC3339))
 	}
 
 	if conflict.Holder.Exclusivity != "" {
-		twerr = twerr.WithMeta("lock_exclusivity", string(conflict.Holder.Exclusivity))
+		lErr = rpc.WithMeta(lErr, "lock_exclusivity",
+			string(conflict.Holder.Exclusivity))
 	}
 
-	return twerr
+	return lErr
 }
 
 func lockExclusivityFromRPC(
@@ -2864,11 +2882,11 @@ func (a *DocumentsService) ExtendLock(
 	}
 
 	if req.Ttl == 0 {
-		return nil, twirp.RequiredArgumentError("ttl")
+		return nil, rpc.RequiredArgument("ttl")
 	}
 
 	if req.Token == "" {
-		return nil, twirp.RequiredArgumentError("token")
+		return nil, rpc.RequiredArgument("token")
 	}
 
 	lock, err := a.store.UpdateLock(ctx, UpdateLockRequest{
@@ -2879,13 +2897,13 @@ func (a *DocumentsService) ExtendLock(
 
 	switch {
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock), IsDocStoreErrorCode(err, ErrCodeNotFound):
-		return nil, twirp.FailedPrecondition.Error("could not find the document")
+		return nil, rpc.FailedPreconditionf("could not find the document")
 	case IsDocStoreErrorCode(err, ErrCodeNoSuchLock):
-		return nil, twirp.FailedPrecondition.Error("the document is not locked by anyone")
+		return nil, rpc.FailedPreconditionf("the document is not locked by anyone")
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
-		return nil, twirp.FailedPrecondition.Error("the doument is locked by someone else")
+		return nil, rpc.FailedPreconditionf("the doument is locked by someone else")
 	case err != nil:
-		return nil, fmt.Errorf("could not obtain lock: %w", err)
+		return nil, rpc.Internalf("could not obtain lock: %w", err)
 	}
 
 	return &repository.LockResponse{
@@ -2918,7 +2936,7 @@ func (a *DocumentsService) Unlock(
 	}
 
 	if req.Token == "" {
-		return nil, twirp.RequiredArgumentError("token")
+		return nil, rpc.RequiredArgument("token")
 	}
 
 	err = a.store.Unlock(ctx, docUUID, req.Token)
@@ -2927,9 +2945,9 @@ func (a *DocumentsService) Unlock(
 	case IsDocStoreErrorCode(err, ErrCodeDeleteLock):
 		return &repository.UnlockResponse{}, nil
 	case IsDocStoreErrorCode(err, ErrCodeDocumentLock):
-		return nil, twirp.FailedPrecondition.Errorf("the document is locked by someone else")
+		return nil, rpc.FailedPreconditionf("the document is locked by someone else")
 	case err != nil:
-		return nil, fmt.Errorf("could not unlock document: %w", err)
+		return nil, rpc.Internalf("could not unlock document: %w", err)
 	}
 
 	return &repository.UnlockResponse{}, nil
@@ -2950,7 +2968,7 @@ func (a *DocumentsService) GetWithheld(
 
 	scheduled, err := a.sched.GetScheduled(ctx, after, []string{"oc"})
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"get scheduled documents: %w", err)
 	}
 
@@ -2984,11 +3002,11 @@ func (a *DocumentsService) CreateUpload(
 	}
 
 	if req.Name == "" {
-		return nil, twirp.RequiredArgumentError("name")
+		return nil, rpc.RequiredArgument("name")
 	}
 
 	if req.ContentType == "" {
-		return nil, twirp.RequiredArgumentError("content_type")
+		return nil, rpc.RequiredArgument("content_type")
 	}
 
 	upload := Upload{
@@ -3008,12 +3026,12 @@ func (a *DocumentsService) CreateUpload(
 
 	err = a.store.CreateUpload(ctx, upload)
 	if err != nil {
-		return nil, twirp.InternalErrorf("store upload record: %v", err)
+		return nil, rpc.Internalf("store upload record: %v", err)
 	}
 
 	uploadURL, err := a.assets.CreateUploadURL(ctx, upload.ID)
 	if err != nil {
-		return nil, twirp.InternalErrorf("create upload URL: %v", err)
+		return nil, rpc.Internalf("create upload URL: %v", err)
 	}
 
 	res := repository.CreateUploadResponse{
@@ -3036,11 +3054,11 @@ func (a *DocumentsService) GetAttachments(
 	}
 
 	if len(req.Documents) == 0 {
-		return nil, twirp.RequiredArgumentError("documents")
+		return nil, rpc.RequiredArgument("documents")
 	}
 
 	if req.AttachmentName == "" {
-		return nil, twirp.RequiredArgumentError("attachment_name")
+		return nil, rpc.RequiredArgument("attachment_name")
 	}
 
 	docIDs := make([]uuid.UUID, len(req.Documents))
@@ -3048,7 +3066,7 @@ func (a *DocumentsService) GetAttachments(
 	for i, id := range req.Documents {
 		docID, err := uuid.Parse(id)
 		if err != nil {
-			return nil, elephantine.InvalidArgumentf(
+			return nil, rpc.InvalidArgumentf(
 				"documents", "invalid document UUID: %v", err)
 		}
 
@@ -3074,7 +3092,7 @@ func (a *DocumentsService) GetAttachments(
 				Permissions: []Permission{ReadPermission},
 			})
 		if err != nil {
-			return nil, twirp.InternalErrorf("check permissions: %v", err)
+			return nil, rpc.Internalf("check permissions: %v", err)
 		}
 
 		allowedDocs = allowed
@@ -3086,7 +3104,7 @@ func (a *DocumentsService) GetAttachments(
 		req.AttachmentName,
 		req.DownloadLink)
 	if err != nil {
-		return nil, twirp.InternalErrorf("get attachments: %v", err)
+		return nil, rpc.Internalf("get attachments: %v", err)
 	}
 
 	res := repository.GetAttachmentsResponse{

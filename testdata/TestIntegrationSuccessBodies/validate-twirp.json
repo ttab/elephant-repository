@@ -1,0 +1,31 @@
+{
+  "body": {
+    "errors": [
+      {
+        "entity": [
+          {
+            "kind": "content",
+            "ref_type": "block",
+            "type": "test/undeclared"
+          }
+        ],
+        "error": "undeclared block type or rel"
+      },
+      {
+        "entity": [
+          {
+            "name": "type",
+            "ref_type": "attribute"
+          },
+          {
+            "kind": "content",
+            "ref_type": "block",
+            "type": "test/undeclared"
+          }
+        ],
+        "error": "undeclared block attribute"
+      }
+    ]
+  },
+  "status": 200
+}

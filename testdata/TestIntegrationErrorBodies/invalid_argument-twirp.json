@@ -1,0 +1,10 @@
+{
+  "body": {
+    "code": "invalid_argument",
+    "meta": {
+      "argument": "uuid"
+    },
+    "msg": "uuid is required"
+  },
+  "status": 400
+}

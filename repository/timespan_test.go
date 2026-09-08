@@ -163,7 +163,7 @@ func TestTimespanIntegration(t *testing.T) {
 			Validator: func(v string) error {
 				_, err := uuid.Parse(v)
 
-				return err //nolint: wrapcheck
+				return err
 			},
 		},
 	)

@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
 )
 
 // ArchivedGeneration is the immutable archive object for a schema generation.
@@ -103,8 +104,8 @@ func (ad *ArchivedExemplarDoc) GetParentSignature() string {
 }
 
 func (a *Archiver) runGenerationArchiver(ctx context.Context) error {
-	lock, err := pg.NewJobLock(a.pool, a.logger, "generation-archiver",
-		pg.JobLockOptions{})
+	lock, err := joblock.New(a.pool, a.logger, "generation-archiver",
+		joblock.Options{})
 	if err != nil {
 		return fmt.Errorf("acquire job lock: %w", err)
 	}

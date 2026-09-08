@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/ttab/elephantine"
-	"github.com/twitchtv/twirp"
+	"github.com/ttab/elephantine/rpc"
 )
 
 type Permission string
@@ -76,14 +76,20 @@ func Subscope(scope string, resource ...string) string {
 func RequireAnyScope(ctx context.Context, scopes ...string) (*elephantine.AuthInfo, error) {
 	auth, ok := elephantine.GetAuthInfo(ctx)
 	if !ok {
-		return nil, twirp.Unauthenticated.Error(
+		return nil, rpc.Unauthenticated(
 			"no anonymous access allowed")
 	}
 
 	if !auth.Claims.HasAnyScope(scopes...) {
-		return nil, twirp.PermissionDenied.Errorf(
+		err := rpc.PermissionDeniedf(
 			"one of the the scopes %s is required",
 			strings.Join(scopes, ", "))
+
+		// The scopes that would have been accepted are carried as error
+		// metadata under the fleet-wide key, so a client can tell the
+		// caller what to ask for instead of parsing the message.
+		return nil, rpc.WithMeta(err,
+			rpc.MetaRequiredScopes, strings.Join(scopes, " "))
 	}
 
 	return auth, nil

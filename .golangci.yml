@@ -48,10 +48,12 @@ linters:
       min-complexity: 6
     wrapcheck:
       extra-ignore-sigs:
-        - elephantine.InvalidArgumentf(
+        # The elephantine/rpc helpers construct RPC errors. Wrapping one would
+        # bury the code the handler picked, which is the whole point of it.
+        - github.com/ttab/elephantine/rpc.
         - (context.Context).Err(
         - github.com/ttab/elephantine/pg.WithTX(
-        - github.com/ttab/elephantine/pg.JobLock).RunWithContext(
+        - github.com/ttab/elephantine/pg/joblock.Lock).RunWithContext(
   exclusions:
     generated: lax
     presets:
@@ -60,6 +62,10 @@ linters:
       - legacy
       - std-error-handling
     rules:
+      # A test that checks what the server answered passes the RPC error
+      # through verbatim; wrapping it would only get in the way.
+      - linters: [wrapcheck]
+        path: _test\.go$
       - linters: [gosec, goconst]
         path: _test\.go$
       - linters: [gosec]

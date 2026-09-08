@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,8 +14,8 @@ import (
 	"github.com/ttab/elephant-api/repository"
 	repo "github.com/ttab/elephant-repository/repository"
 	"github.com/ttab/elephantine"
-	"github.com/ttab/elephantine/pg"
-	"github.com/twitchtv/twirp"
+	"github.com/ttab/elephantine/pg/joblock"
+	"github.com/ttab/elephantine/rpc"
 )
 
 // metricLabelName is the Prometheus label used for the sink name.
@@ -141,9 +142,9 @@ func (r *EventForwarder) run(ctx context.Context) {
 			return
 		}
 
-		jobLock, err := pg.NewJobLock(
+		jobLock, err := joblock.New(
 			r.db, r.logger, "forwarder",
-			pg.JobLockOptions{
+			joblock.Options{
 				PingInterval:  10 * time.Second,
 				StaleAfter:    1 * time.Minute,
 				CheckInterval: 20 * time.Second,
@@ -303,7 +304,7 @@ func (r *EventForwarder) enrichEvent(
 	})
 
 	switch {
-	case elephantine.IsTwirpErrorCode(err, twirp.NotFound):
+	case rpc.IsCode(err, connect.CodeNotFound):
 		// TODO: This raises the question if we need some other way to
 		// get to the data for decoration purposes, as we will fail to
 		// emit an update event for a document if it was deleted before

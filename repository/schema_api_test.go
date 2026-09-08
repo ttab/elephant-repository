@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/ttab/elephant-api/newsdoc"
 	rpc_repository "github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
 	"github.com/ttab/elephant-repository/repository"
-	"github.com/ttab/elephantine"
+	elephantrpc "github.com/ttab/elephantine/rpc"
 	"github.com/ttab/elephantine/test"
 	"github.com/ttab/revisor"
-	"github.com/twitchtv/twirp"
 )
 
 func TestDeprecations(t *testing.T) {
@@ -239,7 +239,7 @@ func TestVariantValidation(t *testing.T) {
 		Document: badDoc,
 	})
 
-	if !elephantine.IsTwirpErrorCode(err, twirp.InvalidArgument) {
+	if !elephantrpc.IsCode(err, connect.CodeInvalidArgument) {
 		t.Fatalf(
 			"expected invalid argument error for unknown variant, got: %v",
 			err)
@@ -363,18 +363,18 @@ func TestSchemaReadScopeRequired(t *testing.T) {
 
 	_, err := unscoped.GetDocumentTypes(ctx,
 		&rpc_repository.GetDocumentTypesRequest{})
-	isTwirpError(t, err, "get document types without a schema scope",
-		twirp.PermissionDenied)
+	isRPCError(t, err, "get document types without a schema scope",
+		connect.CodePermissionDenied)
 
 	_, err = unscoped.GetMetaTypes(ctx,
 		&rpc_repository.GetMetaTypesRequest{})
-	isTwirpError(t, err, "get meta types without a schema scope",
-		twirp.PermissionDenied)
+	isRPCError(t, err, "get meta types without a schema scope",
+		connect.CodePermissionDenied)
 
 	_, err = unscoped.ListActive(ctx,
 		&rpc_repository.ListActiveSchemasRequest{})
-	isTwirpError(t, err, "list active schemas without a schema scope",
-		twirp.PermissionDenied)
+	isRPCError(t, err, "list active schemas without a schema scope",
+		connect.CodePermissionDenied)
 
 	// schema_read is enough for all three.
 	reader := tc.SchemasClient(t, itest.StandardClaims(t, "schema_read"))
@@ -418,14 +418,14 @@ func TestValidateAndPruneScopeRequired(t *testing.T) {
 	_, err := reader.Validate(ctx, &rpc_repository.ValidateRequest{
 		Document: doc,
 	})
-	isTwirpError(t, err, "validate with only doc_read",
-		twirp.PermissionDenied)
+	isRPCError(t, err, "validate with only doc_read",
+		connect.CodePermissionDenied)
 
 	_, err = reader.Prune(ctx, &rpc_repository.PruneRequest{
 		Document: doc,
 	})
-	isTwirpError(t, err, "prune with only doc_read",
-		twirp.PermissionDenied)
+	isRPCError(t, err, "prune with only doc_read",
+		connect.CodePermissionDenied)
 
 	// doc_write is enough for both.
 	writer := tc.DocumentsClient(t, itest.StandardClaims(t, "doc_write"))
@@ -508,6 +508,17 @@ func TestAPIRequiresAuthentication(t *testing.T) {
 		"/twirp/elephant.repository.Schemas/ListActive", `{}`)
 	test.Equalf(t, http.StatusUnauthorized, status,
 		"reject an unauthenticated Schemas call")
+
+	status = do(http.MethodPost,
+		"/elephant.repository.Documents/Get",
+		`{"uuid":"8090ff79-030e-419b-952e-12917cfdaaac"}`)
+	test.Equalf(t, http.StatusUnauthorized, status,
+		"reject an unauthenticated Connect call")
+
+	status = do(http.MethodPost,
+		"/elephant.repository.Schemas/ListActive", `{}`)
+	test.Equalf(t, http.StatusUnauthorized, status,
+		"reject an unauthenticated Connect Schemas call")
 
 	status = do(http.MethodGet, "/sse", "")
 	test.Equalf(t, http.StatusUnauthorized, status,

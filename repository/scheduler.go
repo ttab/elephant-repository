@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephantine"
-	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
 )
 
 // SchedulerMaxPollInterval is the maximum interval for looking up the next
@@ -90,7 +90,7 @@ func NewScheduler(
 func (s *Scheduler) RunInJobLock(
 	ctx context.Context,
 	recheckSignal <-chan struct{},
-	lockFn func() (*pg.JobLock, error),
+	lockFn func() (*joblock.Lock, error),
 ) error {
 	for {
 		lock, err := lockFn()

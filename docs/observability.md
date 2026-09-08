@@ -14,7 +14,7 @@ is routinely non-zero, and what the number should be read against.
 This document does not say what to *do* about a metric that has gone the wrong
 way — [ops.md](ops.md) catalogues the failure modes and their actions, and
 [its watch list](ops.md#what-to-watch-in-order) ranks these signals. It also
-does not describe the `Metrics` Twirp service, which stores per-document
+does not describe the `Metrics` RPC service, which stores per-document
 measurements and has nothing to do with Prometheus; that is in
 [architecture.md](architecture.md#document-metrics).
 
@@ -249,6 +249,55 @@ There are no SSE metrics. SSE connections, publishes and replay-buffer misses
 are not instrumented at all, so an SSE-only outage is invisible here — check
 `rpc_*` for `/sse`'s absence and the logs. Known gap.
 
+## RPC metrics on two stacks
+
+The API is served on two path families, `/twirp/…` and `/elephant.repository.…`
+(see [architecture.md](architecture.md#two-path-families-one-implementation)),
+and both report the same `rpc_*` series with the same names, labels and label
+values. The collectors are shared, so a call is counted once whichever mount
+took it and there is no per-stack breakdown in `rpc_requests_total`,
+`rpc_responses_total` or `rpc_duration_seconds`.
+
+Two things changed with the Connect mount, and both are about the `status`
+label:
+
+* **`rpc_responses_total{status}` reports the status actually sent**, and
+  Connect answers three codes with a different status than Twirp does:
+  `failed_precondition` is `400` instead of `412`, `canceled` is `499` instead
+  of `408`, and `deadline_exceeded` is `504` instead of `408`. The one that
+  bites is `failed_precondition`: document locks, system locks and workflow
+  rule violations return it, so a panel or alert that counted `status="412"` to
+  find lock conflicts undercounts as callers move to Connect, and a rise in
+  `status="400"` that used to mean malformed requests now mixes them with lock
+  conflicts.
+* **`rpc_protocol_responses_total{service,method,protocol,code}` is what
+  replaces it.** It counts the same responses by RPC code — `not_found`,
+  `failed_precondition`, `invalid_argument`, or `ok` — so the error breakdown
+  no longer depends on codes and statuses being one-to-one. Panels that keyed
+  on 412 move to `code="failed_precondition"` here.
+
+`protocol` is `twirp`, `connect`, `grpc` or `grpc-web`. A method whose
+`protocol="twirp"` share has reached zero has no Twirp callers left and can have
+that mount removed; that is the number to read before a major release drops it.
+A `protocol` of `other` means connect-go negotiated a protocol this service does
+not have a label for, which should not happen and is worth a look.
+
+**A refused call is counted now.** The authentication middleware answers a
+request with a missing or invalid token itself, before it reaches a Twirp hook
+or a Connect interceptor, and reports that response into
+`rpc_responses_total{status="401"}` and
+`rpc_protocol_responses_total{code="unauthenticated"}`, as well as logging it. A
+burst of 401s is therefore visible where it previously left no trace at all. It
+is deliberately absent from `rpc_requests_total`: a refused call has always been
+counted as a response and not as a request. `/sse` is the exception, since its
+path names no RPC procedure — a refusal there is logged but not counted.
+
+Growth in `code="unknown"` is worth an alert of its own. Every handler error
+carries an RPC code — a server fault is returned as `internal` — so `unknown` is a code
+connect-go itself produced — a malformed request frame, or a client that
+disconnected in a way the protocol could not classify — rather than a rejected
+request.
+
 ## Metrics from libraries, not from this repository
 
 These come from `elephantine`, `pgx` and the Prometheus client library, and are
@@ -258,7 +307,8 @@ matters here is that they exist and what they cover:
 
 | Metric | Covers |
 |---|---|
-| `rpc_requests_total`, `rpc_responses_total`, `rpc_duration_seconds` | Every Twirp call, by service, method and response code. The first place to look for an API-visible problem. |
+| `rpc_requests_total`, `rpc_responses_total`, `rpc_duration_seconds` | Every RPC call on either path family, by service, method and response status. The first place to look for an API-visible problem. See [RPC metrics on two stacks](#rpc-metrics-on-two-stacks). |
+| `rpc_protocol_responses_total{service,method,protocol,code}` | The same responses split by the protocol that carried them and by RPC code rather than HTTP status. See [RPC metrics on two stacks](#rpc-metrics-on-two-stacks). |
 | `client_requests_total`, `client_request_duration_seconds`, `client_in_flight_requests` | Outbound HTTP, labelled `s3`. This is the S3 dependency's latency and error rate. |
 | `pgxpool_*{pool}` | Connection pool state per pool: `main` and, when a bouncer connection string is configured, `pubsub`. `pgxpool_empty_acquires_total` and `pgxpool_empty_acquire_wait_seconds_total` growing together is pool exhaustion. |
 | `pg_job_lock_held`, `pg_job_lock_transitions_total` | Which single-leader jobs this instance holds, and how often leadership moves. Exactly one holder per lock across the cluster is the invariant; frequent transitions mean leases are being lost. |

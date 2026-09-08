@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	itest "github.com/ttab/elephant-repository/internal/test"
-	"github.com/ttab/elephantine"
+	elephantrpc "github.com/ttab/elephantine/rpc"
 	"github.com/ttab/elephantine/test"
-	"github.com/twitchtv/twirp"
 )
 
 func TestDeleteRestore(t *testing.T) {
@@ -136,7 +136,7 @@ func TestDeleteRestore(t *testing.T) {
 		switch {
 		// The document is not in a state to be recreated until the
 		// delete has been processed.
-		case elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition):
+		case elephantrpc.IsCode(err, connect.CodeFailedPrecondition):
 			time.Sleep(100 * time.Millisecond)
 		case err != nil:
 			t.Fatalf("unexpected error when creation generation B of the doc: %v", err)
@@ -173,7 +173,7 @@ func TestDeleteRestore(t *testing.T) {
 		Uuid:           docUUID,
 		DeleteRecordId: deletesA.Deletes[0].Id,
 	})
-	test.IsTwirpError(t, err, twirp.AlreadyExists)
+	test.IsRPCError(t, err, connect.CodeAlreadyExists)
 
 	// Delete gen B.
 	_, err = client.Delete(ctx, &repository.DeleteDocumentRequest{
@@ -213,7 +213,7 @@ func TestDeleteRestore(t *testing.T) {
 				},
 			},
 		})
-		if elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition) {
+		if elephantrpc.IsCode(err, connect.CodeFailedPrecondition) {
 			// This means that the delete hasn't finished
 			// processing, and therefore cannot be restored.
 			time.Sleep(100 * time.Millisecond)
@@ -241,7 +241,7 @@ func TestDeleteRestore(t *testing.T) {
 		})
 
 		switch {
-		case elephantine.IsTwirpErrorCode(err, twirp.FailedPrecondition):
+		case elephantrpc.IsCode(err, connect.CodeFailedPrecondition):
 			time.Sleep(100 * time.Millisecond)
 
 			// Restore is still processing

@@ -27,7 +27,8 @@ measures. It does not explain *why* the design is what it is — that is
 
 One binary, `repository run`, doing two jobs that fail independently:
 
-* **The synchronous half** — the Twirp API, SSE, websockets. This is what
+* **The synchronous half** — the RPC API on both path families, SSE,
+  websockets. This is what
   clients see. It needs Postgres for everything and S3 for uploads and
   attachment downloads.
 * **The asynchronous half** — eventlog builder, archiver, event forwarder,
@@ -98,7 +99,7 @@ degrades to polling or takes a feature offline rather than the service.
 
 | Port | Default | What is on it |
 |---|---|---|
-| API | `:1080` (`--addr`) | `/twirp/elephant.repository.*`, `/sse`, `/websocket/:token`, `/signing-keys`, `/version`, `/health/alive` |
+| API | `:1080` (`--addr`) | `/elephant.repository.*` and `/twirp/elephant.repository.*`, `/sse`, `/websocket/:token`, `/signing-keys`, `/version`, `/health/alive` |
 | TLS API | `:1443` (`--tls-addr`) | The same, when `--cert-file` is set. Not started otherwise. |
 | Profile | `:1081` (`--profile-addr`) | `/metrics`, `/health/ready`, `/debug/pprof/`, `/debug/vars`, `/debug/bom` |
 
@@ -584,10 +585,12 @@ vocabulary and the bypass scopes are in
 read ACL. Those two scopes are the whole access-control model for anything
 holding them; treat them as administrative.
 
-**A valid token is required for every Twirp call and for `/sse`** — the auth
-middleware answers 401 rather than passing an unauthenticated request to the
-handler. Every method except the unimplemented `Documents.Evict` then asserts its
-own scope requirement on top.
+**A valid token is required for every RPC call, on either path family, and for
+`/sse`** — the auth middleware, elephantine's `ServiceOptions` middleware with
+`ServiceAuthRequired`, answers `unauthenticated` (401) rather than passing an
+unauthenticated request to the handler, and renders that error in the protocol
+the caller is speaking. Every method except the unimplemented `Documents.Evict`
+then asserts its own scope requirement on top.
 
 Two routes intentionally bypass that middleware: `GET /signing-keys`, which is
 public so that the archive can be verified independently, and

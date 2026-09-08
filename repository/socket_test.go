@@ -182,7 +182,8 @@ func TestIntegrationSocket(t *testing.T) {
 
 	beachPlanUUID := writeDoc(t, client, docsDir, "beach_plan_v1", nil)
 
-	beachPlanV1, err := resp.AwaitDocumentUpdate(subCall, beachPlanUUID, 2*time.Second)
+	beachPlanV1, err := resp.AwaitDocumentUpdate(
+		subCall, beachPlanUUID, 1, 2*time.Second)
 	test.Mustf(t, err, "get beach plan v1 document message")
 
 	test.Equalf(t, 1, beachPlanV1.DocumentUpdate.Event.Version, "get v1 of beach plan")
@@ -191,7 +192,8 @@ func TestIntegrationSocket(t *testing.T) {
 
 	writeDoc(t, client, docsDir, "beach_plan_v2", nil)
 
-	beachPlanV2, err := resp.AwaitDocumentUpdate(subCall, beachPlanUUID, 2*time.Second)
+	beachPlanV2, err := resp.AwaitDocumentUpdate(
+		subCall, beachPlanUUID, 2, 2*time.Second)
 	test.Mustf(t, err, "get beach plan v2 document message")
 
 	test.Equalf(t, 2, beachPlanV2.DocumentUpdate.Event.Version, "get v2 of beach plan")
@@ -477,7 +479,7 @@ func TestIntegrationSocketPartial(t *testing.T) {
 
 	// Verify DocumentUpdate has subset applied for the plan update.
 	planUpdate, err := resp.AwaitDocumentUpdate(
-		subCall, beachPlanUUID, 2*time.Second)
+		subCall, beachPlanUUID, 2, 2*time.Second)
 	test.Mustf(t, err, "get beach plan v2 update")
 
 	du := planUpdate.DocumentUpdate
@@ -830,9 +832,15 @@ func (rc *responseCollection) AwaitDocumentStatus(
 	return resp, nil
 }
 
+// AwaitDocumentUpdate waits for a document event for docUUID at the given
+// version. The version is part of the match because a document is re-emitted
+// at its current version when something else changes what its set includes, so
+// a wait that matched any version would take that re-emit and read the
+// version before the one the test wrote.
 func (rc *responseCollection) AwaitDocumentUpdate(
 	callID string,
 	docUUID string,
+	version int64,
 	timeout time.Duration,
 ) (*repositorysocket.Response, error) {
 	resp, err := rc.AwaitResponse(callID, func(resp *repositorysocket.Response) bool {
@@ -842,7 +850,9 @@ func (rc *responseCollection) AwaitDocumentUpdate(
 
 		evt := resp.DocumentUpdate.Event
 
-		return evt.Event == "document" && evt.Uuid == docUUID
+		return evt.Event == "document" &&
+			evt.Uuid == docUUID &&
+			evt.Version == version
 	}, timeout)
 	if err != nil {
 		return nil, err

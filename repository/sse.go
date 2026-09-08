@@ -9,8 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/tmaxmax/go-sse"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/rpc"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -68,7 +70,7 @@ func NewSSE(ctx context.Context, logger *slog.Logger, store DocStore) (*SSE, err
 				ScopeDocumentAdmin,
 			)
 			if err != nil {
-				code := elephantine.TwirpErrorToHTTPStatusCode(err)
+				code := rpc.HTTPStatus(connect.CodeOf(err))
 
 				w.WriteHeader(code)
 				_, _ = w.Write([]byte(err.Error()))

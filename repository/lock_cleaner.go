@@ -10,6 +10,7 @@ import (
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
 )
 
 func (s *PGDocStore) RunCleaner(ctx context.Context, period time.Duration) {
@@ -20,7 +21,7 @@ func (s *PGDocStore) RunCleaner(ctx context.Context, period time.Duration) {
 			return
 		}
 
-		jobLock, err := pg.NewJobLock(s.pool, s.logger, "cleaner", pg.JobLockOptions{
+		jobLock, err := joblock.New(s.pool, s.logger, "cleaner", joblock.Options{
 			PingInterval:  10 * time.Second,
 			StaleAfter:    1 * time.Minute,
 			CheckInterval: 20 * time.Second,

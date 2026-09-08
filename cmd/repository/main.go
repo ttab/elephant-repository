@@ -19,7 +19,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant-repository/internal"
 	"github.com/ttab/elephant-repository/internal/cmd"
@@ -29,8 +28,8 @@ import (
 	"github.com/ttab/elephant-repository/sinks"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
 	"github.com/ttab/langos"
-	"github.com/twitchtv/twirp"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
@@ -301,10 +300,10 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	s3Conf.HTTPClient = &http.Client{
 		Timeout: 1 * time.Minute,
 		Transport: &http.Transport{
-			Dial: (&net.Dialer{
+			DialContext: (&net.Dialer{
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
-			}).Dial,
+			}).DialContext,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ResponseHeaderTimeout: 10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
@@ -322,9 +321,6 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf(
 			"failed to create S3 client: %w", err)
 	}
-
-	presignClient := s3.NewPresignClient(s3Client,
-		s3.WithPresignExpires(15*time.Minute))
 
 	dbpool, err := pgxpool.New(ctx, conf.DB)
 	if err != nil {
@@ -388,8 +384,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	}
 
 	assets := repository.NewAssetBucket(
-		logger, presignClient,
-		s3Client, conf.AssetBucket)
+		logger, s3Client, conf.AssetBucket)
 
 	var inMet []repository.MetricCalculator
 
@@ -415,9 +410,9 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	go store.RunListener(stopCtx, pubsubPool)
 	go store.RunCleaner(stopCtx, 5*time.Minute)
 
-	bootstrapLock, err := pg.NewJobLock(
+	bootstrapLock, err := joblock.New(
 		dbpool, logger, "bootstrap-generation",
-		pg.JobLockOptions{})
+		joblock.Options{})
 	if err != nil {
 		return fmt.Errorf("create bootstrap generation lock: %w", err)
 	}
@@ -485,10 +480,10 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		}
 
 		go func() {
-			err := pg.RunInJobLock(ctx,
+			err := joblock.Run(ctx,
 				dbpool, log,
 				"eventlog-builder", "eventlog-builder",
-				pg.JobLockOptions{},
+				joblock.Options{},
 				func(ctx context.Context) error {
 					return builder.Run(ctx)
 				})
@@ -573,10 +568,10 @@ func runServer(ctx context.Context, c *cli.Command) error {
 
 			err := scheduler.RunInJobLock(
 				ctx, nil,
-				func() (*pg.JobLock, error) {
-					return pg.NewJobLock(
+				func() (*joblock.Lock, error) {
+					return joblock.New(
 						dbpool, logger, "scheduler",
-						pg.JobLockOptions{})
+						joblock.Options{})
 				})
 			if err != nil {
 				logger.Error(
@@ -587,72 +582,8 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	}
 
 	schemaService := repository.NewSchemasService(logger, store)
-	workflowService := repository.NewWorkflowsService(store)
+	workflowService := repository.NewWorkflowsService(logger, store)
 	metricsService := repository.NewMetricsService(store)
-
-	router := httprouter.New()
-
-	var opts repository.ServerOptions
-
-	opts.SetJWTValidation(auth.AuthParser)
-
-	metrics, err := elephantine.NewTwirpMetricsHooks()
-	if err != nil {
-		return fmt.Errorf("failed to create twirp metrics hook: %w", err)
-	}
-
-	opts.Hooks = twirp.ChainHooks(
-		elephantine.LoggingHooks(logger),
-		metrics,
-	)
-
-	routerOpts := []repository.RouterOption{
-		repository.WithDocumentsAPI(docService, opts),
-		repository.WithSchemasAPI(schemaService, opts),
-		repository.WithWorkflowsAPI(workflowService, opts),
-		repository.WithMetricsAPI(metricsService, opts),
-		repository.WithSigningKeys(dbpool),
-	}
-
-	var sseSubsystem *repository.SSE
-
-	if !noSSE {
-		sse, err := repository.NewSSE(setupCtx, logger.With(
-			elephantine.LogKeyComponent, "sse",
-		), store)
-		if err != nil {
-			return fmt.Errorf("failed to set up SSE server: %w", err)
-		}
-
-		routerOpts = append(routerOpts,
-			repository.WithSSE(sse.HTTPHandler(), opts))
-
-		sseSubsystem = sse
-	}
-
-	if !noWebsocket {
-		socket, err := repository.NewSocketHandler(
-			grace.CancelOnQuit(ctx), logger, prometheus.DefaultRegisterer,
-			store, docCache, auth.AuthParser, &socketKey.PublicKey,
-			corsHosts,
-			repository.EventlogStreamConfig{
-				BufferSize: eventlogBufSize,
-				Rate:       rate.Limit(eventlogRate),
-				Burst:      eventlogBurst,
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("set up socket handler: %w", err)
-		}
-
-		routerOpts = append(routerOpts,
-			repository.WithWebsocket(socket))
-	}
-
-	err = repository.SetUpRouter(router, routerOpts...)
-	if err != nil {
-		return fmt.Errorf("failed to set up router: %w", err)
-	}
 
 	var serverOpts []elephantine.APIServerOption
 
@@ -676,7 +607,54 @@ func runServer(ctx context.Context, c *cli.Command) error {
 
 	srv.CORS.AllowedHeaders = append(srv.CORS.AllowedHeaders, "Last-Event-ID")
 
-	srv.Mux.Handle("/", router)
+	// One value configures both mounts: the Twirp hooks, the Connect
+	// interceptors and the authentication middleware in front of them. The
+	// RPC collectors are shared between the stacks, so this is also what
+	// registers them, and nothing else may.
+	svcOpt, err := elephantine.NewDefaultServiceOptions(
+		logger, auth.AuthParser, prometheus.DefaultRegisterer,
+		elephantine.ServiceAuthRequired)
+	if err != nil {
+		return fmt.Errorf("set up service options: %w", err)
+	}
+
+	repository.RegisterAPIs(srv, svcOpt,
+		docService, schemaService, workflowService, metricsService)
+
+	repository.RegisterSigningKeys(srv, dbpool)
+
+	var sseSubsystem *repository.SSE
+
+	if !noSSE {
+		sse, err := repository.NewSSE(setupCtx, logger.With(
+			elephantine.LogKeyComponent, "sse",
+		), store)
+		if err != nil {
+			return fmt.Errorf("failed to set up SSE server: %w", err)
+		}
+
+		repository.RegisterSSE(srv, svcOpt, sse.HTTPHandler())
+
+		sseSubsystem = sse
+	}
+
+	if !noWebsocket {
+		socket, err := repository.NewSocketHandler(
+			grace.CancelOnQuit(ctx), logger, prometheus.DefaultRegisterer,
+			store, docCache, auth.AuthParser, &socketKey.PublicKey,
+			corsHosts,
+			repository.EventlogStreamConfig{
+				BufferSize: eventlogBufSize,
+				Rate:       rate.Limit(eventlogRate),
+				Burst:      eventlogBurst,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("set up socket handler: %w", err)
+		}
+
+		repository.RegisterWebsocket(srv, socket)
+	}
 
 	// The S3 check is optional so that an archive bucket outage doesn't take
 	// every replica out of rotation at once. The synchronous API is still

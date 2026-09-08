@@ -24,10 +24,21 @@ same scopes through the session's JWT.
 
 ## How a call is authorised
 
+The matrix below is per method, not per protocol. Each service is mounted twice
+— on `/twirp/…` and on `/elephant.repository.…`, the latter serving Connect and,
+to callers inside the cluster, gRPC and gRPC-Web — and both mounts sit behind
+the same authentication
+middleware and dispatch to the same handler, so the same three gates apply
+whichever protocol carried the call. See
+[architecture.md](architecture.md#two-path-families-one-implementation).
+
 Three gates, in order:
 
-1. **A valid token.** The auth middleware rejects a request with a missing or
-   invalid `Authorization` header with a 401 before the handler runs. Only
+1. **A valid token.** The auth middleware — elephantine's, installed by
+   `NewDefaultServiceOptions` with `ServiceAuthRequired` — answers a request
+   with a missing or invalid `Authorization` header with `unauthenticated`
+   (401) before the handler runs, rendered in the protocol the caller is
+   speaking. A missing token and an invalid one are the same answer. Only
    `GET /signing-keys` and `GET /websocket/:token` bypass it.
 2. **The scope check.** `RequireAnyScope` requires the caller to hold at least
    one of the listed scopes; a token without a matching scope is
@@ -54,7 +65,8 @@ one metric kind.
 Only one: `Documents.Evict`, which is unimplemented and returns
 `unimplemented` before looking at anything.
 
-**Every new method still needs its own scope check.** The middleware guarantees a
+**Every new method still needs its own scope check**, and one check covers both
+mounts because it lives in the handler. The middleware guarantees a
 valid token, not that the caller may do what they asked — it knows nothing about
 which scope a method requires. An omitted `RequireAnyScope` leaves a method open
 to any authenticated caller.
@@ -175,6 +187,6 @@ being able to write any other.
 
 | Endpoint | Scopes (any of) |
 |---|---|
-| `GET /sse` | A valid token, then `eventlog_read` or `doc_admin`. The token may be passed as a `token` query parameter as well as a bearer header — it is copied into the header before the middleware runs. |
+| `GET /sse` | A valid token, then `eventlog_read` or `doc_admin`. The token may be passed as a `token` query parameter as well as a bearer header — it is copied into the header before the middleware runs. A missing or invalid token is answered `401` with a Connect-shaped JSON error body. |
 | `GET /websocket/:token` | A socket token from `Documents.GetSocketToken`, signed with the server's socket key. Bypasses the auth middleware; the session then authenticates with a JWT, and per-document reads honour `doc_read_all`. |
 | `GET /signing-keys` | None. Public by design — it is what makes independent archive verification possible. |

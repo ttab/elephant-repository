@@ -1,242 +1,167 @@
 package repository
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/julienschmidt/httprouter"
 	"github.com/ttab/elephant-api/repository"
-	"github.com/ttab/elephant-repository/internal"
+	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
-	"github.com/twitchtv/twirp"
-	"golang.org/x/sync/errgroup"
 )
 
-func SetUpRouter(
-	router *httprouter.Router,
-	opts ...RouterOption,
-) error {
-	for _, opt := range opts {
-		err := opt(router)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func ListenAndServe(
-	ctx context.Context, addr string, tlsAddr string, h http.Handler,
-	corsHosts []string, certFile string, keyFile string,
-) error {
-	handler := elephantine.LogMetadataMiddleware(h)
-
-	corsHandler := elephantine.CORSMiddleware(elephantine.CORSOptions{
-		AllowInsecure:          false,
-		AllowInsecureLocalhost: true,
-		Hosts:                  corsHosts,
-		AllowedMethods:         []string{"GET", "POST"},
-		AllowedHeaders:         []string{"Authorization", "Content-Type", "Last-Event-ID"},
-	}, handler)
-
-	grp, gCtx := errgroup.WithContext(ctx)
-
-	if certFile != "" {
-		grp.Go(func() error {
-			tlsServer := http.Server{
-				Addr:              tlsAddr,
-				Handler:           corsHandler,
-				ReadHeaderTimeout: 5 * time.Second,
-			}
-
-			return elephantine.ListenAndServeContext(
-				gCtx, &tlsServer, 10*time.Second,
-				elephantine.ListenAndServeTLS(slog.Default(), certFile, keyFile),
-			)
-		})
-	}
-
-	server := http.Server{
-		Addr:              addr,
-		Handler:           corsHandler,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
-	grp.Go(func() error {
-		return elephantine.ListenAndServeContext(
-			gCtx, &server, 10*time.Second)
-	})
-
-	//nolint:wrapcheck
-	return grp.Wait()
-}
-
-type ServerOptions struct {
-	Hooks          *twirp.ServerHooks
-	AuthMiddleware func(
-		w http.ResponseWriter, r *http.Request, next http.Handler,
-	) error
-}
-
-// SetJWTValidation installs the authentication middleware used by the Twirp
-// services and the SSE endpoint. A valid token is required: every method behind
-// this middleware asserts its own scope requirement, so there is nothing left
-// that legitimately needs anonymous access, and rejecting here means a handler
-// that forgets its scope check fails closed instead of open.
+// RegisterAPIs mounts the four RPC services on the API server, once on the
+// Twirp paths and once on the Connect ones. Both mounts wrap the same service
+// implementation and are configured from the same elephantine.ServiceOptions,
+// so authentication, logging and metrics are identical by construction rather
+// than by two chains that have to be kept in step.
 //
-// Note that this does not cover every route. GET /signing-keys is deliberately
-// public and GET /websocket/:token authenticates with its own socket token, so
-// neither goes through this middleware.
+// Production and the test suite both go through this function, so a test
+// measures the server shape the service actually serves.
+func RegisterAPIs(
+	srv *elephantine.APIServer,
+	opt elephantine.ServiceOptions,
+	documents repository.Documents,
+	schemas repository.Schemas,
+	workflows repository.Workflows,
+	metrics repository.Metrics,
+) {
+	srv.RegisterAPIs(opt,
+		repository.NewDocumentsServer(documents, opt.ServerOptions()),
+		repository.NewSchemasServer(schemas, opt.ServerOptions()),
+		repository.NewWorkflowsServer(workflows, opt.ServerOptions()),
+		repository.NewMetricsServer(metrics, opt.ServerOptions()),
+	)
+
+	// The generated Connect constructors return the service root
+	// ("/elephant.repository.Documents/") and a handler that serves the
+	// Connect, gRPC and gRPC-Web protocols on it.
+	path, handler := repositoryconnect.NewDocumentsServiceHandler(
+		documents, opt.HandlerOptions()...)
+	srv.RegisterConnect(path, handler, opt)
+
+	path, handler = repositoryconnect.NewSchemasServiceHandler(
+		schemas, opt.HandlerOptions()...)
+	srv.RegisterConnect(path, handler, opt)
+
+	path, handler = repositoryconnect.NewWorkflowsServiceHandler(
+		workflows, opt.HandlerOptions()...)
+	srv.RegisterConnect(path, handler, opt)
+
+	path, handler = repositoryconnect.NewMetricsServiceHandler(
+		metrics, opt.HandlerOptions()...)
+	srv.RegisterConnect(path, handler, opt)
+}
+
+// RegisterSSE mounts the event stream on the API server, behind the same
+// authentication middleware as the RPC services.
 //
-// TODO: This feels like an initial sketch that should be further developed to
-// address the JWT cacheing. Moving to elephantine's ServiceOptions and
-// ServiceAuthRequired would also put validation in a Twirp hook rather than in
-// HTTP middleware.
-func (so *ServerOptions) SetJWTValidation(parser elephantine.AuthInfoParser) {
-	so.AuthMiddleware = func(
-		w http.ResponseWriter, r *http.Request, next http.Handler,
+// The token may be passed as a "token" query parameter as well as in the
+// Authorization header: an EventSource cannot set headers, so a browser client
+// has nowhere else to put it. It is copied into the header before the
+// middleware runs, so there is one authentication path and not two.
+func RegisterSSE(
+	srv *elephantine.APIServer,
+	opt elephantine.ServiceOptions,
+	handler http.Handler,
+) {
+	srv.Mux.Handle("GET /sse", elephantine.HTTPErrorHandlerFunc(func(
+		w http.ResponseWriter, r *http.Request,
 	) error {
-		auth, err := parser.AuthInfoFromHeader(r.Header.Get("Authorization"))
+		token := r.URL.Query().Get("token")
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+
+		if opt.AuthMiddleware == nil {
+			handler.ServeHTTP(w, r)
+
+			return nil
+		}
+
+		err := opt.AuthMiddleware(w, r, handler)
 		if err != nil {
-			// TODO: Move the response part to a hook instead?
-			return elephantine.HTTPErrorf(http.StatusUnauthorized,
-				"invalid authorization: %v", err)
+			return fmt.Errorf("authenticate the request: %w", err)
 		}
 
-		if auth == nil {
-			return elephantine.HTTPErrorf(http.StatusInternalServerError,
-				"invalid auth info parser response")
+		return nil
+	}))
+}
+
+// RegisterWebsocket mounts the websocket endpoint on the API server. It
+// deliberately bypasses the authentication middleware: the socket token in the
+// path is signed with the server's own socket key and is verified by the
+// handler, and the session authenticates with a JWT once it is up.
+func RegisterWebsocket(
+	srv *elephantine.APIServer,
+	handler http.Handler,
+) {
+	srv.Mux.Handle("GET /websocket/{token}", handler)
+}
+
+// RegisterSigningKeys mounts the public endpoint that exposes the archive
+// signing public keys as a JWKS document. It bypasses the authentication
+// middleware by design: independent verification of the archive has to be
+// possible without a token.
+func RegisterSigningKeys(
+	srv *elephantine.APIServer,
+	pool *pgxpool.Pool,
+) {
+	srv.Mux.Handle("GET /signing-keys", elephantine.HTTPErrorHandlerFunc(func(
+		w http.ResponseWriter, r *http.Request,
+	) error {
+		q := postgres.New(pool)
+
+		keys, err := q.GetSigningKeys(r.Context())
+		if err != nil {
+			return fmt.Errorf("get signing keys: %w", err)
 		}
 
-		ctx := elephantine.SetAuthInfo(r.Context(), auth)
+		entries := make([]json.RawMessage, 0, len(keys))
 
-		elephantine.SetLogMetadata(ctx,
-			elephantine.LogKeySubject, auth.Claims.Subject,
-		)
+		for i := range keys {
+			var sk SigningKey
 
-		next.ServeHTTP(w, r.WithContext(ctx))
-
-		return nil
-	}
-}
-
-type RouterOption func(router *httprouter.Router) error
-
-func WithDocumentsAPI(
-	service repository.Documents,
-	opts ServerOptions,
-) RouterOption {
-	return func(router *httprouter.Router) error {
-		api := repository.NewDocumentsServer(
-			service,
-			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(opts.Hooks),
-		)
-
-		registerAPI(router, opts, api)
-
-		return nil
-	}
-}
-
-func WithSchemasAPI(
-	service repository.Schemas,
-	opts ServerOptions,
-) RouterOption {
-	return func(router *httprouter.Router) error {
-		api := repository.NewSchemasServer(
-			service,
-			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(opts.Hooks),
-		)
-
-		registerAPI(router, opts, api)
-
-		return nil
-	}
-}
-
-func WithWorkflowsAPI(
-	service repository.Workflows,
-	opts ServerOptions,
-) RouterOption {
-	return func(router *httprouter.Router) error {
-		api := repository.NewWorkflowsServer(
-			service,
-			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(opts.Hooks),
-		)
-
-		registerAPI(router, opts, api)
-
-		return nil
-	}
-}
-
-func WithSSE(
-	handler http.Handler,
-	opt ServerOptions,
-) RouterOption {
-	return func(router *httprouter.Router) error {
-		router.GET("/sse", internal.RHandleFunc(func(
-			w http.ResponseWriter, r *http.Request, _ httprouter.Params,
-		) error {
-			token := r.URL.Query().Get("token")
-			if token != "" {
-				r.Header.Set("Authorization", "Bearer "+token)
+			err := json.Unmarshal(keys[i].Spec, &sk)
+			if err != nil {
+				return fmt.Errorf(
+					"unmarshal key %q: %w",
+					keys[i].Kid, err)
 			}
 
-			if opt.AuthMiddleware != nil {
-				return opt.AuthMiddleware(w, r, handler)
+			raw, err := MarshalPublicSigningKey(sk)
+			if err != nil {
+				return fmt.Errorf(
+					"marshal public key %q: %w",
+					keys[i].Kid, err)
 			}
 
-			handler.ServeHTTP(w, r)
+			entries = append(entries, raw)
+		}
 
-			return nil
-		}))
+		resp := struct {
+			Keys []json.RawMessage `json:"keys"`
+		}{
+			Keys: entries,
+		}
 
-		return nil
-	}
-}
+		data, err := json.MarshalIndent(resp, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal response: %w", err)
+		}
 
-func WithWebsocket(
-	handler http.Handler,
-) RouterOption {
-	return func(router *httprouter.Router) error {
-		router.GET("/websocket/:token", internal.RHandleFunc(func(
-			w http.ResponseWriter, r *http.Request, _ httprouter.Params,
-		) error {
-			handler.ServeHTTP(w, r)
+		w.Header().Set("Content-Type", "application/json")
 
-			return nil
-		}))
-
-		return nil
-	}
-}
-
-func WithMetricsAPI(
-	service repository.Metrics,
-	opts ServerOptions,
-) RouterOption {
-	return func(router *httprouter.Router) error {
-		api := repository.NewMetricsServer(
-			service,
-			twirp.WithServerJSONSkipDefaults(true),
-			twirp.WithServerHooks(opts.Hooks),
-		)
-
-		registerAPI(router, opts, api)
+		_, err = w.Write(data)
+		if err != nil {
+			return fmt.Errorf("write response: %w", err)
+		}
 
 		return nil
-	}
+	}))
 }
 
 // MarshalPublicSigningKey marshals a SigningKey into a public JWK JSON
@@ -279,94 +204,10 @@ func MarshalPublicSigningKey(sk SigningKey) (json.RawMessage, error) {
 	return raw, nil
 }
 
-// WithSigningKeys registers a public endpoint that exposes the archive
-// signing public keys as a JWKS document.
-func WithSigningKeys(pool *pgxpool.Pool) RouterOption {
-	return func(router *httprouter.Router) error {
-		router.GET("/signing-keys", internal.RHandleFunc(func(
-			w http.ResponseWriter, r *http.Request, _ httprouter.Params,
-		) error {
-			q := postgres.New(pool)
-
-			keys, err := q.GetSigningKeys(r.Context())
-			if err != nil {
-				return fmt.Errorf("get signing keys: %w", err)
-			}
-
-			entries := make([]json.RawMessage, 0, len(keys))
-
-			for i := range keys {
-				var sk SigningKey
-
-				err := json.Unmarshal(keys[i].Spec, &sk)
-				if err != nil {
-					return fmt.Errorf(
-						"unmarshal key %q: %w",
-						keys[i].Kid, err)
-				}
-
-				raw, err := MarshalPublicSigningKey(sk)
-				if err != nil {
-					return fmt.Errorf(
-						"marshal public key %q: %w",
-						keys[i].Kid, err)
-				}
-
-				entries = append(entries, raw)
-			}
-
-			resp := struct {
-				Keys []json.RawMessage `json:"keys"`
-			}{
-				Keys: entries,
-			}
-
-			data, err := json.MarshalIndent(resp, "", "  ")
-			if err != nil {
-				return fmt.Errorf("marshal response: %w", err)
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-
-			_, err = w.Write(data)
-			if err != nil {
-				return fmt.Errorf("write response: %w", err)
-			}
-
-			return nil
-		}))
-
-		return nil
-	}
-}
-
 func marshalUnixTime(t time.Time) json.RawMessage {
 	if t.IsZero() {
 		return json.RawMessage("0")
 	}
 
 	return json.RawMessage(fmt.Sprintf("%d", t.Unix()))
-}
-
-type apiServerForRouter interface {
-	http.Handler
-
-	PathPrefix() string
-}
-
-func registerAPI(
-	router *httprouter.Router, opt ServerOptions,
-	api apiServerForRouter,
-) {
-	router.POST(api.PathPrefix()+":method", internal.RHandleFunc(func(
-		w http.ResponseWriter, r *http.Request, _ httprouter.Params,
-	) error {
-		if opt.AuthMiddleware != nil {
-			return opt.AuthMiddleware(w, r, api)
-		}
-
-		api.ServeHTTP(w, r)
-
-		return nil
-	}))
 }
