@@ -807,7 +807,14 @@ The shape:
 
 * `document` is one row per document, carrying `current_version`, `updated`,
   `updater_uri`, `nonce`, `system_state`, the derived `time` multirange and
-  `labels` array, and `main_doc` for meta documents.
+  `labels` array, and `main_doc` for meta documents. The `nonce` identifies the
+  document's *generation* — the run of versions between a create (or a
+  recreate) and a delete — so version 1 of a recreated document can be told
+  apart from version 1 of the sequence it replaced; it travels on the eventlog
+  as `document_nonce`. New nonces are UUIDv7, which makes the generations of a
+  document sort in creation order, but only among themselves: nonces minted
+  before v1.9.0 are random v4 and were deliberately left alone, since rewriting
+  them would break the eventlog signature chain and the archived history.
 * `document_version` is append-only, one row per version.
 * `document_status` is append-only; `status_heads` carries the current head per
   name.
