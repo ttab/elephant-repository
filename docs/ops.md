@@ -647,8 +647,9 @@ service in Postgres:
   starting point for five alerts that do not exist yet.
 * **`health_check_up{name="s3"}` has no alert, and now needs one.** Making the
   S3 readiness check optional was the right trade — it stops an archive bucket
-  outage from deregistering the whole fleet — but it also removed the only
-  automatic reaction to that outage. Until an alert exists, an unreachable
+  outage from deregistering the whole fleet, see
+  [ADR 0006](adr/0006-optional-s3-readiness-check.md) — but it also removed the
+  only automatic reaction to that outage. Until an alert exists, an unreachable
   archive bucket surfaces as replicas restarting one at a time with readiness
   reporting 200.
 * **SSE is uninstrumented.** No metric counts SSE connections, publishes,

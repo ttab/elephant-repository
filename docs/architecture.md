@@ -111,8 +111,10 @@ and turning a degraded background dependency into a total outage; the
 synchronous API needs only Postgres for reads and document writes. A failing
 optional check still reports `"ok": false` and drives
 `health_check_up{name="s3"}` to 0, so it remains alertable. Durability is
-enforced by the archiver exiting, not by the probe. See
-[ops.md](ops.md#archiving-has-stalled).
+enforced by the archiver exiting, not by the probe. **Making the check hard
+again re-creates the fleet-wide outage** — see
+[ADR 0006](adr/0006-optional-s3-readiness-check.md) for what it cost, and
+[ops.md](ops.md#archiving-has-stalled) for what to do about a stalled archive.
 
 ### Connection pools
 
@@ -202,11 +204,11 @@ is the floor on how long a *dropped* notification can delay an event.
 Workflow state changes used to be their own `workflow` events, and an ACL
 update that accompanied a new version used to be its own `acl` event. Both are
 now folded onto the `document` or `status` event that caused them, as
-`workflow_state`/`workflow_checkpoint` and `acl`. This history is worth
-knowing, because the old shape had a real defect: the version event was emitted
-*before* the accompanying ACL event, so a consumer could observe a new version
-before the permissions it was created with. Folding them into one event fixed
-that, and **re-splitting them would reintroduce the ordering hole.**
+`workflow_state`/`workflow_checkpoint` and `acl`. The old shape had a real
+defect — the version event was emitted *before* the accompanying ACL event, so a
+consumer could observe a new version before the permissions it was created with
+— and **re-splitting them would reintroduce that ordering hole**; see
+[ADR 0003](adr/0003-folded-workflow-and-acl-events.md).
 `--emit-workflow-event` and `--emit-acl-event` re-emit the legacy events
 alongside the folded fields as a transition aid for external consumers, and are
 slated for removal. Standalone `acl` events are still emitted for an ACL update
@@ -612,7 +614,9 @@ spelled.
 The Connect mount is the API going forward; Twirp is kept for the existing
 clients and is removed in a future major release, not on a traffic timer.
 `rpc_protocol_responses_total{protocol="twirp"}` is what says whether a method
-still has Twirp callers.
+still has Twirp callers. Why both are served from one registration, and why the
+Connect mount keeps the standard Connect JSON encoding rather than being made to
+look like Twirp, is in [ADR 0004](adr/0004-connect-alongside-twirp.md).
 
 Both mounts, and the three endpoints that are not RPC, are registered on an
 `elephantine.APIServer` — the same server the rest of the fleet serves from —
@@ -813,8 +817,9 @@ The shape:
   apart from version 1 of the sequence it replaced; it travels on the eventlog
   as `document_nonce`. New nonces are UUIDv7, which makes the generations of a
   document sort in creation order, but only among themselves: nonces minted
-  before v1.9.0 are random v4 and were deliberately left alone, since rewriting
-  them would break the eventlog signature chain and the archived history.
+  before v1.9.0 are random v4 and **are never backfilled**, because rewriting
+  them would break the eventlog signature chain and the archived history — see
+  [ADR 0005](adr/0005-uuidv7-nonces-forward-only.md).
 * `document_version` is append-only, one row per version.
 * `document_status` is append-only; `status_heads` carries the current head per
   name.
