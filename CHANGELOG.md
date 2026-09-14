@@ -4,7 +4,7 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
-## [v1.9.0] - Unreleased
+## [v1.9.0] - 2026-09-14
 
 **New API surface (Connect):** every method is now served a second time, on
 `POST /elephant.repository.<Service>/<Method>` in addition to
