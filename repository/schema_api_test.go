@@ -345,6 +345,8 @@ func TestGenerationRegistrationActivatesExisting(t *testing.T) {
 // callers without a schema scope. GetDocumentTypes, GetMetaTypes and ListActive
 // used to have no scope check at all, and since the auth middleware tolerates a
 // missing Authorization header they were reachable without a token.
+// GetDocumentTypes is the exception that also accepts doc_read, as a client
+// that reads documents needs to know which types exist.
 func TestSchemaReadScopeRequired(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -358,12 +360,13 @@ func TestSchemaReadScopeRequired(t *testing.T) {
 
 	ctx := t.Context()
 
-	// A client with document scopes but no schema scope.
-	unscoped := tc.SchemasClient(t, itest.StandardClaims(t, "doc_read doc_write"))
+	// A client with a document scope, but neither a schema scope nor
+	// doc_read.
+	unscoped := tc.SchemasClient(t, itest.StandardClaims(t, "doc_write"))
 
 	_, err := unscoped.GetDocumentTypes(ctx,
 		&rpc_repository.GetDocumentTypesRequest{})
-	isRPCError(t, err, "get document types without a schema scope",
+	isRPCError(t, err, "get document types without a schema or read scope",
 		connect.CodePermissionDenied)
 
 	_, err = unscoped.GetMetaTypes(ctx,
@@ -374,6 +377,23 @@ func TestSchemaReadScopeRequired(t *testing.T) {
 	_, err = unscoped.ListActive(ctx,
 		&rpc_repository.ListActiveSchemasRequest{})
 	isRPCError(t, err, "list active schemas without a schema scope",
+		connect.CodePermissionDenied)
+
+	// doc_read opens GetDocumentTypes, but not the other two.
+	docReader := tc.SchemasClient(t, itest.StandardClaims(t, "doc_read"))
+
+	_, err = docReader.GetDocumentTypes(ctx,
+		&rpc_repository.GetDocumentTypesRequest{})
+	test.Mustf(t, err, "get document types with doc_read")
+
+	_, err = docReader.GetMetaTypes(ctx,
+		&rpc_repository.GetMetaTypesRequest{})
+	isRPCError(t, err, "get meta types with only doc_read",
+		connect.CodePermissionDenied)
+
+	_, err = docReader.ListActive(ctx,
+		&rpc_repository.ListActiveSchemasRequest{})
+	isRPCError(t, err, "list active schemas with only doc_read",
 		connect.CodePermissionDenied)
 
 	// schema_read is enough for all three.

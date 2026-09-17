@@ -4,6 +4,18 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
+## [v1.9.1] - 2026-09-17
+
+**Behaviour change (scopes):** `Schemas.GetDocumentTypes` now also accepts
+`doc_read`, alongside `schema_read` and `schema_admin`. A client that reads
+documents can enumerate the document types without being granted a schema
+scope; nothing that worked before stops working.
+
+Changes:
+
+- `Schemas.GetDocumentTypes` accepts `doc_read` in addition to the schema
+  scopes.
+
 ## [v1.9.0] - 2026-09-14
 
 **New API surface (Connect):** every method is now served a second time, on

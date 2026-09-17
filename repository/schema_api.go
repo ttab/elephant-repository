@@ -39,7 +39,7 @@ func (a *SchemasService) GetDocumentTypes(
 	ctx context.Context,
 	_ *repository.GetDocumentTypesRequest,
 ) (*repository.GetDocumentTypesResponse, error) {
-	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin, ScopeSchemaRead)
+	_, err := RequireAnyScope(ctx, ScopeSchemaAdmin, ScopeSchemaRead, ScopeDocumentRead)
 	if err != nil {
 		return nil, err
 	}

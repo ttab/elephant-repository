@@ -142,12 +142,16 @@ about:
 | `RegisterMetaTypeUse` | `schema_admin` |
 | `GetDeprecations` | `schema_admin` |
 | `UpdateDeprecation` | `schema_admin` |
-| `GetDocumentTypes` | `schema_read`, `schema_admin` |
+| `GetDocumentTypes` | `doc_read`, `schema_read`, `schema_admin` |
 | `GetMetaTypes` | `schema_read`, `schema_admin` |
 | `ListActive` | `schema_read`, `schema_admin` |
 
 `GetTypeConfiguration` requires `schema_admin` rather than `schema_read`, unlike
 every other read in this service.
+
+`GetDocumentTypes` also accepts `doc_read`, unlike the other two enumerations.
+Knowing which document types exist is part of reading documents, so a client
+with `doc_read` gets the list without being granted a schema scope.
 
 `Validate` and `Prune` live on the `Documents` service but read the schemas, so
 a client that only validates still needs a *write* scope rather than
