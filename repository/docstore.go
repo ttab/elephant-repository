@@ -618,17 +618,17 @@ type LockResult struct {
 // locked. It carries the existing lock's holder info so handlers can
 // surface useful diagnostics — typically as twirp error metadata.
 //
-// Embeds DocStoreError so IsDocStoreErrorCode(err, ErrCodeDocumentLock)
+// Embeds StoreError so IsStoreErrorCode(err, ErrCodeDocumentLock)
 // continues to work.
 type LockConflictError struct {
-	DocStoreError
+	StoreError
 	Holder Lock
 }
 
-// Unwrap exposes the embedded DocStoreError so errors.As walks down
-// to it when callers ask for a DocStoreError specifically.
+// Unwrap exposes the embedded StoreError so errors.As walks down
+// to it when callers ask for a StoreError specifically.
 func (e *LockConflictError) Unwrap() error {
-	return e.DocStoreError
+	return e.StoreError
 }
 
 type UpdateLockRequest struct {
@@ -719,59 +719,58 @@ type GetCompactedEventlogRequest struct {
 	Offset int32
 }
 
-// DocStoreErrorCode TODO: Rename to StoreErrorCode and consistently rename all
-// dependent types and methods.
-type DocStoreErrorCode string
+// StoreErrorCode classifies store-level errors.
+type StoreErrorCode string
 
 const (
-	NoErrCode                 DocStoreErrorCode = ""
-	ErrCodeNotFound           DocStoreErrorCode = "not-found"
-	ErrCodeNoSuchLock         DocStoreErrorCode = "no-such-lock"
-	ErrCodeOptimisticLock     DocStoreErrorCode = "optimistic-lock"
-	ErrCodeDeleteLock         DocStoreErrorCode = "delete-lock"
-	ErrCodeSystemLock         DocStoreErrorCode = "system-lock"
-	ErrCodeBadRequest         DocStoreErrorCode = "bad-request"
-	ErrCodeExists             DocStoreErrorCode = "exists"
-	ErrCodePermissionDenied   DocStoreErrorCode = "permission-denied"
-	ErrCodeFailedPrecondition DocStoreErrorCode = "failed-precondition"
-	ErrCodeDocumentLock       DocStoreErrorCode = "document-lock"
-	ErrCodeDuplicateURI       DocStoreErrorCode = "duplicate-uri"
+	NoErrCode                 StoreErrorCode = ""
+	ErrCodeNotFound           StoreErrorCode = "not-found"
+	ErrCodeNoSuchLock         StoreErrorCode = "no-such-lock"
+	ErrCodeOptimisticLock     StoreErrorCode = "optimistic-lock"
+	ErrCodeDeleteLock         StoreErrorCode = "delete-lock"
+	ErrCodeSystemLock         StoreErrorCode = "system-lock"
+	ErrCodeBadRequest         StoreErrorCode = "bad-request"
+	ErrCodeExists             StoreErrorCode = "exists"
+	ErrCodePermissionDenied   StoreErrorCode = "permission-denied"
+	ErrCodeFailedPrecondition StoreErrorCode = "failed-precondition"
+	ErrCodeDocumentLock       StoreErrorCode = "document-lock"
+	ErrCodeDuplicateURI       StoreErrorCode = "duplicate-uri"
 )
 
-type DocStoreError struct {
+type StoreError struct {
 	cause error
-	code  DocStoreErrorCode
+	code  StoreErrorCode
 	msg   string
 }
 
-func DocStoreErrorf(code DocStoreErrorCode, format string, a ...any) error {
+func StoreErrorf(code StoreErrorCode, format string, a ...any) error {
 	e := fmt.Errorf(format, a...)
 
-	return DocStoreError{
+	return StoreError{
 		cause: errors.Unwrap(e),
 		code:  code,
 		msg:   e.Error(),
 	}
 }
 
-func (e DocStoreError) Error() string {
+func (e StoreError) Error() string {
 	return e.msg
 }
 
-func (e DocStoreError) Unwrap() error {
+func (e StoreError) Unwrap() error {
 	return e.cause
 }
 
-func IsDocStoreErrorCode(err error, code DocStoreErrorCode) bool {
-	return GetDocStoreErrorCode(err) == code
+func IsStoreErrorCode(err error, code StoreErrorCode) bool {
+	return GetStoreErrorCode(err) == code
 }
 
-func GetDocStoreErrorCode(err error) DocStoreErrorCode {
+func GetStoreErrorCode(err error) StoreErrorCode {
 	if err == nil {
 		return NoErrCode
 	}
 
-	var e DocStoreError
+	var e StoreError
 
 	if errors.As(err, &e) {
 		return e.code
