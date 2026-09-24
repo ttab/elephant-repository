@@ -125,11 +125,15 @@ notification listener always runs on the direct pool** — configuring only the
 bouncer connection string would silently break every notification-driven
 refresh in the process.
 
-Neither pool sets an explicit `MaxConns`, so pgx defaults to
-`max(4, runtime.NumCPU())`. On Kubernetes with the default CPU manager policy
-that tracks the *node's* vCPU count rather than the container's quota, so pool
-size changes invisibly when a pod is rescheduled onto a differently-sized node.
-Set `pool_max_conns` in the connection string if that matters.
+Both pools are sized explicitly. `--db-max-conns` (`DB_MAX_CONNS`, default 16)
+sizes the pool queries run on — the single direct pool without a bouncer, the
+bouncer pool with one — and with a bouncer the direct pool is pinned at 2, as it
+then carries only the `LISTEN` session and the `--migrate-db` startup
+migrations, whose session-level advisory lock would not survive transaction
+pooling. Leaving sizing to pgx would give
+`max(4, runtime.NumCPU())`, which on Kubernetes with the default CPU manager
+policy tracks the *node's* vCPU count rather than the container's quota, so the
+pool would change size invisibly on reschedule.
 
 ## Data flow
 

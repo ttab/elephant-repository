@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -96,8 +97,18 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "db-bouncer",
-				Usage:   "Connection string routed through PgBouncer, used for all DB operations except pubsub",
+				Usage:   "Connection string routed through PgBouncer, used for all DB operations except pubsub and migrations",
 				Sources: cli.EnvVars("BOUNCER_CONN_STRING"),
+			},
+			&cli.IntFlag{
+				Name:    "db-max-conns",
+				Sources: cli.EnvVars("DB_MAX_CONNS"),
+				Value:   cmd.DefaultDBMaxConns,
+				Usage: `Maximum size of the Postgres connection pool used for
+queries. Overrides pool_max_conns in the connection string. Zero or less leaves
+the pool to size itself, which means max(4, NumCPU()) read from the node's
+cpuset. With a bouncer configured the direct pool is fixed at 2 and this applies
+to the bouncer pool.`,
 			},
 			&cli.StringFlag{
 				Name:    "db-parameter",
@@ -322,9 +333,22 @@ func runServer(ctx context.Context, c *cli.Command) error {
 			"failed to create S3 client: %w", err)
 	}
 
-	dbpool, err := pgxpool.New(ctx, conf.DB)
+	// The pubsub pool uses a direct connection to PostgreSQL, as
+	// LISTEN/NOTIFY is not supported through PgBouncer. When no
+	// separate bouncer connection string is configured we share a
+	// single pool for both, sized by --db-max-conns. With a bouncer the
+	// direct pool only carries the LISTEN session and --migrate-db, and is
+	// pinned small.
+	useBouncer := conf.DBBouncer != conf.DB
+
+	directMaxConns := conf.DBMaxConns
+	if useBouncer {
+		directMaxConns = cmd.ListenPoolMaxConns
+	}
+
+	dbpool, err := newPool(ctx, conf.DB, directMaxConns)
 	if err != nil {
-		return fmt.Errorf("unable to create connection pool: %w", err)
+		return fmt.Errorf("direct database: %w", err)
 	}
 
 	defer func() {
@@ -332,32 +356,23 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		go dbpool.Close()
 	}()
 
-	err = dbpool.Ping(ctx)
-	if err != nil {
-		return fmt.Errorf("connect to database: %w", err)
-	}
-
-	// The pubsub pool uses a direct connection to PostgreSQL, as
-	// LISTEN/NOTIFY is not supported through PgBouncer. When no
-	// separate bouncer connection string is configured we share a
-	// single pool for both.
 	pubsubPool := dbpool
 
-	if conf.DBBouncer != conf.DB {
-		dbpool, err = pgxpool.New(ctx, conf.DBBouncer)
+	if useBouncer {
+		dbpool, err = newPool(ctx, conf.DBBouncer, conf.DBMaxConns)
 		if err != nil {
-			return fmt.Errorf("unable to create bouncer connection pool: %w", err)
+			return fmt.Errorf("bouncer database: %w", err)
 		}
 
 		defer func() {
 			go dbpool.Close()
 		}()
-
-		err = dbpool.Ping(ctx)
-		if err != nil {
-			return fmt.Errorf("connect to bouncer database: %w", err)
-		}
 	}
+
+	logger.InfoContext(ctx, "created connection pools",
+		"max_conns", dbpool.Config().MaxConns,
+		"direct_max_conns", pubsubPool.Config().MaxConns,
+		"bouncer", useBouncer)
 
 	poolMetrics := elephantine.NewMetricsHelper(prometheus.DefaultRegisterer)
 
@@ -377,7 +392,11 @@ func runServer(ctx context.Context, c *cli.Command) error {
 	if migrateDB {
 		logger.Info("migrating database schema")
 
-		err = internal.Migrate(stopCtx, dbpool, schema.Migrations)
+		// Migrations run on the direct pool: tern takes a session-level
+		// advisory lock and releases it in a later statement, which
+		// transaction pooling could route to a different server
+		// connection. Without a bouncer this is the only pool anyway.
+		err = internal.Migrate(stopCtx, pubsubPool, schema.Migrations)
 		if err != nil {
 			return fmt.Errorf("migrate database: %w", err)
 		}
@@ -812,4 +831,38 @@ func startArchiver(
 	}
 
 	return nil
+}
+
+// newPool creates a connection pool and verifies that the database answers.
+// A positive maxConns sizes the pool; zero or less leaves that to the
+// connection string or pgx.
+func newPool(
+	ctx context.Context, connString string, maxConns int,
+) (*pgxpool.Pool, error) {
+	conf, err := pgxpool.ParseConfig(connString)
+	if err != nil {
+		return nil, fmt.Errorf("parse connection string: %w", err)
+	}
+
+	if maxConns > math.MaxInt32 {
+		return nil, fmt.Errorf("max conns %d exceeds %d", maxConns, math.MaxInt32)
+	}
+
+	if maxConns > 0 {
+		conf.MaxConns = int32(maxConns)
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, conf)
+	if err != nil {
+		return nil, fmt.Errorf("create connection pool: %w", err)
+	}
+
+	err = pool.Ping(ctx)
+	if err != nil {
+		pool.Close()
+
+		return nil, fmt.Errorf("connect to database: %w", err)
+	}
+
+	return pool, nil
 }

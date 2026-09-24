@@ -4,6 +4,25 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
+## [v1.10.0] - Unreleased
+
+**Behaviour change (connection pools):** both Postgres pools now have an
+explicit size instead of pgx's `max(4, NumCPU())`, which read the node's vCPU
+count and so changed with every reschedule. The new `DB_MAX_CONNS`
+(`--db-max-conns`, default 16) sizes the pool queries run on: the single direct
+pool when `BOUNCER_CONN_STRING` is unset, the bouncer pool when it is set. With
+a bouncer the direct `CONN_STRING` pool, which then carries only `LISTEN` and
+`--migrate-db` startup migrations, is pinned at 2. `DB_MAX_CONNS` overrides `pool_max_conns` in the connection string;
+set it to 0 to go back to leaving the size to the connection string or pgx. See
+[connection pools](docs/architecture.md#connection-pools).
+
+Changes:
+
+- New `DB_MAX_CONNS` setting for the query pool size, and a direct pool pinned
+  at 2 connections when `BOUNCER_CONN_STRING` is configured.
+- `--migrate-db` now runs its migrations on the direct `CONN_STRING` pool
+  rather than through the bouncer, since tern's advisory lock needs a session.
+
 ## [v1.9.1] - 2026-09-17
 
 **Behaviour change (scopes):** `Schemas.GetDocumentTypes` now also accepts
