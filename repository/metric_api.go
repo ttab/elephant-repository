@@ -232,7 +232,7 @@ func (m *MetricsService) RegisterMetric(
 
 	// TODO: the metric kinds are very cacheable.
 	kind, err := m.store.GetMetricKind(ctx, req.Kind)
-	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+	if IsStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, rpc.FailedPreconditionf("%w", err)
 	} else if err != nil {
 		return nil, rpc.Internalf("failed to get metric kind: %w", err)
@@ -259,7 +259,7 @@ func (m *MetricsService) RegisterMetric(
 		return nil, rpc.Internalf("unknown metric kind aggregation: %v", kind.Aggregation)
 	}
 
-	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+	if IsStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, rpc.FailedPreconditionf("%w", err)
 	} else if err != nil {
 		return nil, rpc.Internalf("failed to register metric: %w", err)

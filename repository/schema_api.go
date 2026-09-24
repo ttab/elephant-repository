@@ -126,7 +126,7 @@ func (a *SchemasService) GetTypeConfiguration(
 	}
 
 	conf, err := a.store.GetTypeConfiguration(ctx, req.Type)
-	if IsDocStoreErrorCode(err, ErrCodeNotFound) {
+	if IsStoreErrorCode(err, ErrCodeNotFound) {
 		return nil, rpc.Errorf(connect.CodeNotFound,
 			"could not find type configuration: %v", err)
 	}
@@ -234,7 +234,7 @@ func (a *SchemasService) RegisterMetaTypeUse(
 	}
 
 	err = a.store.RegisterMetaTypeUse(ctx, req.MainType, req.MetaType)
-	if errors.As(err, &DocStoreError{}) {
+	if errors.As(err, &StoreError{}) {
 		return nil, rpc.Errorf(connect.CodeInvalidArgument, "%w", err)
 	} else if err != nil {
 		return nil, rpc.Internalf("register meta type use: %w", err)
@@ -553,9 +553,9 @@ func (a *SchemasService) SetActive(
 	err = a.store.SetGenerationStatus(ctx, req.GenerationId, activation)
 
 	switch {
-	case IsDocStoreErrorCode(err, ErrCodeBadRequest):
+	case IsStoreErrorCode(err, ErrCodeBadRequest):
 		return nil, rpc.Errorf(connect.CodeInvalidArgument, "%w", err)
-	case IsDocStoreErrorCode(err, ErrCodeNotFound):
+	case IsStoreErrorCode(err, ErrCodeNotFound):
 		return nil, rpc.NotFound(err.Error())
 	case err != nil:
 		return nil, rpc.Internalf("set generation status: %w", err)
