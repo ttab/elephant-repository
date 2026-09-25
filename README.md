@@ -171,9 +171,10 @@ Every option is a CLI flag with an environment variable equivalent. Flags win.
 
 | Flag | Env | Default | What it does |
 |---|---|---|---|
-| `--db` | `CONN_STRING` | `postgres://elephant-repository:pass@localhost/elephant-repository` | The direct connection. Used for `LISTEN`/`NOTIFY` always, and for everything else when no bouncer string is set. |
-| `--db-bouncer` | `BOUNCER_CONN_STRING` | | Routed through PgBouncer and used for every operation *except* pub/sub. **Set this and `--db` must still be a direct connection** — transaction pooling drops notifications, and every notification-driven refresh in the process would silently fall back to five-minute polling. |
-| `--db-parameter` | `CONN_STRING_PARAMETER` | | Extra connection string parameter. `pool_max_conns` belongs here: neither pool sets `MaxConns`, so pgx defaults to `max(4, NumCPU())`, and on Kubernetes `NumCPU()` reads the node's vCPU count rather than the container's quota. |
+| `--db` | `CONN_STRING` | `postgres://elephant-repository:pass@localhost/elephant-repository` | The direct connection. Used for `LISTEN`/`NOTIFY` and `--migrate-db` always, and for everything else when no bouncer string is set. |
+| `--db-bouncer` | `BOUNCER_CONN_STRING` | | Routed through PgBouncer and used for every operation *except* pub/sub and `--migrate-db` startup migrations. **Set this and `--db` must still be a direct connection** — transaction pooling drops notifications, and every notification-driven refresh in the process would silently fall back to five-minute polling. |
+| `--db-max-conns` | `DB_MAX_CONNS` | `16` | Size of the pool queries run on: the direct pool without a bouncer, the bouncer pool with one. With a bouncer the direct pool is pinned at elephantine's `pg.DefaultPubSubMaxConns` (2), since it then carries only the `LISTEN` session and `--migrate-db`. Overrides `pool_max_conns` in the connection string; zero or less leaves sizing to that or to pgx, whose `max(4, NumCPU())` reads the node's vCPU count rather than the container's quota. The default's derivation is on `DefaultDBMaxConns` in `internal/cmd`. |
+| `--db-parameter` | `CONN_STRING_PARAMETER` | | Declared but not read by the server. |
 | `--migrate-db` | `MIGRATE_DB` | `false` | Migrate on startup. For disposable environments only — migrations can be expensive and some must be sequenced against the deploy. |
 
 ### S3
@@ -636,12 +637,6 @@ bucket when their document is deleted — *moved*, not copied, so they leave the
 asset bucket — so a document can be restored with its attachments, but only the
 latest version of the currently attached objects. Backup of the asset bucket has
 to be solved outside the repository.
-
-**Neither connection pool sets `MaxConns`**, so the effective pool size is
-`max(4, runtime.NumCPU())` and `NumCPU()` reads the cpuset rather than the
-cgroup CPU quota. On Kubernetes with the default CPU manager policy that tracks
-the node's vCPU count, so pool size changes invisibly when a pod is
-rescheduled. It should be set explicitly, sized for the workload.
 
 **The legacy event flags are still shipping.** `--emit-workflow-event` and
 `--emit-acl-event` re-add event shapes removed in v1.8.0 and are slated for

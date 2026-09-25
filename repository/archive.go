@@ -199,25 +199,23 @@ func (a *Archiver) Run(ctx context.Context) error {
 
 	grp := elephantine.NewErrGroup(ctx, a.logger)
 
-	grp.GoWithRetries("run poll loop",
-		// Try 30 times, bail after approximately 5 minutes of retries.
-		30, elephantine.StaticBackoff(10*time.Second),
-		1*time.Hour,
-		a.runPollLoop)
+	// Bail after approximately five minutes of failing, as the old retry
+	// count was written to do. A minute of running is enough to call an
+	// archiver loop working again, and the budget is five of those.
+	retry := elephantine.RetryOptions{
+		GiveUpAfter:    5 * time.Minute,
+		HealthyRuntime: time.Minute,
+	}
 
-	grp.GoWithRetries("run eventlog archiver",
-		30, elephantine.StaticBackoff(10*time.Second),
-		1*time.Hour,
+	grp.GoWithRetries("run poll loop", retry, a.runPollLoop)
+
+	grp.GoWithRetries("run eventlog archiver", retry,
 		a.runEventlogArchiver)
 
-	grp.GoWithRetries("run eventlog batch archiver",
-		30, elephantine.StaticBackoff(10*time.Second),
-		1*time.Hour,
+	grp.GoWithRetries("run eventlog batch archiver", retry,
 		a.runEventlogBatchArchiver)
 
-	grp.GoWithRetries("run generation archiver",
-		30, elephantine.StaticBackoff(10*time.Second),
-		1*time.Hour,
+	grp.GoWithRetries("run generation archiver", retry,
 		a.runGenerationArchiver)
 
 	return grp.Wait() //nolint: wrapcheck

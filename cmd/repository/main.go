@@ -96,8 +96,18 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "db-bouncer",
-				Usage:   "Connection string routed through PgBouncer, used for all DB operations except pubsub",
+				Usage:   "Connection string routed through PgBouncer, used for all DB operations except pubsub and migrations",
 				Sources: cli.EnvVars("BOUNCER_CONN_STRING"),
+			},
+			&cli.IntFlag{
+				Name:    "db-max-conns",
+				Sources: cli.EnvVars("DB_MAX_CONNS"),
+				Value:   cmd.DefaultDBMaxConns,
+				Usage: `Maximum size of the Postgres connection pool used for
+queries. Overrides pool_max_conns in the connection string. Zero or less leaves
+the pool to size itself, which means max(4, NumCPU()) read from the node's
+cpuset. With a bouncer configured the direct pool is fixed at 2 and this applies
+to the bouncer pool.`,
 			},
 			&cli.StringFlag{
 				Name:    "db-parameter",
@@ -289,7 +299,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("set up authentication: %w", err)
 	}
 
-	instrument, err := elephantine.NewHTTPClientIntrumentation(prometheus.DefaultRegisterer)
+	instrument, err := elephantine.NewHTTPClientInstrumentation(prometheus.DefaultRegisterer)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to set up HTTP client instrumentation: %w", err)
@@ -322,62 +332,43 @@ func runServer(ctx context.Context, c *cli.Command) error {
 			"failed to create S3 client: %w", err)
 	}
 
-	dbpool, err := pgxpool.New(ctx, conf.DB)
+	// Queries run through the bouncer when one is configured, sized by
+	// --db-max-conns, while the pubsub pool stays a direct connection
+	// because LISTEN/NOTIFY doesn't survive transaction pooling. Without a
+	// bouncer the two are the same pool: an empty bouncer string, or one
+	// equal to the direct string, is "no bouncer" to NewPools, so the
+	// setting is passed through rather than branched on. The pubsub pool's
+	// size is pg.DefaultPubSubMaxConns and not ours to pick.
+	pools, err := pg.NewPools(ctx, prometheus.DefaultRegisterer,
+		conf.DB, conf.DBMaxConns,
+		pg.WithBouncer(conf.DBBouncer),
+		pg.WithPubSub(),
+	)
 	if err != nil {
-		return fmt.Errorf("unable to create connection pool: %w", err)
+		return fmt.Errorf("create database pools: %w", err)
 	}
 
 	defer func() {
 		// Don't block for close.
-		go dbpool.Close()
+		go pools.Close()
 	}()
 
-	err = dbpool.Ping(ctx)
-	if err != nil {
-		return fmt.Errorf("connect to database: %w", err)
-	}
+	dbpool := pools.Main
+	pubsubPool := pools.PubSub
 
-	// The pubsub pool uses a direct connection to PostgreSQL, as
-	// LISTEN/NOTIFY is not supported through PgBouncer. When no
-	// separate bouncer connection string is configured we share a
-	// single pool for both.
-	pubsubPool := dbpool
-
-	if conf.DBBouncer != conf.DB {
-		dbpool, err = pgxpool.New(ctx, conf.DBBouncer)
-		if err != nil {
-			return fmt.Errorf("unable to create bouncer connection pool: %w", err)
-		}
-
-		defer func() {
-			go dbpool.Close()
-		}()
-
-		err = dbpool.Ping(ctx)
-		if err != nil {
-			return fmt.Errorf("connect to bouncer database: %w", err)
-		}
-	}
-
-	poolMetrics := elephantine.NewMetricsHelper(prometheus.DefaultRegisterer)
-
-	poolMetrics.Collector("main",
-		pg.NewPoolStatCollector(dbpool, "main"))
-
-	if pubsubPool != dbpool {
-		poolMetrics.Collector("pubsub",
-			pg.NewPoolStatCollector(pubsubPool, "pubsub"))
-	}
-
-	err = poolMetrics.Err()
-	if err != nil {
-		return fmt.Errorf("register connection pool metrics: %w", err)
-	}
+	logger.InfoContext(ctx, "created connection pools",
+		"max_conns", dbpool.Config().MaxConns,
+		"direct_max_conns", pubsubPool.Config().MaxConns,
+		"bouncer", pubsubPool != dbpool)
 
 	if migrateDB {
 		logger.Info("migrating database schema")
 
-		err = internal.Migrate(stopCtx, dbpool, schema.Migrations)
+		// Migrations run on the direct pool: tern takes a session-level
+		// advisory lock and releases it in a later statement, which
+		// transaction pooling could route to a different server
+		// connection. Without a bouncer this is the only pool anyway.
+		err = internal.Migrate(stopCtx, pubsubPool, schema.Migrations)
 		if err != nil {
 			return fmt.Errorf("migrate database: %w", err)
 		}

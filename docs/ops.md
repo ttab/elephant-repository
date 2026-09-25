@@ -478,12 +478,13 @@ not loss, and resolves itself.
 `pgxpool_empty_acquire_wait_seconds_total` growing together, with
 `pgxpool_acquired_conns` pinned at `pgxpool_max_conns`.
 
-**Action:** neither pool sets an explicit `MaxConns`, so pgx defaults to
-`max(4, runtime.NumCPU())` — and on Kubernetes with the default CPU manager
-policy `NumCPU()` reads the node's vCPU count, not the container's quota.
-**Pool size therefore changes when a pod is rescheduled onto a
-differently-sized node, with no configuration change.** Set `pool_max_conns` in
-the connection string rather than trying to reason about it.
+**Action:** check which pool it is. `pool="main"` is the pool queries run on,
+sized by `DB_MAX_CONNS` (default 16); raise it. With a bouncer configured, mind
+the pooler's per-client server connection limit — a larger client pool beyond
+that only moves the queueing into PgBouncer. `pool="pubsub"` is the direct pool
+pinned at 2 with a bouncer; it carries only the `LISTEN` session (and
+`--migrate-db` at startup), so exhaustion there means something other than the
+subscriber is using it.
 
 ### A single document's writers are queueing
 
@@ -668,9 +669,6 @@ service in Postgres:
   copied into the archive bucket only when their document is deleted, and only
   the latest version of the currently attached objects. Backing up the asset
   bucket is out of scope for this service and has to be solved around it.
-* **No `MaxConns` on either pool.** See [the pool exhaustion failure
-  mode](#everything-is-slow-and-the-pool-is-exhausted): the effective pool size
-  is a function of the node the pod landed on.
 * **Legacy event flags are still shipping.** `--emit-workflow-event` and
   `--emit-acl-event` re-emit event shapes that were removed in v1.8.0 and are
   slated for removal. Consumers still relying on them need to be found before
