@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"math"
 	"net"
 	"net/http"
 	"os"
@@ -300,7 +299,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("set up authentication: %w", err)
 	}
 
-	instrument, err := elephantine.NewHTTPClientIntrumentation(prometheus.DefaultRegisterer)
+	instrument, err := elephantine.NewHTTPClientInstrumentation(prometheus.DefaultRegisterer)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to set up HTTP client instrumentation: %w", err)
@@ -333,61 +332,34 @@ func runServer(ctx context.Context, c *cli.Command) error {
 			"failed to create S3 client: %w", err)
 	}
 
-	// The pubsub pool uses a direct connection to PostgreSQL, as
-	// LISTEN/NOTIFY is not supported through PgBouncer. When no
-	// separate bouncer connection string is configured we share a
-	// single pool for both, sized by --db-max-conns. With a bouncer the
-	// direct pool only carries the LISTEN session and --migrate-db, and is
-	// pinned small.
-	useBouncer := conf.DBBouncer != conf.DB
-
-	directMaxConns := conf.DBMaxConns
-	if useBouncer {
-		directMaxConns = cmd.ListenPoolMaxConns
-	}
-
-	dbpool, err := newPool(ctx, conf.DB, directMaxConns)
+	// Queries run through the bouncer when one is configured, sized by
+	// --db-max-conns, while the pubsub pool stays a direct connection
+	// because LISTEN/NOTIFY doesn't survive transaction pooling. Without a
+	// bouncer the two are the same pool: an empty bouncer string, or one
+	// equal to the direct string, is "no bouncer" to NewPools, so the
+	// setting is passed through rather than branched on. The pubsub pool's
+	// size is pg.DefaultPubSubMaxConns and not ours to pick.
+	pools, err := pg.NewPools(ctx, prometheus.DefaultRegisterer,
+		conf.DB, conf.DBMaxConns,
+		pg.WithBouncer(conf.DBBouncer),
+		pg.WithPubSub(),
+	)
 	if err != nil {
-		return fmt.Errorf("direct database: %w", err)
+		return fmt.Errorf("create database pools: %w", err)
 	}
 
 	defer func() {
 		// Don't block for close.
-		go dbpool.Close()
+		go pools.Close()
 	}()
 
-	pubsubPool := dbpool
-
-	if useBouncer {
-		dbpool, err = newPool(ctx, conf.DBBouncer, conf.DBMaxConns)
-		if err != nil {
-			return fmt.Errorf("bouncer database: %w", err)
-		}
-
-		defer func() {
-			go dbpool.Close()
-		}()
-	}
+	dbpool := pools.Main
+	pubsubPool := pools.PubSub
 
 	logger.InfoContext(ctx, "created connection pools",
 		"max_conns", dbpool.Config().MaxConns,
 		"direct_max_conns", pubsubPool.Config().MaxConns,
-		"bouncer", useBouncer)
-
-	poolMetrics := elephantine.NewMetricsHelper(prometheus.DefaultRegisterer)
-
-	poolMetrics.Collector("main",
-		pg.NewPoolStatCollector(dbpool, "main"))
-
-	if pubsubPool != dbpool {
-		poolMetrics.Collector("pubsub",
-			pg.NewPoolStatCollector(pubsubPool, "pubsub"))
-	}
-
-	err = poolMetrics.Err()
-	if err != nil {
-		return fmt.Errorf("register connection pool metrics: %w", err)
-	}
+		"bouncer", pubsubPool != dbpool)
 
 	if migrateDB {
 		logger.Info("migrating database schema")
@@ -831,38 +803,4 @@ func startArchiver(
 	}
 
 	return nil
-}
-
-// newPool creates a connection pool and verifies that the database answers.
-// A positive maxConns sizes the pool; zero or less leaves that to the
-// connection string or pgx.
-func newPool(
-	ctx context.Context, connString string, maxConns int,
-) (*pgxpool.Pool, error) {
-	conf, err := pgxpool.ParseConfig(connString)
-	if err != nil {
-		return nil, fmt.Errorf("parse connection string: %w", err)
-	}
-
-	if maxConns > math.MaxInt32 {
-		return nil, fmt.Errorf("max conns %d exceeds %d", maxConns, math.MaxInt32)
-	}
-
-	if maxConns > 0 {
-		conf.MaxConns = int32(maxConns)
-	}
-
-	pool, err := pgxpool.NewWithConfig(ctx, conf)
-	if err != nil {
-		return nil, fmt.Errorf("create connection pool: %w", err)
-	}
-
-	err = pool.Ping(ctx)
-	if err != nil {
-		pool.Close()
-
-		return nil, fmt.Errorf("connect to database: %w", err)
-	}
-
-	return pool, nil
 }

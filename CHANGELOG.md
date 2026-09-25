@@ -16,12 +16,23 @@ a bouncer the direct `CONN_STRING` pool, which then carries only `LISTEN` and
 set it to 0 to go back to leaving the size to the connection string or pgx. See
 [connection pools](docs/architecture.md#connection-pools).
 
+**Behaviour change (archiver restarts):** the four archiver loops are still
+given about five minutes of failing before the archiver gives up, but that is
+now a time budget rather than a count of 30 attempts, and the waits between
+restarts follow elephantine's exponential curve with jitter instead of a flat
+ten seconds. A restart also can't happen more than once every ten seconds.
+
 Changes:
 
 - New `DB_MAX_CONNS` setting for the query pool size, and a direct pool pinned
   at 2 connections when `BOUNCER_CONN_STRING` is configured.
 - `--migrate-db` now runs its migrations on the direct `CONN_STRING` pool
   rather than through the bouncer, since tern's advisory lock needs a session.
+- Both pools are now built by elephantine's `pg.NewPools`, which does the
+  bouncer selection, the sizing, the ping and the `pgxpool_*` collector
+  registration in one call, so the `pool="main"` and `pool="pubsub"` labels
+  are the library's rather than this service's.
+- Bumped elephantine to v0.30.1.
 
 ## [v1.9.1] - 2026-09-17
 

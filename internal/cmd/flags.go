@@ -7,10 +7,13 @@ import (
 
 // DefaultDBMaxConns is the default size of the pool the repository runs its
 // queries on: the direct pool when no bouncer is configured, the bouncer pool
-// when one is. It is set here rather than left to pgx, whose default is
-// max(4, NumCPU()) read from the node's cpuset rather than the cgroup quota, so
-// an unset pool tracks whichever node the pod lands on and changes size
-// invisibly on reschedule.
+// when one is. It does not size the direct pubsub pool behind a bouncer, which
+// pg.NewPools pins at pg.DefaultPubSubMaxConns.
+//
+// It is set here rather than left to pgx, whose default is max(4, NumCPU())
+// read from the node's cpuset rather than the cgroup quota, so an unset pool
+// tracks whichever node the pod lands on and changes size invisibly on
+// reschedule.
 //
 // The number comes from the background workers that each hold one connection
 // at a time: the four archiver loops (poll, eventlog, eventlog batch,
@@ -23,14 +26,6 @@ import (
 // on top of the background work. Trim or raise it once
 // pgxpool_empty_acquire_wait_seconds_total says what it actually needs.
 const DefaultDBMaxConns = 16
-
-// ListenPoolMaxConns is the size of the direct pool when queries go through a
-// bouncer: it then carries only the LISTEN session, which the subscriber
-// hijacks out of the pool, and the startup migrations run by --migrate-db,
-// which need session state (tern's advisory lock) and so cannot go through
-// transaction pooling. Migrations hold a single connection and release it
-// before the listener starts, so two is enough.
-const ListenPoolMaxConns = 2
 
 type BackendConfig struct {
 	repository.S3Options
