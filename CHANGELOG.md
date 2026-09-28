@@ -32,7 +32,7 @@ Changes:
   bouncer selection, the sizing, the ping and the `pgxpool_*` collector
   registration in one call, so the `pool="main"` and `pool="pubsub"` labels
   are the library's rather than this service's.
-- Bumped elephantine to v0.30.1.
+- Bumped elephantine to v0.30.2.
 
 ## [v1.9.1] - 2026-09-17
 
