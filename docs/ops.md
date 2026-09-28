@@ -259,8 +259,10 @@ rather than lag.** Everything else catches up from its persisted position.
 
 ## Bootstrap order
 
-1. **Migrate the database.** `mage sql:migrate`, or `--migrate-db` for
-   disposable environments only. Migrations can be expensive and some must be
+1. **Migrate the database.** `mage sql:migrate` locally, or
+   `go run ./cmd/setup db migrate` in elephant-platform for hosted
+   environments; the server never migrates its own schema (`--migrate-db` was
+   removed in v1.10.0). Migrations can be expensive and some must be
    sequenced against the deploy (see the `**Migrations:**` blocks in
    [CHANGELOG.md](../CHANGELOG.md) — 021 needs a maintenance window, 024 must
    run *after* v1.4.0 is deployed, 027 must run *before* v1.9.0). Running an
@@ -271,8 +273,7 @@ rather than lag.** Everything else catches up from its persisted position.
    an unreachable bucket exits the process in seconds. Readiness will *not* warn
    you about this: the `s3` check is optional, and the pod dies before it
    matters.
-3. **Start the process.** In order, it: connects both pools, optionally
-   migrates, starts the notification listener and lock cleaner, acquires
+3. **Start the process.** In order, it: connects both pools, starts the notification listener and lock cleaner, acquires
    `bootstrap-generation` and bootstraps the schema generation *to completion*,
    builds the validator from the active generation, loads workflows, ensures the
    socket signing key, then starts the background workers and the API server.
@@ -482,8 +483,7 @@ not loss, and resolves itself.
 sized by `DB_MAX_CONNS` (default 16); raise it. With a bouncer configured, mind
 the pooler's per-client server connection limit — a larger client pool beyond
 that only moves the queueing into PgBouncer. `pool="pubsub"` is the direct pool
-pinned at 2 with a bouncer; it carries only the `LISTEN` session (and
-`--migrate-db` at startup), so exhaustion there means something other than the
+pinned at 2 with a bouncer; it carries only the `LISTEN` session, so exhaustion there means something other than the
 subscriber is using it.
 
 ### A single document's writers are queueing

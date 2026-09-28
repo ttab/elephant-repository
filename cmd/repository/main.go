@@ -20,11 +20,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/ttab/elephant-repository/internal"
 	"github.com/ttab/elephant-repository/internal/cmd"
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephant-repository/repository"
-	"github.com/ttab/elephant-repository/schema"
 	"github.com/ttab/elephant-repository/sinks"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
@@ -96,7 +94,7 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "db-bouncer",
-				Usage:   "Connection string routed through PgBouncer, used for all DB operations except pubsub and migrations",
+				Usage:   "Connection string routed through PgBouncer, used for all DB operations except pubsub",
 				Sources: cli.EnvVars("BOUNCER_CONN_STRING"),
 			},
 			&cli.IntFlag{
@@ -208,13 +206,6 @@ to the bouncer pool.`,
 				Sources: cli.EnvVars("EVENTLOG_STREAM_RATE"),
 			},
 			&cli.BoolFlag{
-				Name: "migrate-db",
-				Usage: `Perform database migrations.
-Intended for bootstrapping disposable environments. Having this always on in
-production is a BAD IDEA! Migrations can be expensive and need to be planned.`,
-				Sources: cli.EnvVars("MIGRATE_DB"),
-			},
-			&cli.BoolFlag{
 				Name: "emit-workflow-event",
 				Usage: `Emit the legacy standalone "workflow" event alongside the
 workflow_state fields that are folded onto the triggering document or status
@@ -265,7 +256,6 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		eventlogBufSize   = c.Int("eventlog-buffer-size")
 		eventlogBurst     = c.Int("eventlog-stream-burst")
 		eventlogRate      = c.Float("eventlog-stream-rate")
-		migrateDB         = c.Bool("migrate-db")
 		emitWorkflowEvent = c.Bool("emit-workflow-event")
 		emitACLEvent      = c.Bool("emit-acl-event")
 	)
@@ -360,19 +350,6 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		"max_conns", dbpool.Config().MaxConns,
 		"direct_max_conns", pubsubPool.Config().MaxConns,
 		"bouncer", pubsubPool != dbpool)
-
-	if migrateDB {
-		logger.Info("migrating database schema")
-
-		// Migrations run on the direct pool: tern takes a session-level
-		// advisory lock and releases it in a later statement, which
-		// transaction pooling could route to a different server
-		// connection. Without a bouncer this is the only pool anyway.
-		err = internal.Migrate(stopCtx, pubsubPool, schema.Migrations)
-		if err != nil {
-			return fmt.Errorf("migrate database: %w", err)
-		}
-	}
 
 	assets := repository.NewAssetBucket(
 		logger, s3Client, conf.AssetBucket)

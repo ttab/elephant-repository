@@ -131,8 +131,7 @@ bouncer pool with one. Both are built by elephantine's `pg.NewPools`, which
 also pings them and registers their `pgxpool_*` collectors as `pool="main"` and
 `pool="pubsub"`. With a bouncer the direct pool is pinned at
 `pg.DefaultPubSubMaxConns`, which is 2, as it then carries only the `LISTEN`
-session and the `--migrate-db` startup migrations, whose session-level advisory
-lock would not survive transaction pooling. Leaving sizing to pgx would give
+session. Leaving sizing to pgx would give
 `max(4, runtime.NumCPU())`, which on Kubernetes with the default CPU manager
 policy tracks the *node's* vCPU count rather than the container's quota, so the
 pool would change size invisibly on reschedule.
