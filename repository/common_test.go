@@ -390,7 +390,7 @@ func testingAPIServer(
 
 	reg := prometheus.NewRegistry()
 
-	instrumentation, err := elephantine.NewHTTPClientIntrumentation(reg)
+	instrumentation, err := elephantine.NewHTTPClientInstrumentation(reg)
 	test.Mustf(t, err, "set up HTTP client instrumentation")
 
 	env := itest.SetUpBackingServices(t, instrumentation, false)

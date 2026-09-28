@@ -4,6 +4,42 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
+## [v1.10.0] - Unreleased
+
+**Breaking (startup migrations):** the `--migrate-db` flag and its
+`MIGRATE_DB` environment variable are gone, and the server no longer applies
+schema migrations at startup. Passing `--migrate-db` now fails startup as an
+unknown flag; a leftover `MIGRATE_DB` is ignored. Run migrations as a separate
+step: `mage sql:migrate` locally, `go run ./cmd/setup db migrate` in
+elephant-platform for hosted environments. See
+[bootstrap order](docs/ops.md#bootstrap-order).
+
+**Behaviour change (connection pools):** both Postgres pools now have an
+explicit size instead of pgx's `max(4, NumCPU())`, which read the node's vCPU
+count and so changed with every reschedule. The new `DB_MAX_CONNS`
+(`--db-max-conns`, default 16) sizes the pool queries run on: the single direct
+pool when `BOUNCER_CONN_STRING` is unset, the bouncer pool when it is set. With
+a bouncer the direct `CONN_STRING` pool, which then carries only `LISTEN`, is
+pinned at 2. `DB_MAX_CONNS` overrides `pool_max_conns` in the connection
+string; set it to 0 to go back to leaving the size to the connection string or
+pgx. See [connection pools](docs/architecture.md#connection-pools).
+
+**Behaviour change (archiver restarts):** the four archiver loops are still
+given about five minutes of failing before the archiver gives up, but that is
+now a time budget rather than a count of 30 attempts, and the waits between
+restarts follow elephantine's exponential curve with jitter instead of a flat
+ten seconds. A restart also can't happen more than once every ten seconds.
+
+Changes:
+
+- New `DB_MAX_CONNS` setting for the query pool size, and a direct pool pinned
+  at 2 connections when `BOUNCER_CONN_STRING` is configured.
+- Both pools are now built by elephantine's `pg.NewPools`, which does the
+  bouncer selection, the sizing, the ping and the `pgxpool_*` collector
+  registration in one call, so the `pool="main"` and `pool="pubsub"` labels
+  are the library's rather than this service's.
+- Bumped elephantine to v0.30.2.
+
 ## [v1.9.1] - 2026-09-17
 
 **Behaviour change (scopes):** `Schemas.GetDocumentTypes` now also accepts
