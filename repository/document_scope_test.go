@@ -13,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-api/repositorysocket"
 	itest "github.com/ttab/elephant-repository/internal/test"
@@ -156,6 +157,7 @@ func TestIntegrationDocumentRestrictedScopes(t *testing.T) {
 		user   = "owner"
 		docA   = "5a0e8c1f-6d2b-4e3a-9f4c-1b2d3e4f5a6b"
 		docB   = "7c1f9d2a-8e3b-4f4c-a05d-2c3e4f5a6b7c"
+		docC   = "c4d5e6f7-a8b9-4c0d-9e1f-2a3b4c5d6e7f"
 		docNew = "9e2a0b3c-4d5e-4f6a-8b7c-3d4e5f6a7b8c"
 		// A document the user has no ACL access to.
 		docOther = "b3c4d5e6-f7a8-4b9c-8d0e-1f2a3b4c5d6e"
@@ -166,7 +168,7 @@ func TestIntegrationDocumentRestrictedScopes(t *testing.T) {
 	owner := tc.DocumentsClient(t,
 		itest.Claims(t, user, "doc_read doc_write doc_delete"))
 
-	for _, id := range []string{docA, docB} {
+	for _, id := range []string{docA, docB, docC} {
 		_, err := owner.Update(ctx, &repository.UpdateRequest{
 			Uuid:     id,
 			Document: baseDocument(id, "article://test/"+id),
@@ -492,6 +494,146 @@ func TestIntegrationDocumentRestrictedScopes(t *testing.T) {
 			Uuid: docA,
 		})
 		test.IsRPCError(t, err, connect.CodePermissionDenied)
+	})
+
+	// The cases below are attacks raised in the security review of
+	// document-restricted scopes, kept as regressions.
+
+	t.Run("SeveralRestrictedScopes", func(t *testing.T) {
+		readAB := restricted("doc_read:"+docA, "doc_read:"+docB)
+
+		for _, id := range []string{docA, docB} {
+			_, err := readAB.Get(ctx, &repository.GetDocumentRequest{Uuid: id})
+			test.Mustf(t, err, "read %s, which a scope names", id)
+		}
+
+		_, err := readAB.Get(ctx, &repository.GetDocumentRequest{Uuid: docC})
+		test.IsRPCError(t, err, connect.CodePermissionDenied)
+
+		// Each document is named by a scope, but BulkGet isn't about
+		// one document, so the restricted scopes don't add up to a
+		// bulk read.
+		_, err = readAB.BulkGet(ctx, &repository.BulkGetRequest{
+			Documents: []*repository.BulkGetReference{
+				{Uuid: docA}, {Uuid: docB},
+			},
+		})
+		test.IsRPCError(t, err, connect.CodePermissionDenied)
+	})
+
+	t.Run("RequestUUIDForms", func(t *testing.T) {
+		forms := map[string]func(id string) string{
+			"urn":    func(id string) string { return "urn:uuid:" + id },
+			"braced": func(id string) string { return "{" + id + "}" },
+			"unhyphenated": func(id string) string {
+				return strings.ReplaceAll(id, "-", "")
+			},
+		}
+
+		for name, form := range forms {
+			t.Run(name, func(t *testing.T) {
+				_, err := readA.Get(ctx, &repository.GetDocumentRequest{
+					Uuid: form(docA),
+				})
+				test.Mustf(t, err, "read the document the scope names")
+
+				_, err = readA.Get(ctx, &repository.GetDocumentRequest{
+					Uuid: form(docB),
+				})
+				test.IsRPCError(t, err, connect.CodePermissionDenied)
+
+				doc := baseDocument(docA, "article://test/"+docA)
+				doc.Title = "Updated through a " + name + " UUID"
+
+				_, err = writeA.Update(ctx, &repository.UpdateRequest{
+					Uuid:     form(docA),
+					Document: doc,
+				})
+				test.Mustf(t, err, "update the document the scope names")
+
+				_, err = writeA.Update(ctx, &repository.UpdateRequest{
+					Uuid:     form(docB),
+					Document: baseDocument(docB, "article://test/"+docB),
+				})
+				test.IsRPCError(t, err, connect.CodePermissionDenied)
+			})
+		}
+	})
+
+	t.Run("ReadOneWriteAnother", func(t *testing.T) {
+		mixed := restricted("doc_read:"+docA, "doc_write:"+docB)
+
+		doc := baseDocument(docA, "article://test/"+docA)
+		doc.Title = "Written with a read scope"
+
+		_, err := mixed.Update(ctx, &repository.UpdateRequest{
+			Uuid:     docA,
+			Document: doc,
+		})
+		test.IsRPCError(t, err, connect.CodePermissionDenied)
+
+		_, err = mixed.Get(ctx, &repository.GetDocumentRequest{Uuid: docB})
+		test.IsRPCError(t, err, connect.CodePermissionDenied)
+
+		// Each scope still works for the document it names.
+		_, err = mixed.Get(ctx, &repository.GetDocumentRequest{Uuid: docA})
+		test.Mustf(t, err, "read the document the read scope names")
+
+		_, err = mixed.Update(ctx, &repository.UpdateRequest{
+			Uuid:     docB,
+			Document: baseDocument(docB, "article://test/"+docB),
+		})
+		test.Mustf(t, err, "write the document the write scope names")
+	})
+
+	t.Run("MetaUpdatePointingElsewhere", func(t *testing.T) {
+		metaUUID := func(main string) string {
+			return uuid.NewSHA1(uuid.NameSpaceURL,
+				[]byte("system://"+main+"/meta")).String()
+		}
+
+		metaA := metaUUID(docA)
+		metaB := metaUUID(docB)
+
+		metaDoc := func(id string, main string) *newsdoc.Document {
+			return &newsdoc.Document{
+				Uuid:  id,
+				Type:  "test/metadata",
+				Title: "A meta document",
+				Uri:   "system://" + main + "/meta",
+			}
+		}
+
+		// A direct meta update names the meta document's UUID, which
+		// has to be the one the meta URI derives. Naming the scope's
+		// document while pointing at B's meta URI is refused as a
+		// mismatch, whichever of A's UUIDs the scope carries.
+		_, err := writeA.Update(ctx, &repository.UpdateRequest{
+			Uuid:     docA,
+			IfMatch:  -1,
+			Document: metaDoc("", docB),
+		})
+		test.IsRPCError(t, err, connect.CodeInvalidArgument)
+
+		_, err = restricted("doc_write:"+metaA).Update(ctx,
+			&repository.UpdateRequest{
+				Uuid:     metaA,
+				IfMatch:  -1,
+				Document: metaDoc("", docB),
+			})
+		test.IsRPCError(t, err, connect.CodeInvalidArgument)
+
+		// Naming B's meta document consistently is refused for the
+		// scope, which names another document.
+		_, err = writeA.Update(ctx, &repository.UpdateRequest{
+			Uuid:     metaB,
+			IfMatch:  -1,
+			Document: metaDoc(metaB, docB),
+		})
+		test.IsRPCError(t, err, connect.CodePermissionDenied)
+
+		_, err = owner.Get(ctx, &repository.GetDocumentRequest{Uuid: metaB})
+		test.IsRPCError(t, err, connect.CodeNotFound)
 	})
 
 	t.Run("MultiDocumentMethodsRefuse", func(t *testing.T) {
