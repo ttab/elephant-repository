@@ -735,8 +735,10 @@ per-document ACL check.
 | Scope | Grants |
 |---|---|
 | `doc_read` | Read documents, subject to the ACL |
+| `doc_read:<uuid>` | `doc_read` for the one document named, subject to the ACL; see [document-restricted scopes](#document-restricted-scopes) |
 | `doc_read_all` | Read any document, bypassing the read ACL |
 | `doc_write` | Create versions, subject to the ACL |
+| `doc_write:<uuid>` | `doc_write` for the one document named, subject to the ACL |
 | `doc_delete` | Delete documents, subject to the ACL |
 | `doc_restore` | Restore deleted documents; list deleted |
 | `doc_purge` | Purge deleted documents; list deleted |
@@ -796,14 +798,51 @@ The middleware does not cover every route, and the exceptions are deliberate:
 | `POST /twirp/…` | Middleware requires a valid token, then the handler asserts its scope |
 | `POST /elephant.repository.…` | The same middleware and the same handler, for Connect and for the in-cluster gRPC and gRPC-Web callers |
 | `GET /sse` | Same middleware; the `token` query parameter is copied into the `Authorization` header first, so a browser client that cannot set headers still authenticates. A refusal is rendered as a Connect error body, since the endpoint carries nothing that says which RPC protocol the caller speaks |
-| `GET /websocket/:token` | Bypasses the middleware — the socket token in the path is verified against the server's socket key, and the session then authenticates with a JWT |
+| `GET /websocket/:token` | Bypasses the middleware — the socket token in the path is verified against the server's socket key, and the session then authenticates with a JWT, whose scopes each socket call checks |
 | `GET /signing-keys` | Bypasses the middleware. Public by design: it is what makes independent verification of the archive possible |
+
+On the websocket, opening a document set needs `doc_read`, `doc_read_all` or
+`doc_admin` on the session's JWT, unrestricted, and reading the eventlog needs
+`eventlog_read`. The JWT is not the token `GetSocketToken` checked, so these are
+the only scope checks a socket session gets.
 
 The middleware validates on every request; there is no JWT caching — see
 [pending work](../README.md#pending-work). See also [ops.md](ops.md#security).
 
 `repository/permissions.go` is the authority for the scope constants;
 [permissions.md](permissions.md) has the per-method matrix.
+
+#### Document-restricted scopes
+
+`doc_read` and `doc_write` can be restricted to a single document with a
+`:<uuid>` suffix. elephant-delegate's `NarrowToken` issues such tokens, so that
+a device holds a token good for one document rather than the whole session's
+reach. A restriction only ever narrows: the ACL check runs exactly as it does
+for the unrestricted scope, so `doc_read:<uuid>` never lets a caller read a
+document their ACLs don't. No other scope can be restricted; `doc_admin:<uuid>`
+or `doc_read_all:<uuid>` grants nothing. The restriction is honoured whichever
+issuer signed the token, but the repository only accepts tokens from the issuer
+`--oidc-config` names: trusting elephant-delegate as a second issuer is not
+configured yet.
+
+A method that acts on one document, the one the request's `uuid` names,
+accepts a restricted scope naming that document. That covers the single-document
+reads, `GetPermissions`, `Update`, the lock methods, and the write check behind
+`Get` with a lock. `Validate` and `Prune` take no `uuid` but are dry runs of an
+update, so they accept `doc_write:<uuid>` when the document they are given has
+that UUID, and refuse it otherwise; a client can validate the one document its
+token lets it write. The comparison is between parsed UUIDs, so case doesn't
+matter, but the suffix has to be a UUID in its standard hyphenated form: a
+malformed suffix, or the URN, braced or unhyphenated forms, grants nothing.
+Every other method matches scopes exactly and so refuses a restricted one,
+including those that name a single document in a list (`BulkGet`,
+`BulkUpdate`), the listings, the eventlog, the socket token and the websocket's
+document sets. `RequireDocumentScope` in `repository/permissions.go` is the
+check; [permissions.md](permissions.md#documents) says which methods use it.
+
+A direct update of a meta document names the meta document's own UUID, so that
+is the UUID the scope has to carry, although the ACL checked is the main
+document's.
 
 ## Database
 

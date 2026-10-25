@@ -14,9 +14,8 @@ per-document ACL check it applies on top. Derived by hand from the
 | **permissions.md** (this document) | The per-RPC matrix below. |
 
 [architecture.md](architecture.md#scopes) is the authority on what each scope
-*means*; this document only says which methods accept which ones. It says
-nothing about the socket API's own method set, which authorises against the
-same scopes through the session's JWT.
+*means*; this document only says which methods accept which ones. The socket
+API's own calls are under [streaming endpoints](#streaming-endpoints).
 
 > Nothing verifies this table against the code. It has been out of date before —
 > if a method's behaviour matters, read the handler. See
@@ -42,7 +41,9 @@ Three gates, in order:
    `GET /signing-keys` and `GET /websocket/:token` bypass it.
 2. **The scope check.** `RequireAnyScope` requires the caller to hold at least
    one of the listed scopes; a token without a matching scope is
-   `permission_denied`.
+   `permission_denied`. Methods that act on one document use
+   `RequireDocumentScope`, which also accepts `doc_read` or `doc_write`
+   [restricted to that document](#document-restricted-scopes).
 3. **The ACL check**, for document operations only. `accessCheck` requires the
    caller's subject or one of its units to hold the needed permission on the
    document.
@@ -60,6 +61,17 @@ story for anything holding them:**
 Some scopes take subscopes: `metrics_write:word_count` grants writes to that
 one metric kind.
 
+## Document-restricted scopes
+
+`doc_read:<uuid>` and `doc_write:<uuid>` are `doc_read` and `doc_write`
+restricted to one document. A method marked "yes" in the restricted column
+below accepts them when the UUID is the document the request's `uuid` names,
+or for `Validate` and `Prune` the `uuid` of the document supplied; every other
+method refuses them, because it matches scopes exactly. The ACL
+check is unchanged, so a restricted scope never reaches a document the caller
+couldn't otherwise. What counts as a well-formed suffix is in
+[architecture.md](architecture.md#document-restricted-scopes).
+
 ## Methods with no scope check
 
 Only one: `Documents.Evict`, which is unimplemented and returns
@@ -73,45 +85,43 @@ to any authenticated caller.
 
 ## Documents
 
-| Method | Scopes (any of) | ACL check |
-|---|---|---|
 "Rejects" means the call fails if the ACL check fails. "Filters" means the
 result set is reduced to the documents the caller may read, and the call
 succeeds either way — a client cannot distinguish "does not exist" from "not
 shared with me".
 
-| Method | Scopes (any of) | ACL check |
-|---|---|---|
-| `Get` | `doc_read`, `doc_read_all`, `doc_admin` | Read, rejects. Acquiring a lock via the `Lock` field additionally requires Write. |
-| `GetMeta` | `doc_read`, `doc_read_all`, `doc_admin` | Read, rejects |
-| `GetHistory` | `doc_read`, `doc_read_all`, `doc_admin` | Read, rejects |
-| `GetStatus` | `doc_read`, `doc_read_all`, `doc_admin` | Read, rejects |
-| `GetStatusHistory` | `doc_read`, `doc_read_all`, `doc_admin` | Read, rejects |
-| `GetNilStatuses` | `doc_read`, `doc_read_all`, `doc_admin` | Read, rejects |
-| `GetDeliverableInfo` | `doc_read`, `doc_read_all`, `doc_admin` | Read, rejects |
-| `BulkGet` | `doc_read`, `doc_read_all`, `doc_admin` | Read, filters |
-| `GetMatching` | `doc_read`, `doc_read_all`, `doc_admin` | Read, filters |
-| `GetStatusOverview` | `doc_read`, `doc_read_all`, `doc_admin` | Read, filters |
-| `BulkGetDeliverableInfo` | `doc_read`, `doc_read_all`, `doc_admin` | Read, filters |
-| `GetAttachments` | `doc_read`, `doc_read_all`, `doc_admin` | Read, filters |
-| `GetSocketToken` | `doc_read`, `doc_read_all`, `doc_admin` | — Scope only; per-document checks happen on the socket. |
-| `GetPermissions` | `doc_read`, `doc_read_all`, `doc_write`, `doc_delete`, `doc_admin` | — Any client with a document scope may read permissions. |
-| `Update` | `doc_write`, `doc_admin`, `meta_doc_write_all` | Write, rejects — or MetaWrite for a meta document, which also checks the main document. Import directives additionally require `doc_import` or `doc_admin`. |
-| `BulkUpdate` | `doc_write`, `doc_admin`, `meta_doc_write_all` | As `Update`, per document |
-| `Lock` | `doc_write`, `doc_delete`, `doc_admin` | Write, rejects |
-| `ExtendLock` | `doc_write`, `doc_delete`, `doc_admin` | Write, rejects |
-| `Unlock` | `doc_write`, `doc_delete`, `doc_admin` | Write, rejects |
-| `Delete` | `doc_delete`, `doc_admin` | Write, rejects |
-| `ListDeleted` | `doc_restore`, `doc_purge`, `doc_admin` | — |
-| `Restore` | `doc_restore`, `doc_admin` | **None** |
-| `Purge` | `doc_purge`, `doc_admin` | **None** |
-| `CreateUpload` | `asset_upload`, `doc_admin` | — |
-| `GetWithheld` | `doc_admin` | — |
-| `Eventlog` | `eventlog_read`, `doc_admin` | **None** |
-| `CompactedEventlog` | `eventlog_read`, `doc_admin` | **None** |
-| `Validate` | `doc_write`, `doc_admin`, `meta_doc_write_all` | — Nothing is read from storage; the caller supplies the document. |
-| `Prune` | `doc_write`, `doc_admin`, `meta_doc_write_all` | — Nothing is read from storage; the caller supplies the document. |
-| `Evict` | none | Unimplemented. |
+| Method | Scopes (any of) | Restricted | ACL check |
+|---|---|---|---|
+| `Get` | `doc_read`, `doc_read_all`, `doc_admin` | yes | Read, rejects. Acquiring a lock via the `Lock` field additionally requires Write, and `doc_write` (restricted to the document will do) or `doc_admin`. |
+| `GetMeta` | `doc_read`, `doc_read_all`, `doc_admin` | yes | Read, rejects |
+| `GetHistory` | `doc_read`, `doc_read_all`, `doc_admin` | yes | Read, rejects |
+| `GetStatus` | `doc_read`, `doc_read_all`, `doc_admin` | yes | Read, rejects |
+| `GetStatusHistory` | `doc_read`, `doc_read_all`, `doc_admin` | yes | Read, rejects |
+| `GetNilStatuses` | `doc_read`, `doc_read_all`, `doc_admin` | yes | Read, rejects |
+| `GetDeliverableInfo` | `doc_read`, `doc_read_all`, `doc_admin` | yes | Read, rejects |
+| `BulkGet` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
+| `GetMatching` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
+| `GetStatusOverview` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
+| `BulkGetDeliverableInfo` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
+| `GetAttachments` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
+| `GetSocketToken` | `doc_read`, `doc_read_all`, `doc_admin` | — | — Scope only; per-document checks happen on the socket. |
+| `GetPermissions` | `doc_read`, `doc_read_all`, `doc_write`, `doc_delete`, `doc_admin` | yes | — Any client with a document scope may read permissions; a restricted one only for its document. |
+| `Update` | `doc_write`, `doc_admin`, `meta_doc_write_all` | yes | Write, rejects — or MetaWrite for a meta document, which also checks the main document. Import directives additionally require `doc_import` or `doc_admin`. |
+| `BulkUpdate` | `doc_write`, `doc_admin`, `meta_doc_write_all` | — | As `Update`, per document |
+| `Lock` | `doc_write`, `doc_delete`, `doc_admin` | yes | Write, rejects |
+| `ExtendLock` | `doc_write`, `doc_delete`, `doc_admin` | yes | Write, rejects |
+| `Unlock` | `doc_write`, `doc_delete`, `doc_admin` | yes | Write, rejects |
+| `Delete` | `doc_delete`, `doc_admin` | — | Write, rejects |
+| `ListDeleted` | `doc_restore`, `doc_purge`, `doc_admin` | — | — |
+| `Restore` | `doc_restore`, `doc_admin` | — | **None** |
+| `Purge` | `doc_purge`, `doc_admin` | — | **None** |
+| `CreateUpload` | `asset_upload`, `doc_admin` | — | — |
+| `GetWithheld` | `doc_admin` | — | — |
+| `Eventlog` | `eventlog_read`, `doc_admin` | — | **None** |
+| `CompactedEventlog` | `eventlog_read`, `doc_admin` | — | **None** |
+| `Validate` | `doc_write`, `doc_admin`, `meta_doc_write_all` | yes, the supplied document's `uuid` | — Nothing is read from storage; the caller supplies the document. |
+| `Prune` | `doc_write`, `doc_admin`, `meta_doc_write_all` | yes, the supplied document's `uuid` | — Nothing is read from storage; the caller supplies the document. |
+| `Evict` | none | — | Unimplemented. |
 
 Three of those have no per-document check at all, which is worth being explicit
 about:
@@ -192,5 +202,14 @@ being able to write any other.
 | Endpoint | Scopes (any of) |
 |---|---|
 | `GET /sse` | A valid token, then `eventlog_read` or `doc_admin`. The token may be passed as a `token` query parameter as well as a bearer header — it is copied into the header before the middleware runs. A missing or invalid token is answered `401` with a Connect-shaped JSON error body. |
-| `GET /websocket/:token` | A socket token from `Documents.GetSocketToken`, signed with the server's socket key. Bypasses the auth middleware; the session then authenticates with a JWT, and per-document reads honour `doc_read_all`. |
+| `GET /websocket/:token` | A socket token from `Documents.GetSocketToken`, signed with the server's socket key. Bypasses the auth middleware; the session then authenticates with a JWT. |
 | `GET /signing-keys` | None. Public by design — it is what makes independent archive verification possible. |
+
+The socket session's calls check the scopes of the JWT the session
+authenticated with, which need not be the token `GetSocketToken` was called
+with:
+
+| Socket call | Scopes (any of) | ACL check |
+|---|---|---|
+| `GetDocuments` | `doc_read`, `doc_read_all`, `doc_admin`, none of them restricted | Read, filters; `doc_read_all` bypasses it |
+| `GetEventlog` | `eventlog_read` | Read, filters; `doc_read_all` bypasses it |

@@ -585,6 +585,19 @@ func (s *SocketSession) handleGetDocuments(
 ) (*rsock.Response, *rsock.Error) {
 	req := callHandle.Call.GetDocuments
 
+	// A document set lists every matching document the caller's ACLs
+	// allow, so it needs an unrestricted read scope, exactly as the
+	// listing RPCs do. The session's token is not the one GetSocketToken
+	// checked, so this is the only scope check the set gets.
+	auth, _ := s.getAuth()
+	if !auth.Claims.HasAnyScope(
+		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
+	) {
+		return nil, SockErrorf(connect.CodePermissionDenied.String(),
+			"one of the scopes %s, %s or %s is required",
+			ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin)
+	}
+
 	if req.SetName == "" {
 		return nil, SockErrorf(connect.CodeInvalidArgument.String(),
 			"set_name is required")
