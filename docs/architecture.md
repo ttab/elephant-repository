@@ -828,7 +828,10 @@ configured yet.
 A method that acts on one document, the one the request's `uuid` names,
 accepts a restricted scope naming that document. That covers the single-document
 reads, `GetPermissions`, `Update`, the lock methods, and the write check behind
-`Get` with a lock. The comparison is between parsed UUIDs, so case doesn't
+`Get` with a lock. `Validate` and `Prune` take no `uuid` but are dry runs of an
+update, so they accept `doc_write:<uuid>` when the document they are given has
+that UUID, and refuse it otherwise; a client can validate the one document its
+token lets it write. The comparison is between parsed UUIDs, so case doesn't
 matter, but the suffix has to be a UUID in its standard hyphenated form: a
 malformed suffix, or the URN, braced or unhyphenated forms, grants nothing.
 Every other method matches scopes exactly and so refuses a restricted one,

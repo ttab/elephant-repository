@@ -97,7 +97,8 @@ var documentRestrictableScopes = []string{
 }
 
 // RequireDocumentScope is RequireAnyScope for a method that acts on the single
-// document named by document, the raw UUID from the request. A scope in scopes
+// document named by document, the raw UUID from the request or from the
+// document it supplies. A scope in scopes
 // that can be restricted to a document also counts in its restricted form,
 // "doc_read:<uuid>", when the UUID is that document's.
 //
