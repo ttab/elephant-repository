@@ -90,6 +90,10 @@ _Avoid_: right, privilege
 A capability carried in the caller's auth token that governs which API operations they may attempt across the system. A scope authorises an operation; a permission authorises it on a specific document. Both must be satisfied.
 _Avoid_: role, claim, grant
 
+**Document-restricted scope**:
+`doc_read` or `doc_write` with a `:<uuid>` suffix, which counts only for the method calls about that one document. It narrows the scope and never widens the ACL; elephant-delegate issues them to devices.
+_Avoid_: narrowed scope, document scope, subscope (that is `metrics_write:<kind>`)
+
 ## Status & workflow
 
 **Status**:
