@@ -10,7 +10,8 @@ detail.
 `doc_write:<uuid>` are now accepted as `doc_read` and `doc_write` restricted to
 one document, as elephant-delegate's `NarrowToken` issues them. The methods
 about a single document, `GetPermissions` among them, accept a restricted scope
-naming the request's `uuid`, and every other method refuses one. The ACL check
+naming the request's `uuid`, `Validate` and `Prune` accept `doc_write:<uuid>`
+naming the supplied document's `uuid`, and every other method refuses one. The ACL check
 is unchanged, so a restricted scope never reaches a document the user's ACLs
 don't. Tokens with unsuffixed scopes behave as before. See
 [document-restricted scopes](docs/architecture.md#document-restricted-scopes)
@@ -50,6 +51,7 @@ Changes:
 
 - `doc_read:<uuid>` and `doc_write:<uuid>` restrict the document scopes to one
   document for the single-document methods, and are refused everywhere else.
+  `Validate` and `Prune` count `doc_write:<uuid>` for the document supplied.
 - The websocket's `GetDocuments` checks the session's document read scope.
 - New `DB_MAX_CONNS` setting for the query pool size, and a direct pool pinned
   at 2 connections when `BOUNCER_CONN_STRING` is configured.

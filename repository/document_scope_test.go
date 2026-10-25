@@ -439,6 +439,52 @@ func TestIntegrationDocumentRestrictedScopes(t *testing.T) {
 		test.IsRPCError(t, err, connect.CodePermissionDenied)
 	})
 
+	t.Run("ValidateAndPrune", func(t *testing.T) {
+		dryRuns := map[string]func(c repository.Documents, id string) error{
+			"Validate": func(c repository.Documents, id string) error {
+				_, err := c.Validate(ctx, &repository.ValidateRequest{
+					Document: baseDocument(id, "article://test/"+id),
+				})
+
+				return err
+			},
+			"Prune": func(c repository.Documents, id string) error {
+				_, err := c.Prune(ctx, &repository.PruneRequest{
+					Document: baseDocument(id, "article://test/"+id),
+				})
+
+				return err
+			},
+		}
+
+		for name, call := range dryRuns {
+			t.Run(name, func(t *testing.T) {
+				err := call(writeA, docA)
+				test.Mustf(t, err, "the supplied document is the one the scope names")
+
+				err = call(writeA, strings.ToUpper(docA))
+				test.Mustf(t, err, "the document UUID is compared parsed")
+
+				err = call(writeA, docB)
+				test.IsRPCError(t, err, connect.CodePermissionDenied)
+
+				// A dry run has no ACL check, since the caller
+				// supplies the document, so the scope alone decides.
+				err = call(restricted("doc_write:"+docOther), docOther)
+				test.Mustf(t, err, "no ACL check on a dry run")
+
+				err = call(writeA, "")
+				test.IsRPCError(t, err, connect.CodePermissionDenied)
+
+				err = call(readA, docA)
+				test.IsRPCError(t, err, connect.CodePermissionDenied)
+			})
+		}
+
+		_, err := writeA.Validate(ctx, &repository.ValidateRequest{})
+		test.IsRPCError(t, err, connect.CodePermissionDenied)
+	})
+
 	t.Run("Delete", func(t *testing.T) {
 		// doc_delete can't be restricted, so neither restricted scope
 		// deletes anything.
@@ -513,20 +559,6 @@ func testRestrictedScopeRefusals(
 					Uuid:     docA,
 					Document: baseDocument(docA, "article://test/"+docA),
 				}},
-			})
-
-			return err
-		},
-		"Documents.Validate": func() error {
-			_, err := docs.Validate(ctx, &repository.ValidateRequest{
-				Document: baseDocument(docA, "article://test/"+docA),
-			})
-
-			return err
-		},
-		"Documents.Prune": func() error {
-			_, err := docs.Prune(ctx, &repository.PruneRequest{
-				Document: baseDocument(docA, "article://test/"+docA),
 			})
 
 			return err

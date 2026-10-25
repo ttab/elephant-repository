@@ -65,8 +65,9 @@ one metric kind.
 
 `doc_read:<uuid>` and `doc_write:<uuid>` are `doc_read` and `doc_write`
 restricted to one document. A method marked "yes" in the restricted column
-below accepts them when the UUID is the document the request's `uuid` names;
-every other method refuses them, because it matches scopes exactly. The ACL
+below accepts them when the UUID is the document the request's `uuid` names,
+or for `Validate` and `Prune` the `uuid` of the document supplied; every other
+method refuses them, because it matches scopes exactly. The ACL
 check is unchanged, so a restricted scope never reaches a document the caller
 couldn't otherwise. What counts as a well-formed suffix is in
 [architecture.md](architecture.md#document-restricted-scopes).
@@ -118,8 +119,8 @@ shared with me".
 | `GetWithheld` | `doc_admin` | — | — |
 | `Eventlog` | `eventlog_read`, `doc_admin` | — | **None** |
 | `CompactedEventlog` | `eventlog_read`, `doc_admin` | — | **None** |
-| `Validate` | `doc_write`, `doc_admin`, `meta_doc_write_all` | — | — Nothing is read from storage; the caller supplies the document. |
-| `Prune` | `doc_write`, `doc_admin`, `meta_doc_write_all` | — | — Nothing is read from storage; the caller supplies the document. |
+| `Validate` | `doc_write`, `doc_admin`, `meta_doc_write_all` | yes, the supplied document's `uuid` | — Nothing is read from storage; the caller supplies the document. |
+| `Prune` | `doc_write`, `doc_admin`, `meta_doc_write_all` | yes, the supplied document's `uuid` | — Nothing is read from storage; the caller supplies the document. |
 | `Evict` | none | — | Unimplemented. |
 
 Three of those have no per-document check at all, which is worth being explicit
