@@ -46,7 +46,7 @@ runbook.
 Changes:
 
 - The notification listener is restarted after a failure instead of leaving
-  the instance without notifications until it is restarted by hand.
+  the instance without notifications until it is restarted by hand. (#640)
 - New `DB_MAX_CONNS` setting for the query pool size, and a direct pool pinned
   at 2 connections when `BOUNCER_CONN_STRING` is configured.
 - Both pools are now built by elephantine's `pg.NewPools`, which does the
