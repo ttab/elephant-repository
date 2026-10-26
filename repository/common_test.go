@@ -435,9 +435,7 @@ func testingAPIServer(
 
 	workers.run(ctx, "document store listener",
 		func(ctx context.Context) error {
-			store.RunListener(ctx, dbpool)
-
-			return nil
+			return store.RunListener(ctx, dbpool)
 		})
 
 	workers.run(ctx, "type configurations",

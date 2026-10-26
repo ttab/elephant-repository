@@ -35,6 +35,21 @@ import (
 
 var version string // set via -ldflags at build time
 
+// pubsubRetryOptions restarts the notification listener about every five
+// seconds for as long as it keeps failing, the same pacing elephant-user gives
+// its subscriber. Pinning the floor, the ceiling and the minimum runtime to
+// the same value flattens the library's exponential curve into a static five
+// second backoff: while the listener is down every eventlog long-poll only
+// returns on its wait timeout, so a restart that backed off towards the
+// default one minute ceiling would stretch an outage by up to a minute for
+// the price of one connection attempt per replica every five seconds.
+// GiveUpAfter is left at zero, so it never gives up.
+var pubsubRetryOptions = elephantine.RetryOptions{
+	BackoffFloor: 5 * time.Second,
+	BackoffCeil:  5 * time.Second,
+	MinRuntime:   5 * time.Second,
+}
+
 func main() {
 	err := godotenv.Load()
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -375,7 +390,26 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("failed to create doc store: %w", err)
 	}
 
-	go store.RunListener(stopCtx, pubsubPool)
+	// The notification listener is restarted for as long as it keeps
+	// failing. elephantine's subscriber reconnects by itself when its own
+	// pings stop arriving, but returns on other connection errors, such as
+	// a database failover resetting the LISTEN connection, and a listener
+	// that stays down leaves every notification-driven path to its
+	// fallback: the reload loops to their five-minute timers, and the
+	// eventlog long-polls, SSE and the document stream with no fallback at
+	// all, so events reach their consumers on the poll timeout only.
+	listenerGroup := elephantine.NewErrGroup(stopCtx, logger)
+
+	listenerGroup.GoWithRetries("pubsub", pubsubRetryOptions,
+		func(ctx context.Context) error {
+			err := store.RunListener(ctx, pubsubPool)
+			if err != nil && ctx.Err() == nil {
+				return fmt.Errorf("run listener: %w", err)
+			}
+
+			return nil
+		})
+
 	go store.RunCleaner(stopCtx, 5*time.Minute)
 
 	bootstrapLock, err := joblock.New(
@@ -707,6 +741,15 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		err := typeConfs.Run(gCtx, store)
 		if err != nil {
 			return fmt.Errorf("run type configurations: %w", err)
+		}
+
+		return nil
+	})
+
+	serverGroup.Go(func() error {
+		err := listenerGroup.Wait()
+		if err != nil {
+			return fmt.Errorf("run notification listener: %w", err)
 		}
 
 		return nil

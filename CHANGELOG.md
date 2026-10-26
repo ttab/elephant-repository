@@ -30,8 +30,23 @@ now a time budget rather than a count of 30 attempts, and the waits between
 restarts follow elephantine's exponential curve with jitter instead of a flat
 ten seconds. A restart also can't happen more than once every ten seconds.
 
+**Behaviour change (notification listener restarts):** the `LISTEN`/`NOTIFY`
+subscriber is now restarted about every five seconds for as long as it keeps
+failing, instead of being started once. It reconnects by itself when its own
+pings stop arriving, but a database failover resetting the connection made it
+return instead, and the instance then ran without notifications until it was
+restarted by hand: every eventlog long-poll returned on its wait timeout only,
+SSE and the document stream stalled, and the reload loops fell back to their
+five-minute timers, which editorial experienced as everything being slow.
+Restarts count on `task_restarts_total{task="pubsub"}` and log `task failure,
+restarting` with `name=pubsub`; see [events reach every consumer
+late](docs/ops.md#events-reach-every-consumer-late) for the signal and the
+runbook.
+
 Changes:
 
+- The notification listener is restarted after a failure instead of leaving
+  the instance without notifications until it is restarted by hand.
 - New `DB_MAX_CONNS` setting for the query pool size, and a direct pool pinned
   at 2 connections when `BOUNCER_CONN_STRING` is configured.
 - Both pools are now built by elephantine's `pg.NewPools`, which does the

@@ -328,7 +328,15 @@ func (s *PGDocStore) OnEventlog(
 // RunListener opens a connection to the database and subscribes to all store
 // notifications. The pool must be a direct connection to PostgreSQL, as
 // LISTEN/NOTIFY is not supported through PgBouncer.
-func (s *PGDocStore) RunListener(ctx context.Context, pool *pgxpool.Pool) {
+//
+// It blocks until the context is cancelled or the subscriber fails. The
+// subscriber reconnects by itself when its own pings stop arriving, but
+// returns on any other connection error, such as a database failover
+// resetting the LISTEN connection, so the caller is expected to run it under
+// a restart loop: nothing on the notification-driven paths polls as a
+// fallback, and an eventlog long-poll only returns on its wait timeout for
+// as long as the listener is down.
+func (s *PGDocStore) RunListener(ctx context.Context, pool *pgxpool.Pool) error {
 	sub := pg.NewSubscriber(s.logger, pool, []pg.ChannelSubscription{
 		s.archived,
 		s.schemas,
@@ -341,9 +349,10 @@ func (s *PGDocStore) RunListener(ctx context.Context, pool *pgxpool.Pool) {
 
 	err := sub.Run(ctx)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "subscriber stopped",
-			elephantine.LogKeyError, err)
+		return fmt.Errorf("run notification subscriber: %w", err)
 	}
+
+	return nil
 }
 
 // Delete implements DocStore.
