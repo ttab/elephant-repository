@@ -4,7 +4,7 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
-## [v1.10.0] - Unreleased
+## [v1.10.0] - 2026-10-29
 
 **Breaking (startup migrations):** the `--migrate-db` flag and its
 `MIGRATE_DB` environment variable are gone, and the server no longer applies
