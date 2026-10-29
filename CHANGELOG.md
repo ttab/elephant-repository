@@ -54,6 +54,13 @@ Changes:
   registration in one call, so the `pool="main"` and `pool="pubsub"` labels
   are the library's rather than this service's.
 - Bumped elephantine to v0.30.2.
+- Dependency upgrades: Go to 1.27.3 (module directive and the
+  `golang:1.27.3-alpine3.24` build image), elephantine to v0.31.0,
+  elephant-api to v0.28.3, connectrpc.com/connect to v1.21.1, pgx to v5.11.0,
+  the AWS SDK suite, urfave/cli/v3 to v3.14.0, prometheus/client_golang to
+  v1.25.0, revisorschemas to v1.5.5, ttab/mage to v0.15.0, and the
+  OpenTelemetry and `golang.org/x` support modules. golangci-lint in CI is
+  v2.15.
 
 ## [v1.9.1] - 2026-09-17
 
