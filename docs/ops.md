@@ -85,7 +85,7 @@ The container exposes 1080 (API) and 1081 (metrics and pprof), runs as
 | Dependency | Needed for | What happens without it |
 |---|---|---|
 | PostgreSQL (direct connection) | Everything. All document state, the eventlog, job locks, `LISTEN`/`NOTIFY` | Total outage. Nothing works, and the readiness probe fails. |
-| PostgreSQL `LISTEN`/`NOTIFY` on the direct pool | Prompt refresh of schemas, workflows and type configuration; prompt event fan-out | Degraded, not down. Every notification-driven refresh falls back to its five-minute poll, and the eventlog builder to its one-minute poll. **This is why the pubsub pool must not be routed through PgBouncer** — transaction pooling silently drops the notifications. |
+| PostgreSQL `LISTEN`/`NOTIFY` on the direct pool | Prompt refresh of schemas, workflows and type configuration; prompt event fan-out | Degraded, not down. Every notification-driven refresh falls back to its five-minute poll, and the eventlog builder to its one-minute poll. The eventlog long-poll, SSE and the document stream have no fallback: they return or emit only on the long-poll's wait timeout, so every consumer sees events late — see [Events reach every consumer late](#events-reach-every-consumer-late). A dropped listener is restarted every five seconds until it reconnects. **This is why the pubsub pool must not be routed through PgBouncer** — transaction pooling silently drops the notifications, and the listener cannot tell. |
 | PgBouncer (optional, `--db-bouncer`) | Connection multiplexing for everything except pub/sub | Not needed. Without it both pools are the direct connection. |
 | S3 archive bucket | Archiving, delete finalisation, restore, purge, signing key storage | The archiver exhausts its retries and exits, killing replicas one at a time as each becomes the lock holder; deletes stop finalising. The API keeps serving — the `s3` readiness check is optional, so pods stay in rotation and only `health_check_up{name="s3"}` reports it. A pod *starting* while the bucket is unreachable exits within seconds instead. |
 | S3 asset bucket | Creating uploads, attaching objects, downloading attachments | Uploads and attachment downloads fail. Document writes without attachments are unaffected. |
@@ -315,6 +315,41 @@ climbing, the builder is crash-looping — the error is in that instance's logs.
 Restarting the lock holder releases the lease and lets another instance take
 over.
 
+### Events reach every consumer late
+
+The eventlog is being built and nothing is failing, but every event takes
+about ten seconds to reach its consumers: the index lags, lists in the editor
+update late, and editorial reports that "everything is slow" without any
+request being slow. The instance's notification listener is down, so the
+eventlog long-polls are not woken on new events and only return on their wait
+timeout, which is what the clients set `WaitMs` to. The same loss stalls SSE
+and the document stream, and leaves the reload loops to their five-minute
+timers.
+
+**Signal:** `repository_docstream_position` flat on an instance while
+`elephant_eventlog_events_total` climbs — the stream is fed by the same
+fan-out as the long-poll, so it stalls even when nothing is subscribed to it.
+The median of `rpc_duration_seconds{method="Eventlog"}` sitting at the
+clients' wait timeout despite events arriving says the same thing.
+`task_restarts_total{task="pubsub"}` climbing, with `task failure, restarting`
+and `name=pubsub` in the log, is the listener being restarted; the first
+failure's error is on that line.
+
+**Action:** usually none. The listener is restarted every five seconds until
+it reconnects, so once the database is reachable again the next restart
+brings the instance back within seconds, and the reload loops cover anything
+published while it was down. A `pubsub` restart counter that keeps climbing
+means the listener cannot stay connected: the error on the log line says why,
+and the pubsub pool being routed through PgBouncer — `--db` must be a direct
+connection — is the first thing to rule out. If the position stays flat with
+no restarts being logged, the listener is connected but not receiving, which
+is the PgBouncer misrouting again.
+
+Before v1.10.0 the listener was started once and a failure that was not the
+subscriber's own ping timeout — a database failover resetting the connection
+is the one that happened — left the instance without notifications until it
+was restarted by hand, which is how this failure mode was found.
+
 ### Archiving has stalled
 
 **Signal:** `elephant_archiver_event_archiver_position` not advancing while
@@ -399,8 +434,12 @@ points at one of three things:
    `elephant_schema_refresh_failures_total`. **Nothing will retry a persistently
    failing reload into working** — the instance keeps the schemas it last loaded,
    indefinitely, while reporting healthy. Restart it.
-3. **The instance is not listening at all**, e.g. its subscriber goroutine died.
-   The logs are the only signal; there is no metric for listener health.
+3. **The instance is not listening at all.** The subscriber is restarted
+   every five seconds for as long as it fails, so this is a listener that
+   cannot stay connected rather than one that died: `task_restarts_total{task="pubsub"}`
+   climbs and each restart logs `task failure, restarting` with `name=pubsub`
+   and the error. See [Events reach every consumer
+   late](#events-reach-every-consumer-late) for what else the loss costs.
 
 If the lag clears within five minutes and `elephant_schema_refresh_failures_total`
 is flat, the reload worked but the notification did not reach that instance —

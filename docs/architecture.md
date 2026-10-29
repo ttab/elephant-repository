@@ -28,7 +28,7 @@ but does not add archiving or eventlog-building capacity.
 
 | Goroutine | Job lock | Conditional on | Notes |
 |---|---|---|---|
-| Notification listener | — | always | `LISTEN`/`NOTIFY` fan-out; runs on the pubsub pool, not the bouncer pool. |
+| Notification listener | — | always | `LISTEN`/`NOTIFY` fan-out; runs on the pubsub pool, not the bouncer pool. Restarted every five seconds for as long as it fails, since a failure that is not its own ping timeout — a failover resetting the connection — is fatal to the subscriber itself. |
 | Document lock cleaner | `cleaner` | always | Wakes every 5 minutes. |
 | Schema generation bootstrap | `bootstrap-generation` | always | Runs to completion during startup, before the validator is built. |
 | Validator reload loop | — | always | Per-instance in-memory state. |
