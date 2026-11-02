@@ -343,8 +343,8 @@ github.com/tmaxmax/go-sse v0.11.0 h1:nogmJM6rJUoOLoAwEKeQe5XlVpt9l7N82SS1jI7lWFg
 github.com/tmaxmax/go-sse v0.11.0/go.mod h1:u/2kZQR1tyngo1lKaNCj1mJmhXGZWS1Zs5yiSOD+Eg8=
 github.com/ttab/darknut v0.1.3 h1:8j6cHpfWWqby544hUZmfzIHQXrMlygTNmRc7uHzipgc=
 github.com/ttab/darknut v0.1.3/go.mod h1:nFQKOFvJP5DpMwb5owYNXQZl8UaEzMvxUYkMEWLcBDs=
-github.com/ttab/eleconf v1.1.1 h1:j56ZTzPCzGvrdMDX0xdkij0oUi1C60SKsbpddg6bJxU=
-github.com/ttab/eleconf v1.1.1/go.mod h1:vPZFb2HeBRs6ZrZYi/qiAVoKSmcKFVu3LNGDoyGA9zM=
+github.com/ttab/eleconf v1.2.0 h1:k2etCICInNIwfHD68Rie3mkhS8RCObGrms2BLo9+Q1o=
+github.com/ttab/eleconf v1.2.0/go.mod h1:o3VkFzejqYmWcNOJOzyBoNngii8axdXV3XBKIqc+Fvk=
 github.com/ttab/elephant-api v0.28.3 h1:v9AMPD22GwnL0EaTOhuSMlPNacj0lMqn0etRVgPQJ+w=
 github.com/ttab/elephant-api v0.28.3/go.mod h1:YkGnpNerKrO/PVSczTtSin9NNvXUK/Ou6DIlgkvI5FA=
 github.com/ttab/elephantine v0.31.0 h1:Ka9gFeHeNk/XXmIT1W2LOhVYM40EXa9DvgaQxlwx34M=
