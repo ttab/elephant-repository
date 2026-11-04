@@ -4,6 +4,32 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
+## [v1.11.0] - Unreleased
+
+**Behaviour change (document-restricted scopes):** `doc_read:<uuid>` and
+`doc_write:<uuid>` are now accepted as `doc_read` and `doc_write` restricted to
+one document, as elephant-delegate's `NarrowToken` issues them. The methods
+about a single document, `GetPermissions` among them, accept a restricted scope
+naming the request's `uuid`, `Validate` and `Prune` accept `doc_write:<uuid>`
+naming the supplied document's `uuid`, and every other method refuses one. The ACL check
+is unchanged, so a restricted scope never reaches a document the user's ACLs
+don't. Tokens with unsuffixed scopes behave as before. See
+[document-restricted scopes](docs/architecture.md#document-restricted-scopes)
+and the [permission matrix](docs/permissions.md#documents).
+
+**Behaviour change (websocket document sets):** opening a document set with
+the socket's `GetDocuments` call now needs `doc_read`, `doc_read_all` or
+`doc_admin` on the JWT the session authenticated with. Any valid JWT used to
+be enough, with only the ACLs filtering what the set showed. A client that
+authenticates the socket with an ordinary session token is unaffected.
+
+Changes:
+
+- `doc_read:<uuid>` and `doc_write:<uuid>` restrict the document scopes to one
+  document for the single-document methods, and are refused everywhere else.
+  `Validate` and `Prune` count `doc_write:<uuid>` for the document supplied.
+- The websocket's `GetDocuments` checks the session's document read scope.
+
 ## [v1.10.0] - 2026-10-29
 
 **Breaking (startup migrations):** the `--migrate-db` flag and its
