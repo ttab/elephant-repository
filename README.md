@@ -192,6 +192,9 @@ Every option is a CLI flag with an environment variable equivalent. Flags win.
 |---|---|---|---|
 | `--oidc-config` | `OIDC_CONFIG` | | OIDC discovery URL. Without it no token validates. |
 | `--jwt-audience` | `JWT_AUDIENCE` | | Required JWT audience. |
+| `--delegate-issuer` | `DELEGATE_ISSUER` | | The `iss` of elephant-delegate's tokens. Set, the delegate is trusted as a second issuer; empty, its tokens are refused. See [document-restricted scopes](docs/architecture.md#document-restricted-scopes). |
+| `--delegate-jwks-url` | `DELEGATE_JWKS_URL` | | elephant-delegate's JWKS. Required with `--delegate-issuer`. |
+| `--delegate-audience` | `DELEGATE_AUDIENCE` | | The `aud` a delegate token must carry: `elephant-repository`. Defaults to `--jwt-audience`; with neither set, startup fails. |
 | `--jwt-scope-prefix` | `JWT_SCOPE_PREFIX` | | Prefix stripped from scopes before they are matched against the scope names in [docs/architecture.md](docs/architecture.md#scopes). Must match how the provider issues them, or every scope check fails. |
 | `--client-id` | `CLIENT_ID` | | OAuth client ID. |
 | `--client-secret` | `CLIENT_SECRET` | | OAuth client secret. |

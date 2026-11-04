@@ -821,9 +821,14 @@ reach. A restriction only ever narrows: the ACL check runs exactly as it does
 for the unrestricted scope, so `doc_read:<uuid>` never lets a caller read a
 document their ACLs don't. No other scope can be restricted; `doc_admin:<uuid>`
 or `doc_read_all:<uuid>` grants nothing. The restriction is honoured whichever
-issuer signed the token, but the repository only accepts tokens from the issuer
-`--oidc-config` names: trusting elephant-delegate as a second issuer is not
-configured yet.
+issuer signed the token. Trusting elephant-delegate as a second issuer is
+configuration: `--delegate-issuer`, `--delegate-jwks-url` and
+`--delegate-audience`, the last set to `elephant-repository`. A delegate token
+bound to a device key is refused, since the repository verifies no DPoP proofs;
+the delegate binds a narrowed token when the caller hands it a device key or
+the token it narrows is already bound, so a token for the repository is
+narrowed from the unbound session token without a device key. See
+[ops.md](ops.md#security).
 
 A method that acts on one document, the one the request's `uuid` names,
 accepts a restricted scope naming that document. That covers the single-document

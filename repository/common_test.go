@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tmaxmax/go-sse"
@@ -76,6 +79,7 @@ type TestContext struct {
 	// Stack is the protocol stack the client constructors build for.
 	Stack            rpcStack
 	SigningKey       *ecdsa.PrivateKey
+	DelegateKey      ed25519.PrivateKey
 	Server           testServer
 	Validator        *repository.Validator
 	WorkflowProvider *repository.Workflows
@@ -534,11 +538,24 @@ func testingAPIServer(
 	jwtKey, err := itest.NewSigningKey()
 	test.Mustf(t, err, "create signing key")
 
+	delegatePub, delegateKey, err := ed25519.GenerateKey(rand.Reader)
+	test.Mustf(t, err, "create delegate signing key")
+
+	// The server trusts a stand-in for elephant-delegate as a second issuer,
+	// the way DELEGATE_ISSUER, DELEGATE_JWKS_URL and DELEGATE_AUDIENCE
+	// configure it in a deployment.
 	authParser := elephantine.NewStaticAuthInfoParser(
 		t.Context(),
 		jwtKey.PublicKey,
 		elephantine.JWTAuthInfoParserOptions{
 			Issuer: "test",
+			TrustedIssuers: []elephantine.TrustedIssuer{{
+				Issuer:   itest.DelegateIssuer,
+				Audience: itest.DelegateAudience,
+				Keyfunc: func(_ *jwt.Token) (any, error) {
+					return delegatePub, nil
+				},
+			}},
 		})
 
 	// The test server is built by the same registration code main.go uses,
@@ -592,6 +609,7 @@ func testingAPIServer(
 		client:           client,
 		Stack:            stack,
 		SigningKey:       jwtKey,
+		DelegateKey:      delegateKey,
 		Server:           server,
 		Validator:        validator,
 		Documents:        docService,

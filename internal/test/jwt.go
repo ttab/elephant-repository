@@ -2,6 +2,7 @@ package test
 
 import (
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"fmt"
@@ -11,6 +12,13 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ttab/elephantine"
+)
+
+// DelegateIssuer and DelegateAudience are the iss and aud of the tokens the
+// test server accepts from its stand-in for elephant-delegate.
+const (
+	DelegateIssuer   = "delegate-test"
+	DelegateAudience = "elephant-repository"
 )
 
 func NewSigningKey() (*ecdsa.PrivateKey, error) {
@@ -50,6 +58,19 @@ func AccessToken(key *ecdsa.PrivateKey, claims elephantine.JWTClaims) (string, e
 	ss, err := token.SignedString(key)
 	if err != nil {
 		return "", fmt.Errorf("failed to sign JWT token: %w", err)
+	}
+
+	return ss, nil
+}
+
+// DelegateToken signs claims the way elephant-delegate signs its tokens, with
+// EdDSA.
+func DelegateToken(key ed25519.PrivateKey, claims elephantine.JWTClaims) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
+
+	ss, err := token.SignedString(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign delegate token: %w", err)
 	}
 
 	return ss, nil

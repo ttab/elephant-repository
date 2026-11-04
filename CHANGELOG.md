@@ -29,6 +29,10 @@ Changes:
   document for the single-document methods, and are refused everywhere else.
   `Validate` and `Prune` count `doc_write:<uuid>` for the document supplied.
 - The websocket's `GetDocuments` checks the session's document read scope.
+- elephant-delegate can be trusted as a second token issuer, so the tokens its
+  `NarrowToken` issues are accepted: set `DELEGATE_ISSUER`,
+  `DELEGATE_JWKS_URL` and `DELEGATE_AUDIENCE=elephant-repository`. Tokens
+  bound to a device key are refused. See [ops.md](docs/ops.md#security).
 
 ## [v1.10.0] - 2026-10-29
 
