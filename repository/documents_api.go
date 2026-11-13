@@ -15,6 +15,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 	rpcdoc "github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-repository/internal"
@@ -63,8 +64,15 @@ func NewDocumentsService(
 	docTypes *TypeConfigurations,
 	docCache BulkDocCache,
 	socketKey *ecdsa.PrivateKey,
+	metricsRegisterer prometheus.Registerer,
+	opts ...DocumentsServiceOption,
 ) (*DocumentsService, error) {
-	return &DocumentsService{
+	listing, err := newListingMetrics(metricsRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	svc := DocumentsService{
 		socketKey:       socketKey,
 		store:           store,
 		sched:           sched,
@@ -74,7 +82,27 @@ func NewDocumentsService(
 		defaultLanguage: defaultLanguage,
 		docTypes:        docTypes,
 		docCache:        docCache,
-	}, nil
+		listing:         listing,
+		listMaxBytes:    DefaultListDocumentsMaxBytes,
+	}
+
+	for _, opt := range opts {
+		opt(&svc)
+	}
+
+	return &svc, nil
+}
+
+// DocumentsServiceOption configures a DocumentsService.
+type DocumentsServiceOption func(svc *DocumentsService)
+
+// WithListDocumentsMaxBytes sets the cap on the size of the document data
+// loaded for a ListDocuments page, which defaults to
+// DefaultListDocumentsMaxBytes.
+func WithListDocumentsMaxBytes(n int) DocumentsServiceOption {
+	return func(svc *DocumentsService) {
+		svc.listMaxBytes = n
+	}
 }
 
 // Interface guard.
@@ -90,6 +118,8 @@ type DocumentsService struct {
 	defaultLanguage string
 	docTypes        *TypeConfigurations
 	docCache        BulkDocCache
+	listing         *listingMetrics
+	listMaxBytes    int
 }
 
 // GetSocketToken implements repository.Documents.
@@ -375,7 +405,7 @@ func (a *DocumentsService) GetDeliverableInfo(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx,
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
 		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
 	)
 	if err != nil {
@@ -510,7 +540,7 @@ func (a *DocumentsService) GetStatus(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx,
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
 		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
 	)
 	if err != nil {
@@ -636,7 +666,7 @@ func (a *DocumentsService) GetStatusHistory(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx,
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
 		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
 	)
 	if err != nil {
@@ -689,7 +719,7 @@ func (a *DocumentsService) GetNilStatuses(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx,
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
 		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
 	)
 	if err != nil {
@@ -732,7 +762,7 @@ func (a *DocumentsService) GetNilStatuses(
 func (a *DocumentsService) GetPermissions(
 	ctx context.Context, req *repository.GetPermissionsRequest,
 ) (*repository.GetPermissionsResponse, error) {
-	auth, err := RequireAnyScope(ctx,
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
 		ScopeDocumentRead, ScopeDocumentReadAll,
 		ScopeDocumentWrite, ScopeDocumentDelete,
 		ScopeDocumentAdmin,
@@ -1552,7 +1582,7 @@ func (a *DocumentsService) Get(
 	includeMetaDoc := requireMetaDoc ||
 		req.MetaDocument == repository.GetMetaDoc_META_INCLUDE
 
-	auth, err := RequireAnyScope(ctx,
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
 		ScopeDocumentRead, ScopeDocumentReadAll,
 		ScopeDocumentAdmin,
 	)
@@ -1869,7 +1899,7 @@ func (a *DocumentsService) GetHistory(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx,
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
 		ScopeDocumentRead, ScopeDocumentReadAll,
 		ScopeDocumentAdmin,
 	)
@@ -1972,7 +2002,7 @@ func (a *DocumentsService) accessCheck(
 	normalWrite := !slices.Contains(permissions, MetaWritePermission) &&
 		slices.Contains(permissions, WritePermission)
 	if normalWrite {
-		_, err := RequireAnyScope(ctx,
+		_, err := RequireDocumentScope(ctx, docUUID.String(),
 			ScopeDocumentWrite, ScopeDocumentAdmin)
 		if err != nil {
 			return err
@@ -2020,7 +2050,7 @@ func (a *DocumentsService) GetMeta(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx,
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
 		ScopeDocumentRead, ScopeDocumentReadAll,
 		ScopeDocumentAdmin,
 	)
@@ -2077,7 +2107,17 @@ func (a *DocumentsService) Update(
 			elephantine.LogKeyDocumentTitle, req.Document.Title)
 	}
 
-	auth, err := a.verifyUpdateRequests(ctx,
+	// A single update is about one document, so a write scope restricted
+	// to it is enough; BulkUpdate isn't, and refuses one.
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
+		ScopeDocumentWrite, ScopeDocumentAdmin,
+		ScopeMetaDocumentWriteAll,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.verifyUpdateRequests(ctx, auth,
 		[]*repository.UpdateRequest{req})
 	if err != nil {
 		return nil, err
@@ -2104,7 +2144,15 @@ func (a *DocumentsService) BulkUpdate(
 	ctx context.Context,
 	req *repository.BulkUpdateRequest,
 ) (*repository.BulkUpdateResponse, error) {
-	auth, err := a.verifyUpdateRequests(ctx, req.Updates)
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentWrite, ScopeDocumentAdmin,
+		ScopeMetaDocumentWriteAll,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.verifyUpdateRequests(ctx, auth, req.Updates)
 	if err != nil {
 		return nil, err
 	}
@@ -2328,28 +2376,22 @@ func aclListFromRPC(acl []*repository.ACLEntry, callerSubject string) []ACLEntry
 	return list
 }
 
-// verifyUpdateRequest verifies that a set of update request are correct, and
-// that the user has the necessary permissions for making the updates.
+// verifyUpdateRequests verifies that a set of update request are correct, and
+// that the user has the necessary permissions for making the updates. The
+// caller has already checked the scopes.
 func (a *DocumentsService) verifyUpdateRequests(
 	ctx context.Context,
+	auth *elephantine.AuthInfo,
 	updates []*repository.UpdateRequest,
-) (*elephantine.AuthInfo, error) {
-	auth, err := RequireAnyScope(ctx,
-		ScopeDocumentWrite, ScopeDocumentAdmin,
-		ScopeMetaDocumentWriteAll,
-	)
-	if err != nil {
-		return nil, err
-	}
-
+) error {
 	for _, req := range updates {
 		err := a.verifyUpdateRequest(ctx, auth, req)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	return auth, nil
+	return nil
 }
 
 var objectNameDisallowed = regexp.MustCompile(`[^a-z-]`)
@@ -2654,9 +2696,10 @@ func (a *DocumentsService) Validate(
 	ctx context.Context, req *repository.ValidateRequest,
 ) (*repository.ValidateResponse, error) {
 	// Validation is a dry run of the write path, so it takes the same scopes
-	// as Update. No ACL check: nothing is read from or written to storage,
+	// as Update, including a write scope restricted to the supplied
+	// document. No ACL check: nothing is read from or written to storage,
 	// the caller supplies the document.
-	_, err := RequireAnyScope(ctx,
+	_, err := RequireDocumentScope(ctx, req.GetDocument().GetUuid(),
 		ScopeDocumentWrite, ScopeDocumentAdmin,
 		ScopeMetaDocumentWriteAll,
 	)
@@ -2693,9 +2736,10 @@ func (a *DocumentsService) Prune(
 	ctx context.Context, req *repository.PruneRequest,
 ) (*repository.PruneResponse, error) {
 	// Pruning produces a document intended to be written, so it takes the
-	// same scopes as Update. No ACL check: nothing is read from or written to
+	// same scopes as Update, including a write scope restricted to the
+	// supplied document. No ACL check: nothing is read from or written to
 	// storage, the caller supplies the document.
-	_, err := RequireAnyScope(ctx,
+	_, err := RequireDocumentScope(ctx, req.GetDocument().GetUuid(),
 		ScopeDocumentWrite, ScopeDocumentAdmin,
 		ScopeMetaDocumentWriteAll,
 	)
@@ -2738,7 +2782,7 @@ func (a *DocumentsService) Lock(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx,
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
 		ScopeDocumentWrite, ScopeDocumentDelete, ScopeDocumentAdmin,
 	)
 	if err != nil {
@@ -2864,7 +2908,7 @@ func (a *DocumentsService) ExtendLock(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx,
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
 		ScopeDocumentWrite, ScopeDocumentDelete, ScopeDocumentAdmin,
 	)
 	if err != nil {
@@ -2918,7 +2962,7 @@ func (a *DocumentsService) Unlock(
 		elephantine.LogKeyDocumentUUID, req.Uuid,
 	)
 
-	auth, err := RequireAnyScope(ctx,
+	auth, err := RequireDocumentScope(ctx, req.Uuid,
 		ScopeDocumentWrite, ScopeDocumentDelete, ScopeDocumentAdmin,
 	)
 	if err != nil {

@@ -584,6 +584,74 @@ A `MetricCalculator` can compute measurements during the write transaction.
 Write access can be narrowed to a single kind with the subscope
 `metrics_write:<kind>`.
 
+### Document listing
+
+`Documents.ListDocuments` pages through a whole set of documents, for services
+that keep derived state built from one — elephant-spell's whitelist of persons,
+organisations and places, for example. The client reads the eventlog head,
+pages through the listing until the cursor is exhausted, then tails the
+eventlog from that head. An event reaches the eventlog only after its
+transaction has committed, so everything at or below the head is visible to
+every page read afterwards and the pages need no shared snapshot.
+
+A request carries one or more selectors, each one of:
+
+* `{type}` — every document of the type, driven by `document (type, uuid)`.
+* `{type, status}` — the documents whose head for the status points at a
+  version, driven by `status_heads (type, name, uuid)` with `version > 0`.
+* `{type, workflow_checkpoint}` — the documents whose last reached checkpoint
+  is the given one, driven by `workflow_state (type, checkpoint, uuid)`.
+
+The three indexes were added by migration `028_listing_indexes.sql`. Every
+path filters `document.system_state IS NULL`, so a `deleting` or `restoring`
+placeholder is never listed. Status and checkpoint in one selector is
+`invalid_argument`.
+
+The version mode is `selected` (the default) or `current`. `selected` returns
+the version the status head points at; for a checkpoint selector that is the
+head named by the checkpoint, joined on `(uuid, name = checkpoint)` with
+`version > 0`, and for a bare `{type}` the current version. The checkpoint
+path deliberately does not read `workflow_state.document_version`,
+`status_name` or `status_id`: a version-only update that resets the step
+rewrites the row with a NULL status reference and the new version. `current`
+always returns `document.current_version` and changes which version is
+returned, never which documents are listed.
+
+**An unpublished head leaves the document out completely, in both modes.** A
+status head with version `-1` fails `version > 0`, so the document is not
+returned with an empty body, and not with its current version either. A type's
+negative checkpoint (such as `unpublished`) has no status head and no version
+to select, so selecting it with `selected` is `invalid_argument`, recognised
+from the in-memory workflow configuration; with `current` it lists the
+documents at that checkpoint. Any other checkpoint name is not validated and
+matches what `workflow_state` holds, usually nothing.
+
+Pages are keyset-paginated on `uuid`. The cursor is opaque and encodes the
+index of the selector being worked through and the UUID to resume from;
+selectors are worked through in request order and a page fills across selector
+boundaries, so a document matching two selectors is returned twice, each item
+naming the selector it matched. A page ends when `limit` rows (default 100,
+capped at 500) have been scanned, or when the next document would take the
+document data loaded for the page past 4 MiB
+(`DefaultListDocumentsMaxBytes`); a page always holds at least one document.
+Rows the caller cannot read count against the limit, so a page can be short
+while the listing goes on: only an empty `next` ends it.
+
+Each page is one index range scan plus primary-key lookups as a single
+statement on the bouncer pool, then document data loaded by `(uuid, version)`
+with `BulkGetDocumentData` in chunks of 50, so that a page cut by the byte cap
+does not load much more than it returns. No transaction or cursor is held
+between pages. `subset` extracts values in Go as `BulkGet` does; it shrinks the
+response, not the read. `include_meta` adds `BulkGetDocumentMeta`'s four
+lookups per page, and the meta describes the document as it is now, not the
+returned version. A bare `{type}` selector can crawl a whole type, including
+`core/article`; that is accepted as load the caller chooses.
+
+The method takes the read scopes `BulkGet` does and checks per-document read
+access the same way: callers without `doc_read_all` or `doc_admin` get
+`BulkCheckPermissions` run on each batch of listed rows, and documents they
+cannot read are skipped. See [permissions.md](permissions.md#documents).
+
 ## The RPC API and scopes
 
 Four services, each mounted twice. The service definitions live in
@@ -592,7 +660,7 @@ not in this repository.
 
 | Service | Settles |
 |---|---|
-| `Documents` | Document CRUD, versions, statuses, ACLs, locks, uploads, eventlog reads, delete/restore/purge |
+| `Documents` | Document CRUD, versions, statuses, ACLs, locks, uploads, listing, eventlog reads, delete/restore/purge |
 | `Schemas` | Schema and generation registration and activation, meta types, type configuration, deprecations |
 | `Workflows` | Statuses, status rules, per-type workflows |
 | `Metrics` | Document metric kinds and values |
@@ -735,8 +803,10 @@ per-document ACL check.
 | Scope | Grants |
 |---|---|
 | `doc_read` | Read documents, subject to the ACL |
+| `doc_read:<uuid>` | `doc_read` for the one document named, subject to the ACL; see [document-restricted scopes](#document-restricted-scopes) |
 | `doc_read_all` | Read any document, bypassing the read ACL |
 | `doc_write` | Create versions, subject to the ACL |
+| `doc_write:<uuid>` | `doc_write` for the one document named, subject to the ACL |
 | `doc_delete` | Delete documents, subject to the ACL |
 | `doc_restore` | Restore deleted documents; list deleted |
 | `doc_purge` | Purge deleted documents; list deleted |
@@ -796,14 +866,56 @@ The middleware does not cover every route, and the exceptions are deliberate:
 | `POST /twirp/…` | Middleware requires a valid token, then the handler asserts its scope |
 | `POST /elephant.repository.…` | The same middleware and the same handler, for Connect and for the in-cluster gRPC and gRPC-Web callers |
 | `GET /sse` | Same middleware; the `token` query parameter is copied into the `Authorization` header first, so a browser client that cannot set headers still authenticates. A refusal is rendered as a Connect error body, since the endpoint carries nothing that says which RPC protocol the caller speaks |
-| `GET /websocket/:token` | Bypasses the middleware — the socket token in the path is verified against the server's socket key, and the session then authenticates with a JWT |
+| `GET /websocket/:token` | Bypasses the middleware — the socket token in the path is verified against the server's socket key, and the session then authenticates with a JWT, whose scopes each socket call checks |
 | `GET /signing-keys` | Bypasses the middleware. Public by design: it is what makes independent verification of the archive possible |
+
+On the websocket, opening a document set needs `doc_read`, `doc_read_all` or
+`doc_admin` on the session's JWT, unrestricted, and reading the eventlog needs
+`eventlog_read`. The JWT is not the token `GetSocketToken` checked, so these are
+the only scope checks a socket session gets.
 
 The middleware validates on every request; there is no JWT caching — see
 [pending work](../README.md#pending-work). See also [ops.md](ops.md#security).
 
 `repository/permissions.go` is the authority for the scope constants;
 [permissions.md](permissions.md) has the per-method matrix.
+
+#### Document-restricted scopes
+
+`doc_read` and `doc_write` can be restricted to a single document with a
+`:<uuid>` suffix. elephant-delegate's `NarrowToken` issues such tokens, so that
+a device holds a token good for one document rather than the whole session's
+reach. A restriction only ever narrows: the ACL check runs exactly as it does
+for the unrestricted scope, so `doc_read:<uuid>` never lets a caller read a
+document their ACLs don't. No other scope can be restricted; `doc_admin:<uuid>`
+or `doc_read_all:<uuid>` grants nothing. The restriction is honoured whichever
+issuer signed the token. Trusting elephant-delegate as a second issuer is
+configuration: `--delegate-issuer`, `--delegate-jwks-url` and
+`--delegate-audience`, the last set to `elephant-repository`. A delegate token
+bound to a device key is refused, since the repository verifies no DPoP proofs;
+the delegate binds a narrowed token when the caller hands it a device key or
+the token it narrows is already bound, so a token for the repository is
+narrowed from the unbound session token without a device key. See
+[ops.md](ops.md#security).
+
+A method that acts on one document, the one the request's `uuid` names,
+accepts a restricted scope naming that document. That covers the single-document
+reads, `GetPermissions`, `Update`, the lock methods, and the write check behind
+`Get` with a lock. `Validate` and `Prune` take no `uuid` but are dry runs of an
+update, so they accept `doc_write:<uuid>` when the document they are given has
+that UUID, and refuse it otherwise; a client can validate the one document its
+token lets it write. The comparison is between parsed UUIDs, so case doesn't
+matter, but the suffix has to be a UUID in its standard hyphenated form: a
+malformed suffix, or the URN, braced or unhyphenated forms, grants nothing.
+Every other method matches scopes exactly and so refuses a restricted one,
+including those that name a single document in a list (`BulkGet`,
+`BulkUpdate`), the listings, the eventlog, the socket token and the websocket's
+document sets. `RequireDocumentScope` in `repository/permissions.go` is the
+check; [permissions.md](permissions.md#documents) says which methods use it.
+
+A direct update of a meta document names the meta document's own UUID, so that
+is the UUID the scope has to carry, although the ACL checked is the main
+document's.
 
 ## Database
 

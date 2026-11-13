@@ -90,6 +90,7 @@ The container exposes 1080 (API) and 1081 (metrics and pprof), runs as
 | S3 archive bucket | Archiving, delete finalisation, restore, purge, signing key storage | The archiver exhausts its retries and exits, killing replicas one at a time as each becomes the lock holder; deletes stop finalising. The API keeps serving — the `s3` readiness check is optional, so pods stay in rotation and only `health_check_up{name="s3"}` reports it. A pod *starting* while the bucket is unreachable exits within seconds instead. |
 | S3 asset bucket | Creating uploads, attaching objects, downloading attachments | Uploads and attachment downloads fail. Document writes without attachments are unaffected. |
 | OIDC provider (`--oidc-config`) | Validating JWTs | Every authenticated call fails. The five unauthenticated methods keep working. Note that key sets are typically cached, so a brief provider outage may not be visible. |
+| elephant-delegate's JWKS (optional, `--delegate-jwks-url`) | Validating delegate tokens | Startup does not wait for it. Until a fetch succeeds, delegate tokens are refused as `unauthenticated`; the key set is refetched hourly, and at most every five minutes when a token names a key it doesn't hold. Identity provider tokens are unaffected. Deploy the delegate first. |
 | AWS EventBridge (optional) | The event sink | Forwarding stops and retries; the position is persisted so it catches up. Nothing else is affected. Disable with `--no-eventsink`. |
 
 Truly required: **Postgres and the archive bucket.** Everything else either
@@ -615,8 +616,14 @@ for CPU, `.../heap` for memory, `.../goroutine?debug=2` for a stuck worker.
 ## Security
 
 **Inbound.** JWT bearer tokens validated against the OIDC provider named by
-`--oidc-config`, with `--jwt-audience` and `--jwt-scope-prefix` applied. Scope
-check, then a per-document ACL check for document operations. The scope
+`--oidc-config`, with `--jwt-audience` and `--jwt-scope-prefix` applied. With
+`--delegate-issuer` set, tokens elephant-delegate signs are accepted too, each
+validated against the delegate's own JWKS and required to carry
+`--delegate-audience`, so a delegate token minted for another service is
+refused. **A token bound to a device key (a `cnf` claim) is always refused**:
+the repository verifies no DPoP proofs, and accepting one without its proof
+would turn it back into a bearer token. Scope check, then a per-document ACL
+check for document operations. The scope
 vocabulary and the bypass scopes are in
 [architecture.md](architecture.md#scopes); the per-method matrix is in
 [permissions.md](permissions.md).

@@ -4,14 +4,55 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
-## [v1.10.1] - Unreleased
+## [v1.11.0] - Unreleased
+
+**Behaviour change (document-restricted scopes):** `doc_read:<uuid>` and
+`doc_write:<uuid>` are now accepted as `doc_read` and `doc_write` restricted to
+one document, as elephant-delegate's `NarrowToken` issues them. The methods
+about a single document, `GetPermissions` among them, accept a restricted scope
+naming the request's `uuid`, `Validate` and `Prune` accept `doc_write:<uuid>`
+naming the supplied document's `uuid`, and every other method refuses one. The ACL check
+is unchanged, so a restricted scope never reaches a document the user's ACLs
+don't. Tokens with unsuffixed scopes behave as before. See
+[document-restricted scopes](docs/architecture.md#document-restricted-scopes)
+and the [permission matrix](docs/permissions.md#documents).
+
+**Behaviour change (websocket document sets):** opening a document set with
+the socket's `GetDocuments` call now needs `doc_read`, `doc_read_all` or
+`doc_admin` on the JWT the session authenticated with. Any valid JWT used to
+be enough, with only the ACLs filtering what the set showed. A client that
+authenticates the socket with an ordinary session token is unaffected.
+
+**Migrations:**
+
+- `028_listing_indexes.sql` adds the indexes `ListDocuments` pages through:
+  `document (type, uuid)`, `status_heads (type, name, uuid)` and
+  `workflow_state (type, checkpoint, uuid)`. Run it before the deploy; it
+  needs no maintenance window, since the indexes are built `CONCURRENTLY` and
+  don't block writes. It runs outside a transaction, so a failed build leaves
+  an `INVALID` index that `IF NOT EXISTS` then skips: drop it by hand
+  (`DROP INDEX CONCURRENTLY <name>`) before migrating again.
 
 Changes:
 
+- New RPC `Documents.ListDocuments`: a unary, keyset-paginated listing of the
+  documents of a type, optionally narrowed to those with a published status
+  head or at a workflow checkpoint, returning the selected or current version,
+  a `subset`, and optionally the meta. It needs `doc_read`, `doc_read_all` or
+  `doc_admin` and filters on read access. See
+  [document listing](docs/architecture.md#document-listing).
+- `doc_read:<uuid>` and `doc_write:<uuid>` restrict the document scopes to one
+  document for the single-document methods, and are refused everywhere else.
+  `Validate` and `Prune` count `doc_write:<uuid>` for the document supplied.
+- The websocket's `GetDocuments` checks the session's document read scope.
 - Attaching an upload whose object was never PUT to the asset bucket now fails
   with `invalid_argument` instead of `internal`. The existence check looked for
   `NoSuchKey`, which a HEAD request never returns, and the store's error was
   then reported as internal anyway. (#647)
+- elephant-delegate can be trusted as a second token issuer, so the tokens its
+  `NarrowToken` issues are accepted: set `DELEGATE_ISSUER`,
+  `DELEGATE_JWKS_URL` and `DELEGATE_AUDIENCE=elephant-repository`. Tokens
+  bound to a device key are refused. See [ops.md](docs/ops.md#security).
 
 ## [v1.10.0] - 2026-10-29
 

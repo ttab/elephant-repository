@@ -4594,6 +4594,153 @@ func (q *Queries) ListDeleteRecords(ctx context.Context, arg ListDeleteRecordsPa
 	return items, nil
 }
 
+const listDocumentsByCheckpoint = `-- name: ListDocumentsByCheckpoint :many
+SELECT w.uuid, COALESCE(h.version, 0)::bigint AS status_version,
+       d.current_version
+FROM workflow_state AS w
+     INNER JOIN document AS d ON d.uuid = w.uuid
+     LEFT JOIN status_heads AS h ON h.uuid = w.uuid AND h.name = w.checkpoint
+WHERE w.type = $1
+      AND w.checkpoint = $2
+      AND w.uuid >= $3
+      AND d.system_state IS NULL
+      AND (NOT $4::bool OR h.version > 0)
+ORDER BY w.uuid
+LIMIT $5::bigint
+`
+
+type ListDocumentsByCheckpointParams struct {
+	Type        string
+	Checkpoint  string
+	FromUuid    uuid.UUID
+	RequireHead bool
+	RowLimit    int64
+}
+
+type ListDocumentsByCheckpointRow struct {
+	UUID           uuid.UUID
+	StatusVersion  int64
+	CurrentVersion int64
+}
+
+func (q *Queries) ListDocumentsByCheckpoint(ctx context.Context, arg ListDocumentsByCheckpointParams) ([]ListDocumentsByCheckpointRow, error) {
+	rows, err := q.db.Query(ctx, listDocumentsByCheckpoint,
+		arg.Type,
+		arg.Checkpoint,
+		arg.FromUuid,
+		arg.RequireHead,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDocumentsByCheckpointRow
+	for rows.Next() {
+		var i ListDocumentsByCheckpointRow
+		if err := rows.Scan(&i.UUID, &i.StatusVersion, &i.CurrentVersion); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDocumentsByStatus = `-- name: ListDocumentsByStatus :many
+SELECT h.uuid, h.version::bigint AS status_version, d.current_version
+FROM status_heads AS h
+     INNER JOIN document AS d ON d.uuid = h.uuid
+WHERE h.type = $1::text
+      AND h.name = $2
+      AND h.uuid >= $3
+      AND h.version > 0
+      AND d.system_state IS NULL
+ORDER BY h.uuid
+LIMIT $4::bigint
+`
+
+type ListDocumentsByStatusParams struct {
+	Type     string
+	Status   string
+	FromUuid uuid.UUID
+	RowLimit int64
+}
+
+type ListDocumentsByStatusRow struct {
+	UUID           uuid.UUID
+	StatusVersion  int64
+	CurrentVersion int64
+}
+
+func (q *Queries) ListDocumentsByStatus(ctx context.Context, arg ListDocumentsByStatusParams) ([]ListDocumentsByStatusRow, error) {
+	rows, err := q.db.Query(ctx, listDocumentsByStatus,
+		arg.Type,
+		arg.Status,
+		arg.FromUuid,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDocumentsByStatusRow
+	for rows.Next() {
+		var i ListDocumentsByStatusRow
+		if err := rows.Scan(&i.UUID, &i.StatusVersion, &i.CurrentVersion); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDocumentsByType = `-- name: ListDocumentsByType :many
+SELECT d.uuid, d.current_version
+FROM document AS d
+WHERE d.type = $1
+      AND d.uuid >= $2
+      AND d.system_state IS NULL
+ORDER BY d.uuid
+LIMIT $3::bigint
+`
+
+type ListDocumentsByTypeParams struct {
+	Type     string
+	FromUuid uuid.UUID
+	RowLimit int64
+}
+
+type ListDocumentsByTypeRow struct {
+	UUID           uuid.UUID
+	CurrentVersion int64
+}
+
+func (q *Queries) ListDocumentsByType(ctx context.Context, arg ListDocumentsByTypeParams) ([]ListDocumentsByTypeRow, error) {
+	rows, err := q.db.Query(ctx, listDocumentsByType, arg.Type, arg.FromUuid, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDocumentsByTypeRow
+	for rows.Next() {
+		var i ListDocumentsByTypeRow
+		if err := rows.Scan(&i.UUID, &i.CurrentVersion); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSchemaGenerations = `-- name: ListSchemaGenerations :many
 SELECT id, identity_hash, status, created, activated, deactivated
 FROM schema_generation

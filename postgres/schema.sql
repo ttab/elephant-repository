@@ -1149,6 +1149,13 @@ CREATE INDEX idx_doc_type ON public.document USING btree (type, language);
 
 
 --
+-- Name: idx_document_type_uuid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_document_type_uuid ON public.document USING btree (type, uuid);
+
+
+--
 -- Name: idx_main_doc_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1160,6 +1167,20 @@ CREATE INDEX idx_main_doc_id ON public.document USING btree (main_doc);
 --
 
 CREATE INDEX idx_planning_assignment_planning_item ON public.planning_assignment USING btree (planning_item);
+
+
+--
+-- Name: idx_status_heads_type_name_uuid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_status_heads_type_name_uuid ON public.status_heads USING btree (type, name, uuid);
+
+
+--
+-- Name: idx_workflow_state_type_checkpoint_uuid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_workflow_state_type_checkpoint_uuid ON public.workflow_state USING btree (type, checkpoint, uuid);
 
 
 --

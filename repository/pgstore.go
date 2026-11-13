@@ -898,6 +898,9 @@ type BulkGetItem struct {
 	UUID     uuid.UUID
 	Document newsdoc.Document
 	Version  int64
+	// Size is the size of the document data as loaded from the database,
+	// in bytes.
+	Size int
 }
 
 // BulkGetDocuments implements DocStore.
@@ -939,10 +942,119 @@ func (s *PGDocStore) BulkGetDocuments(
 			UUID:     row.UUID,
 			Document: d,
 			Version:  row.Version,
+			Size:     len(row.DocumentData),
 		})
 	}
 
 	return result, nil
+}
+
+// DocumentListSelector selects the documents to list. Status and Checkpoint
+// are mutually exclusive.
+type DocumentListSelector struct {
+	Type       string
+	Status     string
+	Checkpoint string
+}
+
+type ListDocumentsQuery struct {
+	Selector DocumentListSelector
+	// Current returns the current version of each document rather than
+	// the version the selected status head points at.
+	Current bool
+	// From is the inclusive lower bound for the document UUIDs to list.
+	From  uuid.UUID
+	Limit int64
+}
+
+type ListedDocument struct {
+	UUID    uuid.UUID
+	Version int64
+}
+
+// ListDocuments implements DocStore.
+func (s *PGDocStore) ListDocuments(
+	ctx context.Context, q ListDocumentsQuery,
+) ([]ListedDocument, error) {
+	sel := q.Selector
+
+	switch {
+	case sel.Status != "":
+		rows, err := s.reader.ListDocumentsByStatus(ctx,
+			postgres.ListDocumentsByStatusParams{
+				Type:     sel.Type,
+				Status:   sel.Status,
+				FromUuid: q.From,
+				RowLimit: q.Limit,
+			})
+		if err != nil {
+			return nil, fmt.Errorf("list documents by status: %w", err)
+		}
+
+		res := make([]ListedDocument, len(rows))
+
+		for i, r := range rows {
+			res[i] = ListedDocument{
+				UUID:    r.UUID,
+				Version: r.StatusVersion,
+			}
+
+			if q.Current {
+				res[i].Version = r.CurrentVersion
+			}
+		}
+
+		return res, nil
+	case sel.Checkpoint != "":
+		rows, err := s.reader.ListDocumentsByCheckpoint(ctx,
+			postgres.ListDocumentsByCheckpointParams{
+				Type:        sel.Type,
+				Checkpoint:  sel.Checkpoint,
+				FromUuid:    q.From,
+				RequireHead: !q.Current,
+				RowLimit:    q.Limit,
+			})
+		if err != nil {
+			return nil, fmt.Errorf(
+				"list documents by checkpoint: %w", err)
+		}
+
+		res := make([]ListedDocument, len(rows))
+
+		for i, r := range rows {
+			res[i] = ListedDocument{
+				UUID:    r.UUID,
+				Version: r.StatusVersion,
+			}
+
+			if q.Current {
+				res[i].Version = r.CurrentVersion
+			}
+		}
+
+		return res, nil
+	default:
+		rows, err := s.reader.ListDocumentsByType(ctx,
+			postgres.ListDocumentsByTypeParams{
+				Type:     sel.Type,
+				FromUuid: q.From,
+				RowLimit: q.Limit,
+			})
+		if err != nil {
+			return nil, fmt.Errorf("list documents by type: %w", err)
+		}
+
+		res := make([]ListedDocument, len(rows))
+
+		for i, r := range rows {
+			res[i] = ListedDocument{
+				UUID:    r.UUID,
+				Version: r.CurrentVersion,
+			}
+		}
+
+		return res, nil
+	}
 }
 
 func (s *PGDocStore) GetLastEvent(

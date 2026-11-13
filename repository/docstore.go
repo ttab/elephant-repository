@@ -32,6 +32,10 @@ type DocStore interface {
 	BulkGetDocuments(
 		ctx context.Context, documents []BulkGetReference,
 	) ([]BulkGetItem, error)
+	// ListDocuments lists documents matching a selector, in UUID order.
+	ListDocuments(
+		ctx context.Context, q ListDocumentsQuery,
+	) ([]ListedDocument, error)
 	GetVersion(
 		ctx context.Context, uuid uuid.UUID, version int64,
 	) (DocumentUpdate, error)
