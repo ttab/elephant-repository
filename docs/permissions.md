@@ -101,6 +101,7 @@ shared with me".
 | `GetDeliverableInfo` | `doc_read`, `doc_read_all`, `doc_admin` | yes | Read, rejects |
 | `BulkGet` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
 | `GetMatching` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
+| `ListDocuments` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters — rows the caller cannot read still count against the page `limit`. |
 | `GetStatusOverview` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
 | `BulkGetDeliverableInfo` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
 | `GetAttachments` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |

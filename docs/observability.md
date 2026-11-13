@@ -249,6 +249,26 @@ There are no SSE metrics. SSE connections, publishes and replay-buffer misses
 are not instrumented at all, so an SSE-only outage is invisible here — check
 `rpc_*` for `/sse`'s absence and the logs. Known gap.
 
+## Document listing
+
+Per-page view of `Documents.ListDocuments`; the call rate and errors are in
+the `rpc_*` series like every other method.
+
+* `repository_list_documents_page_documents` — documents returned per page. A
+  distribution well below the limits clients ask for means pages are being cut
+  short, by the byte cap (see below) or by ACL filtering for callers without a
+  read-all scope, and clients are making more round trips than their limit
+  suggests.
+* `repository_list_documents_page_bytes` — bytes of document data loaded per
+  page, capped at 4 MiB except for a page holding a single larger document.
+  The sum's rate is the read load listing puts on `document_version`; a
+  sustained rise is a client crawling a large type, which is allowed and
+  costs what it says.
+* `repository_list_documents_byte_capped_total` — pages cut short by the byte
+  cap. Routine for listings of large documents; a high rate relative to the
+  `ListDocuments` call rate means clients ask for more than fits in a page,
+  and would be better served by `subset` or a smaller `limit`.
+
 ## RPC metrics on two stacks
 
 The API is served on two path families, `/twirp/…` and `/elephant.repository.…`

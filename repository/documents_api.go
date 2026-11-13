@@ -15,6 +15,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 	rpcdoc "github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-repository/internal"
@@ -63,8 +64,15 @@ func NewDocumentsService(
 	docTypes *TypeConfigurations,
 	docCache BulkDocCache,
 	socketKey *ecdsa.PrivateKey,
+	metricsRegisterer prometheus.Registerer,
+	opts ...DocumentsServiceOption,
 ) (*DocumentsService, error) {
-	return &DocumentsService{
+	listing, err := newListingMetrics(metricsRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	svc := DocumentsService{
 		socketKey:       socketKey,
 		store:           store,
 		sched:           sched,
@@ -74,7 +82,27 @@ func NewDocumentsService(
 		defaultLanguage: defaultLanguage,
 		docTypes:        docTypes,
 		docCache:        docCache,
-	}, nil
+		listing:         listing,
+		listMaxBytes:    DefaultListDocumentsMaxBytes,
+	}
+
+	for _, opt := range opts {
+		opt(&svc)
+	}
+
+	return &svc, nil
+}
+
+// DocumentsServiceOption configures a DocumentsService.
+type DocumentsServiceOption func(svc *DocumentsService)
+
+// WithListDocumentsMaxBytes sets the cap on the size of the document data
+// loaded for a ListDocuments page, which defaults to
+// DefaultListDocumentsMaxBytes.
+func WithListDocumentsMaxBytes(n int) DocumentsServiceOption {
+	return func(svc *DocumentsService) {
+		svc.listMaxBytes = n
+	}
 }
 
 // Interface guard.
@@ -90,6 +118,8 @@ type DocumentsService struct {
 	defaultLanguage string
 	docTypes        *TypeConfigurations
 	docCache        BulkDocCache
+	listing         *listingMetrics
+	listMaxBytes    int
 }
 
 // GetSocketToken implements repository.Documents.

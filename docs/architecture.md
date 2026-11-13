@@ -584,6 +584,74 @@ A `MetricCalculator` can compute measurements during the write transaction.
 Write access can be narrowed to a single kind with the subscope
 `metrics_write:<kind>`.
 
+### Document listing
+
+`Documents.ListDocuments` pages through a whole set of documents, for services
+that keep derived state built from one — elephant-spell's whitelist of persons,
+organisations and places, for example. The client reads the eventlog head,
+pages through the listing until the cursor is exhausted, then tails the
+eventlog from that head. An event reaches the eventlog only after its
+transaction has committed, so everything at or below the head is visible to
+every page read afterwards and the pages need no shared snapshot.
+
+A request carries one or more selectors, each one of:
+
+* `{type}` — every document of the type, driven by `document (type, uuid)`.
+* `{type, status}` — the documents whose head for the status points at a
+  version, driven by `status_heads (type, name, uuid)` with `version > 0`.
+* `{type, workflow_checkpoint}` — the documents whose last reached checkpoint
+  is the given one, driven by `workflow_state (type, checkpoint, uuid)`.
+
+The three indexes were added by migration `028_listing_indexes.sql`. Every
+path filters `document.system_state IS NULL`, so a `deleting` or `restoring`
+placeholder is never listed. Status and checkpoint in one selector is
+`invalid_argument`.
+
+The version mode is `selected` (the default) or `current`. `selected` returns
+the version the status head points at; for a checkpoint selector that is the
+head named by the checkpoint, joined on `(uuid, name = checkpoint)` with
+`version > 0`, and for a bare `{type}` the current version. The checkpoint
+path deliberately does not read `workflow_state.document_version`,
+`status_name` or `status_id`: a version-only update that resets the step
+rewrites the row with a NULL status reference and the new version. `current`
+always returns `document.current_version` and changes which version is
+returned, never which documents are listed.
+
+**An unpublished head leaves the document out completely, in both modes.** A
+status head with version `-1` fails `version > 0`, so the document is not
+returned with an empty body, and not with its current version either. A type's
+negative checkpoint (such as `unpublished`) has no status head and no version
+to select, so selecting it with `selected` is `invalid_argument`, recognised
+from the in-memory workflow configuration; with `current` it lists the
+documents at that checkpoint. Any other checkpoint name is not validated and
+matches what `workflow_state` holds, usually nothing.
+
+Pages are keyset-paginated on `uuid`. The cursor is opaque and encodes the
+index of the selector being worked through and the UUID to resume from;
+selectors are worked through in request order and a page fills across selector
+boundaries, so a document matching two selectors is returned twice, each item
+naming the selector it matched. A page ends when `limit` rows (default 100,
+capped at 500) have been scanned, or when the next document would take the
+document data loaded for the page past 4 MiB
+(`DefaultListDocumentsMaxBytes`); a page always holds at least one document.
+Rows the caller cannot read count against the limit, so a page can be short
+while the listing goes on: only an empty `next` ends it.
+
+Each page is one index range scan plus primary-key lookups as a single
+statement on the bouncer pool, then document data loaded by `(uuid, version)`
+with `BulkGetDocumentData` in chunks of 50, so that a page cut by the byte cap
+does not load much more than it returns. No transaction or cursor is held
+between pages. `subset` extracts values in Go as `BulkGet` does; it shrinks the
+response, not the read. `include_meta` adds `BulkGetDocumentMeta`'s four
+lookups per page, and the meta describes the document as it is now, not the
+returned version. A bare `{type}` selector can crawl a whole type, including
+`core/article`; that is accepted as load the caller chooses.
+
+The method takes the read scopes `BulkGet` does and checks per-document read
+access the same way: callers without `doc_read_all` or `doc_admin` get
+`BulkCheckPermissions` run on each batch of listed rows, and documents they
+cannot read are skipped. See [permissions.md](permissions.md#documents).
+
 ## The RPC API and scopes
 
 Four services, each mounted twice. The service definitions live in
@@ -592,7 +660,7 @@ not in this repository.
 
 | Service | Settles |
 |---|---|
-| `Documents` | Document CRUD, versions, statuses, ACLs, locks, uploads, eventlog reads, delete/restore/purge |
+| `Documents` | Document CRUD, versions, statuses, ACLs, locks, uploads, listing, eventlog reads, delete/restore/purge |
 | `Schemas` | Schema and generation registration and activation, meta types, type configuration, deprecations |
 | `Workflows` | Statuses, status rules, per-type workflows |
 | `Metrics` | Document metric kinds and values |
