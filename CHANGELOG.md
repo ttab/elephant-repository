@@ -53,6 +53,9 @@ Changes:
   `NarrowToken` issues are accepted: set `DELEGATE_ISSUER`,
   `DELEGATE_JWKS_URL` and `DELEGATE_AUDIENCE=elephant-repository`. Tokens
   bound to a device key are refused. See [ops.md](docs/ops.md#security).
+- Dependency upgrades: Go to 1.27.4, elephantine to v0.32.0, pgx to v5.13.0,
+  go-sse to v0.12.0, eleconf to v1.2.0, revisorschemas to v1.6.1, ttab/mage to
+  v0.16.1, the AWS SDK suite, and golang.org/x/sync. (#649)
 
 ## [v1.10.0] - 2026-10-29
 
