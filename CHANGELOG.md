@@ -23,8 +23,24 @@ the socket's `GetDocuments` call now needs `doc_read`, `doc_read_all` or
 be enough, with only the ACLs filtering what the set showed. A client that
 authenticates the socket with an ordinary session token is unaffected.
 
+**Migrations:**
+
+- `028_listing_indexes.sql` adds the indexes `ListDocuments` pages through:
+  `document (type, uuid)`, `status_heads (type, name, uuid)` and
+  `workflow_state (type, checkpoint, uuid)`. Run it before the deploy; it
+  needs no maintenance window, since the indexes are built `CONCURRENTLY` and
+  don't block writes. It runs outside a transaction, so a failed build leaves
+  an `INVALID` index that `IF NOT EXISTS` then skips: drop it by hand
+  (`DROP INDEX CONCURRENTLY <name>`) before migrating again.
+
 Changes:
 
+- New RPC `Documents.ListDocuments`: a unary, keyset-paginated listing of the
+  documents of a type, optionally narrowed to those with a published status
+  head or at a workflow checkpoint, returning the selected or current version,
+  a `subset`, and optionally the meta. It needs `doc_read`, `doc_read_all` or
+  `doc_admin` and filters on read access. See
+  [document listing](docs/architecture.md#document-listing).
 - `doc_read:<uuid>` and `doc_write:<uuid>` restrict the document scopes to one
   document for the single-document methods, and are refused everywhere else.
   `Validate` and `Prune` count `doc_write:<uuid>` for the document supplied.

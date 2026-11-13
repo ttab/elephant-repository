@@ -310,6 +310,8 @@ type testingServerOptions struct {
 	// EventlogStream overrides the eventlog stream config for the socket
 	// handler. A zero BufferSize defaults to 500.
 	EventlogStream repository.EventlogStreamConfig
+	// ListDocumentsMaxBytes overrides the ListDocuments page byte cap.
+	ListDocumentsMaxBytes int
 	// Stack overrides the protocol stack the test clients are built for.
 	// Empty means the one TEST_RPC_STACK selects.
 	Stack rpcStack
@@ -518,6 +520,13 @@ func testingAPIServer(
 
 	docCache := repository.NewDocCache(store, 1000)
 
+	var docOpts []repository.DocumentsServiceOption
+
+	if opts.ListDocumentsMaxBytes > 0 {
+		docOpts = append(docOpts, repository.WithListDocumentsMaxBytes(
+			opts.ListDocumentsMaxBytes))
+	}
+
 	docService, err := repository.NewDocumentsService(
 		store,
 		repository.NewSchedulePGStore(dbpool),
@@ -528,6 +537,8 @@ func testingAPIServer(
 		typeConf,
 		docCache,
 		socketKey,
+		reg,
+		docOpts...,
 	)
 	test.Mustf(t, err, "create documents service")
 

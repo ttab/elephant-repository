@@ -172,6 +172,41 @@ FROM refs AS r
                   OR v.version = r.version
            );
 
+-- name: ListDocumentsByType :many
+SELECT d.uuid, d.current_version
+FROM document AS d
+WHERE d.type = @type
+      AND d.uuid >= @from_uuid
+      AND d.system_state IS NULL
+ORDER BY d.uuid
+LIMIT sqlc.arg(row_limit)::bigint;
+
+-- name: ListDocumentsByStatus :many
+SELECT h.uuid, h.version::bigint AS status_version, d.current_version
+FROM status_heads AS h
+     INNER JOIN document AS d ON d.uuid = h.uuid
+WHERE h.type = @type::text
+      AND h.name = @status
+      AND h.uuid >= @from_uuid
+      AND h.version > 0
+      AND d.system_state IS NULL
+ORDER BY h.uuid
+LIMIT sqlc.arg(row_limit)::bigint;
+
+-- name: ListDocumentsByCheckpoint :many
+SELECT w.uuid, COALESCE(h.version, 0)::bigint AS status_version,
+       d.current_version
+FROM workflow_state AS w
+     INNER JOIN document AS d ON d.uuid = w.uuid
+     LEFT JOIN status_heads AS h ON h.uuid = w.uuid AND h.name = w.checkpoint
+WHERE w.type = @type
+      AND w.checkpoint = @checkpoint
+      AND w.uuid >= @from_uuid
+      AND d.system_state IS NULL
+      AND (NOT @require_head::bool OR h.version > 0)
+ORDER BY w.uuid
+LIMIT sqlc.arg(row_limit)::bigint;
+
 -- name: AcquireTXLock :exec
 SELECT pg_advisory_xact_lock(@id::bigint);
 

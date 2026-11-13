@@ -455,6 +455,7 @@ func runServer(ctx context.Context, c *cli.Command) error {
 		typeConfs,
 		docCache,
 		socketKey,
+		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
 		return fmt.Errorf("create documents service: %w", err)
