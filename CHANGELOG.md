@@ -4,6 +4,15 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
+## [v1.10.1] - Unreleased
+
+Changes:
+
+- Attaching an upload whose object was never PUT to the asset bucket now fails
+  with `invalid_argument` instead of `internal`. The existence check looked for
+  `NoSuchKey`, which a HEAD request never returns, and the store's error was
+  then reported as internal anyway.
+
 ## [v1.10.0] - 2026-10-29
 
 **Breaking (startup migrations):** the `--migrate-db` flag and its
