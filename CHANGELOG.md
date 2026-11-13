@@ -4,7 +4,7 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
-## [v1.11.0] - Unreleased
+## [v1.11.0] - 2026-11-13
 
 **Behaviour change (document-restricted scopes):** `doc_read:<uuid>` and
 `doc_write:<uuid>` are now accepted as `doc_read` and `doc_write` restricted to
