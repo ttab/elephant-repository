@@ -317,3 +317,45 @@ func TestAssetRestore(t *testing.T) {
 
 	test.Equalf(t, data, string(dowloadedData), "get the correct data in download")
 }
+
+// TestAssetAttachMissingUpload covers attaching an upload whose object was
+// never PUT to the bucket. The existence check is a HEAD request, and a HEAD
+// response has no body to carry an S3 error code, so the SDK reports the
+// missing object as "NotFound" rather than "NoSuchKey". Either way the caller
+// has to get invalid_argument, not an internal error.
+func TestAssetAttachMissingUpload(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	ctx := t.Context()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write asset_upload"))
+
+	up, err := client.CreateUpload(ctx, &repository.CreateUploadRequest{
+		Name:        "my.txt",
+		ContentType: "text/plain",
+	})
+	test.Mustf(t, err, "create upload")
+
+	const (
+		docUUID = "4cbb4b5e-6a0f-4d5c-9f3e-2b0a5f0f6a11"
+		docURI  = "article://test/missing-upload"
+	)
+
+	_, err = client.Update(ctx, &repository.UpdateRequest{
+		Uuid:     docUUID,
+		Document: baseDocument(docUUID, docURI),
+		AttachObjects: map[string]string{
+			"plaintext": up.Id,
+		},
+	})
+
+	test.IsRPCError(t, err, connect.CodeInvalidArgument)
+}

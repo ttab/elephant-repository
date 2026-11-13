@@ -9,7 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/smithy-go"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 	"github.com/ttab/elephantine"
 )
@@ -101,16 +101,17 @@ func (ab *AssetBucket) CreateDownloadURL(
 func (ab *AssetBucket) UploadExists(
 	ctx context.Context, id uuid.UUID,
 ) (bool, error) {
-	var ae smithy.APIError
-
 	_, err := ab.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(ab.name),
 		Key:    aws.String(fmt.Sprintf("uploads/%s", id)),
 	})
 
+	// A HEAD response has no body to carry an S3 error code, so the SDK
+	// reports a missing object as types.NotFound, never NoSuchKey.
+	var notFound *types.NotFound
+
 	switch {
-	// See https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList
-	case errors.As(err, &ae) && ae.ErrorCode() == "NoSuchKey":
+	case errors.As(err, &notFound):
 		return false, nil
 	case err != nil:
 		return false, fmt.Errorf("check if object exists: %w", err)

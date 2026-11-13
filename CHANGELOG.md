@@ -45,13 +45,17 @@ Changes:
   document for the single-document methods, and are refused everywhere else.
   `Validate` and `Prune` count `doc_write:<uuid>` for the document supplied.
 - The websocket's `GetDocuments` checks the session's document read scope.
+- Attaching an upload whose object was never PUT to the asset bucket now fails
+  with `invalid_argument` instead of `internal`. The existence check looked for
+  `NoSuchKey`, which a HEAD request never returns, and the store's error was
+  then reported as internal anyway. (#647)
 - elephant-delegate can be trusted as a second token issuer, so the tokens its
   `NarrowToken` issues are accepted: set `DELEGATE_ISSUER`,
   `DELEGATE_JWKS_URL` and `DELEGATE_AUDIENCE=elephant-repository`. Tokens
   bound to a device key are refused. See [ops.md](docs/ops.md#security).
 - Dependency upgrades: Go to 1.27.4, elephantine to v0.32.0, pgx to v5.13.0,
   go-sse to v0.12.0, eleconf to v1.2.0, revisorschemas to v1.6.1, ttab/mage to
-  v0.16.1, the AWS SDK suite, and golang.org/x/sync.
+  v0.16.1, the AWS SDK suite, and golang.org/x/sync. (#649)
 
 ## [v1.10.0] - 2026-10-29
 

@@ -25,7 +25,6 @@ import (
 	"github.com/ttab/elephant-repository/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
-	"github.com/ttab/elephantine/rpc"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 )
@@ -2068,15 +2067,14 @@ func (s *PGDocStore) Update(
 			if err != nil {
 				return nil, fmt.Errorf(
 					"check if %q (%s) has been uploaded: %w",
-					name, upload, err,
+					name, upload.ID, err,
 				)
 			}
 
 			if !exists {
-				return nil, rpc.InvalidArgumentf(
-					"attach_objects",
+				return nil, StoreErrorf(ErrCodeBadRequest,
 					"no object uploaded for %q (%s)",
-					name, upload,
+					name, upload.ID,
 				)
 			}
 		}
