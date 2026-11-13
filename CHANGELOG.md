@@ -11,7 +11,7 @@ Changes:
 - Attaching an upload whose object was never PUT to the asset bucket now fails
   with `invalid_argument` instead of `internal`. The existence check looked for
   `NoSuchKey`, which a HEAD request never returns, and the store's error was
-  then reported as internal anyway.
+  then reported as internal anyway. (#647)
 
 ## [v1.10.0] - 2026-10-29
 
