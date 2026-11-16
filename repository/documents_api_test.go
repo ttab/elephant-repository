@@ -3214,3 +3214,154 @@ func TestIntegrationBulkGetSubset(t *testing.T) {
 		test.IsRPCError(t, err, connect.CodeInvalidArgument)
 	})
 }
+
+func TestIntegrationBulkCheckPermissions(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+	ctx := t.Context()
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	owner := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write"))
+
+	otherClaims := itest.StandardClaims(t, "doc_read", "unit://some/group")
+	otherClaims.Subject = "user://test/other-user"
+
+	other := tc.DocumentsClient(t, otherClaims)
+
+	readAllClaims := itest.StandardClaims(t, "doc_read_all")
+	readAllClaims.Subject = "user://test/read-all-user"
+
+	readAll := tc.DocumentsClient(t, readAllClaims)
+
+	const (
+		privateUUID = "6c2ff3c7-0a1f-4f4f-9b0e-8c1f1b9a0a01"
+		sharedUUID  = "6c2ff3c7-0a1f-4f4f-9b0e-8c1f1b9a0a02"
+		unitUUID    = "6c2ff3c7-0a1f-4f4f-9b0e-8c1f1b9a0a03"
+		missingUUID = "6c2ff3c7-0a1f-4f4f-9b0e-8c1f1b9a0a04"
+	)
+
+	create := func(id string, acl ...*repository.ACLEntry) {
+		t.Helper()
+
+		_, err := owner.Update(ctx, &repository.UpdateRequest{
+			Uuid:     id,
+			Document: baseDocument(id, "article://test/"+id),
+			Acl:      acl,
+		})
+		test.Mustf(t, err, "create document %s", id)
+	}
+
+	create(privateUUID)
+	create(sharedUUID, &repository.ACLEntry{
+		Uri:         otherClaims.Subject,
+		Permissions: []string{"r"},
+	})
+	// Granted both to the subject and to its unit, so that the store
+	// returns the document twice.
+	create(unitUUID,
+		&repository.ACLEntry{
+			Uri:         "unit://some/group",
+			Permissions: []string{"r", "w"},
+		},
+		&repository.ACLEntry{
+			Uri:         otherClaims.Subject,
+			Permissions: []string{"r"},
+		},
+	)
+
+	all := []string{missingUUID, unitUUID, sharedUUID, privateUUID}
+
+	check := func(
+		t *testing.T, client repository.Documents,
+		permission string, want []string,
+	) {
+		t.Helper()
+
+		res, err := client.BulkCheckPermissions(ctx,
+			&repository.BulkCheckPermissionsRequest{
+				Uuids:      all,
+				Permission: permission,
+			})
+		test.Mustf(t, err, "check %q permissions", permission)
+
+		test.EqualMessagef(t,
+			&repository.BulkCheckPermissionsResponse{Uuids: want},
+			res, "expected the permitted documents in request order")
+	}
+
+	t.Run("Owner", func(t *testing.T) {
+		// An explicit ACL replaces the default one, so the creator
+		// only holds the document created without one.
+		check(t, owner, "r", []string{privateUUID})
+		check(t, owner, "w", []string{privateUUID})
+	})
+
+	t.Run("SubjectAndUnits", func(t *testing.T) {
+		check(t, other, "r", []string{unitUUID, sharedUUID})
+		check(t, other, "w", []string{unitUUID})
+		check(t, other, "s", []string{})
+	})
+
+	t.Run("ElevatedScope", func(t *testing.T) {
+		// Read is granted by the scope without a lookup, so the
+		// missing document comes back too.
+		check(t, readAll, "r", all)
+		// doc_read_all doesn't elevate write.
+		check(t, readAll, "w", []string{})
+	})
+
+	t.Run("Duplicates", func(t *testing.T) {
+		res, err := other.BulkCheckPermissions(ctx,
+			&repository.BulkCheckPermissionsRequest{
+				Uuids:      []string{sharedUUID, sharedUUID},
+				Permission: "r",
+			})
+		test.Mustf(t, err, "check permissions")
+
+		test.EqualMessagef(t,
+			&repository.BulkCheckPermissionsResponse{
+				Uuids: []string{sharedUUID},
+			},
+			res, "expected duplicates to be collapsed")
+	})
+
+	t.Run("InvalidRequests", func(t *testing.T) {
+		tooMany := make([]string, 201)
+		for i := range tooMany {
+			tooMany[i] = uuid.NewString()
+		}
+
+		cases := map[string]*repository.BulkCheckPermissionsRequest{
+			"no permission": {Uuids: all},
+			"bad permission": {
+				Uuids: all, Permission: "x",
+			},
+			"no uuids": {Permission: "r"},
+			"bad uuid": {Uuids: []string{"nope"}, Permission: "r"},
+			"too many": {Uuids: tooMany, Permission: "r"},
+		}
+
+		for name, req := range cases {
+			t.Run(name, func(t *testing.T) {
+				_, err := owner.BulkCheckPermissions(ctx, req)
+				test.IsRPCError(t, err, connect.CodeInvalidArgument)
+			})
+		}
+	})
+
+	t.Run("RestrictedScope", func(t *testing.T) {
+		restricted := tc.DocumentsClient(t, itest.StandardClaims(t,
+			"doc_read:"+sharedUUID))
+
+		_, err := restricted.BulkCheckPermissions(ctx,
+			&repository.BulkCheckPermissionsRequest{
+				Uuids:      []string{sharedUUID},
+				Permission: "r",
+			})
+		test.IsRPCError(t, err, connect.CodePermissionDenied)
+	})
+}

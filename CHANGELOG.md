@@ -4,6 +4,22 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
+## [v1.11.1] - Unreleased
+
+Changes:
+
+- New RPC `Documents.BulkCheckPermissions`: takes up to 200 document UUIDs
+  and a permission (`r`, `w`, `m` or `s`) and returns, in request order, the
+  UUIDs the caller holds that permission on, answered for the caller's own
+  subject and units. A UUID with no document is left out exactly like one the
+  caller may not use. Elevated scopes count as in `GetPermissions` —
+  `doc_read_all` and `doc_admin` for read, `doc_admin` for write — and a
+  caller holding one gets every requested UUID back without a lookup, missing
+  documents included. It takes the scopes `GetPermissions` takes, but not in
+  their document-restricted form. See the
+  [permission matrix](docs/permissions.md#documents).
+- elephant-api bumped to v0.29.5.
+
 ## [v1.11.0] - 2026-11-13
 
 **Behaviour change (document-restricted scopes):** `doc_read:<uuid>` and

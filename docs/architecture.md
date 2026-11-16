@@ -909,7 +909,7 @@ matter, but the suffix has to be a UUID in its standard hyphenated form: a
 malformed suffix, or the URN, braced or unhyphenated forms, grants nothing.
 Every other method matches scopes exactly and so refuses a restricted one,
 including those that name a single document in a list (`BulkGet`,
-`BulkUpdate`), the listings, the eventlog, the socket token and the websocket's
+`BulkUpdate`, `BulkCheckPermissions`), the listings, the eventlog, the socket token and the websocket's
 document sets. `RequireDocumentScope` in `repository/permissions.go` is the
 check; [permissions.md](permissions.md#documents) says which methods use it.
 

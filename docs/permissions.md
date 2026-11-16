@@ -107,6 +107,7 @@ shared with me".
 | `GetAttachments` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
 | `GetSocketToken` | `doc_read`, `doc_read_all`, `doc_admin` | — | — Scope only; per-document checks happen on the socket. |
 | `GetPermissions` | `doc_read`, `doc_read_all`, `doc_write`, `doc_delete`, `doc_admin` | yes | — Any client with a document scope may read permissions; a restricted one only for its document. |
+| `BulkCheckPermissions` | `doc_read`, `doc_read_all`, `doc_write`, `doc_delete`, `doc_admin` | — | The requested permission, filters — answered for the caller's own subject and units. `doc_read_all` and `doc_admin` grant read, and `doc_admin` write, without a lookup, so such a caller gets every requested UUID back, missing documents included. At most 200 UUIDs. |
 | `Update` | `doc_write`, `doc_admin`, `meta_doc_write_all` | yes | Write, rejects — or MetaWrite for a meta document, which also checks the main document. Import directives additionally require `doc_import` or `doc_admin`. |
 | `BulkUpdate` | `doc_write`, `doc_admin`, `meta_doc_write_all` | — | As `Update`, per document |
 | `Lock` | `doc_write`, `doc_delete`, `doc_admin` | yes | Write, rejects |

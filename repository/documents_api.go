@@ -840,6 +840,121 @@ func (a *DocumentsService) GetPermissions(
 	return &resp, nil
 }
 
+// bulkCheckPermissionsLimit is the most documents a BulkCheckPermissions
+// request may name.
+const bulkCheckPermissionsLimit = 200
+
+// BulkCheckPermissions returns the requested documents that the caller holds a
+// permission on.
+func (a *DocumentsService) BulkCheckPermissions(
+	ctx context.Context, req *repository.BulkCheckPermissionsRequest,
+) (*repository.BulkCheckPermissionsResponse, error) {
+	// The scopes GetPermissions takes, matched exactly: a scope restricted
+	// to one document cannot cover a batch.
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll,
+		ScopeDocumentWrite, ScopeDocumentDelete,
+		ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Permission == "" {
+		return nil, rpc.RequiredArgument("permission")
+	}
+
+	permission := Permission(req.Permission)
+	if !IsValidPermission(permission) {
+		return nil, rpc.InvalidArgument("permission",
+			"must be one of \"r\", \"w\", \"m\" or \"s\"")
+	}
+
+	if len(req.Uuids) == 0 {
+		return nil, rpc.RequiredArgument("uuids")
+	}
+
+	if len(req.Uuids) > bulkCheckPermissionsLimit {
+		return nil, rpc.InvalidArgument("uuids", fmt.Sprintf(
+			"limited to %d documents", bulkCheckPermissionsLimit))
+	}
+
+	uuids := make([]uuid.UUID, 0, len(req.Uuids))
+	seen := make(map[uuid.UUID]bool, len(req.Uuids))
+
+	for i, raw := range req.Uuids {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return nil, rpc.Errorf(connect.CodeInvalidArgument,
+				"uuids: the UUID at index %d is invalid: %v", i, err)
+		}
+
+		if seen[id] {
+			continue
+		}
+
+		seen[id] = true
+
+		uuids = append(uuids, id)
+	}
+
+	// Elevated scopes grant the permission without a lookup, exactly as
+	// in GetPermissions, so missing documents are included too.
+	elevated := map[Permission][]string{
+		ReadPermission:  {ScopeDocumentReadAll, ScopeDocumentAdmin},
+		WritePermission: {ScopeDocumentAdmin},
+	}
+
+	if auth.Claims.HasAnyScope(elevated[permission]...) {
+		return &repository.BulkCheckPermissionsResponse{
+			Uuids: uuidStrings(uuids),
+		}, nil
+	}
+
+	permitted, err := a.store.BulkCheckPermissions(ctx,
+		BulkCheckPermissionRequest{
+			UUIDs: uuids,
+			GranteeURIs: append([]string{
+				auth.Claims.Subject,
+			}, auth.Claims.Units...),
+			Permissions: []Permission{permission},
+		})
+	if err != nil {
+		return nil, rpc.Internalf("check ACL access: %v", err)
+	}
+
+	// The store returns a row per matching ACL entry, in no particular
+	// order, so filter the request instead to keep its order and drop
+	// duplicates.
+	allowed := make(map[uuid.UUID]bool, len(permitted))
+
+	for _, id := range permitted {
+		allowed[id] = true
+	}
+
+	result := make([]uuid.UUID, 0, len(allowed))
+
+	for _, id := range uuids {
+		if allowed[id] {
+			result = append(result, id)
+		}
+	}
+
+	return &repository.BulkCheckPermissionsResponse{
+		Uuids: uuidStrings(result),
+	}, nil
+}
+
+func uuidStrings(ids []uuid.UUID) []string {
+	s := make([]string, len(ids))
+
+	for i := range ids {
+		s[i] = ids[i].String()
+	}
+
+	return s
+}
+
 func aclPermissions(sub string, acl []ACLEntry) []Permission {
 	var perms []Permission
 
