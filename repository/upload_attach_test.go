@@ -294,7 +294,8 @@ func TestAssetRestore(t *testing.T) {
 		},
 		filepath.Join(dataDir, "events.json"),
 		test.IgnoreTimestamps{},
-		ignoreUUIDField("document_nonce"))
+		ignoreUUIDField("document_nonce"),
+		ignoreUUIDField("restored_from_nonce"))
 
 	downloadLinks, err := client.GetAttachments(ctx,
 		&repository.GetAttachmentsRequest{

@@ -564,6 +564,12 @@ type DocumentMeta struct {
 	WorkflowState      string
 	WorkflowCheckpoint string
 	Attachments        []AttachmentRef
+	// RestoredFromRecord is the delete record that this generation was
+	// restored from, zero if it wasn't created by a restore.
+	RestoredFromRecord int64
+	// RestoredFromNonce is the nonce of the deleted generation that this
+	// generation was restored from, nil if it wasn't created by a restore.
+	RestoredFromNonce *uuid.UUID
 }
 
 type AttachmentRef struct {

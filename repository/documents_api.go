@@ -358,6 +358,12 @@ func DocumentMetaToRPC(meta *DocumentMeta) *repository.DocumentMeta {
 		MainDocument:       meta.MainDocument,
 		WorkflowState:      meta.WorkflowState,
 		WorkflowCheckpoint: meta.WorkflowCheckpoint,
+
+		RestoredFromDeleteRecordId: meta.RestoredFromRecord,
+	}
+
+	if meta.RestoredFromNonce != nil {
+		resp.RestoredFromNonce = meta.RestoredFromNonce.String()
 	}
 
 	for name, head := range meta.Statuses {
@@ -1283,6 +1289,12 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		mainDoc = evt.MainDocument.String()
 	}
 
+	var restoredFrom string
+
+	if evt.RestoredFromNonce != nil {
+		restoredFrom = evt.RestoredFromNonce.String()
+	}
+
 	return &repository.EventlogItem{
 		Id:                 evt.ID,
 		Event:              string(evt.Event),
@@ -1308,6 +1320,9 @@ func EventToRPC(evt Event) *repository.EventlogItem {
 		Timespans:          TimespanTuplesToRPC(evt.Timespans),
 		Labels:             evt.Labels,
 		SchemaGeneration:   evt.SchemaGeneration,
+
+		RestoredFromDeleteRecordId: evt.RestoredFromRecord,
+		RestoredFromNonce:          restoredFrom,
 	}
 }
 

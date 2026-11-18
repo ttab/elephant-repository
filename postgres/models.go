@@ -111,21 +111,23 @@ type Deprecation struct {
 }
 
 type Document struct {
-	UUID           uuid.UUID
-	URI            string
-	Type           string
-	Created        pgtype.Timestamptz
-	CreatorUri     string
-	Updated        pgtype.Timestamptz
-	UpdaterUri     string
-	CurrentVersion int64
-	MainDoc        pgtype.UUID
-	Language       pgtype.Text
-	SystemState    pgtype.Text
-	MainDocType    pgtype.Text
-	Nonce          uuid.UUID
-	Time           pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
-	Labels         []string
+	UUID               uuid.UUID
+	URI                string
+	Type               string
+	Created            pgtype.Timestamptz
+	CreatorUri         string
+	Updated            pgtype.Timestamptz
+	UpdaterUri         string
+	CurrentVersion     int64
+	MainDoc            pgtype.UUID
+	Language           pgtype.Text
+	SystemState        pgtype.Text
+	MainDocType        pgtype.Text
+	Nonce              uuid.UUID
+	Time               pgtype.Multirange[pgtype.Range[pgtype.Timestamptz]]
+	Labels             []string
+	RestoredFromRecord pgtype.Int8
+	RestoredFromNonce  pgtype.UUID
 }
 
 type DocumentArchiveCounter struct {

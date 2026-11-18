@@ -168,6 +168,18 @@ func TestDeleteRestore(t *testing.T) {
 	})
 	test.Mustf(t, err, "update generation B")
 
+	metaB, err := client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: docUUID,
+	})
+	test.Mustf(t, err, "get meta for generation B")
+
+	if metaB.Meta.RestoredFromNonce != "" ||
+		metaB.Meta.RestoredFromDeleteRecordId != 0 {
+		t.Fatalf("generation B wasn't restored, but its meta says it was restored from %q (record %d)",
+			metaB.Meta.RestoredFromNonce,
+			metaB.Meta.RestoredFromDeleteRecordId)
+	}
+
 	// Attempt to restore when a document exists. Here we expect failure.
 	_, err = client.Restore(ctx, &repository.RestoreRequest{
 		Uuid:           docUUID,
@@ -287,6 +299,53 @@ func TestDeleteRestore(t *testing.T) {
 		}
 	}
 
+	// The events of the restore, everything after the delete of gen B,
+	// name the generation and delete record they were restored from. No
+	// event before them does.
+	var restoredFrom string
+
+	for _, evt := range events {
+		if restoredFrom == "" {
+			if evt.RestoredFromNonce != "" ||
+				evt.RestoredFromDeleteRecordId != 0 {
+				t.Errorf("event %d (%s) isn't part of a restore, but names %q (record %d)",
+					evt.Id, evt.Event, evt.RestoredFromNonce,
+					evt.RestoredFromDeleteRecordId)
+			}
+
+			if evt.Event == "delete_document" &&
+				evt.DeleteRecordId == record.Id {
+				restoredFrom = evt.DocumentNonce
+			}
+
+			continue
+		}
+
+		test.Equalf(t, restoredFrom, evt.RestoredFromNonce,
+			"event %d (%s) names generation B's nonce", evt.Id, evt.Event)
+		test.Equalf(t, record.Id, evt.RestoredFromDeleteRecordId,
+			"event %d (%s) names generation B's delete record", evt.Id, evt.Event)
+
+		if evt.DocumentNonce == restoredFrom {
+			t.Errorf("event %d (%s) has the old generation's nonce as its document nonce",
+				evt.Id, evt.Event)
+		}
+	}
+
+	if restoredFrom == "" {
+		t.Fatal("found no delete event for generation B in the eventlog")
+	}
+
+	metaRes, err := client.GetMeta(ctx, &repository.GetMetaRequest{
+		Uuid: docUUID,
+	})
+	test.Mustf(t, err, "get meta for the restored document")
+
+	test.Equalf(t, restoredFrom, metaRes.Meta.RestoredFromNonce,
+		"the meta names generation B's nonce")
+	test.Equalf(t, record.Id, metaRes.Meta.RestoredFromDeleteRecordId,
+		"the meta names generation B's delete record")
+
 	goldenPath := filepath.Join(dataDir, "eventlog.json")
 
 	test.MessageAgainstGolden(
@@ -297,6 +356,7 @@ func TestDeleteRestore(t *testing.T) {
 		goldenPath,
 		test.IgnoreTimestamps{},
 		ignoreUUIDField("document_nonce"),
+		ignoreUUIDField("restored_from_nonce"),
 	)
 
 	historyRes, err := client.GetHistory(ctx, &repository.GetHistoryRequest{

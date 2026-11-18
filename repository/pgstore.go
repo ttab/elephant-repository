@@ -685,6 +685,14 @@ func (s *PGDocStore) RestoreDocument(
 		Version:     0,
 		Language:    record.Language,
 		SystemState: pg.Text(SystemStateRestoring),
+		RestoredFromRecord: pgtype.Int8{
+			Int64: deleteRecordID,
+			Valid: true,
+		},
+		RestoredFromNonce: pgtype.UUID{
+			Bytes: record.Nonce,
+			Valid: true,
+		},
 	})
 	if pg.IsConstraintError(err, "document_pkey") {
 		return StoreErrorf(ErrCodeFailedPrecondition,
@@ -1150,6 +1158,8 @@ func eventlogRowToEvent(r postgres.GetEventlogRow) (Event, error) {
 		e.DetachedObjects = extra.DetachedObjects
 		e.DeleteRecordID = extra.DeleteRecordID
 		e.SchemaGeneration = extra.SchemaGeneration
+		e.RestoredFromRecord = extra.RestoredFromRecord
+		e.RestoredFromNonce = extra.RestoredFromNonce
 	}
 
 	if r.Acl != nil {
@@ -1215,6 +1225,8 @@ func (s *PGDocStore) GetCompactedEventlog(
 			e.DeleteRecordID = extra.DeleteRecordID
 			e.Timespans = extra.Timespans
 			e.Labels = extra.Labels
+			e.RestoredFromRecord = extra.RestoredFromRecord
+			e.RestoredFromNonce = extra.RestoredFromNonce
 		}
 
 		if res[i].Acl != nil {
@@ -1618,6 +1630,8 @@ func (s *PGDocStore) GetDocumentMeta(
 		MainDocument:       mainDoc,
 		WorkflowState:      info.WorkflowState.String,
 		WorkflowCheckpoint: info.WorkflowCheckpoint.String,
+		RestoredFromRecord: info.RestoredFromRecord.Int64,
+		RestoredFromNonce:  pg.ToUUIDPointer(info.RestoredFromNonce),
 		Lock: Lock{
 			Token:       info.LockToken.String,
 			URI:         info.LockUri.String,
@@ -1709,6 +1723,8 @@ func (s *PGDocStore) BulkGetDocumentMeta(
 			MainDocument:       mainDoc,
 			WorkflowState:      info.WorkflowState.String,
 			WorkflowCheckpoint: info.WorkflowCheckpoint.String,
+			RestoredFromRecord: info.RestoredFromRecord.Int64,
+			RestoredFromNonce:  pg.ToUUIDPointer(info.RestoredFromNonce),
 			Lock: Lock{
 				Token:       info.LockToken.String,
 				URI:         info.LockUri.String,

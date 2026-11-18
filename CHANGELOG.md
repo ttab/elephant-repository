@@ -6,6 +6,15 @@ detail.
 
 ## [v1.11.1] - Unreleased
 
+**Migrations:**
+
+- `029_restored_from.sql` adds the nullable columns `restored_from_record`
+  and `restored_from_nonce` to `document`. Run it before the deploy; it needs
+  no maintenance window. Adding nullable columns without a default rewrites
+  nothing, but it does take a brief `ACCESS EXCLUSIVE` lock on `document`, so
+  the migration sets a 5s `lock_timeout` rather than queue writes behind a
+  long running transaction. If it times out, run it again.
+
 Changes:
 
 - New RPC `Documents.BulkCheckPermissions`: takes up to 200 document UUIDs
@@ -18,7 +27,15 @@ Changes:
   documents included. It takes the scopes `GetPermissions` takes, but not in
   their document-restricted form. See the
   [permission matrix](docs/permissions.md#documents).
-- elephant-api bumped to v0.29.5.
+- A restored document says which generation it was restored from. Every
+  event a restore emits, `restore_finished` included, and `GetMeta` for the
+  restored document carry `restored_from_nonce`, the nonce of the deleted
+  generation, and `restored_from_delete_record_id`. Both are empty for
+  documents that weren't created by a restore, and for restores made before
+  this release, which recorded neither. `delete_record_id` is still set on
+  delete events only. See
+  [deletes, restores and purges](docs/architecture.md#deletes-restores-and-purges).
+- elephant-api bumped to v0.29.6.
 
 ## [v1.11.0] - 2026-11-13
 

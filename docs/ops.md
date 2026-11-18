@@ -213,7 +213,9 @@ documents that have vanished but cannot be recreated.
 
 Restore replays from `manifest.json`, emitting events with
 `system_state = restoring` that consumers are expected to ignore, followed by a
-`restore_finished` event. Purge deletes the archived objects and strips the
+`restore_finished` event. Those events, and `GetMeta` for the restored
+document, name the generation and delete record it came from
+(`restored_from_nonce`, `restored_from_delete_record_id`). Purge deletes the archived objects and strips the
 delete record down to the audit trail.
 
 ### 5. Scheduled publishing

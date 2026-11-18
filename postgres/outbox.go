@@ -31,6 +31,8 @@ type OutboxEvent struct {
 	Timespans          [][2]time.Time `json:"timespans,omitempty"`
 	Labels             []string       `json:"labels,omitempty"`
 	SchemaGeneration   int64          `json:"schema_generation,omitempty"`
+	RestoredFromRecord int64          `json:"restored_from_record,omitempty"`
+	RestoredFromNonce  *uuid.UUID     `json:"restored_from_nonce,omitempty"`
 }
 
 type ACLEntry struct {
@@ -46,4 +48,8 @@ type EventlogExtra struct {
 	Timespans        [][2]time.Time `json:"timespans,omitempty"`
 	Labels           []string       `json:"labels,omitempty"`
 	SchemaGeneration int64          `json:"schema_generation,omitempty"`
+	// RestoredFromRecord and RestoredFromNonce are set on the events a
+	// restore emits.
+	RestoredFromRecord int64      `json:"restored_from_record,omitempty"`
+	RestoredFromNonce  *uuid.UUID `json:"restored_from_nonce,omitempty"`
 }

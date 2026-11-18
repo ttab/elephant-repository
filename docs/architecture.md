@@ -361,6 +361,17 @@ announced on the eventlog, and replays versions and statuses from the delete
 manifest. Every resulting event carries `system_state = restoring` so
 processors can ignore them, and a `restore_finished` event marks the end.
 
+A restore mints a new nonce, so the restored document is a new generation, and
+it records which generation it brought back: the placeholder row stores the
+delete record ID and the deleted generation's nonce in `restored_from_record`
+and `restored_from_nonce`. Every event the restore emits, `restore_finished`
+included, carries them as `restored_from_delete_record_id` and
+`restored_from_nonce`, and `GetMeta` returns them for as long as the generation
+lives. A service that keeps state per generation uses them to tell a restore
+from a new document reusing the UUID. Both are empty for a generation that
+wasn't created by a restore, and for restores made before v1.11.1, which
+recorded neither and aren't backfilled.
+
 A purge removes the archived objects and clears the version, ACL and status
 head data from the delete record. What survives is the audit trail: UUID, URI,
 type, who deleted it and when, and when it was purged.
@@ -928,7 +939,8 @@ The shape:
 
 * `document` is one row per document, carrying `current_version`, `updated`,
   `updater_uri`, `nonce`, `system_state`, the derived `time` multirange and
-  `labels` array, and `main_doc` for meta documents. The `nonce` identifies the
+  `labels` array, `main_doc` for meta documents, and `restored_from_record`
+  and `restored_from_nonce` for a generation created by a restore. The `nonce` identifies the
   document's *generation* — the run of versions between a create (or a
   recreate) and a delete — so version 1 of a recreated document can be told
   apart from version 1 of the sequence it replaced; it travels on the eventlog
