@@ -523,7 +523,14 @@ gets derived from a document on write:
   documents are keyed on the full name — so `Schemas.GetDocumentTypes` lists
   the variants of a declared type alongside it. It is the only place they are
   listed: nothing declares a variant in a schema.
-* **Bounded collection** marks types whose membership is enumerable.
+* **Bounded collection** marks types whose membership is enumerable, which
+  is what lets `Documents.GetMatching` list a type without a timespan. The
+  flag is stored twice on `document_type`: in the `configuration` JSON, which
+  the in-memory configuration `GetMatching` checks is loaded from, and in the
+  `bounded_collection` column, which the listing query filters on.
+  `ConfigureType` writes both. Before v1.11.1 it wrote only the JSON, so a
+  bounded type was accepted by `GetMatching` and listed nothing;
+  `schema/030_bounded_collection_backfill.sql` brought existing rows in line.
 
 Reloaded immediately on `NOTIFY type_configured`, **with a five-minute timer
 added behind it**. The timer is recent, and the history is worth knowing: this
