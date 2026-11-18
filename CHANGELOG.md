@@ -35,7 +35,7 @@ Changes:
   this release, which recorded neither. `delete_record_id` is still set on
   delete events only. See
   [deletes, restores and purges](docs/architecture.md#deletes-restores-and-purges).
-- elephant-api bumped to v0.29.6.
+- elephant-api bumped to v0.29.5.
 
 ## [v1.11.0] - 2026-11-13
 
