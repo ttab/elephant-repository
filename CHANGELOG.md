@@ -14,8 +14,22 @@ detail.
   nothing, but it does take a brief `ACCESS EXCLUSIVE` lock on `document`, so
   the migration sets a 5s `lock_timeout` rather than queue writes behind a
   long running transaction. If it times out, run it again.
+- `030_bounded_collection_backfill.sql` sets `document_type.bounded_collection`
+  from the `bounded_collection` key of each type's configuration. Run it
+  before or after the deploy; it touches one row per configured type and
+  needs no maintenance window. Until it has run, `GetMatching` by type keeps
+  listing nothing for types that haven't been configured again since the
+  deploy.
 
 Changes:
+
+- Fixed `Documents.GetMatching` by type listing nothing for bounded
+  collection types. `Schemas.ConfigureType` stored the bounded collection
+  flag in the configuration but never in the column the listing filters on,
+  so the request was accepted and matched no documents. This has been so
+  since `GetMatching` was added.
+- Fixed `Documents.GetMatching` panicking, answered as `internal`, when it
+  had matches and `include_documents` was false.
 
 - New RPC `Documents.BulkCheckPermissions`: takes up to 200 document UUIDs
   and a permission (`r`, `w`, `m` or `s`) and returns, in request order, the

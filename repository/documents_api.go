@@ -265,10 +265,11 @@ func (a *DocumentsService) GetMatching(
 		}
 	}
 
-	var (
-		meta      map[uuid.UUID]*DocumentMeta
-		documents iter.Seq[BulkGetItem]
-	)
+	var meta map[uuid.UUID]*DocumentMeta
+
+	// Ranging over a nil iterator panics, so documents starts out empty
+	// and is only replaced when the documents were asked for.
+	documents := iter.Seq[BulkGetItem](func(func(BulkGetItem) bool) {})
 
 	grp, gCtx := errgroup.WithContext(ctx)
 

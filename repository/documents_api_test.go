@@ -3365,3 +3365,81 @@ func TestIntegrationBulkCheckPermissions(t *testing.T) {
 		test.IsRPCError(t, err, connect.CodePermissionDenied)
 	})
 }
+
+// TestGetMatchingBoundedType checks that a type configured as a bounded
+// collection through the API can be listed by type. The configuration used to
+// only store the flag in the configuration JSON, so GetMatching accepted the
+// request but the query, which filters on the column, matched nothing.
+func TestGetMatchingBoundedType(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelError))
+
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	schemasClient := tc.SchemasClient(t,
+		itest.StandardClaims(t, "schema_admin"))
+
+	client := tc.DocumentsClient(t,
+		itest.StandardClaims(t, "doc_read doc_write"))
+
+	ctx := t.Context()
+
+	_, err := schemasClient.ConfigureType(ctx,
+		&repository.ConfigureTypeRequest{
+			Type: "core/article",
+			Configuration: &repository.TypeConfiguration{
+				BoundedCollection: true,
+			},
+		})
+	test.Mustf(t, err, "configure core/article as a bounded collection")
+
+	want := []string{
+		"b0a7c8e1-1778-4f00-9abc-000000000001",
+		"b0a7c8e1-1778-4f00-9abc-000000000002",
+	}
+
+	for _, id := range want {
+		_, err := client.Update(ctx, &repository.UpdateRequest{
+			Uuid:     id,
+			Document: baseDocument(id, "article://test/bounded/"+id),
+		})
+		test.Mustf(t, err, "create document %s", id)
+	}
+
+	// The configuration reaches the in-memory type configuration through a
+	// notification, wait until GetMatching accepts the type.
+	var res *repository.GetMatchingResponse
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for {
+		res, err = client.GetMatching(ctx, &repository.GetMatchingRequest{
+			Type: "core/article",
+		})
+		if err == nil {
+			break
+		}
+
+		if !elephantrpc.IsCode(err, connect.CodeInvalidArgument) ||
+			time.Now().After(deadline) {
+			t.Fatalf("get matching documents: %v", err)
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	got := make([]string, len(res.Matches))
+
+	for i, m := range res.Matches {
+		got[i] = m.Uuid
+	}
+
+	slices.Sort(got)
+
+	test.EqualDiff(t, want, got, "list the documents of the bounded type")
+}

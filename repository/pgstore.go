@@ -1904,8 +1904,12 @@ func (s *PGDocStore) ConfigureType(
 
 		err := q.SetTypeConfiguration(ctx,
 			postgres.SetTypeConfigurationParams{
-				Type:          docType,
-				Configuration: typeConfigurationToDB(configuration),
+				Type: docType,
+				// The column is what SelectBoundedDocumentsWithType
+				// filters on, the configuration JSON is what
+				// GetMatching checks, so they must agree.
+				BoundedCollection: configuration.BoundedCollection,
+				Configuration:     typeConfigurationToDB(configuration),
 			})
 		if err != nil {
 			return fmt.Errorf("write configuration to database: %w", err)
