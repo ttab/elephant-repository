@@ -170,7 +170,9 @@ CREATE TABLE public.document (
     main_doc_type text,
     nonce uuid NOT NULL,
     "time" tstzmultirange,
-    labels text[]
+    labels text[],
+    restored_from_record bigint,
+    restored_from_nonce uuid
 );
 
 

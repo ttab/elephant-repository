@@ -69,6 +69,12 @@ type Event struct {
 	Timespans          [][2]time.Time `json:"timespans,omitempty"`
 	Labels             []string       `json:"labels"`
 	SchemaGeneration   int64          `json:"schema_generation,omitempty"`
+	// RestoredFromRecord is the delete record that a restore restored the
+	// document from, set on every event the restore emits.
+	RestoredFromRecord int64 `json:"restored_from_record,omitempty"`
+	// RestoredFromNonce is the nonce of the deleted generation that a
+	// restore brought back, set on the same events as RestoredFromRecord.
+	RestoredFromNonce *uuid.UUID `json:"restored_from_nonce,omitempty"`
 }
 
 func NewEventlogBuilder(
@@ -172,12 +178,14 @@ func (eb *EventlogBuilder) Run(ctx context.Context) error {
 				WorkflowState:      pg.TextOrNull(evt.WorkflowStep),
 				WorkflowCheckpoint: pg.TextOrNull(evt.WorkflowCheckpoint),
 				Extra: &postgres.EventlogExtra{
-					AttachedObjects:  evt.AttachedObjects,
-					DetachedObjects:  evt.DetachedObjects,
-					DeleteRecordID:   evt.DeleteRecordID,
-					Timespans:        evt.Timespans,
-					Labels:           evt.Labels,
-					SchemaGeneration: evt.SchemaGeneration,
+					AttachedObjects:    evt.AttachedObjects,
+					DetachedObjects:    evt.DetachedObjects,
+					DeleteRecordID:     evt.DeleteRecordID,
+					Timespans:          evt.Timespans,
+					Labels:             evt.Labels,
+					SchemaGeneration:   evt.SchemaGeneration,
+					RestoredFromRecord: evt.RestoredFromRecord,
+					RestoredFromNonce:  evt.RestoredFromNonce,
 				},
 			}
 

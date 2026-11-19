@@ -1056,34 +1056,38 @@ func (a *Archiver) processRestores(
 	}
 
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
-		Event:       string(TypeACLUpdate),
-		UUID:        req.UUID,
-		Version:     manifest.LastVersion,
-		Nonce:       nonce,
-		Timestamp:   time.Now(),
-		Updater:     req.Creator,
-		ACL:         eventACLs,
-		Type:        docInfo.Type,
-		Language:    docInfo.Language.String,
-		SystemState: SystemStateRestoring,
-		Labels:      docInfo.Labels,
-		Timespans:   timespans,
+		Event:              string(TypeACLUpdate),
+		UUID:               req.UUID,
+		Version:            manifest.LastVersion,
+		Nonce:              nonce,
+		Timestamp:          time.Now(),
+		Updater:            req.Creator,
+		ACL:                eventACLs,
+		Type:               docInfo.Type,
+		Language:           docInfo.Language.String,
+		SystemState:        SystemStateRestoring,
+		Labels:             docInfo.Labels,
+		Timespans:          timespans,
+		RestoredFromRecord: req.DeleteRecordID,
+		RestoredFromNonce:  &req.RestoredFromNonce,
 	})
 	if err != nil {
 		return false, fmt.Errorf("add restore finished event to outbox: %w", err)
 	}
 
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
-		Event:     string(TypeRestoreFinished),
-		UUID:      req.UUID,
-		Nonce:     nonce,
-		Timestamp: time.Now(),
-		Version:   manifest.LastVersion,
-		Updater:   req.Creator,
-		Type:      docInfo.Type,
-		Language:  docInfo.Language.String,
-		Labels:    docInfo.Labels,
-		Timespans: timespans,
+		Event:              string(TypeRestoreFinished),
+		UUID:               req.UUID,
+		Nonce:              nonce,
+		Timestamp:          time.Now(),
+		Version:            manifest.LastVersion,
+		Updater:            req.Creator,
+		Type:               docInfo.Type,
+		Language:           docInfo.Language.String,
+		Labels:             docInfo.Labels,
+		Timespans:          timespans,
+		RestoredFromRecord: req.DeleteRecordID,
+		RestoredFromNonce:  &req.RestoredFromNonce,
 	})
 	if err != nil {
 		return false, fmt.Errorf("add restore finished event to outbox: %w", err)
@@ -1202,19 +1206,21 @@ func (a *Archiver) restoreDocumentVersion(
 	}
 
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
-		Event:           string(TypeDocumentVersion),
-		UUID:            req.UUID,
-		Nonce:           nonce,
-		Timestamp:       time.Now(),
-		Version:         id,
-		Updater:         dv.CreatorURI,
-		Type:            dv.Type,
-		Language:        dv.Language,
-		SystemState:     SystemStateRestoring,
-		AttachedObjects: evt.Event.AttachedObjects,
-		DetachedObjects: evt.Event.DetachedObjects,
-		Timespans:       TimespansAsTuples(timespans),
-		Labels:          labels,
+		Event:              string(TypeDocumentVersion),
+		UUID:               req.UUID,
+		Nonce:              nonce,
+		Timestamp:          time.Now(),
+		Version:            id,
+		Updater:            dv.CreatorURI,
+		Type:               dv.Type,
+		Language:           dv.Language,
+		SystemState:        SystemStateRestoring,
+		AttachedObjects:    evt.Event.AttachedObjects,
+		DetachedObjects:    evt.Event.DetachedObjects,
+		Timespans:          TimespansAsTuples(timespans),
+		Labels:             labels,
+		RestoredFromRecord: req.DeleteRecordID,
+		RestoredFromNonce:  &req.RestoredFromNonce,
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("add last version event to outbox: %w", err)
@@ -1295,17 +1301,19 @@ func (a *Archiver) restoreDocumentStatus(
 	}
 
 	err = addEventToOutbox(ctx, tx, postgres.OutboxEvent{
-		Event:       string(TypeNewStatus),
-		UUID:        stat.UUID,
-		Nonce:       nonce,
-		Timestamp:   time.Now(),
-		Status:      stat.Name,
-		StatusID:    id,
-		Version:     stat.Version,
-		Updater:     stat.CreatorURI,
-		Type:        stat.Type,
-		Language:    stat.Language,
-		SystemState: SystemStateRestoring,
+		Event:              string(TypeNewStatus),
+		UUID:               stat.UUID,
+		Nonce:              nonce,
+		Timestamp:          time.Now(),
+		Status:             stat.Name,
+		StatusID:           id,
+		Version:            stat.Version,
+		Updater:            stat.CreatorURI,
+		Type:               stat.Type,
+		Language:           stat.Language,
+		SystemState:        SystemStateRestoring,
+		RestoredFromRecord: req.DeleteRecordID,
+		RestoredFromNonce:  &req.RestoredFromNonce,
 	})
 	if err != nil {
 		return fmt.Errorf(

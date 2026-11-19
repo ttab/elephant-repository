@@ -49,7 +49,7 @@ The run of versions a document accrues between a create (or a recreate after a d
 _Avoid_: incarnation, lifetime, run, epoch
 
 **Nonce**:
-The UUID that identifies a document generation. It travels on the eventlog as `document_nonce` and is opaque — nonces minted from v1.9.0 onwards are UUIDv7 and therefore sort in creation order, but only among themselves, so ordering by nonce is never a contract.
+The UUID that identifies a document generation. It travels on the eventlog as `document_nonce` and is opaque — nonces minted from v1.9.0 onwards are UUIDv7 and therefore sort in creation order, but only among themselves, so ordering by nonce is never a contract. A restore mints a new nonce; the restored generation names the one it brought back as `restored_from_nonce`.
 _Avoid_: generation id, incarnation id, epoch id
 
 **System state**:

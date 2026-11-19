@@ -49,7 +49,9 @@
       "attached_objects": [
         "plaintext"
       ],
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "restored_from_nonce": "00000000-0000-0000-0000-000000000000",
+      "restored_from_delete_record_id": "1"
     },
     {
       "id": "4",
@@ -70,7 +72,9 @@
       "type": "core/article",
       "language": "en",
       "system_state": "restoring",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "restored_from_nonce": "00000000-0000-0000-0000-000000000000",
+      "restored_from_delete_record_id": "1"
     },
     {
       "id": "5",
@@ -81,7 +85,9 @@
       "updater_uri": "user://test/testassetrestore",
       "type": "core/article",
       "language": "en",
-      "document_nonce": "00000000-0000-0000-0000-000000000000"
+      "document_nonce": "00000000-0000-0000-0000-000000000000",
+      "restored_from_nonce": "00000000-0000-0000-0000-000000000000",
+      "restored_from_delete_record_id": "1"
     }
   ]
 }

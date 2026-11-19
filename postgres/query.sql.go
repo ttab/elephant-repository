@@ -294,7 +294,9 @@ func (q *Queries) BulkGetDocumentData(ctx context.Context, arg BulkGetDocumentDa
 const bulkGetDocumentInfo = `-- name: BulkGetDocumentInfo :many
 SELECT
         d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
-        d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
+        d.system_state, d.main_doc, d.nonce,
+        d.restored_from_record, d.restored_from_nonce,
+        l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
         l.exclusivity as lock_exclusivity,
@@ -322,6 +324,8 @@ type BulkGetDocumentInfoRow struct {
 	SystemState        pgtype.Text
 	MainDoc            pgtype.UUID
 	Nonce              uuid.UUID
+	RestoredFromRecord pgtype.Int8
+	RestoredFromNonce  pgtype.UUID
 	LockUuid           pgtype.UUID
 	LockUri            pgtype.Text
 	LockCreated        pgtype.Timestamptz
@@ -355,6 +359,8 @@ func (q *Queries) BulkGetDocumentInfo(ctx context.Context, arg BulkGetDocumentIn
 			&i.SystemState,
 			&i.MainDoc,
 			&i.Nonce,
+			&i.RestoredFromRecord,
+			&i.RestoredFromNonce,
 			&i.LockUuid,
 			&i.LockUri,
 			&i.LockCreated,
@@ -1585,7 +1591,7 @@ func (q *Queries) GetDelayedScheduledCount(ctx context.Context, arg GetDelayedSc
 const getDeleteRecordForUpdate = `-- name: GetDeleteRecordForUpdate :one
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
        main_doc, language, meta_doc_record, heads, finalised, purged,
-       attachments
+       attachments, nonce
 FROM delete_record
 WHERE id = $1 AND uuid = $2
 FOR UPDATE
@@ -1612,6 +1618,7 @@ type GetDeleteRecordForUpdateRow struct {
 	Finalised     pgtype.Timestamptz
 	Purged        pgtype.Timestamptz
 	Attachments   []AttachedObject
+	Nonce         uuid.UUID
 }
 
 func (q *Queries) GetDeleteRecordForUpdate(ctx context.Context, arg GetDeleteRecordForUpdateParams) (GetDeleteRecordForUpdateRow, error) {
@@ -1633,6 +1640,7 @@ func (q *Queries) GetDeleteRecordForUpdate(ctx context.Context, arg GetDeleteRec
 		&i.Finalised,
 		&i.Purged,
 		&i.Attachments,
+		&i.Nonce,
 	)
 	return i, err
 }
@@ -1991,7 +1999,9 @@ func (q *Queries) GetDocumentHeads(ctx context.Context, argUuid uuid.UUID) ([]Ge
 const getDocumentInfo = `-- name: GetDocumentInfo :one
 SELECT
         d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
-        d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
+        d.system_state, d.main_doc, d.nonce,
+        d.restored_from_record, d.restored_from_nonce,
+        l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
         l.exclusivity as lock_exclusivity,
@@ -2019,6 +2029,8 @@ type GetDocumentInfoRow struct {
 	SystemState        pgtype.Text
 	MainDoc            pgtype.UUID
 	Nonce              uuid.UUID
+	RestoredFromRecord pgtype.Int8
+	RestoredFromNonce  pgtype.UUID
 	LockUuid           pgtype.UUID
 	LockUri            pgtype.Text
 	LockCreated        pgtype.Timestamptz
@@ -2046,6 +2058,8 @@ func (q *Queries) GetDocumentInfo(ctx context.Context, arg GetDocumentInfoParams
 		&i.SystemState,
 		&i.MainDoc,
 		&i.Nonce,
+		&i.RestoredFromRecord,
+		&i.RestoredFromNonce,
 		&i.LockUuid,
 		&i.LockUri,
 		&i.LockCreated,
@@ -3020,7 +3034,8 @@ func (q *Queries) GetNextPurgeRequest(ctx context.Context) (GetNextPurgeRequestR
 }
 
 const getNextRestoreRequest = `-- name: GetNextRestoreRequest :one
-SELECT r.id, r.uuid, d.nonce, r.delete_record_id, r.created, r.creator, r.spec
+SELECT r.id, r.uuid, d.nonce, dr.nonce AS restored_from_nonce,
+       r.delete_record_id, r.created, r.creator, r.spec
 FROM restore_request AS r
      INNER JOIN delete_record AS dr
            ON dr.id = r.delete_record_id
@@ -3033,13 +3048,14 @@ LIMIT 1
 `
 
 type GetNextRestoreRequestRow struct {
-	ID             int64
-	UUID           uuid.UUID
-	Nonce          uuid.UUID
-	DeleteRecordID int64
-	Created        pgtype.Timestamptz
-	Creator        string
-	Spec           []byte
+	ID                int64
+	UUID              uuid.UUID
+	Nonce             uuid.UUID
+	RestoredFromNonce uuid.UUID
+	DeleteRecordID    int64
+	Created           pgtype.Timestamptz
+	Creator           string
+	Spec              []byte
 }
 
 func (q *Queries) GetNextRestoreRequest(ctx context.Context) (GetNextRestoreRequestRow, error) {
@@ -3049,6 +3065,7 @@ func (q *Queries) GetNextRestoreRequest(ctx context.Context) (GetNextRestoreRequ
 		&i.ID,
 		&i.UUID,
 		&i.Nonce,
+		&i.RestoredFromNonce,
 		&i.DeleteRecordID,
 		&i.Created,
 		&i.Creator,
@@ -4175,25 +4192,29 @@ const insertDocument = `-- name: InsertDocument :exec
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, system_state, nonce
+       main_doc, language, system_state, nonce,
+       restored_from_record, restored_from_nonce
 ) VALUES (
        $1, $2, $3,
        $4, $5, $4, $5, $6,
-       $7, $8, $9, $10
+       $7, $8, $9, $10,
+       $11, $12
 )
 `
 
 type InsertDocumentParams struct {
-	UUID        uuid.UUID
-	URI         string
-	Type        string
-	Created     pgtype.Timestamptz
-	CreatorUri  string
-	Version     int64
-	MainDoc     pgtype.UUID
-	Language    pgtype.Text
-	SystemState pgtype.Text
-	Nonce       uuid.UUID
+	UUID               uuid.UUID
+	URI                string
+	Type               string
+	Created            pgtype.Timestamptz
+	CreatorUri         string
+	Version            int64
+	MainDoc            pgtype.UUID
+	Language           pgtype.Text
+	SystemState        pgtype.Text
+	Nonce              uuid.UUID
+	RestoredFromRecord pgtype.Int8
+	RestoredFromNonce  pgtype.UUID
 }
 
 func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) error {
@@ -4208,6 +4229,8 @@ func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) 
 		arg.Language,
 		arg.SystemState,
 		arg.Nonce,
+		arg.RestoredFromRecord,
+		arg.RestoredFromNonce,
 	)
 	return err
 }

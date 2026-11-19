@@ -104,7 +104,9 @@ WHERE uuid = @uuid;
 -- name: GetDocumentInfo :one
 SELECT
         d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
-        d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
+        d.system_state, d.main_doc, d.nonce,
+        d.restored_from_record, d.restored_from_nonce,
+        l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
         l.exclusivity as lock_exclusivity,
@@ -117,7 +119,9 @@ WHERE d.uuid = @uuid;
 -- name: BulkGetDocumentInfo :many
 SELECT
         d.uuid, d.type, d.uri, d.created, d.creator_uri, d.updated, d.updater_uri, d.current_version,
-        d.system_state, d.main_doc, d.nonce, l.uuid as lock_uuid, l.uri as lock_uri,
+        d.system_state, d.main_doc, d.nonce,
+        d.restored_from_record, d.restored_from_nonce,
+        l.uuid as lock_uuid, l.uri as lock_uri,
         l.created as lock_created, l.expires as lock_expires, l.app as lock_app,
         l.comment as lock_comment, l.token as lock_token,
         l.exclusivity as lock_exclusivity,
@@ -217,11 +221,13 @@ SELECT pg_notify(@channel::text, @message::text);
 INSERT INTO document(
        uuid, uri, type,
        created, creator_uri, updated, updater_uri, current_version,
-       main_doc, language, system_state, nonce
+       main_doc, language, system_state, nonce,
+       restored_from_record, restored_from_nonce
 ) VALUES (
        @uuid, @uri, @type,
        @created, @creator_uri, @created, @creator_uri, @version,
-       @main_doc, @language, @system_state, @nonce
+       @main_doc, @language, @system_state, @nonce,
+       sqlc.narg('restored_from_record'), sqlc.narg('restored_from_nonce')
 );
 
 -- name: ReadForRestore :one
@@ -247,7 +253,8 @@ INSERT INTO restore_request(
 );
 
 -- name: GetNextRestoreRequest :one
-SELECT r.id, r.uuid, d.nonce, r.delete_record_id, r.created, r.creator, r.spec
+SELECT r.id, r.uuid, d.nonce, dr.nonce AS restored_from_nonce,
+       r.delete_record_id, r.created, r.creator, r.spec
 FROM restore_request AS r
      INNER JOIN delete_record AS dr
            ON dr.id = r.delete_record_id
@@ -508,7 +515,7 @@ ORDER BY r.id DESC;
 -- name: GetDeleteRecordForUpdate :one
 SELECT id, uuid, uri, type, version, created, creator_uri, meta,
        main_doc, language, meta_doc_record, heads, finalised, purged,
-       attachments
+       attachments, nonce
 FROM delete_record
 WHERE id = @id AND uuid = @uuid
 FOR UPDATE;
