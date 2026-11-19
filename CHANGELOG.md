@@ -4,7 +4,7 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
-## [v1.11.1] - Unreleased
+## [v1.11.1] - 2026-11-19
 
 **Migrations:**
 
