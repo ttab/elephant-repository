@@ -3111,6 +3111,29 @@ func (s *PGDocStore) BulkGetDeliverableInfo(
 	return result, nil
 }
 
+// BulkGetAssignmentInfo implements DocStore.
+func (s *PGDocStore) BulkGetAssignmentInfo(
+	ctx context.Context, uuids []uuid.UUID,
+) ([]AssignmentInfo, error) {
+	rows, err := s.reader.BulkGetAssignmentInfo(ctx, uuids)
+	if err != nil {
+		return nil, fmt.Errorf("read from database: %w", err)
+	}
+
+	result := make([]AssignmentInfo, len(rows))
+
+	for i, r := range rows {
+		result[i] = AssignmentInfo{
+			UUID:         r.AssignmentUuid,
+			PlanningUUID: r.PlanningUuid,
+			EventUUID:    pg.ToUUIDPointer(r.EventUuid),
+			Deliverables: r.DeliverableUuids,
+		}
+	}
+
+	return result, nil
+}
+
 func pointer[T any](v T) *T {
 	return &v
 }

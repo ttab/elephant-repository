@@ -687,6 +687,14 @@ func testRestrictedScopeRefusals(
 
 			return err
 		},
+		"Documents.BulkGetAssignmentInfo": func() error {
+			_, err := docs.BulkGetAssignmentInfo(ctx,
+				&repository.BulkGetAssignmentInfoRequest{
+					Uuids: []string{docA},
+				})
+
+			return err
+		},
 		"Documents.GetAttachments": func() error {
 			_, err := docs.GetAttachments(ctx, &repository.GetAttachmentsRequest{
 				Documents:      []string{docA},

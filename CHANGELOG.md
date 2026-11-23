@@ -4,6 +4,21 @@ All notable changes to this project after v1.0.0 are documented here. The
 entries below are derived from release tags; see the linked PRs for full
 detail.
 
+## [v1.12.0] - Unreleased
+
+Changes:
+
+- New RPC `Documents.BulkGetAssignmentInfo`: takes up to 200 assignment
+  UUIDs and returns, for each one found, the planning item it currently
+  belongs to, that planning item's event and the assignment's deliverables.
+  It answers from the assignment's own UUID what `BulkGetDeliverableInfo`
+  answers for a deliverable, so a client following an assignment that is
+  moved between planning items no longer has to carry the planning item
+  along or fall back to the index. The answer is checked as a read of the
+  planning item, with the caller's token, and an assignment in a planning
+  item the caller may not read is left out exactly like one that does not
+  exist. `doc_read_all` and `doc_admin` skip the check.
+
 ## [v1.11.1] - 2026-11-19
 
 **Migrations:**

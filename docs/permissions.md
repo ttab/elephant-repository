@@ -104,6 +104,7 @@ shared with me".
 | `ListDocuments` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters — rows the caller cannot read still count against the page `limit`. |
 | `GetStatusOverview` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
 | `BulkGetDeliverableInfo` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
+| `BulkGetAssignmentInfo` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read on each assignment's planning item, filters — checked after the lookup, since the caller names only assignments. At most 200 UUIDs. |
 | `GetAttachments` | `doc_read`, `doc_read_all`, `doc_admin` | — | Read, filters |
 | `GetSocketToken` | `doc_read`, `doc_read_all`, `doc_admin` | — | — Scope only; per-document checks happen on the socket. |
 | `GetPermissions` | `doc_read`, `doc_read_all`, `doc_write`, `doc_delete`, `doc_admin` | yes | — Any client with a document scope may read permissions; a restricted one only for its document. |

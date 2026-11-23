@@ -136,6 +136,9 @@ type DocStore interface {
 	BulkGetDeliverableInfo(
 		ctx context.Context, uuids []uuid.UUID,
 	) ([]DeliverableInfo, error)
+	BulkGetAssignmentInfo(
+		ctx context.Context, uuids []uuid.UUID,
+	) ([]AssignmentInfo, error)
 	CreateUpload(ctx context.Context, upload Upload) error
 	GetAttachments(
 		ctx context.Context,
@@ -177,6 +180,15 @@ type DeliverableInfo struct {
 	PlanningUUID    *uuid.UUID
 	AssignmentUUID  *uuid.UUID
 	EventUUID       *uuid.UUID
+}
+
+// AssignmentInfo names the planning item an assignment currently belongs
+// to, the planning item's event, and the assignment's deliverables.
+type AssignmentInfo struct {
+	UUID         uuid.UUID
+	PlanningUUID uuid.UUID
+	EventUUID    *uuid.UUID
+	Deliverables []uuid.UUID
 }
 
 type Upload struct {

@@ -138,6 +138,54 @@ func (q *Queries) BulkCheckPermissions(ctx context.Context, arg BulkCheckPermiss
 	return items, nil
 }
 
+const bulkGetAssignmentInfo = `-- name: BulkGetAssignmentInfo :many
+SELECT pa.uuid AS assignment_uuid,
+       pa.planning_item AS planning_uuid,
+       pi.event AS event_uuid,
+       ARRAY(
+         SELECT pd.document
+         FROM planning_deliverable pd
+         WHERE pd.assignment = pa.uuid
+         ORDER BY pd.document
+       )::uuid[] AS deliverable_uuids
+FROM planning_assignment pa
+     JOIN planning_item pi
+          ON pa.planning_item = pi.uuid
+WHERE pa.uuid = ANY($1::uuid[])
+`
+
+type BulkGetAssignmentInfoRow struct {
+	AssignmentUuid   uuid.UUID
+	PlanningUuid     uuid.UUID
+	EventUuid        pgtype.UUID
+	DeliverableUuids []uuid.UUID
+}
+
+func (q *Queries) BulkGetAssignmentInfo(ctx context.Context, uuids []uuid.UUID) ([]BulkGetAssignmentInfoRow, error) {
+	rows, err := q.db.Query(ctx, bulkGetAssignmentInfo, uuids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkGetAssignmentInfoRow
+	for rows.Next() {
+		var i BulkGetAssignmentInfoRow
+		if err := rows.Scan(
+			&i.AssignmentUuid,
+			&i.PlanningUuid,
+			&i.EventUuid,
+			&i.DeliverableUuids,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const bulkGetAttachments = `-- name: BulkGetAttachments :many
 SELECT document, name, version FROM attached_object_current
 WHERE document = ANY($1::uuid[])

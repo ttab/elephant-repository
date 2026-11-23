@@ -539,6 +539,110 @@ func (a *DocumentsService) BulkGetDeliverableInfo(
 	return &res, nil
 }
 
+// BulkGetAssignmentInfo implements repository.Documents.
+func (a *DocumentsService) BulkGetAssignmentInfo(
+	ctx context.Context, req *repository.BulkGetAssignmentInfoRequest,
+) (*repository.BulkGetAssignmentInfoResponse, error) {
+	auth, err := RequireAnyScope(ctx,
+		ScopeDocumentRead, ScopeDocumentReadAll, ScopeDocumentAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(req.Uuids) == 0 {
+		return nil, rpc.RequiredArgument("uuids")
+	}
+
+	if len(req.Uuids) > 200 {
+		return nil, rpc.InvalidArgument("uuids",
+			"limited to 200 assignments")
+	}
+
+	uuids := make([]uuid.UUID, len(req.Uuids))
+
+	for i, raw := range req.Uuids {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return nil, rpc.Errorf(connect.CodeInvalidArgument,
+				"uuids: the %dnth UUID is invalid: %v", i, err)
+		}
+
+		uuids[i] = id
+	}
+
+	infos, err := a.store.BulkGetAssignmentInfo(ctx, uuids)
+	if err != nil {
+		return nil, rpc.Internalf("load assignment info: %v", err)
+	}
+
+	// The caller doesn't name the planning items, so reading one is
+	// checked after the lookup has found it. An assignment in a planning
+	// item the caller may not read is left out like a missing one.
+	aclBypass := auth.Claims.HasAnyScope(
+		ScopeDocumentReadAll, ScopeDocumentAdmin)
+
+	if !aclBypass && len(infos) > 0 {
+		planning := make([]uuid.UUID, 0, len(infos))
+		seen := make(map[uuid.UUID]bool, len(infos))
+
+		for _, info := range infos {
+			if seen[info.PlanningUUID] {
+				continue
+			}
+
+			seen[info.PlanningUUID] = true
+
+			planning = append(planning, info.PlanningUUID)
+		}
+
+		ident := append([]string{auth.Claims.Subject}, auth.Claims.Units...)
+
+		permitted, err := a.store.BulkCheckPermissions(ctx,
+			BulkCheckPermissionRequest{
+				UUIDs:       planning,
+				GranteeURIs: ident,
+				Permissions: []Permission{ReadPermission},
+			})
+		if err != nil {
+			return nil, rpc.Internalf("check ACL access: %v", err)
+		}
+
+		readable := make(map[uuid.UUID]bool, len(permitted))
+
+		for _, id := range permitted {
+			readable[id] = true
+		}
+
+		infos = slices.DeleteFunc(infos, func(info AssignmentInfo) bool {
+			return !readable[info.PlanningUUID]
+		})
+	}
+
+	res := repository.BulkGetAssignmentInfoResponse{
+		Items: make([]*repository.AssignmentInfo, 0, len(infos)),
+	}
+
+	for _, info := range infos {
+		item := &repository.AssignmentInfo{
+			Uuid:         info.UUID.String(),
+			PlanningUuid: info.PlanningUUID.String(),
+		}
+
+		for _, d := range info.Deliverables {
+			item.DeliverableUuids = append(item.DeliverableUuids, d.String())
+		}
+
+		if info.EventUUID != nil {
+			item.EventUuid = info.EventUUID.String()
+		}
+
+		res.Items = append(res.Items, item)
+	}
+
+	return &res, nil
+}
+
 // GetStatus implements repository.Documents.
 func (a *DocumentsService) GetStatus(
 	ctx context.Context, req *repository.GetStatusRequest,

@@ -3366,6 +3366,147 @@ func TestIntegrationBulkCheckPermissions(t *testing.T) {
 	})
 }
 
+func TestIntegrationBulkGetAssignmentInfo(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	logger := slog.New(test.NewLogHandler(t, slog.LevelInfo))
+	ctx := t.Context()
+	tc := testingAPIServer(t, logger, testingServerOptions{})
+
+	ownerClaims := itest.StandardClaims(t, "doc_read doc_write")
+
+	owner := tc.DocumentsClient(t, ownerClaims)
+
+	otherClaims := itest.StandardClaims(t, "doc_read")
+	otherClaims.Subject = "user://test/other-user"
+
+	other := tc.DocumentsClient(t, otherClaims)
+
+	readAllClaims := itest.StandardClaims(t, "doc_read_all")
+	readAllClaims.Subject = "user://test/read-all-user"
+
+	readAll := tc.DocumentsClient(t, readAllClaims)
+
+	const (
+		planningA   = "2b0b1c55-6f0e-4d7a-9b51-3d6a1f0c0a01"
+		planningB   = "2b0b1c55-6f0e-4d7a-9b51-3d6a1f0c0a02"
+		assignment  = "2b0b1c55-6f0e-4d7a-9b51-3d6a1f0c0b01"
+		privateTask = "2b0b1c55-6f0e-4d7a-9b51-3d6a1f0c0b02"
+		missing     = "2b0b1c55-6f0e-4d7a-9b51-3d6a1f0c0b03"
+		deliverable = "2b0b1c55-6f0e-4d7a-9b51-3d6a1f0c0d01"
+		eventUUID   = "2b0b1c55-6f0e-4d7a-9b51-3d6a1f0c0c01"
+		privatePlan = "2b0b1c55-6f0e-4d7a-9b51-3d6a1f0c0a03"
+	)
+
+	shared := []*repository.ACLEntry{
+		{Uri: ownerClaims.Subject, Permissions: []string{"r", "w"}},
+		{Uri: otherClaims.Subject, Permissions: []string{"r"}},
+	}
+
+	write := func(id string, doc *newsdoc.Document, acl []*repository.ACLEntry) {
+		t.Helper()
+
+		_, err := owner.Update(ctx, &repository.UpdateRequest{
+			Uuid:     id,
+			Document: doc,
+			Acl:      acl,
+		})
+		test.Mustf(t, err, "write planning item %s", id)
+	}
+
+	write(planningA,
+		basePlanningDocument(planningA, assignment, deliverable, eventUUID),
+		shared)
+	// Shared with nobody but its creator.
+	write(privatePlan,
+		basePlanningDocument(privatePlan, privateTask, "", ""), nil)
+
+	get := func(
+		t *testing.T, client repository.Documents, want ...*repository.AssignmentInfo,
+	) {
+		t.Helper()
+
+		res, err := client.BulkGetAssignmentInfo(ctx,
+			&repository.BulkGetAssignmentInfoRequest{
+				Uuids: []string{assignment, privateTask, missing, planningA},
+			})
+		test.Mustf(t, err, "get assignment info")
+
+		slices.SortFunc(res.Items, func(a, b *repository.AssignmentInfo) int {
+			return strings.Compare(a.Uuid, b.Uuid)
+		})
+
+		test.EqualMessagef(t,
+			&repository.BulkGetAssignmentInfoResponse{
+				Items: want,
+			}, res, "expected the found and readable assignments")
+	}
+
+	inA := &repository.AssignmentInfo{
+		Uuid:             assignment,
+		PlanningUuid:     planningA,
+		EventUuid:        eventUUID,
+		DeliverableUuids: []string{deliverable},
+	}
+	inPrivate := &repository.AssignmentInfo{
+		Uuid:         privateTask,
+		PlanningUuid: privatePlan,
+	}
+
+	t.Run("Owner", func(t *testing.T) {
+		get(t, owner, inA, inPrivate)
+	})
+
+	t.Run("SharedPlanningItem", func(t *testing.T) {
+		// The private planning item's assignment is left out like the
+		// missing one.
+		get(t, other, inA)
+	})
+
+	t.Run("ElevatedScope", func(t *testing.T) {
+		get(t, readAll, inA, inPrivate)
+	})
+
+	t.Run("MovedAssignment", func(t *testing.T) {
+		// The assignment is added to planningB, and then removed from
+		// planningA, as a client moving it would do. Its deliverable
+		// goes with it.
+		write(planningB,
+			basePlanningDocument(planningB, assignment, deliverable, ""),
+			shared)
+		write(planningA,
+			basePlanningDocument(planningA, "", "", eventUUID), shared)
+
+		get(t, other, &repository.AssignmentInfo{
+			Uuid:             assignment,
+			PlanningUuid:     planningB,
+			DeliverableUuids: []string{deliverable},
+		})
+	})
+
+	t.Run("InvalidRequests", func(t *testing.T) {
+		tooMany := make([]string, 201)
+		for i := range tooMany {
+			tooMany[i] = uuid.NewString()
+		}
+
+		cases := map[string]*repository.BulkGetAssignmentInfoRequest{
+			"no uuids": {},
+			"bad uuid": {Uuids: []string{"nope"}},
+			"too many": {Uuids: tooMany},
+		}
+
+		for name, req := range cases {
+			t.Run(name, func(t *testing.T) {
+				_, err := other.BulkGetAssignmentInfo(ctx, req)
+				test.IsRPCError(t, err, connect.CodeInvalidArgument)
+			})
+		}
+	})
+}
+
 // TestGetMatchingBoundedType checks that a type configured as a bounded
 // collection through the API can be listed by type. The configuration used to
 // only store the flag in the configuration JSON, so GetMatching accepted the

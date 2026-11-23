@@ -25,10 +25,10 @@ require (
 	github.com/tmaxmax/go-sse v0.12.0
 	github.com/ttab/darknut v0.1.3
 	github.com/ttab/eleconf v1.2.0
-	github.com/ttab/elephant-api v0.29.5
+	github.com/ttab/elephant-api v0.31.0
 	github.com/ttab/elephantine v0.32.0
 	github.com/ttab/langos v0.1.1
-	github.com/ttab/mage v0.16.1
+	github.com/ttab/mage v0.17.0
 	github.com/ttab/newsdoc v1.1.0
 	github.com/ttab/revisor v1.0.3
 	github.com/ttab/revisorschemas v1.6.1
@@ -163,7 +163,7 @@ require (
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 	go.opentelemetry.io/otel/trace v1.47.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
