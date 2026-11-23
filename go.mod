@@ -34,7 +34,7 @@ require (
 	github.com/ttab/revisorschemas v1.6.1
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v3 v3.14.0
-	github.com/viccon/sturdyc v1.1.6
+	github.com/viccon/sturdyc v1.2.0
 	golang.org/x/sync v0.25.0
 	golang.org/x/time v0.16.0
 	google.golang.org/protobuf v1.36.12
